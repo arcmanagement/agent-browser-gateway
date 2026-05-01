@@ -1,0 +1,121 @@
+// Shared message types between background, popup, and Gateway.
+
+export type ExtToGateway =
+  | {
+      type: "hello";
+      extensionId: string;
+      version: string;
+      profileLabel?: string;
+      browserKind?: string;
+    }
+  | {
+      type: "tab_permitted";
+      tabId: number;
+      url: string;
+      title: string;
+      origin: string;
+      expiresAt?: string;
+    }
+  | { type: "tab_revoked"; tabId: number; reason: string }
+  | { type: "tab_updated"; tabId: number; url: string; title: string; origin: string }
+  | { type: "tab_closed"; tabId: number }
+  | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
+
+export type GatewayCommand = {
+  id: string;
+  method: GatewayMethod;
+  params?: {
+    tabId?: number;
+    selector?: string;
+    value?: string;
+    text?: string;
+    url?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    key?: string;
+    code?: string;
+    modifiers?: string[]; // any of: alt, ctrl, cmd, shift
+    // wait_for
+    hidden?: boolean;
+    sleepMs?: number;
+    timeoutMs?: number;
+    // screenshot
+    clip?: { x: number; y: number; width: number; height: number };
+    // read_dom
+    asMarkdown?: boolean;
+  };
+};
+
+export type GatewayMethod =
+  | "read_dom"
+  | "screenshot"
+  | "console"
+  | "revoke"
+  | "wait_for"
+  | "click_selector"
+  | "click_at"
+  | "fill"
+  | "type_text"
+  | "key_press"
+  | "navigate"
+  | "scroll";
+
+export type OperationMethod = Extract<
+  GatewayMethod,
+  "click_selector" | "click_at" | "fill" | "type_text" | "key_press" | "navigate" | "scroll"
+>;
+
+export type ExtensionSettings = {
+  operationsRequireApproval: boolean;
+  profileLabel: string;
+};
+
+export type ApprovalDecision = "allow" | "deny" | "timeout";
+
+export type ApprovalRequest = {
+  id: string;
+  method: OperationMethod;
+  intent: string;
+  tab: {
+    tabId: number;
+    title: string;
+    url: string;
+  };
+  createdAt: number;
+  timeoutMs: number;
+};
+
+export type PopupToBackground =
+  | { type: "get_state"; tabId: number }
+  | { type: "permit"; tabId: number }
+  | { type: "revoke"; tabId: number }
+  | { type: "set_operations_require_approval"; value: boolean }
+  | { type: "set_profile_label"; value: string };
+
+export type BackgroundToPopup =
+  | {
+      type: "state";
+      permitted: boolean;
+      wsConnected: boolean;
+      sharedTabs: { tabId: number; title: string; url: string }[];
+      settings: ExtensionSettings;
+    }
+  | { type: "ok" }
+  | { type: "error"; message: string };
+
+export type ApprovalToBackground =
+  | { type: "get_approval_request"; approvalId: string }
+  | { type: "approval_decision"; approvalId: string; decision: ApprovalDecision };
+
+export type BackgroundToApproval =
+  | { type: "approval_request"; request: ApprovalRequest }
+  | { type: "ok" }
+  | { type: "error"; message: string };
+
+export type ConsoleEntry = {
+  ts: number;
+  level: string;
+  text: string;
+};

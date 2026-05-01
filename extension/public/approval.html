@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Approve Operation</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: -apple-system, system-ui, sans-serif;
+      }
+      body {
+        box-sizing: border-box;
+        width: 360px;
+        margin: 0;
+        padding: 14px;
+      }
+      h1 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0 0 10px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .intent {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.35;
+        margin-bottom: 10px;
+      }
+      .tab {
+        margin-bottom: 12px;
+        color: #555;
+        font-size: 11px;
+        line-height: 1.35;
+      }
+      .tab-title,
+      .tab-url {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      button {
+        padding: 8px;
+        border: 0;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button.primary {
+        background: #007aff;
+        color: white;
+      }
+      button.danger {
+        background: #ff3b30;
+        color: white;
+      }
+      button:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+      .status {
+        min-height: 14px;
+        margin-top: 8px;
+        color: #888;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Approve operation?</h1>
+    <div class="intent" id="intent">Loading…</div>
+    <div class="tab">
+      <div class="tab-title" id="tabTitle"></div>
+      <div class="tab-url" id="tabUrl"></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="allowBtn" disabled>Allow</button>
+      <button class="danger" id="denyBtn" disabled>Deny</button>
+    </div>
+    <div class="status" id="status"></div>
+    <script src="approval.js"></script>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+# Swift / Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/
+Package.resolved
+Gateway.app/
+
+# Node / extension
+node_modules/
+extension/dist/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Local data (runtime)
+*.sock
+audit.jsonl
+
+# Claude Code session state
+.claude/
+
+# Internal handoff / design history (kept locally, not yet ready for OSS)
+docs/
+
+# Brand experiments — final design TBD, not committed yet
+assets/
+
+# Extension icons — final design TBD, not committed yet
+extension/public/icons/
+
+# License is undecided — file kept locally but not committed yet
+LICENSE
+NOTICE
