@@ -201,6 +201,8 @@ final class GatewayCoordinator: ObservableObject {
                 return dict
             }
             return CLIResponse(id: req.id, result: AnyCodable(summarized))
+        case "plugins":
+            return CLIResponse(id: req.id, result: AnyCodable(pluginHost.loadedPluginSummaries()))
         default:
             return CLIResponse(id: req.id, error: ErrorPayload(code: "unknown_method", message: req.method))
         }

@@ -3,10 +3,21 @@ import JavaScriptCore
 
 @MainActor
 final class PluginHost {
+    struct Manifest: Codable {
+        let name: String?
+        let version: String?
+        let author: String?
+        let description: String?
+        let domains: [String]?
+        let transforms: [String]?
+        let commands: [String]?
+    }
+
     struct LoadedPlugin {
         let name: String
         let context: JSContext
         let sourceURL: URL
+        let manifest: Manifest?
     }
 
     private(set) var plugins: [LoadedPlugin] = []
@@ -46,11 +57,12 @@ final class PluginHost {
             else { continue }
             let indexJs = entry.appendingPathComponent("index.js")
             guard fm.fileExists(atPath: indexJs.path) else { continue }
-            loadPlugin(at: indexJs, name: entry.lastPathComponent)
+            let manifest = readManifest(from: entry)
+            loadPlugin(at: indexJs, name: manifest?.name ?? entry.lastPathComponent, manifest: manifest)
         }
     }
 
-    private func loadPlugin(at url: URL, name: String) {
+    private func loadPlugin(at url: URL, name: String, manifest: Manifest?) {
         guard let context = JSContext() else {
             stderr("JSContext init failed for \(name)")
             return
@@ -87,8 +99,30 @@ final class PluginHost {
             return
         }
         context.evaluateScript(source, withSourceURL: url)
-        plugins.append(LoadedPlugin(name: name, context: context, sourceURL: url))
+        plugins.append(LoadedPlugin(name: name, context: context, sourceURL: url, manifest: manifest))
         stderr("loaded plugin \(name)")
+    }
+
+    func loadedPluginSummaries() -> [[String: Any]] {
+        plugins.map { plugin in
+            var dict: [String: Any] = [
+                "name": plugin.name,
+                "path": plugin.sourceURL.deletingLastPathComponent().path,
+            ]
+            if let version = plugin.manifest?.version { dict["version"] = version }
+            if let author = plugin.manifest?.author { dict["author"] = author }
+            if let description = plugin.manifest?.description { dict["description"] = description }
+            if let domains = plugin.manifest?.domains { dict["domains"] = domains }
+            if let transforms = plugin.manifest?.transforms { dict["transforms"] = transforms }
+            if let commands = plugin.manifest?.commands { dict["commands"] = commands }
+            return dict
+        }
+    }
+
+    private func readManifest(from dir: URL) -> Manifest? {
+        let url = dir.appendingPathComponent("plugin.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Manifest.self, from: data)
     }
 
     private func stderr(_ msg: String) {

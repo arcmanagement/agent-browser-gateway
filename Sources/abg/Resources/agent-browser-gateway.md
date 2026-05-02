@@ -54,6 +54,8 @@ abg wait <tab|ref> --ms 1500                     # 単純 sleep
 # 管理系
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
+abg plugin list                         # plugin 一覧
+abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追加
 ```
 
 ## 注意点

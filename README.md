@@ -155,6 +155,17 @@ Currently bundled:
 - **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
 - **`info-plugin`** — Smoke test: prints a startup line.
 
+User plugins can be managed from the CLI:
+
+```bash
+abg plugin list
+abg plugin install user/repo --yes
+abg plugin update
+abg plugin uninstall my-plugin
+```
+
+See [PLUGINS.md](PLUGINS.md) for the manifest format and authoring guide.
+
 Planned (community / future): per-domain plugins (`gmail-plugin`, `notion-plugin`, `slack-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
 
 ### Why this matters: token economy
@@ -261,7 +272,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 ### Prerequisites
 
 - macOS 14+
-- Xcode 16+ (Swift 6.3+) or Swift toolchain
+- Xcode 16+ (Swift 6.1+) or Swift toolchain
 - [mise](https://mise.jdx.dev/) (manages Node.js + pnpm versions)
 - Google Chrome 116+
 

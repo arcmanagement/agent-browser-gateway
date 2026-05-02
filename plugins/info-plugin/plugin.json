@@ -1,0 +1,9 @@
+{
+  "name": "info-plugin",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Smoke test plugin that logs Gateway plugin host metadata at startup.",
+  "domains": [],
+  "transforms": [],
+  "commands": []
+}

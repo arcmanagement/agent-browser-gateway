@@ -12,7 +12,7 @@ struct ABG: AsyncParsableCommand {
             Read.self, Screenshot.self, Console.self, Table.self, Describe.self, Network.self,
             Click.self, Fill.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
-            Revoke.self, Audit.self, InstallSkill.self,
+            Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
         ]
     )
 }
@@ -725,6 +725,253 @@ struct Audit: AsyncParsableCommand {
         let result = try client.call(method: "audit", params: ["lines": lines])
         printJSON(result)
     }
+}
+
+struct Plugin: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "plugin",
+        abstract: "ABG plugin をインストール/一覧/削除/更新",
+        subcommands: [
+            PluginList.self,
+            PluginInstall.self,
+            PluginUninstall.self,
+            PluginUpdate.self,
+        ]
+    )
+}
+
+struct PluginManifest: Codable {
+    let name: String?
+    let version: String?
+    let author: String?
+    let description: String?
+    let domains: [String]?
+    let transforms: [String]?
+    let commands: [String]?
+}
+
+struct PluginList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "plugin 一覧を表示")
+    @Flag(name: .long, help: "起動中 Gateway が実際にロード済みの plugin を表示") var loaded: Bool = false
+
+    func run() async throws {
+        if loaded {
+            let result = try UDSClient().call(method: "plugins")
+            printJSON(result)
+            return
+        }
+        printJSON(pluginInventory())
+    }
+}
+
+struct PluginInstall: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "install", abstract: "~/.abg/plugins に plugin をインストール")
+    @Argument(help: "GitHub repo (user/repo), git URL, or local plugin directory") var source: String
+    @Option(name: .long, help: "インストール名 (省略時 source から推定)") var name: String?
+    @Flag(name: .long, help: "既存 plugin を置き換える") var force: Bool = false
+    @Flag(name: .long, help: "任意 JS を Gateway にロードする警告を確認済みとして進める") var yes: Bool = false
+
+    func run() async throws {
+        guard yes else {
+            try failWithJSON([
+                "error": "confirmation_required",
+                "message": "Plugins run JavaScript inside the local Gateway process. Re-run with --yes if you trust this source.",
+                "userMessage": "plugin は Gateway プロセス内で JavaScript として実行されます。信頼できる source の場合だけ --yes を付けて再実行してください。",
+            ])
+        }
+
+        let userDir = try userPluginsDirectory()
+        let installName = sanitizePluginName(name ?? inferredPluginName(from: source))
+        let destination = userDir.appendingPathComponent(installName, isDirectory: true)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: destination.path) {
+            guard force else {
+                try failWithJSON([
+                    "error": "plugin_exists",
+                    "message": "\(installName) is already installed. Use --force to replace it.",
+                ])
+            }
+            try fm.removeItem(at: destination)
+        }
+
+        if localPluginSourceExists(source) {
+            try fm.copyItem(at: URL(fileURLWithPath: (source as NSString).expandingTildeInPath), to: destination)
+        } else {
+            let cloneSource = normalizedGitSource(source)
+            try runProcess("/usr/bin/env", ["git", "clone", "--depth", "1", cloneSource, destination.path])
+        }
+
+        guard fm.fileExists(atPath: destination.appendingPathComponent("index.js").path) else {
+            try? fm.removeItem(at: destination)
+            try failWithJSON([
+                "error": "invalid_plugin",
+                "message": "Installed source does not contain index.js at plugin root.",
+            ])
+        }
+
+        printJSON(pluginInfo(at: destination, source: "user") ?? [
+            "name": installName,
+            "path": destination.path,
+            "source": "user",
+        ])
+    }
+}
+
+struct PluginUninstall: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "uninstall", abstract: "user-installed plugin を削除")
+    @Argument(help: "plugin name") var name: String
+
+    func run() async throws {
+        let destination = try userPluginsDirectory().appendingPathComponent(sanitizePluginName(name), isDirectory: true)
+        guard FileManager.default.fileExists(atPath: destination.path) else {
+            try failWithJSON(["error": "plugin_not_found", "message": "\(name) is not installed in ~/.abg/plugins"])
+        }
+        try FileManager.default.removeItem(at: destination)
+        printJSON(["ok": true, "removed": destination.path])
+    }
+}
+
+struct PluginUpdate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "update", abstract: "git clone された user plugin を更新")
+    @Argument(help: "plugin name (省略時は全 user plugin)") var name: String?
+
+    func run() async throws {
+        let root = try userPluginsDirectory()
+        let targets: [URL]
+        if let name {
+            targets = [root.appendingPathComponent(sanitizePluginName(name), isDirectory: true)]
+        } else {
+            targets = (try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            )) ?? []
+        }
+
+        var results: [[String: Any]] = []
+        for target in targets.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            guard FileManager.default.fileExists(atPath: target.appendingPathComponent(".git").path) else {
+                results.append(["name": target.lastPathComponent, "status": "skipped", "reason": "not a git checkout"])
+                continue
+            }
+            do {
+                let output = try runProcess("/usr/bin/env", ["git", "-C", target.path, "pull", "--ff-only"])
+                results.append(["name": target.lastPathComponent, "status": "updated", "output": output])
+            } catch {
+                results.append(["name": target.lastPathComponent, "status": "failed", "error": "\(error)"])
+            }
+        }
+        printJSON(results)
+    }
+}
+
+func userPluginsDirectory() throws -> URL {
+    let url = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".abg", isDirectory: true)
+        .appendingPathComponent("plugins", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+func bundledPluginDirectories() -> [URL] {
+    var roots: [URL] = []
+    let cwdPlugins = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent("plugins", isDirectory: true)
+    if FileManager.default.fileExists(atPath: cwdPlugins.path) {
+        roots.append(cwdPlugins)
+    }
+    if let resourcePlugins = Bundle.main.resourceURL?.appendingPathComponent("plugins", isDirectory: true),
+       FileManager.default.fileExists(atPath: resourcePlugins.path),
+       !roots.contains(resourcePlugins) {
+        roots.append(resourcePlugins)
+    }
+    return roots
+}
+
+func pluginInventory() -> [[String: Any]] {
+    var rows: [[String: Any]] = []
+    for root in bundledPluginDirectories() {
+        rows.append(contentsOf: pluginInfos(in: root, source: "bundled"))
+    }
+    if let userRoot = try? userPluginsDirectory() {
+        rows.append(contentsOf: pluginInfos(in: userRoot, source: "user"))
+    }
+    return rows
+}
+
+func pluginInfos(in root: URL, source: String) -> [[String: Any]] {
+    let entries = (try? FileManager.default.contentsOfDirectory(
+        at: root,
+        includingPropertiesForKeys: [.isDirectoryKey]
+    )) ?? []
+    return entries
+        .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+        .compactMap { pluginInfo(at: $0, source: source) }
+}
+
+func pluginInfo(at dir: URL, source: String) -> [String: Any]? {
+    guard FileManager.default.fileExists(atPath: dir.appendingPathComponent("index.js").path) else { return nil }
+    let manifest = readPluginManifest(at: dir)
+    var dict: [String: Any] = [
+        "name": manifest?.name ?? dir.lastPathComponent,
+        "source": source,
+        "path": dir.path,
+    ]
+    if let version = manifest?.version { dict["version"] = version }
+    if let author = manifest?.author { dict["author"] = author }
+    if let description = manifest?.description { dict["description"] = description }
+    if let domains = manifest?.domains { dict["domains"] = domains }
+    if let transforms = manifest?.transforms { dict["transforms"] = transforms }
+    if let commands = manifest?.commands { dict["commands"] = commands }
+    return dict
+}
+
+func readPluginManifest(at dir: URL) -> PluginManifest? {
+    let url = dir.appendingPathComponent("plugin.json")
+    guard let data = try? Data(contentsOf: url) else { return nil }
+    return try? JSONDecoder().decode(PluginManifest.self, from: data)
+}
+
+func localPluginSourceExists(_ source: String) -> Bool {
+    var isDir: ObjCBool = false
+    return FileManager.default.fileExists(
+        atPath: (source as NSString).expandingTildeInPath,
+        isDirectory: &isDir
+    ) && isDir.boolValue
+}
+
+func normalizedGitSource(_ source: String) -> String {
+    if source.contains("://") || source.hasPrefix("git@") { return source }
+    if source.split(separator: "/").count == 2 { return "https://github.com/\(source).git" }
+    return source
+}
+
+func inferredPluginName(from source: String) -> String {
+    let trimmed = source.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    let last = trimmed.split(separator: "/").last.map(String.init) ?? "plugin"
+    return last.hasSuffix(".git") ? String(last.dropLast(4)) : last
+}
+
+func sanitizePluginName(_ name: String) -> String {
+    let sanitized = name.replacingOccurrences(of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression)
+    return sanitized.isEmpty ? "plugin" : sanitized
+}
+
+@discardableResult
+func runProcess(_ executable: String, _ arguments: [String]) throws -> String {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    let output = Pipe()
+    process.standardOutput = output
+    process.standardError = output
+    try process.run()
+    process.waitUntilExit()
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    let text = String(data: data, encoding: .utf8) ?? ""
+    guard process.terminationStatus == 0 else {
+        throw CLIError.ioError(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 struct InstallSkill: AsyncParsableCommand {
