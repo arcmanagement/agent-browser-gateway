@@ -294,33 +294,56 @@ struct Audit: AsyncParsableCommand {
 struct InstallSkill: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install-skill",
-        abstract: "Claude Code 用 Skill を ~/.claude/skills/ にインストール (デフォルトで上書き、ABG バージョンに追従)"
+        abstract: "Claude Code / Codex 用 Skill を ~/.claude/skills/ と ~/.codex/skills/ にインストール (デフォルトで両方、ABG バージョンに追従)"
     )
     @Flag(name: .long, help: "古いバージョンでも上書きしない (通常は不要)") var noUpgrade: Bool = false
+    @Option(name: .long, help: "インストール先 (claude / codex / both, デフォルト both)") var target: String = "both"
 
     func run() async throws {
-        let dir = ABGConstants.skillsDir
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dest = dir.appendingPathComponent("agent-browser-gateway.md")
+        let dirs: [URL]
+        switch target {
+        case "claude": dirs = [ABGConstants.claudeSkillsDir]
+        case "codex":  dirs = [ABGConstants.codexSkillsDir]
+        case "both":   dirs = [ABGConstants.claudeSkillsDir, ABGConstants.codexSkillsDir]
+        default:
+            print("error: --target は claude / codex / both のいずれか")
+            throw ExitCode.failure
+        }
 
         let bundledVersion = SkillBundle.version
+        for base in dirs {
+            try installOne(into: base, version: bundledVersion)
+        }
+
+        // Migrate away from the legacy single-file install path.
+        let legacy = ABGConstants.claudeSkillsDir.appendingPathComponent("agent-browser-gateway.md")
+        if FileManager.default.fileExists(atPath: legacy.path) {
+            try? FileManager.default.removeItem(at: legacy)
+            print("removed legacy: \(legacy.path)")
+        }
+    }
+
+    private func installOne(into base: URL, version: String) throws {
+        let skillDir = base.appendingPathComponent("agent-browser-gateway", isDirectory: true)
+        try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
+        let dest = skillDir.appendingPathComponent("SKILL.md")
         let installedVersion = readInstalledVersion(at: dest)
 
-        if let installed = installedVersion, installed == bundledVersion {
-            print("up-to-date: \(dest.path) (v\(bundledVersion))")
+        if let installed = installedVersion, installed == version {
+            print("up-to-date: \(dest.path) (v\(version))")
             return
         }
 
-        if let installed = installedVersion, installed != bundledVersion, noUpgrade {
-            print("skipped: installed v\(installed), bundled v\(bundledVersion). Re-run without --no-upgrade to overwrite.")
+        if let installed = installedVersion, installed != version, noUpgrade {
+            print("skipped: installed v\(installed), bundled v\(version) at \(dest.path). Re-run without --no-upgrade to overwrite.")
             return
         }
 
         try SkillBundle.markdown.write(to: dest, atomically: true, encoding: .utf8)
         if let installed = installedVersion {
-            print("upgraded: v\(installed) -> v\(bundledVersion) at \(dest.path)")
+            print("upgraded: v\(installed) -> v\(version) at \(dest.path)")
         } else {
-            print("installed: v\(bundledVersion) at \(dest.path)")
+            print("installed: v\(version) at \(dest.path)")
         }
     }
 

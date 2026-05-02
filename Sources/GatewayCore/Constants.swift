@@ -31,8 +31,20 @@ public enum ABGConstants {
         logsDir.appendingPathComponent("audit.jsonl").path
     }
 
-    public static var skillsDir: URL {
+    public static var claudeSkillsDir: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/skills", isDirectory: true)
+    }
+
+    public static var codexSkillsDir: URL {
+        let home: URL
+        if let env = ProcessInfo.processInfo.environment["CODEX_HOME"], !env.isEmpty {
+            let expanded = (env as NSString).expandingTildeInPath
+            home = URL(fileURLWithPath: expanded, isDirectory: true)
+        } else {
+            home = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".codex", isDirectory: true)
+        }
+        return home.appendingPathComponent("skills", isDirectory: true)
     }
 }

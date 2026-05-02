@@ -34,7 +34,8 @@ let package = Package(
                 "GatewayCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources/abg"
+            path: "Sources/abg",
+            resources: [.process("Resources")]
         ),
     ]
 )
