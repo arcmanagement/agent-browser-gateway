@@ -162,10 +162,18 @@ public struct CLIResponse: Codable, Sendable {
 public struct ErrorPayload: Codable, Sendable {
     public let code: String
     public let message: String
+    public let userMessage: String?
+    public let nextCommand: String?
+    public let hint: String?
+    public let tabId: Int?
 
-    public init(code: String, message: String) {
+    public init(code: String, message: String, userMessage: String? = nil, nextCommand: String? = nil, hint: String? = nil, tabId: Int? = nil) {
         self.code = code
         self.message = message
+        self.userMessage = userMessage
+        self.nextCommand = nextCommand
+        self.hint = hint
+        self.tabId = tabId
     }
 }
 

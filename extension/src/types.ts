@@ -32,8 +32,27 @@ export type GatewayCommand = {
     url?: string;
     x?: number;
     y?: number;
+    id?: number;
     width?: number;
     height?: number;
+    all?: boolean;
+    limit?: number;
+    kind?: string;
+    grid?: string;
+    urlPattern?: string;
+    method?: string;
+    statusMin?: number;
+    type?: string;
+    requestId?: string;
+    body?: boolean;
+    fromSelector?: string;
+    toSelector?: string;
+    fromX?: number;
+    fromY?: number;
+    toX?: number;
+    toY?: number;
+    steps?: number;
+    file?: string;
     // scroll (mouseWheel)
     deltaX?: number;
     deltaY?: number;
@@ -57,19 +76,34 @@ export type GatewayMethod =
   | "read_dom"
   | "screenshot"
   | "console"
+  | "table"
+  | "describe"
+  | "network_log"
   | "revoke"
   | "wait_for"
   | "click_selector"
+  | "click_described"
   | "click_at"
   | "fill"
+  | "upload_file"
   | "type_text"
   | "key_press"
   | "navigate"
-  | "scroll";
+  | "scroll"
+  | "drag";
 
 export type OperationMethod = Extract<
   GatewayMethod,
-  "click_selector" | "click_at" | "fill" | "type_text" | "key_press" | "navigate" | "scroll"
+  | "click_selector"
+  | "click_described"
+  | "click_at"
+  | "fill"
+  | "upload_file"
+  | "type_text"
+  | "key_press"
+  | "navigate"
+  | "scroll"
+  | "drag"
 >;
 
 export type ExtensionSettings = {

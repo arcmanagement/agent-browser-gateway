@@ -1,3 +1,4 @@
+import ArgumentParser
 import Foundation
 import Darwin
 import GatewayCore
@@ -33,14 +34,24 @@ struct UDSClient {
             return d
         }()
         let reqData = try JSONSerialization.data(withJSONObject: req)
-        let respData = try sendAndReceive(reqData)
+        let respData: Data
+        do {
+            respData = try sendAndReceive(reqData)
+        } catch CLIError.gatewayNotRunning(let message) {
+            printErrorJSON([
+                "error": "gateway_not_running",
+                "message": message,
+                "userMessage": "Gateway が起動していません。Gateway.app を起動してから、もう一度コマンドを実行してください。",
+                "nextCommand": "open Gateway.app && abg status",
+            ])
+            throw ExitCode.failure
+        }
         guard let json = try JSONSerialization.jsonObject(with: respData) as? [String: Any] else {
             throw CLIError.decodeError("invalid JSON")
         }
         if let errObj = json["error"] as? [String: Any] {
-            let code = errObj["code"] as? String ?? "?"
-            let msg = errObj["message"] as? String ?? "?"
-            throw CLIError.responseError("\(code): \(msg)")
+            printErrorJSON(normalizedErrorObject(errObj))
+            throw ExitCode.failure
         }
         return json["result"]
     }
@@ -114,4 +125,26 @@ func printJSON(_ value: Any?) {
     } else {
         print(String(describing: v))
     }
+}
+
+func printErrorJSON(_ value: [String: Any]) {
+    if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]),
+       let str = String(data: data, encoding: .utf8) {
+        FileHandle.standardError.write(Data((str + "\n").utf8))
+    } else {
+        FileHandle.standardError.write(Data("\(value)\n".utf8))
+    }
+}
+
+private func normalizedErrorObject(_ errObj: [String: Any]) -> [String: Any] {
+    var out: [String: Any] = [
+        "error": errObj["code"] as? String ?? "unknown_error",
+        "message": errObj["message"] as? String ?? "Unknown error",
+    ]
+    for key in ["userMessage", "nextCommand", "hint", "tabId"] {
+        if let value = errObj[key] {
+            out[key] = value
+        }
+    }
+    return out
 }

@@ -5,7 +5,7 @@
 // covers the common cases (headings, links, lists, emphasis, code,
 // blockquotes, hr, br). A future iteration can swap in a real parser.
 
-abg.registerTransform("html-to-markdown", function (html) {
+function convertHtmlToMarkdown(html, keepImages) {
   if (typeof html !== "string") return "";
 
   var s = html;
@@ -54,9 +54,15 @@ abg.registerTransform("html-to-markdown", function (html) {
       .replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, "_$2_")
       .replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
       .replace(/<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)")
-      .replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']*)["'][^>]*>/gi, "![$1]($2)")
-      .replace(/<img[^>]*src=["']([^"']*)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, "![$2]($1)")
-      .replace(/<img[^>]*src=["']([^"']*)["'][^>]*>/gi, "![]($1)");
+      .replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']*)["'][^>]*>/gi, function (_, alt, src) {
+        return imageMarkdown(alt, src, keepImages);
+      })
+      .replace(/<img[^>]*src=["']([^"']*)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, function (_, src, alt) {
+        return imageMarkdown(alt, src, keepImages);
+      })
+      .replace(/<img[^>]*src=["']([^"']*)["'][^>]*>/gi, function (_, src) {
+        return imageMarkdown("", src, keepImages);
+      });
   }
 
   // Drop any remaining tags.
@@ -77,6 +83,21 @@ abg.registerTransform("html-to-markdown", function (html) {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function imageMarkdown(alt, src, keepImages) {
+  var cleanAlt = (alt || "").replace(/\s+/g, " ").trim();
+  if (keepImages) return "![" + cleanAlt + "](" + src + ")";
+  if (!cleanAlt) return "[img]";
+  return "![" + cleanAlt + "]";
+}
+
+abg.registerTransform("html-to-markdown", function (html) {
+  return convertHtmlToMarkdown(html, false);
+});
+
+abg.registerTransform("html-to-markdown-keep-images", function (html) {
+  return convertHtmlToMarkdown(html, true);
 });
 
 abg.log("registered html-to-markdown transformer");

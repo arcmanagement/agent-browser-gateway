@@ -117,39 +117,55 @@ final class GatewayCoordinator: ObservableObject {
     func handleCLIRequest(_ req: CLIRequest) async -> CLIResponse {
         switch req.method {
         case "status":
-            let extDetails: [[String: Any]] = connectedExtensionIds.map { id in
-                var dict: [String: Any] = ["extensionId": id]
-                if let label = extensionProfiles[id] { dict["profile"] = label }
-                if let kind = extensionBrowsers[id] { dict["browser"] = kind }
-                return dict
-            }
+            let extDetails = extensionDetails()
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
                 "extensions": extDetails,
+                "extensionCount": extDetails.count,
                 "permittedTabCount": permittedTabs.count,
             ]))
         case "list_tabs":
-            return CLIResponse(id: req.id, result: AnyCodable(permittedTabs.map(tabSummary)))
+            return CLIResponse(id: req.id, result: AnyCodable(tabSummaries()))
+        case "inspect":
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "running": true,
+                "wsHost": ABGConstants.wsHost,
+                "wsPort": ABGConstants.wsPort,
+                "extensions": extensionDetails(),
+                "extensionCount": connectedExtensionIds.count,
+                "permittedTabCount": permittedTabs.count,
+                "tabs": tabSummaries(),
+            ]))
         case "read_tab":
             return await handleReadTab(req: req)
         case "screenshot_tab":
             return await dispatch(req: req, method: "screenshot")
         case "console_tab":
             return await dispatch(req: req, method: "console")
+        case "table_tab":
+            return await dispatch(req: req, method: "table")
+        case "describe_tab":
+            return await dispatch(req: req, method: "describe")
+        case "network_tab":
+            return await dispatch(req: req, method: "network_log")
         case "click_tab":
             // routes to either click_selector or click_at depending on params
             let params = (req.params?.value as? [String: Any]) ?? [:]
             if params["selector"] != nil {
                 return await dispatch(req: req, method: "click_selector")
+            } else if params["id"] != nil {
+                return await dispatch(req: req, method: "click_described")
             } else if params["x"] != nil, params["y"] != nil {
                 return await dispatch(req: req, method: "click_at")
             } else {
-                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "selector or (x,y) required"))
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "selector, id, or (x,y) required"))
             }
         case "fill_tab":
             return await dispatch(req: req, method: "fill")
+        case "upload_tab":
+            return await dispatch(req: req, method: "upload_file")
         case "type_tab":
             return await dispatch(req: req, method: "type_text")
         case "key_tab":
@@ -158,6 +174,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "navigate")
         case "scroll_tab":
             return await dispatch(req: req, method: "scroll")
+        case "drag_tab":
+            return await dispatch(req: req, method: "drag")
         case "wait_tab":
             return await dispatch(req: req, method: "wait_for")
         case "revoke_tab":
@@ -195,17 +213,19 @@ final class GatewayCoordinator: ObservableObject {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
         guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: ErrorPayload(code: "not_permitted", message: "tabId \(tabId) is not permitted"))
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
         }
         let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
+        let keepImages = (params["keepImages"] as? Bool) ?? false
         params.removeValue(forKey: "asMarkdown")
+        params.removeValue(forKey: "keepImages")
         do {
             let result = try await sendCommand(to: tab.extensionId, method: "read_dom", params: AnyCodable(params))
             await auditLog.log(action: "read_dom", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
             guard wantMarkdown,
                   var dict = result?.value as? [String: Any],
                   let html = dict["html"] as? String,
-                  let markdown = pluginHost.transform(name: "html-to-markdown", input: html)
+                  let markdown = pluginHost.transform(name: keepImages ? "html-to-markdown-keep-images" : "html-to-markdown", input: html)
             else {
                 return CLIResponse(id: req.id, result: result)
             }
@@ -222,7 +242,7 @@ final class GatewayCoordinator: ObservableObject {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
         guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: ErrorPayload(code: "not_permitted", message: "tabId \(tabId) is not permitted"))
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
         }
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
@@ -249,6 +269,51 @@ final class GatewayCoordinator: ObservableObject {
             dict["expiresAt"] = ISO8601DateFormatter().string(from: exp)
         }
         return dict
+    }
+
+    private func tabSummaries() -> [[String: Any]] {
+        permittedTabs.enumerated().map { index, tab in
+            var dict = tabSummary(tab)
+            dict["ref"] = "t\(index + 1)"
+            return dict
+        }
+    }
+
+    private func extensionDetails() -> [[String: Any]] {
+        connectedExtensionIds.map { id in
+            var dict: [String: Any] = ["extensionId": id]
+            if let label = extensionProfiles[id] { dict["profile"] = label }
+            if let kind = extensionBrowsers[id] { dict["browser"] = kind }
+            return dict
+        }
+    }
+
+    private func tabUnavailableError(tabId: Int) -> ErrorPayload {
+        if connectedExtensionIds.isEmpty {
+            return ErrorPayload(
+                code: "extension_not_connected",
+                message: "No browser extension is connected to the Gateway.",
+                userMessage: "Chrome 拡張機能が Gateway に接続されていません。拡張機能がインストール/有効化されているか確認し、対象タブで ABG アイコンを開いてください。",
+                nextCommand: "abg status",
+                tabId: tabId
+            )
+        }
+        if permittedTabs.isEmpty {
+            return ErrorPayload(
+                code: "no_permitted_tabs",
+                message: "No tabs are currently shared with ABG.",
+                userMessage: "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブを共有」を有効にしてください。",
+                nextCommand: "abg tabs --compact",
+                tabId: tabId
+            )
+        }
+        return ErrorPayload(
+            code: "tab_not_permitted",
+            message: "tabId \(tabId) is not shared or has expired.",
+            userMessage: "このタブは共有許可されていないか、許可が切れています。Chrome 拡張機能のアイコンから対象タブの「このタブを共有」を有効にし、`abg tabs --compact` で最新の ref/tabId を確認してください。",
+            nextCommand: "abg tabs --compact",
+            tabId: tabId
+        )
     }
 
     func sendCommand(to extensionId: String, method: String, params: AnyCodable?) async throws -> AnyCodable? {

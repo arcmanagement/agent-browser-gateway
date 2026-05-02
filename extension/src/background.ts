@@ -23,12 +23,15 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
+  "click_described",
   "click_at",
   "fill",
+  "upload_file",
   "type_text",
   "key_press",
   "navigate",
   "scroll",
+  "drag",
 ]);
 
 type PermittedTab = {
@@ -45,6 +48,23 @@ type OperationDescriptor = {
   intent: string;
   run: () => Promise<unknown>;
 };
+
+type NetworkEntry = {
+  requestId: string;
+  method: string;
+  url: string;
+  type?: string;
+  ts: string;
+  startTime: number;
+  status?: number;
+  statusText?: string;
+  mimeType?: string;
+  durationMs?: number;
+  encodedDataLength?: number;
+  errorText?: string;
+};
+
+type Point = { x: number; y: number };
 
 type ApprovalResolution = {
   decision: ApprovalDecision;
@@ -73,6 +93,7 @@ class GatewayError extends Error {
 
 const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
+const networkBuffers = new Map<number, NetworkEntry[]>();
 const attachedTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
 
@@ -290,6 +311,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   if (!permittedTabs.has(tabId)) return;
   permittedTabs.delete(tabId);
   consoleBuffers.delete(tabId);
+  networkBuffers.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
@@ -338,6 +360,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (permittedTabs.has(tabId)) {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
+    networkBuffers.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
     await detachDebugger(tabId);
@@ -367,6 +390,7 @@ async function attachDebugger(tabId: number): Promise<void> {
   try {
     await chrome.debugger.attach({ tabId }, "1.3");
     await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
+    await chrome.debugger.sendCommand({ tabId }, "Network.enable");
     attachedTabs.add(tabId);
   } catch (e) {
     console.warn("[ABG] debugger.attach failed", e);
@@ -411,12 +435,69 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     buf.push({ ts: Date.now(), level: "error", text });
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
+  } else if (method === "Network.requestWillBeSent") {
+    const p = params as {
+      requestId: string;
+      timestamp: number;
+      wallTime?: number;
+      type?: string;
+      request: { method: string; url: string };
+    };
+    const buf = networkBuffers.get(source.tabId) ?? [];
+    buf.push({
+      requestId: p.requestId,
+      method: p.request.method,
+      url: p.request.url,
+      type: p.type?.toLowerCase(),
+      ts: new Date((p.wallTime ?? Date.now() / 1000) * 1000).toISOString(),
+      startTime: p.timestamp,
+    });
+    while (buf.length > 200) buf.shift();
+    networkBuffers.set(source.tabId, buf);
+  } else if (method === "Network.responseReceived") {
+    const p = params as {
+      requestId: string;
+      type?: string;
+      response: { status: number; statusText?: string; mimeType?: string; url?: string };
+    };
+    const entry = findNetworkEntry(source.tabId, p.requestId);
+    if (entry) {
+      entry.type = p.type?.toLowerCase() ?? entry.type;
+      entry.status = p.response.status;
+      entry.statusText = p.response.statusText;
+      entry.mimeType = p.response.mimeType;
+      if (p.response.url) entry.url = p.response.url;
+    }
+  } else if (method === "Network.loadingFinished") {
+    const p = params as { requestId: string; timestamp: number; encodedDataLength?: number };
+    const entry = findNetworkEntry(source.tabId, p.requestId);
+    if (entry) {
+      entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
+      entry.encodedDataLength = p.encodedDataLength;
+    }
+  } else if (method === "Network.loadingFailed") {
+    const p = params as { requestId: string; timestamp: number; errorText?: string };
+    const entry = findNetworkEntry(source.tabId, p.requestId);
+    if (entry) {
+      entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
+      entry.errorText = p.errorText;
+    }
   }
 });
 
 chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
+
+function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | undefined {
+  const buf = networkBuffers.get(tabId);
+  if (!buf) return undefined;
+  for (let i = buf.length - 1; i >= 0; i--) {
+    const entry = buf[i];
+    if (entry?.requestId === requestId) return entry;
+  }
+  return undefined;
+}
 
 // ---------- Gateway -> Extension commands ----------
 
@@ -435,6 +516,15 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const logs = consoleBuffers.get(tabId) ?? [];
       reply(cmd.id, { logs });
+    } else if (cmd.method === "table") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await extractTables(tabId, cmd.params?.selector));
+    } else if (cmd.method === "describe") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await describeElements(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "network_log") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
@@ -485,6 +575,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => clickAt(tabId, x, y),
     };
   }
+  if (cmd.method === "click_described") {
+    const id = cmd.params?.id;
+    if (typeof id !== "number") throw new Error("id required");
+    return {
+      intent: `Click the element with describe id ${id}.`,
+      run: () => clickDescribedElement(tabId, id, cmd.params ?? {}),
+    };
+  }
   if (cmd.method === "fill") {
     const selector = cmd.params?.selector;
     const rawValue = cmd.params?.value;
@@ -496,6 +594,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Fill ${quoteForIntent(value)} into the field matching selector ${quoteForIntent(selector)}.`,
       run: () => fillField(tabId, selector, value),
+    };
+  }
+  if (cmd.method === "upload_file") {
+    const selector = cmd.params?.selector;
+    const file = cmd.params?.file;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    if (typeof file !== "string" || file.length === 0) throw new Error("file required");
+    return {
+      intent: `Attach local file ${quoteForIntent(file)} to file input ${quoteForIntent(selector)}.`,
+      run: () => uploadFile(tabId, selector, file),
     };
   }
   if (cmd.method === "type_text") {
@@ -530,6 +638,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       },
     };
   }
+  if (cmd.method === "drag") {
+    const from = readDragPoint(cmd.params, "from");
+    const to = readDragPoint(cmd.params, "to");
+    const steps =
+      typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 12;
+    return {
+      intent: `Drag from ${describeDragPoint(from)} to ${describeDragPoint(to)}.`,
+      run: () => drag(tabId, from, to, steps),
+    };
+  }
   const deltaX = cmd.params?.deltaX ?? 0;
   const deltaY = cmd.params?.deltaY ?? 0;
   if (typeof deltaX !== "number" || typeof deltaY !== "number") {
@@ -537,7 +655,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
   const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
-  const where = atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
+  const where =
+    atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
     intent: `Scroll this tab by (Δx=${deltaX}, Δy=${deltaY}) ${where}.`,
     run: () => scrollTab(tabId, deltaX, deltaY, atX, atY),
@@ -548,6 +667,14 @@ function quoteForIntent(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const shortValue = normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   return `"${shortValue}"`;
+}
+
+function globMatch(pattern: string, text: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i").test(text);
 }
 
 async function requireOperationApproval(
@@ -699,10 +826,7 @@ type DomReadResult = {
   found?: boolean;
 };
 
-async function readDom(
-  tabId: number,
-  selector: string | undefined,
-): Promise<DomReadResult> {
+async function readDom(tabId: number, selector: string | undefined): Promise<DomReadResult> {
   await attachDebugger(tabId);
   const pageFn = (sel: string | null) => {
     const root: Element | null = sel ? document.querySelector(sel) : document.documentElement;
@@ -766,6 +890,311 @@ async function screenshot(
   return { dataUrl: `data:image/png;base64,${result.data}` };
 }
 
+async function extractTables(
+  tabId: number,
+  selector: string | undefined,
+): Promise<{
+  url: string;
+  title: string;
+  selector?: string;
+  tables: {
+    index: number;
+    selector: string;
+    caption?: string;
+    headers: string[];
+    rows: string[][];
+    rowCount: number;
+    columnCount: number;
+  }[];
+  userMessage?: string;
+  nextCommand?: string;
+}> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel?: string) => {
+      const textOf = (el: Element | null): string =>
+        (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+      const cssEscape = (value: string): string => {
+        const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
+          .CSS?.escape;
+        return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
+      };
+      const selectorFor = (el: Element): string => {
+        if (el.id) return `#${cssEscape(el.id)}`;
+        const parts: string[] = [];
+        let current: Element | null = el;
+        while (current && current.nodeType === Node.ELEMENT_NODE && parts.length < 5) {
+          const parent: Element | null = current.parentElement;
+          const currentTag = current.tagName;
+          const tag = currentTag.toLowerCase();
+          if (!parent) {
+            parts.unshift(tag);
+            break;
+          }
+          const siblings = Array.from(parent.children).filter(
+            (child): child is Element => child instanceof Element && child.tagName === currentTag,
+          );
+          const nth = siblings.indexOf(current) + 1;
+          parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
+          current = parent;
+        }
+        return parts.join(" > ");
+      };
+      const root = sel ? document.querySelector(sel) : document;
+      const tableElements =
+        root instanceof HTMLTableElement
+          ? [root]
+          : Array.from((root ?? document).querySelectorAll("table"));
+      const chosen = tableElements
+        .map((table, index) => ({ table, index, score: table.querySelectorAll("tr").length }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, sel ? 20 : 5);
+      const tables = chosen.map(({ table, index }) => {
+        const rows = Array.from(table.querySelectorAll("tr")).map((tr) =>
+          Array.from(tr.children)
+            .filter((cell) => cell instanceof HTMLTableCellElement)
+            .map((cell) => textOf(cell)),
+        );
+        const explicitHeaders = Array.from(table.querySelectorAll("thead th")).map((th) =>
+          textOf(th),
+        );
+        const firstHeaderRow = Array.from(table.querySelectorAll("tr")).find((tr) =>
+          tr.querySelector("th"),
+        );
+        const headers =
+          explicitHeaders.length > 0
+            ? explicitHeaders
+            : firstHeaderRow
+              ? Array.from(firstHeaderRow.children)
+                  .filter((cell) => cell instanceof HTMLTableCellElement)
+                  .map((cell) => textOf(cell))
+              : [];
+        const dataRows =
+          headers.length > 0 &&
+          rows.length > 0 &&
+          rows[0]?.join("\u0000") === headers.join("\u0000")
+            ? rows.slice(1)
+            : rows;
+        return {
+          index,
+          selector: selectorFor(table),
+          caption: textOf(table.querySelector("caption")) || undefined,
+          headers,
+          rows: dataRows,
+          rowCount: dataRows.length,
+          columnCount: Math.max(headers.length, ...dataRows.map((row) => row.length), 0),
+        };
+      });
+      return {
+        url: location.href,
+        title: document.title,
+        selector: sel,
+        tables,
+        userMessage:
+          tables.length === 0
+            ? "table が見つかりませんでした。`abg read --selector` または `abg screenshot` で画面構造を確認してください。"
+            : undefined,
+        nextCommand:
+          tables.length === 0 ? 'abg read <tab> --selector "main" --format markdown' : undefined,
+      };
+    },
+    args: [selector],
+  });
+  return res?.result ?? { url: "", title: "", selector, tables: [] };
+}
+
+async function describeElements(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{
+  url: string;
+  title: string;
+  viewport: { width: number; height: number };
+  elements: unknown[];
+}> {
+  const all = params.all === true;
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 80;
+  const kindFilter = typeof params.kind === "string" ? params.kind.toLowerCase() : undefined;
+  const grid = typeof params.grid === "string" ? params.grid : undefined;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (opts: { all: boolean; limit: number; kindFilter?: string; grid?: string }) => {
+      const cssEscape = (value: string): string => {
+        const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
+          .CSS?.escape;
+        return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
+      };
+      const trimText = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 160);
+      const selectorFor = (el: Element): string => {
+        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+          return `#${cssEscape(el.id)}`;
+        }
+        for (const attr of ["data-testid", "data-test", "name", "aria-label"]) {
+          const value = el.getAttribute(attr);
+          if (value) {
+            const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
+            if (document.querySelectorAll(selector).length === 1) return selector;
+          }
+        }
+        const parts: string[] = [];
+        let current: Element | null = el;
+        while (current && current.nodeType === Node.ELEMENT_NODE && parts.length < 5) {
+          const parent: Element | null = current.parentElement;
+          const currentTag = current.tagName;
+          const tag = currentTag.toLowerCase();
+          if (!parent) {
+            parts.unshift(tag);
+            break;
+          }
+          const siblings = Array.from(parent.children).filter(
+            (child): child is Element => child instanceof Element && child.tagName === currentTag,
+          );
+          const nth = siblings.indexOf(current) + 1;
+          parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
+          current = parent;
+        }
+        return parts.join(" > ");
+      };
+      const kindOf = (el: Element): string => {
+        const role = el.getAttribute("role")?.toLowerCase();
+        const tag = el.tagName.toLowerCase();
+        if (tag === "a") return "link";
+        if (tag === "button" || role === "button") return "button";
+        if (tag === "input") return (el as HTMLInputElement).type || "input";
+        if (tag === "textarea" || tag === "select") return tag;
+        if (role === "link") return "link";
+        return "clickable";
+      };
+      const isVisible = (el: Element, rect: DOMRect): boolean => {
+        const style = getComputedStyle(el);
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") !== 0
+        );
+      };
+      const inViewport = (rect: DOMRect): boolean =>
+        rect.bottom >= 0 && rect.right >= 0 && rect.top <= innerHeight && rect.left <= innerWidth;
+      const candidates = Array.from(
+        document.querySelectorAll(
+          [
+            "a[href]",
+            "button",
+            "input",
+            "textarea",
+            "select",
+            "summary",
+            "[role='button']",
+            "[role='link']",
+            "[onclick]",
+            "[tabindex]:not([tabindex='-1'])",
+            "[contenteditable='true']",
+          ].join(","),
+        ),
+      );
+      const elements: Record<string, unknown>[] = [];
+      for (const el of candidates) {
+        const rect = el.getBoundingClientRect();
+        const kind = kindOf(el);
+        if (opts.kindFilter && kind !== opts.kindFilter) continue;
+        if (!isVisible(el, rect) || (!opts.all && !inViewport(rect))) continue;
+        const html = el as HTMLElement;
+        const text = trimText(
+          el.getAttribute("aria-label") ||
+            el.getAttribute("title") ||
+            (html.innerText ?? "") ||
+            (el as HTMLInputElement).value ||
+            (el as HTMLInputElement).placeholder ||
+            "",
+        );
+        elements.push({
+          id: elements.length,
+          kind,
+          text,
+          bbox: {
+            x: Math.round(rect.left),
+            y: Math.round(rect.top),
+            w: Math.round(rect.width),
+            h: Math.round(rect.height),
+          },
+          selector: selectorFor(el),
+        });
+        if (elements.length >= opts.limit) break;
+      }
+      const match = opts.grid?.match(/^(\d+)x(\d+)$/i);
+      if (match) {
+        const cols = Math.max(1, Math.min(50, Number(match[1])));
+        const rows = Math.max(1, Math.min(50, Number(match[2])));
+        const cellW = innerWidth / cols;
+        const cellH = innerHeight / rows;
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            elements.push({
+              id: elements.length,
+              kind: "grid-cell",
+              text: `r${row + 1}c${col + 1}`,
+              bbox: {
+                x: Math.round(col * cellW),
+                y: Math.round(row * cellH),
+                w: Math.round(cellW),
+                h: Math.round(cellH),
+              },
+            });
+          }
+        }
+      }
+      return {
+        url: location.href,
+        title: document.title,
+        viewport: { width: innerWidth, height: innerHeight },
+        elements,
+      };
+    },
+    args: [{ all, limit, kindFilter, grid }],
+  });
+  return res?.result ?? { url: "", title: "", viewport: { width: 0, height: 0 }, elements: [] };
+}
+
+async function getNetworkLog(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<unknown> {
+  await attachDebugger(tabId);
+  if (params.body === true && typeof params.requestId === "string") {
+    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+      requestId: params.requestId,
+    })) as { body: string; base64Encoded: boolean };
+    return { requestId: params.requestId, ...result };
+  }
+  const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  const method = typeof params.method === "string" ? params.method.toUpperCase() : undefined;
+  const statusMin = typeof params.statusMin === "number" ? params.statusMin : undefined;
+  const typeSet =
+    typeof params.type === "string"
+      ? new Set(
+          params.type
+            .split(",")
+            .map((part) => part.trim().toLowerCase())
+            .filter(Boolean),
+        )
+      : undefined;
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
+  const items = (networkBuffers.get(tabId) ?? [])
+    .filter((entry) => {
+      if (urlPattern && !globMatch(urlPattern, entry.url)) return false;
+      if (method && entry.method.toUpperCase() !== method) return false;
+      if (statusMin !== undefined && (entry.status ?? 0) < statusMin) return false;
+      if (typeSet && entry.type && !typeSet.has(entry.type)) return false;
+      if (typeSet && !entry.type) return false;
+      return true;
+    })
+    .slice(-limit)
+    .map(({ startTime: _startTime, ...entry }) => entry);
+  return { requests: items };
+}
+
 // ---------- Operation tools (v0.1.1) ----------
 
 async function clickSelector(
@@ -810,6 +1239,113 @@ async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true 
   return { ok: true };
 }
 
+async function clickDescribedElement(
+  tabId: number,
+  id: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ ok: true; id: number; x: number; y: number } | { ok: false; id: number }> {
+  const described = await describeElements(tabId, {
+    tabId,
+    all: params.all,
+    grid: params.grid,
+    limit: typeof params.limit === "number" ? Math.max(params.limit, id + 1) : Math.max(80, id + 1),
+  });
+  const elements = described.elements as {
+    id: number;
+    bbox?: { x: number; y: number; w: number; h: number };
+  }[];
+  const target = elements.find((element) => element.id === id);
+  if (!target?.bbox) return { ok: false, id };
+  const x = target.bbox.x + target.bbox.w / 2;
+  const y = target.bbox.y + target.bbox.h / 2;
+  await clickAt(tabId, x, y);
+  return { ok: true, id, x, y };
+}
+
+type DragPoint = { kind: "selector"; selector: string } | { kind: "coords"; x: number; y: number };
+
+function readDragPoint(
+  params: GatewayCommand["params"] | undefined,
+  prefix: "from" | "to",
+): DragPoint {
+  const selector = prefix === "from" ? params?.fromSelector : params?.toSelector;
+  if (typeof selector === "string" && selector.length > 0) return { kind: "selector", selector };
+  const x = prefix === "from" ? params?.fromX : params?.toX;
+  const y = prefix === "from" ? params?.fromY : params?.toY;
+  if (typeof x === "number" && typeof y === "number") return { kind: "coords", x, y };
+  throw new Error(`${prefix} selector or coordinates required`);
+}
+
+function describeDragPoint(point: DragPoint): string {
+  return point.kind === "selector"
+    ? `selector ${quoteForIntent(point.selector)}`
+    : `(${point.x}, ${point.y})`;
+}
+
+async function resolvePoint(tabId: number, point: DragPoint): Promise<Point> {
+  if (point.kind === "coords") return { x: point.x, y: point.y };
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (selector: string) => {
+      const el = document.querySelector(selector);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    },
+    args: [point.selector],
+  });
+  if (!res?.result)
+    throw new GatewayError("selector_not_found", `selector not found: ${point.selector}`);
+  return res.result;
+}
+
+async function drag(
+  tabId: number,
+  from: DragPoint,
+  to: DragPoint,
+  steps: number,
+): Promise<{ ok: true; from: Point; to: Point; steps: number }> {
+  await attachDebugger(tabId);
+  const fromPoint = await resolvePoint(tabId, from);
+  const toPoint = await resolvePoint(tabId, to);
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: fromPoint.x,
+    y: fromPoint.y,
+    button: "none",
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: fromPoint.x,
+    y: fromPoint.y,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = fromPoint.x + (toPoint.x - fromPoint.x) * t;
+    const y = fromPoint.y + (toPoint.y - fromPoint.y) * t;
+    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+      button: "left",
+      buttons: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: toPoint.x,
+    y: toPoint.y,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+  return { ok: true, from: fromPoint, to: toPoint, steps };
+}
+
 async function fillField(
   tabId: number,
   selector: string,
@@ -834,6 +1370,57 @@ async function fillField(
     args: [selector, value],
   });
   return res?.result ?? { found: false };
+}
+
+async function uploadFile(
+  tabId: number,
+  selector: string,
+  file: string,
+): Promise<{ ok: true; selector: string; files: number }> {
+  await attachDebugger(tabId);
+  const documentNode = (await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", {
+    depth: -1,
+    pierce: true,
+  })) as { root: { nodeId: number } };
+  const queryResult = (await chrome.debugger.sendCommand({ tabId }, "DOM.querySelector", {
+    nodeId: documentNode.root.nodeId,
+    selector,
+  })) as { nodeId: number };
+  if (!queryResult.nodeId) {
+    throw new GatewayError("selector_not_found", `selector not found: ${selector}`);
+  }
+  const described = (await chrome.debugger.sendCommand({ tabId }, "DOM.describeNode", {
+    nodeId: queryResult.nodeId,
+  })) as { node: { nodeName: string; attributes?: string[] } };
+  const attrs = described.node.attributes ?? [];
+  const attrMap = new Map<string, string>();
+  for (let i = 0; i < attrs.length; i += 2) {
+    const key = attrs[i];
+    const value = attrs[i + 1];
+    if (key !== undefined && value !== undefined) attrMap.set(key.toLowerCase(), value);
+  }
+  if (
+    described.node.nodeName.toLowerCase() !== "input" ||
+    attrMap.get("type")?.toLowerCase() !== "file"
+  ) {
+    throw new GatewayError("not_file_input", "selector does not point to input[type=file]");
+  }
+  await chrome.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
+    nodeId: queryResult.nodeId,
+    files: [file],
+  });
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLInputElement | null;
+      if (!el) return { files: 0 };
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return { files: el.files?.length ?? 0 };
+    },
+    args: [selector],
+  });
+  return { ok: true, selector, files: res?.result?.files ?? 0 };
 }
 
 async function typeText(tabId: number, text: string): Promise<{ ok: true }> {
@@ -982,10 +1569,9 @@ async function scrollTab(
   let cursorX = atX;
   let cursorY = atY;
   if (cursorX === undefined || cursorY === undefined) {
-    const layout = (await chrome.debugger.sendCommand(
-      { tabId },
-      "Page.getLayoutMetrics",
-    )) as { cssVisualViewport?: { clientWidth: number; clientHeight: number } };
+    const layout = (await chrome.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
+      cssVisualViewport?: { clientWidth: number; clientHeight: number };
+    };
     const vp = layout.cssVisualViewport ?? { clientWidth: 800, clientHeight: 600 };
     cursorX = cursorX ?? vp.clientWidth / 2;
     cursorY = cursorY ?? vp.clientHeight / 2;

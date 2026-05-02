@@ -88,22 +88,34 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 ```bash
 # Observation (read-only)
 abg status                                       # Gateway state, connected extensions, shared tab count
-abg tabs                                         # List shared tabs (JSON: tabId, url, title, ...)
-abg read <tabId> [--selector "<css>"] [--as-markdown]  # DOM (text+HTML, or Markdown via bundled plugin)
-abg screenshot <tabId> [--out <path>]            # PNG path
-abg console <tabId>                              # console messages
+abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
+abg inspect                                      # status + shared tabs in one JSON response
+abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
+abg screenshot --latest                          # latest screenshot path
+abg console <tab|ref>                            # console messages
+abg table <tab|ref> [--selector "table"] [--format json|markdown]
+abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
+abg network <tab|ref> [--url "*api*"] [--status-min 400]
+
+# Tab targeting shortcuts
+abg read --match-url "*kintone*" --format markdown
+abg click --match-title "アプリ管理" --selector "button.save"
 
 # Operation (v0.1.1)
-abg click <tabId> --selector "<css>"             # CSS selector click
-abg click <tabId> --x <px> --y <px>              # Coordinate click (works on canvas apps)
-abg fill <tabId> --selector "<css>" --value "<text>"
-abg type <tabId> "<text>"                        # Send text to current focus
-abg key <tabId> <key> [--modifiers ctrl,shift]   # Enter / Space / ArrowDown / etc.
-abg navigate <tabId> "<url>"                     # cross-origin auto-revokes
-abg scroll <tabId> [--dy 800] [--dx 0]           # Wheel scroll (delta px); works on inner-scroll containers
+abg click <tab|ref> --selector "<css>"            # CSS selector click
+abg click <tab|ref> --id <n>                      # click an element from `abg describe`
+abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
+abg fill <tab|ref> --selector "<css>" --value "<text>"
+abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
+abg type <tab|ref> "<text>"                       # Send text to current focus
+abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
+abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
+abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
+abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
 # Management
-abg revoke <tabId>                      # Stop sharing
+abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg install-skill                       # Install Claude Code Skill into ~/.claude/skills/
 ```
@@ -204,8 +216,8 @@ Currently shipped:
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
 - ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
-- ✅ Read tools: `read` / `screenshot` / `console` (with `--selector`, `--clip`, `--as-markdown`)
-- ✅ Operation tools: `click` / `fill` / `type` / `key` / `navigate` / `scroll` (CDP wheel — works on inner-scroll containers)
+- ✅ Read tools: `read` / `screenshot` / `console` / `table` / `describe` / `network` (with selectors, compact formats, and latest screenshot references)
+- ✅ Operation tools: `click` / `fill` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
 - ✅ Wait tool: `wait --selector` / `--ms`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
