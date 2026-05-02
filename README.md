@@ -181,7 +181,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 ### Prerequisites
 
 - macOS 14+
-- Xcode 15+ (Swift 5.9+) or Swift toolchain
+- Xcode 16+ (Swift 6.3+) or Swift toolchain
 - [mise](https://mise.jdx.dev/) (manages Node.js + pnpm versions)
 - Google Chrome 116+
 

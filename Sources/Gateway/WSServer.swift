@@ -2,11 +2,15 @@ import Foundation
 import Vapor
 import GatewayCore
 
-final class WSServer {
-    weak var coordinator: GatewayCoordinator?
+actor WSServer {
+    private weak var coordinator: GatewayCoordinator?
     private var app: Application?
-    private var sockets: [String: WebSocket] = [:]  // extensionId -> WebSocket
-    private let lock = NSLock()
+    private var sockets: [String: WebSocket] = [:]
+    private var extensionIdBySocket: [ObjectIdentifier: String] = [:]
+
+    init(coordinator: GatewayCoordinator) {
+        self.coordinator = coordinator
+    }
 
     func start() async throws {
         // Retry the bind in case the previous Gateway process is still releasing the port,
@@ -40,53 +44,54 @@ final class WSServer {
         app.http.server.configuration.port = ABGConstants.wsPort
         app.logger.logLevel = .warning
 
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
         // Vapor's default maxFrameSize is 16KB which silently drops larger frames (incl. our screenshots).
         // 256MB is large enough for any realistic page (full-page screenshots ~5-10MB) without
         // the OOM/crash risk of using Int.max as the per-connection buffer cap.
-        app.webSocket("ws", maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024)) { [weak self] req, ws in
-            guard let self = self else { return }
-            var extensionId: String?
-
-            ws.onText { [weak self] ws, text in
-                guard let self = self else { return }
-                guard let data = text.data(using: .utf8) else { return }
-                do {
-                    let msg = try decoder.decode(ExtensionMessage.self, from: data)
-                    if case .hello(let extId, _, _, _) = msg {
-                        extensionId = extId
-                        self.register(extensionId: extId, socket: ws)
-                    }
-                    if let extId = extensionId {
-                        Task { @MainActor in
-                            self.coordinator?.handleExtensionMessage(msg, from: extId)
-                        }
-                    }
-                } catch {
-                    req.logger.warning("WS decode error: \(error)")
-                }
+        app.webSocket("ws", maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024)) { req, ws in
+            ws.onText { ws, text in
+                Task { await self.handleText(ws: ws, text: text) }
             }
-
-            _ = ws.onClose.always { [weak self] _ in
-                if let extId = extensionId {
-                    self?.unregister(extensionId: extId)
-                    Task { @MainActor in
-                        self?.coordinator?.extensionDisconnected(extId)
-                    }
-                }
+            _ = ws.onClose.always { _ in
+                Task { await self.handleClose(ws: ws) }
             }
         }
 
         try await app.execute()
     }
 
+    private func handleText(ws: WebSocket, text: String) async {
+        guard let data = text.data(using: .utf8) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let msg: ExtensionMessage
+        do {
+            msg = try decoder.decode(ExtensionMessage.self, from: data)
+        } catch {
+            return
+        }
+        if case .hello(let extId, _, _, _) = msg {
+            sockets[extId] = ws
+            extensionIdBySocket[ObjectIdentifier(ws)] = extId
+        }
+        guard let extId = extensionIdBySocket[ObjectIdentifier(ws)] else { return }
+        let coord = coordinator
+        await MainActor.run {
+            coord?.handleExtensionMessage(msg, from: extId)
+        }
+    }
+
+    private func handleClose(ws: WebSocket) async {
+        let key = ObjectIdentifier(ws)
+        guard let extId = extensionIdBySocket.removeValue(forKey: key) else { return }
+        sockets.removeValue(forKey: extId)
+        let coord = coordinator
+        await MainActor.run {
+            coord?.extensionDisconnected(extId)
+        }
+    }
+
     func send(to extensionId: String, command: GatewayCommand) async throws {
-        lock.lock()
-        let socket = sockets[extensionId]
-        lock.unlock()
-        guard let socket = socket else {
+        guard let socket = sockets[extensionId] else {
             throw NSError(domain: "ABG", code: 4, userInfo: [NSLocalizedDescriptionKey: "extension \(extensionId) not connected"])
         }
         let encoder = JSONEncoder()
@@ -96,17 +101,5 @@ final class WSServer {
             throw NSError(domain: "ABG", code: 5, userInfo: [NSLocalizedDescriptionKey: "encode failed"])
         }
         try await socket.send(str)
-    }
-
-    private func register(extensionId: String, socket: WebSocket) {
-        lock.lock()
-        sockets[extensionId] = socket
-        lock.unlock()
-    }
-
-    private func unregister(extensionId: String) {
-        lock.lock()
-        sockets.removeValue(forKey: extensionId)
-        lock.unlock()
     }
 }

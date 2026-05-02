@@ -31,7 +31,7 @@ actor AuditLog {
         guard let data = try? encoder.encode(entry) else { return }
         guard let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) else { return }
         defer { try? handle.close() }
-        try? handle.seekToEnd()
+        _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: data)
         try? handle.write(contentsOf: Data([0x0A])) // newline
     }

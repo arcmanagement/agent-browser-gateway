@@ -24,10 +24,9 @@ final class GatewayCoordinator: ObservableObject {
     private init() {}
 
     func start() {
-        let ws = WSServer()
-        ws.coordinator = self
+        let ws = WSServer(coordinator: self)
         wsServer = ws
-        Task.detached {
+        Task.detached { [self] in
             do {
                 try await ws.start()
             } catch {
@@ -36,11 +35,10 @@ final class GatewayCoordinator: ObservableObject {
         }
 
         let uds = UDSServer()
-        uds.coordinator = self
         udsServer = uds
-        Task.detached {
+        Task.detached { [self] in
             do {
-                try await uds.start()
+                try await uds.start(coordinator: self)
             } catch {
                 await self.setStatus("UDS error: \(error.localizedDescription)")
             }

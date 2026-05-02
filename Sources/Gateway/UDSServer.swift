@@ -3,24 +3,23 @@ import NIOCore
 import NIOPosix
 import GatewayCore
 
-final class UDSServer {
-    weak var coordinator: GatewayCoordinator?
+final class UDSServer: @unchecked Sendable {
     private var channel: Channel?
     private let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
-    func start() async throws {
+    func start(coordinator: GatewayCoordinator) async throws {
         let path = ABGConstants.udsPath
         try? FileManager.default.removeItem(atPath: path)
 
+        // Hold the coordinator weakly inside the long-lived bootstrap closure so we don't
+        // pin the GatewayCoordinator (a singleton, but still — no need for a retain cycle).
+        let weakCoord = WeakRef(coordinator)
+
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 16)
-            .childChannelInitializer { [weak self] channel in
-                let handler = LineDelimitedJSONHandler { [weak self] requestData in
-                    guard let self = self,
-                          let coord = await MainActor.run(body: { self.coordinator })
-                    else {
-                        return Data()
-                    }
+            .childChannelInitializer { channel in
+                let handler = LineDelimitedJSONHandler { requestData in
+                    guard let coord = weakCoord.value else { return Data() }
                     let decoder = JSONDecoder()
                     let encoder = JSONEncoder()
                     do {
@@ -41,14 +40,19 @@ final class UDSServer {
     }
 }
 
+private final class WeakRef<T: AnyObject & Sendable>: @unchecked Sendable {
+    weak var value: T?
+    init(_ value: T?) { self.value = value }
+}
+
 final class LineDelimitedJSONHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
     typealias OutboundOut = ByteBuffer
 
-    private let handler: (Data) async -> Data
+    private let handler: @Sendable (Data) async -> Data
     private var buffer = Data()
 
-    init(handler: @escaping (Data) async -> Data) {
+    init(handler: @escaping @Sendable (Data) async -> Data) {
         self.handler = handler
     }
 
