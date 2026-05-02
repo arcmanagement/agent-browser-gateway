@@ -133,7 +133,7 @@ final class GatewayCoordinator: ObservableObject {
         case "list_tabs":
             return CLIResponse(id: req.id, result: AnyCodable(permittedTabs.map(tabSummary)))
         case "read_tab":
-            return await dispatch(req: req, method: "read_dom")
+            return await handleReadTab(req: req)
         case "screenshot_tab":
             return await dispatch(req: req, method: "screenshot")
         case "console_tab":
@@ -185,6 +185,35 @@ final class GatewayCoordinator: ObservableObject {
             return CLIResponse(id: req.id, result: AnyCodable(summarized))
         default:
             return CLIResponse(id: req.id, error: ErrorPayload(code: "unknown_method", message: req.method))
+        }
+    }
+
+    /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,
+    /// the html-to-markdown plugin transformer is invoked here in the Gateway.
+    private func handleReadTab(req: CLIRequest) async -> CLIResponse {
+        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "not_permitted", message: "tabId \(tabId) is not permitted"))
+        }
+        let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
+        params.removeValue(forKey: "asMarkdown")
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "read_dom", params: AnyCodable(params))
+            await auditLog.log(action: "read_dom", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
+            guard wantMarkdown,
+                  var dict = result?.value as? [String: Any],
+                  let html = dict["html"] as? String,
+                  let markdown = pluginHost.transform(name: "html-to-markdown", input: html)
+            else {
+                return CLIResponse(id: req.id, result: result)
+            }
+            dict["markdown"] = markdown
+            dict.removeValue(forKey: "html")
+            return CLIResponse(id: req.id, result: AnyCodable(dict))
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
         }
     }
 

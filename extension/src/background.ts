@@ -425,7 +425,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
   try {
     if (cmd.method === "read_dom") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      const result = await readDom(tabId, cmd.params?.selector, cmd.params?.asMarkdown ?? false);
+      const result = await readDom(tabId, cmd.params?.selector);
       reply(cmd.id, result);
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
@@ -702,118 +702,36 @@ type DomReadResult = {
 async function readDom(
   tabId: number,
   selector: string | undefined,
-  asMarkdown: boolean,
 ): Promise<DomReadResult> {
   await attachDebugger(tabId);
-  const pageFn = (sel: string | null, wantMarkdown: boolean) => {
-      const root: Element | null = sel ? document.querySelector(sel) : document.documentElement;
-      if (sel && !root) {
-        return {
-          url: location.href,
-          title: document.title,
-          origin: location.origin,
-          selector: sel,
-          found: false,
-          text: "",
-        } as const;
-      }
-      const target = root ?? document.documentElement;
-      const isElementWithInnerText = (el: unknown): el is HTMLElement =>
-        typeof (el as HTMLElement).innerText === "string";
-      const text = isElementWithInnerText(target) ? target.innerText : (target.textContent ?? "");
-
-      const base = {
+  const pageFn = (sel: string | null) => {
+    const root: Element | null = sel ? document.querySelector(sel) : document.documentElement;
+    if (sel && !root) {
+      return {
         url: location.href,
         title: document.title,
         origin: location.origin,
-        selector: sel ?? undefined,
-        found: sel ? true : undefined,
-        text,
-      };
-
-      if (wantMarkdown) {
-        const walk = (node: Node): string => {
-          if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-          if (node.nodeType !== Node.ELEMENT_NODE) return "";
-          const el = node as Element;
-          const tag = el.tagName.toLowerCase();
-          const childMd = (sep = "") =>
-            Array.from(el.childNodes)
-              .map((c) => walk(c))
-              .join(sep);
-          switch (tag) {
-            case "h1":
-              return `\n# ${childMd().trim()}\n\n`;
-            case "h2":
-              return `\n## ${childMd().trim()}\n\n`;
-            case "h3":
-              return `\n### ${childMd().trim()}\n\n`;
-            case "h4":
-              return `\n#### ${childMd().trim()}\n\n`;
-            case "h5":
-              return `\n##### ${childMd().trim()}\n\n`;
-            case "h6":
-              return `\n###### ${childMd().trim()}\n\n`;
-            case "p":
-              return `\n${childMd().trim()}\n\n`;
-            case "br":
-              return "\n";
-            case "strong":
-            case "b":
-              return `**${childMd().trim()}**`;
-            case "em":
-            case "i":
-              return `_${childMd().trim()}_`;
-            case "code":
-              return `\`${childMd().trim()}\``;
-            case "pre":
-              return `\n\`\`\`\n${childMd().trim()}\n\`\`\`\n\n`;
-            case "a": {
-              const href = el.getAttribute("href") ?? "";
-              const txt = childMd().trim() || href;
-              return href ? `[${txt}](${href})` : txt;
-            }
-            case "img": {
-              const alt = el.getAttribute("alt") ?? "";
-              const src = el.getAttribute("src") ?? "";
-              return src ? `![${alt}](${src})` : alt;
-            }
-            case "ul":
-              return `\n${Array.from(el.children)
-                .map((li) => `- ${walk(li).trim()}`)
-                .join("\n")}\n\n`;
-            case "ol":
-              return `\n${Array.from(el.children)
-                .map((li, i) => `${i + 1}. ${walk(li).trim()}`)
-                .join("\n")}\n\n`;
-            case "li":
-              return childMd();
-            case "blockquote":
-              return `\n${childMd()
-                .trim()
-                .split("\n")
-                .map((line) => `> ${line}`)
-                .join("\n")}\n\n`;
-            case "hr":
-              return "\n---\n\n";
-            case "script":
-            case "style":
-            case "noscript":
-            case "svg":
-              return "";
-            default:
-              return childMd();
-          }
-        };
-        const markdown = walk(target)
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
-        return { ...base, markdown } as const;
-      }
-      return { ...base, html: (target as Element).outerHTML } as const;
+        selector: sel,
+        found: false,
+        text: "",
+      } as const;
+    }
+    const target = root ?? document.documentElement;
+    const isElementWithInnerText = (el: unknown): el is HTMLElement =>
+      typeof (el as HTMLElement).innerText === "string";
+    const text = isElementWithInnerText(target) ? target.innerText : (target.textContent ?? "");
+    return {
+      url: location.href,
+      title: document.title,
+      origin: location.origin,
+      selector: sel ?? undefined,
+      found: sel ? true : undefined,
+      text,
+      html: (target as Element).outerHTML,
+    } as const;
   };
 
-  const expression = `(${pageFn.toString()})(${JSON.stringify(selector ?? null)}, ${JSON.stringify(asMarkdown)})`;
+  const expression = `(${pageFn.toString()})(${JSON.stringify(selector ?? null)})`;
   const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
     returnByValue: true,
