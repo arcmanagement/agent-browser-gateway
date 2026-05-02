@@ -87,20 +87,20 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 
 ```bash
 # Observation (read-only)
-abg status                              # Gateway state, connected extensions, shared tab count
-abg tabs                                # List shared tabs (JSON: tabId, url, title, ...)
-abg read <tabId>                        # Tab DOM (text + HTML)
-abg screenshot <tabId> [--out <path>]   # PNG path
-abg console <tabId>                     # console messages
+abg status                                       # Gateway state, connected extensions, shared tab count
+abg tabs                                         # List shared tabs (JSON: tabId, url, title, ...)
+abg read <tabId> [--selector "<css>"] [--as-markdown]  # DOM (text+HTML, or Markdown via bundled plugin)
+abg screenshot <tabId> [--out <path>]            # PNG path
+abg console <tabId>                              # console messages
 
 # Operation (v0.1.1)
-abg click <tabId> --selector "<css>"            # CSS selector click
-abg click <tabId> --x <px> --y <px>             # Coordinate click (works on canvas apps)
+abg click <tabId> --selector "<css>"             # CSS selector click
+abg click <tabId> --x <px> --y <px>              # Coordinate click (works on canvas apps)
 abg fill <tabId> --selector "<css>" --value "<text>"
-abg type <tabId> "<text>"                       # Send text to current focus
-abg key <tabId> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
-abg navigate <tabId> "<url>"                    # cross-origin auto-revokes
-abg scroll <tabId> [--x 0] [--y 1000]
+abg type <tabId> "<text>"                        # Send text to current focus
+abg key <tabId> <key> [--modifiers ctrl,shift]   # Enter / Space / ArrowDown / etc.
+abg navigate <tabId> "<url>"                     # cross-origin auto-revokes
+abg scroll <tabId> [--dy 800] [--dx 0]           # Wheel scroll (delta px); works on inner-scroll containers
 
 # Management
 abg revoke <tabId>                      # Stop sharing
@@ -120,6 +120,51 @@ The agent talks to ABG by running `abg` from the shell. This is not the only des
 - **Skill ergonomics** — Claude Code's Skill system (`~/.claude/skills/agent-browser-gateway.md`, installed by `abg install-skill`) teaches the agent the CLI in context
 
 A thin MCP wrapper around the same CLI is on the v0.2 roadmap for ecosystem coverage. The CLI remains the source of truth.
+
+---
+
+## Plugin architecture
+
+ABG ships with an **Obsidian-style plugin system**: JavaScript modules loaded into the Gateway at startup that hook into the data flow between your browser and your AI agent. The core stays minimal (raw browser access via CDP); data transformation — Markdown conversion, redaction, command abstraction — lives in plugins.
+
+Plugins live under `Gateway.app/Contents/Resources/plugins/` (bundled defaults). Each plugin is a `.js` file that registers transformers via a small `abg` host API:
+
+```js
+// plugins/markdown-plugin/index.js (excerpt)
+abg.registerTransform("html-to-markdown", function (html) {
+  // ...returns Markdown
+});
+```
+
+Currently bundled:
+
+- **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
+- **`info-plugin`** — Smoke test: prints a startup line.
+
+Planned (community / future): per-domain plugins (`gmail-plugin`, `notion-plugin`, `slack-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
+
+### Why this matters: token economy
+
+Most browser-AI bridges hand the LLM raw HTML — sometimes the entire `page.content()` including scripts and styles. The result is huge token bills and degraded reasoning over noisy input.
+
+ABG's `markdown-plugin` strips the page to its semantic essence. Measured on a typical Japanese WordPress blog post (`https://sitest.jp/blog/?p=35065`):
+
+| Method | chars | tokens (approx) | structure |
+|---|---:|---:|:---:|
+| Playwright `page.content()` (full HTML) | 124,476 | ~50,000 | preserved (massive overhead) |
+| Playwright `locator('article').innerHTML()` | 42,070 | ~17,000 | preserved (with overhead) |
+| **`abg read N --selector article --as-markdown`** | **11,780** | **~5,900** | **preserved (clean)** |
+| Playwright `locator('article').innerText()` | 6,543 | ~3,800 | lost (no headings / links / lists) |
+
+For 1,000 page reads with Claude Opus ($15/M input tokens):
+
+- Playwright `page.content()` → **$750**
+- Playwright `locator('article').innerHTML()` → **$255**
+- **ABG `read --as-markdown`** → **$88**
+
+A reduction of **~88%** vs the naive Playwright approach, while preserving heading / list / link structure. Per-domain plugins (e.g. a future `gmail-plugin`, `notion-plugin`, `slack-plugin`) push this further by extracting only the semantically meaningful content for each app.
+
+(Token estimates assume mixed Japanese content at ~2 chars/token; relative ratios hold for English at ~4 chars/token.)
 
 ---
 
@@ -160,12 +205,13 @@ Currently shipped:
 - ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Read tools: `read` / `screenshot` / `console` (with `--selector`, `--clip`, `--as-markdown`)
-- ✅ Operation tools: `click` / `fill` / `type` / `key` / `navigate` / `scroll`
+- ✅ Operation tools: `click` / `fill` / `type` / `key` / `navigate` / `scroll` (CDP wheel — works on inner-scroll containers)
 - ✅ Wait tool: `wait --selector` / `--ms`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code Skill bundled
+- ✅ JS plugin system (Obsidian-style; bundled `markdown-plugin` for `--as-markdown`)
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 

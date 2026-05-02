@@ -19,6 +19,14 @@ Living document. Reflects current intent, not commitment. Last updated 2026-05-0
 - WebSocket frame size raised to 256 MB (was Vapor default 16 KB → silently dropped screenshots)
 - Extension service-worker heartbeat fixed to Chrome 117+ minimum (0.5 min)
 
+### v0.1.3 — CDP everywhere & plugin architecture (2026-05-02)
+- `scroll` rewritten to CDP `Input.dispatchMouseEvent` `mouseWheel` — works on inner-scroll containers (Gemini chat, ChatGPT, Slack threads) and no longer needs `host_permissions`
+- `read` rewritten to CDP `Runtime.evaluate` — works on every origin without `host_permissions`
+- **JS plugin system** (Obsidian-style): JavaScriptCore in the Gateway, plugins in `Gateway.app/Contents/Resources/plugins/`, minimal `abg` host API (`abg.log`, `abg.registerTransform`)
+- Bundled `markdown-plugin`: HTML→Markdown conversion moved out of the extension into a plugin. The extension now returns raw HTML; the Gateway invokes the plugin transformer when `--as-markdown` is requested
+- Bundled `info-plugin`: smoke test that exercises the plugin loader at startup
+- Token economy benchmark in README: `~88%` reduction vs Playwright `page.content()` while preserving structure
+
 ## In progress (v0.1.2)
 
 - `wait` / `wait_for` (selector / text / timeout) so dynamic pages don't need `sleep` in scripts
