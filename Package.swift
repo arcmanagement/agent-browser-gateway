@@ -37,5 +37,10 @@ let package = Package(
             path: "Sources/abg",
             resources: [.process("Resources")]
         ),
+        .testTarget(
+            name: "GatewayTests",
+            dependencies: ["Gateway"],
+            path: "Tests/GatewayTests"
+        ),
     ]
 )

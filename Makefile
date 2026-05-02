@@ -40,11 +40,12 @@ format:
 	cd extension && pnpm run format
 
 test:
-	swift build
+	swift test
 	cd extension && pnpm run typecheck
 
 verify:
 	cd extension && pnpm run typecheck && pnpm run lint
+	swift test
 	swift build -c release
 	cd extension && pnpm run build
 

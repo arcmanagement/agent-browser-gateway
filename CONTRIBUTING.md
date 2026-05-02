@@ -32,7 +32,8 @@ cd extension && pnpm run watch # extension hot-rebuild
 
 # Quality gates
 cd extension && pnpm run lint && pnpm run typecheck
-swift build                    # treats warnings as warnings; we want clean builds
+swift test
+swift build -c release
 ```
 
 ## Commits
@@ -52,7 +53,7 @@ The license under which ABG will be released is not yet decided. While the licen
 
 ## Testing
 
-- Add tests where it's natural (the codebase is small enough that we don't yet enforce coverage).
+- Add focused tests for shared behavior, plugin loading, and protocol changes.
 - Manual end-to-end verification (load extension, share a tab, run `abg ...`) is required before merging anything that touches the WS protocol or extension surface.
 
 ## Out of scope (for now)

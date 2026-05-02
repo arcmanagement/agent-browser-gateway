@@ -2,6 +2,8 @@
 
 > **Bridge your browser to AI agents — without giving up control.**
 
+[![CI](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml)
+
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
 - 📖 **Fully open source** — Every line of code that touches your browser is auditable
@@ -196,6 +198,24 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 
 ## Comparison
 
+ABG is not trying to replace Playwright or browser test runners. Use it when the browser session
+already exists: you are logged in, looking at the real page, and want to hand only that explicitly
+shared tab to an AI agent or CLI workflow.
+
+Use **ABG** for:
+
+- inspecting or operating a tab you are already using in your normal Chrome profile
+- AI-assisted support/debugging where per-tab consent and audit logs matter
+- quick shell-driven reads, screenshots, table extraction, network inspection, and small operations
+- workflows where the agent should not receive a global browser context or a remote-debugging port
+
+Use **Playwright / browser test tooling** for:
+
+- deterministic E2E tests, CI, screenshots, and cross-browser regression coverage
+- scripted flows that should start from a clean profile and be reproducible for everyone
+- test assertions over app code where repeatability matters more than using the user's live session
+- browser automation that intentionally controls the whole browser lifecycle
+
 | Project | Approach | What ABG offers that this doesn't |
 |---|---|---|
 | `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, OSS, per-tab consent |
@@ -205,7 +225,9 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 | `vercel-labs/agent-browser` | Spawns Chrome for Testing | Uses the tab you're already looking at, with your logins, in your context |
 | `Playwright MCP` (Microsoft) | Dedicated browser, structured snapshots | Per-tab consent on your everyday browser |
 
-The right-upper quadrant — *per-tab consent × everyday browser × verifiable OSS* — is, as of mid-2026, mostly empty.
+The distinction is practical: Playwright is excellent when you want a repeatable browser that the
+automation owns; ABG is for safely exposing one human-owned tab to an agent, with JSON output,
+local-only transport, and a visible audit trail.
 
 ---
 
@@ -289,6 +311,7 @@ Claude Code will now invoke `abg` automatically when the conversation references
 
 ```bash
 swift build                             # debug build
+swift test                              # Swift unit tests
 swift run Gateway                       # menubar app without bundling (dev)
 
 cd extension
@@ -296,6 +319,7 @@ pnpm run watch                          # rebuild on save
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit
+make verify                             # CI-style local verification
 ```
 
 ---
