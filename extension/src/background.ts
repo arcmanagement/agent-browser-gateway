@@ -530,12 +530,17 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       },
     };
   }
-  const x = cmd.params?.x ?? 0;
-  const y = cmd.params?.y ?? 0;
-  if (typeof x !== "number" || typeof y !== "number") throw new Error("x and y must be numbers");
+  const deltaX = cmd.params?.deltaX ?? 0;
+  const deltaY = cmd.params?.deltaY ?? 0;
+  if (typeof deltaX !== "number" || typeof deltaY !== "number") {
+    throw new Error("deltaX and deltaY must be numbers");
+  }
+  const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
+  const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
+  const where = atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
-    intent: `Scroll this tab to position (${x}, ${y}).`,
-    run: () => scrollTab(tabId, x, y),
+    intent: `Scroll this tab by (Δx=${deltaX}, Δy=${deltaY}) ${where}.`,
+    run: () => scrollTab(tabId, deltaX, deltaY, atX, atY),
   };
 }
 
@@ -1041,15 +1046,33 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   return { ok: false, error: "timeout", selector, timeoutMs };
 }
 
-async function scrollTab(tabId: number, x: number, y: number): Promise<{ ok: true }> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (xx: number, yy: number) => {
-      window.scrollTo({ left: xx, top: yy, behavior: "instant" });
-    },
-    args: [x, y],
+async function scrollTab(
+  tabId: number,
+  deltaX: number,
+  deltaY: number,
+  atX?: number,
+  atY?: number,
+): Promise<{ ok: true; deltaX: number; deltaY: number; x: number; y: number }> {
+  await attachDebugger(tabId);
+  let cursorX = atX;
+  let cursorY = atY;
+  if (cursorX === undefined || cursorY === undefined) {
+    const layout = (await chrome.debugger.sendCommand(
+      { tabId },
+      "Page.getLayoutMetrics",
+    )) as { cssVisualViewport?: { clientWidth: number; clientHeight: number } };
+    const vp = layout.cssVisualViewport ?? { clientWidth: 800, clientHeight: 600 };
+    cursorX = cursorX ?? vp.clientWidth / 2;
+    cursorY = cursorY ?? vp.clientHeight / 2;
+  }
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: cursorX,
+    y: cursorY,
+    deltaX,
+    deltaY,
   });
-  return { ok: true };
+  return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
 }
 
 // ---------- Popup messaging ----------

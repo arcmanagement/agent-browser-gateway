@@ -36,7 +36,7 @@ abg fill <tabId> --selector "<css>" --value "<text>"  # input/textarea に入力
 abg type <tabId> "<text>"               # 現在フォーカスにテキスト送信 (Sheets セル等)
 abg key <tabId> <key> [--modifiers ctrl,shift]  # キー入力 (Enter/Space/ArrowDown/a 等)
 abg navigate <tabId> "<url>"            # タブを遷移 (別 origin で許可失効)
-abg scroll <tabId> [--x 0] [--y 1000]   # スクロール
+abg scroll <tabId> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール (内側 div も可)
 
 # 待機系 (v0.1.2)
 abg wait <tabId> --selector "<css>"             # 要素が出現するまで (デフォルト 10s)

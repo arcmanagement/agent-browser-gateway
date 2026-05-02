@@ -200,14 +200,33 @@ struct Navigate: AsyncParsableCommand {
 }
 
 struct Scroll: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "ページをスクロール (絶対座標)")
+    static let configuration = CommandConfiguration(
+        abstract: "ページをホイールスクロール (delta指定)",
+        discussion: """
+        マウスホイールイベント (CDP Input.dispatchMouseEvent type=mouseWheel) として送る。
+        ブラウザがカーソル位置の祖先 scrollable 要素を自動で選ぶので、内側 div の
+        overflow:auto エリア (Gemini / ChatGPT / Slack 等のチャット履歴) にも効く。
+
+        --at-x / --at-y を省略するとビューポート中央でホイールが発生する。
+
+        例:
+          abg scroll 328 --dy 800              # 800px 下にスクロール
+          abg scroll 328 --dy -800             # 800px 上に
+          abg scroll 328 --dy 800 --at-x 1200 --at-y 400  # 右側パネルだけスクロール
+        """
+    )
     @Argument(help: "tab ID") var tabId: Int
-    @Option(name: .long, help: "X (デフォルト 0)") var x: Double = 0
-    @Option(name: .long, help: "Y (デフォルト 0)") var y: Double = 0
+    @Option(name: .long, help: "縦 delta px (正で下、負で上、デフォルト 0)") var dy: Double = 0
+    @Option(name: .long, help: "横 delta px (正で右、負で左、デフォルト 0)") var dx: Double = 0
+    @Option(name: .long, help: "ホイール位置 X (省略時ビューポート中央)") var atX: Double?
+    @Option(name: .long, help: "ホイール位置 Y (省略時ビューポート中央)") var atY: Double?
 
     func run() async throws {
         let client = UDSClient()
-        let result = try client.call(method: "scroll_tab", params: ["tabId": tabId, "x": x, "y": y])
+        var params: [String: Any] = ["tabId": tabId, "deltaX": dx, "deltaY": dy]
+        if let v = atX { params["atX"] = v }
+        if let v = atY { params["atY"] = v }
+        let result = try client.call(method: "scroll_tab", params: params)
         printJSON(result)
     }
 }

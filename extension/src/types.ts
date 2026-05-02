@@ -34,6 +34,11 @@ export type GatewayCommand = {
     y?: number;
     width?: number;
     height?: number;
+    // scroll (mouseWheel)
+    deltaX?: number;
+    deltaY?: number;
+    atX?: number;
+    atY?: number;
     key?: string;
     code?: string;
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
