@@ -17,6 +17,7 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
+    private(set) var pluginHost = PluginHost(abgVersion: "0.1.2")
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
@@ -24,6 +25,8 @@ final class GatewayCoordinator: ObservableObject {
     private init() {}
 
     func start() {
+        pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
+
         let ws = WSServer(coordinator: self)
         wsServer = ws
         Task.detached { [self] in

@@ -15,6 +15,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
 
+if [ -d "plugins" ]; then
+    mkdir -p "$APP/Contents/Resources"
+    cp -R plugins "$APP/Contents/Resources/plugins"
+fi
+
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
