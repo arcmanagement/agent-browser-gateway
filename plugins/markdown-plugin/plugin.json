@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "author": "arcmanagement",
   "description": "Converts page HTML into compact Markdown for abg read.",
-  "domains": ["*"],
+  "domains": [],
   "transforms": ["html-to-markdown", "html-to-markdown-keep-images"],
   "commands": []
 }

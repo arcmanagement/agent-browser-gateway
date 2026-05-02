@@ -26,7 +26,8 @@ audit.jsonl
 .claude/
 
 # Internal handoff / design history (kept locally, not yet ready for OSS)
-docs/
+docs/*
+!docs/PLUGINS.md
 
 # Brand experiments — final design TBD, not committed yet
 assets/

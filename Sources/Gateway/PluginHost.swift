@@ -43,6 +43,21 @@ final class PluginHost {
         return result.toString()
     }
 
+    func domainTransform(url: String, kind: String, input: String) -> (name: String, output: String)? {
+        for plugin in plugins {
+            guard let manifest = plugin.manifest,
+                  manifestMatches(url: url, manifest: manifest)
+            else { continue }
+            for transformName in manifest.transforms ?? [] {
+                guard transformName.range(of: kind, options: .caseInsensitive) != nil,
+                      let output = transform(name: transformName, input: input)
+                else { continue }
+                return (transformName, output)
+            }
+        }
+        return nil
+    }
+
     private func loadPluginsInDir(_ dir: URL) {
         let fm = FileManager.default
         var isDir: ObjCBool = false
@@ -123,6 +138,19 @@ final class PluginHost {
         let url = dir.appendingPathComponent("plugin.json")
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(Manifest.self, from: data)
+    }
+
+    private func manifestMatches(url: String, manifest: Manifest) -> Bool {
+        guard let domains = manifest.domains, !domains.isEmpty else { return false }
+        return domains.contains { globMatches(pattern: $0, text: url) }
+    }
+
+    private func globMatches(pattern: String, text: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: pattern)
+            .replacingOccurrences(of: "\\*", with: ".*")
+            .replacingOccurrences(of: "\\?", with: ".")
+        let regex = "^\(escaped)$"
+        return text.range(of: regex, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private func stderr(_ msg: String) {

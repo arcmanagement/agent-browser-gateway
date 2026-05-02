@@ -79,3 +79,4 @@ abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追�
 - 操作系 (`click` / `fill` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag`) を呼ぶ前に、必ず screenshot/read/describe で**現状を確認**する。盲目的に操作しない
 - ページ遷移後など要素出現を待つときは `abg wait <tabId> --selector "..."` を使う。`sleep` を bash で書かない
 - read は出力が大きいので、可能なら `--selector` で絞るか `--format markdown` / `--format text` で圧縮する。token 効率に直結
+- `--format markdown` は generic `markdown-plugin` を使う。共有タブ URL が `notion.so` / `notion.site` に一致する場合は bundled `notion-plugin` が先に適用され、Notion の sidebar/topbar/popover 等を落としてから Markdown 化する

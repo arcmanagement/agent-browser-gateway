@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Launch Plan - Notion</title>
+    <style>
+      .notion-sidebar { width: 240px; }
+      .notion-topbar { height: 45px; }
+      .token-noise { color: var(--theme); }
+    </style>
+    <script>
+      window.__notionStore = {
+        user: "private@example.com",
+        workspace: "Acme Private Workspace",
+        blocks: Array.from({ length: 100 }, (_, index) => ({ id: index, cache: "client-only" }))
+      };
+    </script>
+  </head>
+  <body>
+    <div class="notion-sidebar">
+      Acme Private Workspace
+      Search
+      Inbox
+      Private
+      Engineering
+      Marketing
+      Finance
+      People Ops
+      Archived pages
+      Duplicate sidebar label Duplicate sidebar label Duplicate sidebar label
+    </div>
+    <div class="notion-topbar">
+      Share Updates Comments Search New Ask AI
+      Breadcrumb workspace breadcrumb workspace breadcrumb workspace breadcrumb
+    </div>
+    <div class="notion-overlay-container">
+      Tooltip popover slash command menu user presence invite dialog duplicated app chrome.
+    </div>
+    <main class="notion-page-content" data-block-id="page-1">
+      <h1>Launch Plan</h1>
+      <p data-content-editable-leaf="true">Ship Agent Browser Gateway with a useful plugin story.</p>
+      <h2>Goals</h2>
+      <ul>
+        <li>Keep per-tab consent explicit.</li>
+        <li>Read pages as compact Markdown instead of raw app HTML.</li>
+        <li>Let users inspect bundled plugins before installing community plugins.</li>
+      </ul>
+      <h2>Decisions</h2>
+      <p>The Notion plugin removes sidebars, top bars, popovers, scripts, styles, and data attributes.</p>
+      <p>Domain matching is done from <code>plugin.json</code>, so the Gateway core stays generic.</p>
+      <blockquote>Plugins should be deterministic and easy to audit.</blockquote>
+      <h2>Tasks</h2>
+      <ul>
+        <li>Write the Notion plugin.</li>
+        <li>Add a reproducible benchmark fixture.</li>
+        <li>Document the authoring workflow.</li>
+      </ul>
+      <p><a href="https://github.com/arcmanagement/agent-browser-gateway/issues/2">Tracking issue</a></p>
+    </main>
+    <div class="notion-help-button">?</div>
+  </body>
+</html>

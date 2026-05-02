@@ -1,0 +1,125 @@
+# ABG Plugin Tutorial
+
+ABG plugins are local JavaScript modules loaded by the Gateway at startup. They run inside the
+Gateway process through JavaScriptCore, so install only plugins you trust.
+
+Plugins are searched in this order:
+
+1. Bundled plugins under `Gateway.app/Contents/Resources/plugins/`
+2. User-installed plugins under `~/.abg/plugins/`
+
+During repo development, `abg plugin list` also shows the local `plugins/` directory when run from
+the checkout.
+
+## Install And Manage
+
+```bash
+abg plugin list
+abg plugin list --loaded                  # requires a running Gateway
+
+abg plugin install user/repo --yes
+abg plugin install https://github.com/user/repo.git --yes
+abg plugin install ./my-plugin --name my-plugin --yes
+
+abg plugin update                         # git pull all user plugins
+abg plugin update my-plugin
+abg plugin uninstall my-plugin
+```
+
+`install` requires `--yes` because plugin code is arbitrary JavaScript loaded by the local Gateway.
+
+## Directory Layout
+
+```text
+my-plugin/
+  index.js
+  plugin.json
+```
+
+`index.js` is required. `plugin.json` is optional but recommended.
+
+```json
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "author": "your-name",
+  "description": "Short human-readable summary.",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"],
+  "commands": []
+}
+```
+
+## Host API
+
+The host API is intentionally small:
+
+```js
+abg.log("loaded " + abg.plugin.name);
+
+abg.registerTransform("my-transform", function (input) {
+  return String(input).trim();
+});
+```
+
+Transforms are synchronous string-to-string functions. The Gateway calls `html-to-markdown` for
+generic `abg read --format markdown` output. If a plugin manifest declares `domains` and a transform
+name containing `markdown`, the Gateway tries that transform first when the shared tab URL matches
+one of the domain globs.
+
+## Per-Domain Markdown Plugin
+
+This is the smallest useful per-domain plugin:
+
+```js
+function cleanGmail(html) {
+  return String(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+abg.registerTransform("gmail-clean-markdown", cleanGmail);
+```
+
+Declare the target domain in `plugin.json`:
+
+```json
+{
+  "name": "gmail-plugin",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"]
+}
+```
+
+Then read a shared matching tab:
+
+```bash
+abg read --match-url "https://mail.google.com/*" --format markdown --first
+```
+
+ABG will call `gmail-clean-markdown` before falling back to the generic `html-to-markdown`
+transform.
+
+## Bundled Examples
+
+- `plugins/markdown-plugin` provides generic HTML to Markdown conversion.
+- `plugins/notion-plugin` is a per-domain plugin for `notion.so` and `notion.site` pages. It strips
+  Notion app chrome, scripts, styles, sidebars, popovers, and bookkeeping attributes before
+  returning compact Markdown.
+- `plugins/info-plugin` is a loader smoke test.
+
+Run the Notion benchmark:
+
+```bash
+node examples/benchmark-notion-plugin.mjs
+```
+
+## Safety Rules
+
+- Do not add telemetry or network calls.
+- Do not bypass per-tab consent.
+- Do not expose arbitrary JavaScript execution to agents.
+- Prefer deterministic transforms that are easy to audit.

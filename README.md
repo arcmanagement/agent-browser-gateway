@@ -146,7 +146,7 @@ A thin MCP wrapper around the same CLI is on the v0.2 roadmap for ecosystem cove
 
 ABG ships with an **Obsidian-style plugin system**: JavaScript modules loaded into the Gateway at startup that hook into the data flow between your browser and your AI agent. The core stays minimal (raw browser access via CDP); data transformation — Markdown conversion, redaction, command abstraction — lives in plugins.
 
-Plugins live under `Gateway.app/Contents/Resources/plugins/` (bundled defaults). Each plugin is a `.js` file that registers transformers via a small `abg` host API:
+Plugins live under `Gateway.app/Contents/Resources/plugins/` (bundled defaults). Each plugin is a directory with `index.js` and optional `plugin.json`; `index.js` registers transformers via a small `abg` host API:
 
 ```js
 // plugins/markdown-plugin/index.js (excerpt)
@@ -158,6 +158,7 @@ abg.registerTransform("html-to-markdown", function (html) {
 Currently bundled:
 
 - **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
+- **`notion-plugin`** — Per-domain Markdown diet for `notion.so` / `notion.site`: strips app chrome, scripts, styles, popovers, and bookkeeping before the agent sees the page.
 - **`info-plugin`** — Smoke test: prints a startup line.
 
 User plugins can be managed from the CLI:
@@ -169,9 +170,9 @@ abg plugin update
 abg plugin uninstall my-plugin
 ```
 
-See [PLUGINS.md](PLUGINS.md) for the manifest format and authoring guide.
+See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 
-Planned (community / future): per-domain plugins (`gmail-plugin`, `notion-plugin`, `slack-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
+Planned (community / future): more per-domain plugins (`gmail-plugin`, `slack-plugin`, `linear-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
 
 ### Why this matters: token economy
 
@@ -192,9 +193,24 @@ For 1,000 page reads with Claude Opus ($15/M input tokens):
 - Playwright `locator('article').innerHTML()` → **$255**
 - **ABG `read --as-markdown`** → **$88**
 
-A reduction of **~88%** vs the naive Playwright approach, while preserving heading / list / link structure. Per-domain plugins (e.g. a future `gmail-plugin`, `notion-plugin`, `slack-plugin`) push this further by extracting only the semantically meaningful content for each app.
+A reduction of **~88%** vs the naive Playwright approach, while preserving heading / list / link structure. Per-domain plugins such as the bundled `notion-plugin` push this further by extracting only the semantically meaningful content for each app.
 
 (Token estimates assume mixed Japanese content at ~2 chars/token; relative ratios hold for English at ~4 chars/token.)
+
+The bundled `notion-plugin` is a concrete per-domain example. It is measured with the reproducible
+fixture in `examples/fixtures/notion-page.html`:
+
+```bash
+node examples/benchmark-notion-plugin.mjs
+```
+
+| Method | chars | tokens (approx) | reduction vs raw |
+|---|---:|---:|---:|
+| Raw Notion-like page HTML | 2,209 | ~553 | - |
+| Generic markdown-plugin | 1,242 | ~311 | 44% |
+| **notion-plugin domain transform** | **709** | **~178** | **68%** |
+
+For Notion-like pages, ABG now selects the domain transform automatically when `abg read --format markdown` is used on a shared `notion.so` or `notion.site` tab.
 
 ---
 
@@ -261,7 +277,7 @@ Currently shipped:
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code Skill bundled
-- ✅ JS plugin system (Obsidian-style; bundled `markdown-plugin` for `--as-markdown`)
+- ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 

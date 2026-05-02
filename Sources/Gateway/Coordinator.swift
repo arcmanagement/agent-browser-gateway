@@ -226,12 +226,21 @@ final class GatewayCoordinator: ObservableObject {
             await auditLog.log(action: "read_dom", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
             guard wantMarkdown,
                   var dict = result?.value as? [String: Any],
-                  let html = dict["html"] as? String,
-                  let markdown = pluginHost.transform(name: keepImages ? "html-to-markdown-keep-images" : "html-to-markdown", input: html)
+                  let html = dict["html"] as? String
             else {
                 return CLIResponse(id: req.id, result: result)
             }
+            if !keepImages, let domainResult = pluginHost.domainTransform(url: tab.url, kind: "markdown", input: html) {
+                dict["markdown"] = domainResult.output
+                dict["markdownTransform"] = domainResult.name
+                dict.removeValue(forKey: "html")
+                return CLIResponse(id: req.id, result: AnyCodable(dict))
+            }
+            guard let markdown = pluginHost.transform(name: keepImages ? "html-to-markdown-keep-images" : "html-to-markdown", input: html) else {
+                return CLIResponse(id: req.id, result: result)
+            }
             dict["markdown"] = markdown
+            dict["markdownTransform"] = keepImages ? "html-to-markdown-keep-images" : "html-to-markdown"
             dict.removeValue(forKey: "html")
             return CLIResponse(id: req.id, result: AnyCodable(dict))
         } catch {

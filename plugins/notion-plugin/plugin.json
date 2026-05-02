@@ -1,0 +1,16 @@
+{
+  "name": "notion-plugin",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Cleans Notion pages into compact Markdown when reading shared notion.so/notion.site tabs.",
+  "domains": [
+    "https://notion.so/*",
+    "https://www.notion.so/*",
+    "https://*.notion.so/*",
+    "https://*.notion.site/*"
+  ],
+  "transforms": [
+    "notion-to-markdown"
+  ],
+  "commands": []
+}
