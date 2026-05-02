@@ -12,6 +12,7 @@ struct ABG: AsyncParsableCommand {
             Read.self, Screenshot.self, Console.self, Table.self, Describe.self, Network.self,
             Click.self, Fill.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
+            Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
         ]
     )
@@ -172,6 +173,93 @@ func latestScreenshotMarker() throws -> URL {
     try screenshotDirectory().appendingPathComponent("latest.txt")
 }
 
+func abgStateDirectory() throws -> URL {
+    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".abg", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+func recordingStatePath() throws -> URL {
+    try abgStateDirectory().appendingPathComponent("recording.json")
+}
+
+func saveScreenshotResult(_ result: Any?, outPath: String) throws -> [String: Any] {
+    guard let dict = result as? [String: Any], let dataUrl = dict["dataUrl"] as? String else {
+        FileHandle.standardError.write(Data("unexpected response: \(String(describing: result))\n".utf8))
+        throw ExitCode.failure
+    }
+    guard let comma = dataUrl.firstIndex(of: ",") else {
+        FileHandle.standardError.write(Data("invalid dataUrl\n".utf8))
+        throw ExitCode.failure
+    }
+    let b64 = String(dataUrl[dataUrl.index(after: comma)...])
+    guard let png = Data(base64Encoded: b64) else {
+        FileHandle.standardError.write(Data("base64 decode failed\n".utf8))
+        throw ExitCode.failure
+    }
+    try png.write(to: URL(fileURLWithPath: outPath))
+    try outPath.write(to: latestScreenshotMarker(), atomically: true, encoding: .utf8)
+    return ["path": outPath, "bytes": png.count]
+}
+
+func appendRecordedStep(_ step: [String: Any]) {
+    guard ProcessInfo.processInfo.environment["ABG_DISABLE_RECORDING"] != "1",
+          let stateData = try? Data(contentsOf: recordingStatePath()),
+          let state = try? JSONSerialization.jsonObject(with: stateData) as? [String: Any],
+          let recordingTabId = state["tabId"] as? Int,
+          let stepTabId = step["tabId"] as? Int,
+          recordingTabId == stepTabId,
+          let logPath = state["logPath"] as? String
+    else { return }
+
+    var payload = step
+    payload.removeValue(forKey: "tabId")
+    guard JSONSerialization.isValidJSONObject(payload),
+          let data = try? JSONSerialization.data(withJSONObject: payload),
+          let line = String(data: data, encoding: .utf8)
+    else { return }
+
+    let url = URL(fileURLWithPath: logPath)
+    if !FileManager.default.fileExists(atPath: url.path) {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+    }
+    guard let handle = try? FileHandle(forWritingTo: url) else { return }
+    defer { try? handle.close() }
+    _ = try? handle.seekToEnd()
+    try? handle.write(contentsOf: Data((line + "\n").utf8))
+}
+
+func readJSONFile(_ path: String) throws -> Any {
+    let data = try Data(contentsOf: URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+    return try JSONSerialization.jsonObject(with: data)
+}
+
+func writeJSONObject(_ value: Any, to path: String) throws {
+    let expanded = (path as NSString).expandingTildeInPath
+    let data = try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+    try data.write(to: URL(fileURLWithPath: expanded))
+}
+
+func stringValue(_ dict: [String: Any], _ key: String) -> String? {
+    dict[key] as? String
+}
+
+func doubleValue(_ dict: [String: Any], _ key: String) -> Double? {
+    if let value = dict[key] as? Double { return value }
+    if let value = dict[key] as? Int { return Double(value) }
+    return nil
+}
+
+func intValue(_ dict: [String: Any], _ key: String) -> Int? {
+    if let value = dict[key] as? Int { return value }
+    if let value = dict[key] as? Double { return Int(value) }
+    return nil
+}
+
+func boolValue(_ dict: [String: Any], _ key: String) -> Bool? {
+    dict[key] as? Bool
+}
+
 struct Status: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Gateway 起動状況と接続中拡張を表示")
     func run() async throws {
@@ -262,6 +350,11 @@ struct Read: AsyncParsableCommand {
             params["keepImages"] = keepImages
         }
         let result = try client.call(method: "read_tab", params: params)
+        var step: [String: Any] = ["op": "read", "tabId": tabId, "format": format]
+        if let selector { step["selector"] = selector }
+        if asMarkdown { step["asMarkdown"] = true }
+        if keepImages { step["keepImages"] = true }
+        appendRecordedStep(step)
         guard let dict = result as? [String: Any] else {
             printJSON(result)
             return
@@ -324,27 +417,17 @@ struct Screenshot: AsyncParsableCommand {
             params["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
         let result = try client.call(method: "screenshot_tab", params: params)
-        guard let dict = result as? [String: Any], let dataUrl = dict["dataUrl"] as? String else {
-            FileHandle.standardError.write(Data("unexpected response: \(String(describing: result))\n".utf8))
-            throw ExitCode.failure
-        }
-        // dataUrl: "data:image/png;base64,..."
-        guard let comma = dataUrl.firstIndex(of: ",") else {
-            FileHandle.standardError.write(Data("invalid dataUrl\n".utf8))
-            throw ExitCode.failure
-        }
-        let b64 = String(dataUrl[dataUrl.index(after: comma)...])
-        guard let png = Data(base64Encoded: b64) else {
-            FileHandle.standardError.write(Data("base64 decode failed\n".utf8))
-            throw ExitCode.failure
-        }
         let outPath: String = {
             if let o = out { return (o as NSString).expandingTildeInPath }
             return (try? defaultScreenshotPath(tabLabel: target.tab ?? "tab-\(tabId)")) ?? "/tmp/abg-screenshot-\(tabId)-\(Int(Date().timeIntervalSince1970)).png"
         }()
-        try png.write(to: URL(fileURLWithPath: outPath))
-        try outPath.write(to: latestScreenshotMarker(), atomically: true, encoding: .utf8)
-        let resultJson: [String: Any] = ["path": outPath, "bytes": png.count]
+        let resultJson = try saveScreenshotResult(result, outPath: outPath)
+        var step: [String: Any] = ["op": "screenshot", "tabId": tabId]
+        if let out { step["out"] = out }
+        if clipCount == 4 {
+            step["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
+        }
+        appendRecordedStep(step)
         printJSON(resultJson)
     }
 }
@@ -485,6 +568,15 @@ struct Click: AsyncParsableCommand {
             ])
         }
         let result = try client.call(method: "click_tab", params: params)
+        var step: [String: Any] = ["op": "click", "tabId": tabId]
+        if let selector { step["selector"] = selector }
+        if let id { step["id"] = id }
+        if all { step["all"] = true }
+        if let grid { step["grid"] = grid }
+        if let limit { step["limit"] = limit }
+        if let x { step["x"] = x }
+        if let y { step["y"] = y }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -499,6 +591,7 @@ struct Fill: AsyncParsableCommand {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         let result = try client.call(method: "fill_tab", params: ["tabId": tabId, "selector": selector, "value": value])
+        appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": value])
         printJSON(result)
     }
 }
@@ -522,6 +615,7 @@ struct Type: AsyncParsableCommand {
         let text = args[textStart...].joined(separator: " ")
         let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
         let result = try client.call(method: "type_tab", params: ["tabId": tabId, "text": text])
+        appendRecordedStep(["op": "type", "tabId": tabId, "text": text])
         printJSON(result)
     }
 }
@@ -549,6 +643,9 @@ struct Key: AsyncParsableCommand {
             params["modifiers"] = m.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
         }
         let result = try client.call(method: "key_tab", params: params)
+        var step: [String: Any] = ["op": "key", "tabId": tabId, "key": key]
+        if let modifiers { step["modifiers"] = modifiers }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -571,6 +668,7 @@ struct Navigate: AsyncParsableCommand {
         ])
         let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
         let result = try client.call(method: "navigate_tab", params: ["tabId": tabId, "url": url])
+        appendRecordedStep(["op": "navigate", "tabId": tabId, "url": url])
         printJSON(result)
     }
 }
@@ -604,6 +702,10 @@ struct Scroll: AsyncParsableCommand {
         if let v = atX { params["atX"] = v }
         if let v = atY { params["atY"] = v }
         let result = try client.call(method: "scroll_tab", params: params)
+        var step: [String: Any] = ["op": "scroll", "tabId": tabId, "dx": dx, "dy": dy]
+        if let atX { step["atX"] = atX }
+        if let atY { step["atY"] = atY }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -638,6 +740,14 @@ struct Drag: AsyncParsableCommand {
             ])
         }
         let result = try client.call(method: "drag_tab", params: params)
+        var step: [String: Any] = ["op": "drag", "tabId": tabId, "steps": steps]
+        if let fromSelector { step["fromSelector"] = fromSelector }
+        if let toSelector { step["toSelector"] = toSelector }
+        if let fromX { step["fromX"] = fromX }
+        if let fromY { step["fromY"] = fromY }
+        if let toX { step["toX"] = toX }
+        if let toY { step["toY"] = toY }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -661,6 +771,7 @@ struct Upload: AsyncParsableCommand {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         let result = try client.call(method: "upload_tab", params: ["tabId": tabId, "selector": selector, "file": expanded])
+        appendRecordedStep(["op": "upload", "tabId": tabId, "selector": selector, "file": expanded])
         printJSON(result)
     }
 }
@@ -700,8 +811,251 @@ struct Wait: AsyncParsableCommand {
             throw ExitCode.failure
         }
         let result = try client.call(method: "wait_tab", params: params)
+        var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
+        if let selector {
+            step["selector"] = selector
+            if hidden { step["hidden"] = true }
+        }
+        if let ms { step["ms"] = ms }
+        appendRecordedStep(step)
         printJSON(result)
     }
+}
+
+struct Record: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "CLI 由来の ABG 操作を flow JSON に記録",
+        discussion: """
+        別 terminal/agent から実行した click/fill/type/key/navigate/scroll/drag/upload/wait/read/screenshot を記録する。
+        Ctrl+C で停止すると --out の flow JSON が書き出される。
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "出力 flow JSON パス") var out: String
+    @Option(name: .long, help: "flow 名") var name: String?
+    @Flag(name: .long, help: "既存の recording state を上書き") var force: Bool = false
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let stateURL = try recordingStatePath()
+        if FileManager.default.fileExists(atPath: stateURL.path), !force {
+            try failWithJSON([
+                "error": "recording_already_running",
+                "message": "A recording session already exists. Stop it or re-run with --force.",
+            ])
+        }
+        let logURL = try abgStateDirectory().appendingPathComponent("recording-\(UUID().uuidString).jsonl")
+        let match: [String: Any] = {
+            var dict: [String: Any] = ["tabId": tabId]
+            if let url = target.matchUrl { dict["url"] = url }
+            if let title = target.matchTitle { dict["title"] = title }
+            if target.first { dict["first"] = true }
+            return dict
+        }()
+        let state: [String: Any] = [
+            "tabId": tabId,
+            "out": (out as NSString).expandingTildeInPath,
+            "name": name ?? URL(fileURLWithPath: out).deletingPathExtension().lastPathComponent,
+            "startedAt": ISO8601DateFormatter().string(from: Date()),
+            "logPath": logURL.path,
+            "match": match,
+        ]
+        try writeJSONObject(state, to: stateURL.path)
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+
+        print("recording tab \(tabId) -> \((out as NSString).expandingTildeInPath)")
+        print("Run ABG commands in another terminal/agent. Press Ctrl+C here to stop.")
+        try await waitForRecordStop(stateURL: stateURL, logURL: logURL, state: state)
+    }
+}
+
+struct Replay: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "flow JSON を再生")
+    @Argument(help: "flow JSON path") var file: String
+    @Option(name: .long, help: "tab ID/ref override") var tab: String?
+    @OptionGroup var match: TabMatchOptions
+    @Flag(name: .long, help: "実行せずステップだけ表示") var dryRun: Bool = false
+
+    func run() async throws {
+        guard let flow = try readJSONFile(file) as? [String: Any],
+              let steps = flow["steps"] as? [[String: Any]]
+        else {
+            try failWithJSON(["error": "invalid_flow", "message": "flow JSON must contain steps array"])
+        }
+
+        let client = UDSClient()
+        let tabId = try resolveReplayTabId(client: client, flow: flow)
+        if dryRun {
+            printJSON(["tabId": tabId, "steps": steps])
+            return
+        }
+
+        var results: [[String: Any]] = []
+        for (index, step) in steps.enumerated() {
+            let result = try executeReplayStep(client: client, tabId: tabId, step: step)
+            results.append([
+                "index": index + 1,
+                "op": step["op"] ?? "",
+                "result": result ?? NSNull(),
+            ])
+        }
+        printJSON(["ok": true, "tabId": tabId, "results": results])
+    }
+
+    private func resolveReplayTabId(client: UDSClient, flow: [String: Any]) throws -> Int {
+        if tab != nil || match.matchUrl != nil || match.matchTitle != nil {
+            return try resolveTabId(client: client, tabToken: tab, match: match)
+        }
+        if let flowMatch = flow["match"] as? [String: Any] {
+            let url = flowMatch["url"] as? String
+            let title = flowMatch["title"] as? String
+            if url != nil || title != nil {
+                return try resolveTabId(
+                    client: client,
+                    tabToken: nil,
+                    matchUrl: url,
+                    matchTitle: title,
+                    first: (flowMatch["first"] as? Bool) ?? false
+                )
+            }
+            if let tabId = flowMatch["tabId"] as? Int { return tabId }
+        }
+        if let tabId = flow["tabId"] as? Int { return tabId }
+        try failWithJSON([
+            "error": "tab_required",
+            "message": "flow has no match/tabId. Pass --tab or --match-url/--match-title.",
+        ])
+    }
+}
+
+func waitForRecordStop(stateURL: URL, logURL: URL, state: [String: Any]) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        var didFinish = false
+        var intSource: DispatchSourceSignal?
+        var termSource: DispatchSourceSignal?
+        let finish = {
+            guard !didFinish else { return }
+            didFinish = true
+            do {
+                let steps = try readRecordedSteps(from: logURL)
+                var flow = state
+                flow.removeValue(forKey: "logPath")
+                flow["finishedAt"] = ISO8601DateFormatter().string(from: Date())
+                flow["steps"] = steps
+                if let out = state["out"] as? String {
+                    try writeJSONObject(flow, to: out)
+                }
+                try? FileManager.default.removeItem(at: stateURL)
+                try? FileManager.default.removeItem(at: logURL)
+                intSource?.cancel()
+                termSource?.cancel()
+                continuation.resume()
+            } catch {
+                intSource?.cancel()
+                termSource?.cancel()
+                continuation.resume(throwing: error)
+            }
+        }
+
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+        intSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        termSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        intSource?.setEventHandler(handler: finish)
+        termSource?.setEventHandler(handler: finish)
+        intSource?.resume()
+        termSource?.resume()
+    }
+}
+
+func readRecordedSteps(from url: URL) throws -> [[String: Any]] {
+    guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+    return try text.split(separator: "\n").map { line in
+        let data = Data(line.utf8)
+        guard let step = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CLIError.decodeError("invalid recorded step")
+        }
+        return step
+    }
+}
+
+func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throws -> Any? {
+    guard let op = step["op"] as? String else {
+        try failWithJSON(["error": "invalid_step", "message": "step is missing op"])
+    }
+    var params: [String: Any] = ["tabId": tabId]
+    switch op {
+    case "read":
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        let format = stringValue(step, "format") ?? "json"
+        if format == "markdown" || boolValue(step, "asMarkdown") == true {
+            params["asMarkdown"] = true
+        }
+        if boolValue(step, "keepImages") == true { params["keepImages"] = true }
+        return try client.call(method: "read_tab", params: params)
+    case "screenshot":
+        if let clip = step["clip"] as? [String: Any] { params["clip"] = clip }
+        let result = try client.call(method: "screenshot_tab", params: params)
+        let outPath = stringValue(step, "out").map { ($0 as NSString).expandingTildeInPath }
+            ?? (try? defaultScreenshotPath(tabLabel: "replay-\(tabId)"))
+            ?? "/tmp/abg-replay-\(tabId)-\(Int(Date().timeIntervalSince1970)).png"
+        return try saveScreenshotResult(result, outPath: outPath)
+    case "click":
+        for key in ["selector", "id", "all", "grid", "limit", "x", "y"] {
+            if let value = step[key] { params[key] = value }
+        }
+        return try client.call(method: "click_tab", params: params)
+    case "fill":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        params["value"] = stringValue(step, "value") ?? ""
+        return try client.call(method: "fill_tab", params: params)
+    case "type":
+        params["text"] = try requiredString(step, "text", op: op)
+        return try client.call(method: "type_tab", params: params)
+    case "key":
+        params["key"] = try requiredString(step, "key", op: op)
+        if let modifiers = stringValue(step, "modifiers") {
+            params["modifiers"] = modifiers.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        }
+        return try client.call(method: "key_tab", params: params)
+    case "navigate":
+        params["url"] = try requiredString(step, "url", op: op)
+        return try client.call(method: "navigate_tab", params: params)
+    case "scroll":
+        params["deltaX"] = doubleValue(step, "dx") ?? 0
+        params["deltaY"] = doubleValue(step, "dy") ?? 0
+        if let atX = doubleValue(step, "atX") { params["atX"] = atX }
+        if let atY = doubleValue(step, "atY") { params["atY"] = atY }
+        return try client.call(method: "scroll_tab", params: params)
+    case "drag":
+        for key in ["fromSelector", "toSelector", "fromX", "fromY", "toX", "toY", "steps"] {
+            if let value = step[key] { params[key] = value }
+        }
+        return try client.call(method: "drag_tab", params: params)
+    case "upload":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        params["file"] = try requiredString(step, "file", op: op)
+        return try client.call(method: "upload_tab", params: params)
+    case "wait":
+        if let selector = stringValue(step, "selector") {
+            params["selector"] = selector
+            if boolValue(step, "hidden") == true { params["hidden"] = true }
+        } else if let ms = intValue(step, "ms") {
+            params["sleepMs"] = ms
+        }
+        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
+        return try client.call(method: "wait_tab", params: params)
+    default:
+        try failWithJSON(["error": "unknown_replay_op", "message": "Unknown replay op: \(op)"])
+    }
+}
+
+func requiredString(_ step: [String: Any], _ key: String, op: String) throws -> String {
+    guard let value = stringValue(step, key) else {
+        try failWithJSON(["error": "invalid_step", "message": "\(op) step requires \(key)"])
+    }
+    return value
 }
 
 struct Revoke: AsyncParsableCommand {

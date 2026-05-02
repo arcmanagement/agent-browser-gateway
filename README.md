@@ -116,6 +116,11 @@ abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
 abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
+# Repeatable flows
+abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
+abg replay flow.json --dry-run
+abg replay flow.json --match-url "*kintone*"
+
 # Management
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log

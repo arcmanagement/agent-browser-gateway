@@ -51,6 +51,11 @@ abg wait <tab|ref> --selector "<css>"            # 要素が出現するまで (
 abg wait <tab|ref> --selector "<css>" --hidden   # 要素が消えるまで
 abg wait <tab|ref> --ms 1500                     # 単純 sleep
 
+# 反復フロー
+abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録
+abg replay flow.json --dry-run                   # 実行前プレビュー
+abg replay flow.json --match-url "*kintone*"     # flow を再生
+
 # 管理系
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
