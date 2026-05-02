@@ -1,6 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-01.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-02.
+
+Current repo version: **v0.2.3**.
 
 ## Shipped
 

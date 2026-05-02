@@ -51,7 +51,7 @@ verify:
 
 release:
 ifndef VERSION
-	$(error VERSION is required, e.g. make release VERSION=0.1.2)
+	$(error VERSION is required, e.g. make release VERSION=0.2.3)
 endif
 	@echo "Building release v$(VERSION)..."
 	./build-app.sh

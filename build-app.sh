@@ -4,6 +4,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
+VERSION="${VERSION:-0.2.3}"
 APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
 
@@ -20,7 +21,7 @@ if [ -d "plugins" ]; then
     cp -R plugins "$APP/Contents/Resources/plugins"
 fi
 
-cat > "$APP/Contents/Info.plist" <<'EOF'
+cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -29,8 +30,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleDisplayName</key><string>Agent Browser Gateway</string>
     <key>CFBundleIdentifier</key><string>co.arcm.AgentBrowserGateway</string>
     <key>CFBundleExecutable</key><string>Gateway</string>
-    <key>CFBundleVersion</key><string>0.1.0</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSUIElement</key><true/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>

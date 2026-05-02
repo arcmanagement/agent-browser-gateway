@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.1.3
+version: 0.2.3
 description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 

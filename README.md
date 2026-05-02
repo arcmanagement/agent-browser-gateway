@@ -369,7 +369,7 @@ In short:
 
 ## Status
 
-🚧 **v0.1.2 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
+🚧 **v0.2.3 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
 
 ---
 
