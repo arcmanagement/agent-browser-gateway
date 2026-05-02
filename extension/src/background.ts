@@ -704,9 +704,8 @@ async function readDom(
   selector: string | undefined,
   asMarkdown: boolean,
 ): Promise<DomReadResult> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string | null, wantMarkdown: boolean) => {
+  await attachDebugger(tabId);
+  const pageFn = (sel: string | null, wantMarkdown: boolean) => {
       const root: Element | null = sel ? document.querySelector(sel) : document.documentElement;
       if (sel && !root) {
         return {
@@ -733,9 +732,6 @@ async function readDom(
       };
 
       if (wantMarkdown) {
-        // Run the HTML→Markdown conversion in page context (DOMParser is unavailable in
-        // the extension service worker). The function is duplicated here intentionally
-        // because chrome.scripting.executeScript serialises func into the page world.
         const walk = (node: Node): string => {
           if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
           if (node.nodeType !== Node.ELEMENT_NODE) return "";
@@ -815,11 +811,22 @@ async function readDom(
         return { ...base, markdown } as const;
       }
       return { ...base, html: (target as Element).outerHTML } as const;
-    },
-    args: [selector ?? null, asMarkdown],
-  });
-  const raw = res?.result as DomReadResult | undefined;
-  return raw ?? { url: "", title: "", origin: "", text: "" };
+  };
+
+  const expression = `(${pageFn.toString()})(${JSON.stringify(selector ?? null)}, ${JSON.stringify(asMarkdown)})`;
+  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+  })) as {
+    result?: { value?: DomReadResult };
+    exceptionDetails?: { text: string; exception?: { description?: string } };
+  };
+  if (res.exceptionDetails) {
+    throw new Error(
+      `read_dom failed: ${res.exceptionDetails.exception?.description ?? res.exceptionDetails.text}`,
+    );
+  }
+  return res.result?.value ?? { url: "", title: "", origin: "", text: "" };
 }
 
 async function screenshot(
