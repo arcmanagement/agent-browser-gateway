@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Build a Word-check package for the ABG paper patent application.
+"""Build a Word-check package for the ABG patent application.
 
 The Markdown files remain the source of truth. This script emits a conservative
 HTML file and, on macOS, converts it to DOCX with the system `textutil` command.
-The generated DOCX is for visual checking and final Word cleanup before print.
+The generated DOCX is for local visual checking only; online filing HTML remains
+the submission package.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = BASE_DIR / "out"
-DEFAULT_HTML = "abg-patent-paper-package.html"
-DEFAULT_DOCX = "abg-patent-paper-package.docx"
+DEFAULT_HTML = "abg-patent-word-check-package.html"
+DEFAULT_DOCX = "abg-patent-word-check-package.docx"
 FIGURES_DIR = BASE_DIR / "figures"
 
 SOURCE_FILES = [
@@ -400,7 +401,7 @@ def inject_page_breaks(docx_path: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build ABG patent HTML/DOCX for paper filing checks.")
+    parser = argparse.ArgumentParser(description="Build ABG patent HTML/DOCX for local Word checks.")
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--html-only", action="store_true", help="Only write HTML; skip DOCX conversion.")
     parser.add_argument("--skip-mermaid", action="store_true", help="Do not run figures/build.sh even when mmdc exists.")

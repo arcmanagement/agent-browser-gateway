@@ -1,6 +1,6 @@
 # ABG 特許出願書類一式
 
-本ディレクトリは、agent-browser-gateway に係る日本国特許出願のための提出前原稿である。提出方針は、Markdown 原稿から Word 文書を生成し、Word で最終整形して印刷し、特許庁へ郵送する書面出願である。提出前に、出願人情報、識別番号、代表者表示、手数料表示、図面、印刷状態を本人が確定する必要がある。
+本ディレクトリは、agent-browser-gateway に係る日本国特許出願のための提出前原稿である。現在の提出方針は、Markdown 原稿からオンライン出願用 HTML と図面 PNG を生成し、インターネット出願ソフトで入力チェック及び特許庁フォーマット変換を行ってオンライン出願することである。Word 文書生成はローカル目視確認用であり、特許庁への提出ルートはオンラインに限定する。提出前に、法人の電子証明書、出願人情報、識別番号、代表者表示、手数料表示、図面、及びインターネット出願ソフトでの変換結果を本人が確定する必要がある。
 
 ## 書類一覧
 
@@ -9,31 +9,51 @@
 - [03-claims.md](03-claims.md): 特許請求の範囲。システム発明8項、方法発明1項、プログラム発明1項の計10項である。
 - [04-abstract.md](04-abstract.md): 要約書。400字以内、選択図は図1である。
 - [05-drawings.md](05-drawings.md): 図面一覧。9図の説明と提出用変換方針を記載する。
+- [06-examination-request-reduced.md](06-examination-request-reduced.md): 出願番号取得後にオンライン提出する、1/3減免前提の出願審査請求書原稿である。
+- [07-super-early-examination-statement.md](07-super-early-examination-statement.md): スーパー早期審査申請用の早期審査に関する事情説明書原稿である。
 - [figures/](figures/): Mermaid 図面原稿。SVG 生成用の [build.sh](figures/build.sh) を含む。
 - [checklist.md](checklist.md): 出願前チェックリスト、自己レビュー記録、進歩性論点メモである。
-- [word-print/README.md](word-print/README.md): Word 出力、印刷、郵送提出の作業メモである。
+- [word-print/README.md](word-print/README.md): Word 出力による目視確認メモである。
+- [scripts/build-online-application.py](scripts/build-online-application.py): オンライン出願用の Shift_JIS HTML と図面 PNG を生成する補助スクリプトである。
 - [scripts/build-paper-docx.py](scripts/build-paper-docx.py): Word 確認用 DOCX を生成する補助スクリプトである。
 
-## 提出手順
+## オンライン提出手順
 
-1. 識別番号を取得又は確認する。未取得の場合は JPO の手続に従い初回取得する。
-2. 特許願の TODO 欄を埋める。特に提出日、手数料表示は未確定である。
-3. 図1から図9を Mermaid 原稿から提出用画像へ変換し、白黒で印刷して読めることを確認する。
-4. Word 確認用 DOCX を生成する。例: `python3 legal/patent/scripts/build-paper-docx.py`。
-5. 生成された `legal/patent/out/abg-patent-paper-package.docx` を Word で開き、ページ区切り、段落番号、請求項番号、図番、符号、表の折り返し、余白、文字化けを目視確認する。
-6. 特許願、明細書、特許請求の範囲、要約書、図面を片面印刷し、提出順に並べる。
-7. 特許出願料14,000円分の特許印紙を特許願に貼付する。2026年5月3日時点で、特許出願料は14,000円である。
-8. 特許庁長官宛に郵送する。宛先は `〒100-8915 東京都千代田区霞が関3丁目4番3号 特許庁長官 宛て` を用いる。
-9. 書面提出後、登録情報処理機関から届く電子化手数料の払込用紙に従い、期限内に電子化手数料を納付する。
-10. 出願番号通知を受領後、README 等の公開可能箇所に「Patent Pending (JP 20XX-XXXXXX)」を追記する。出願完了前には追記しない。
+1. 法人の商業登記電子証明書を取得し、Windows 環境のインターネット出願ソフトで申請人利用登録を行う。
+2. 識別番号を取得又は確認する。未取得の場合は JPO の手続に従い初回取得する。
+3. 特許願の出願人、発明者、識別番号、代表者、手数料表示を確認する。
+4. オンライン出願用 HTML と図面 PNG を生成する。例: `python3 legal/patent/scripts/build-online-application.py`。
+5. 生成された `legal/patent/out/online/abg-patent-online-application.html` と `legal/patent/out/online/figures/` を同じフォルダ構成のまま Windows 環境へ配置する。
+6. インターネット出願ソフトで HTML を入力し、入力チェック及び特許庁フォーマット変換を行う。エラーが出た場合は Markdown 原稿又は生成スクリプトを修正して再生成する。
+7. 送信ファイルをプレビューし、図面、符号、請求項番号、文字化け、出願人情報、手数料表示を確認する。
+8. オンライン出願を行い、受領書で出願番号を確認する。
+9. 出願番号通知を受領後、README 等の公開可能箇所に「Patent Pending (JP 20XX-XXXXXX)」を追記する。出願完了前には追記しない。
+
+## Word 目視確認
+
+Word 確認用 DOCX は `python3 legal/patent/scripts/build-paper-docx.py` で生成できる。`legal/patent/out/abg-patent-word-check-package.docx` を Word で開き、ページ区切り、段落番号、請求項番号、図番、符号、表の折り返し、余白、文字化けを目視確認する。この DOCX は提出物ではなく、正式提出はオンライン出願用 HTML と図面 PNG をインターネット出願ソフトで変換した送信ファイルにより行う。
+
+## スーパー早期審査前提
+
+スーパー早期審査を狙うため、特許庁に対する本件関連手続はオンラインで行う。特許願の出願後、出願番号を確認したうえで、出願審査請求書を1/3減免の特記事項付きでオンライン提出し、続けて早期審査に関する事情説明書をオンライン提出する。
+
+スーパー早期審査の事情説明書では、少なくとも次の事項を確定する。
+
+- 「早期審査の種別」を「スーパー早期審査」とする。
+- 冒頭に「スタートアップ対応スーパー早期審査を希望する。」と記載する。
+- ArcManagement 株式会社がスタートアップ要件を満たすことを、設立日、資本金又は従業員数、大企業支配がないことにより説明する。
+- ABG が実施関連出願であることを、実施中又は2年以内の実施予定として具体的に説明する。
+- 出願人が知っている先行技術文献と本願発明との対比説明を記載する。
+- スーパー早期審査申請前4週間以降の本件関連手続がオンライン手続であることを確認する。
 
 ## 手数料メモ
 
 - 出願料: 14,000円。
-- 書面出願の電子化手数料: 手続1件につき2,400円 + 書面1枚につき800円。電子化手数料は特許印紙ではなく、後日届く払込用紙に従って納付する。
+- 出願料14,000円は、インターネット出願ソフトで選択する納付方法に従って納付する。
 - 出願審査請求料: 138,000円 + 請求項数 x 4,000円。請求項10項の場合は178,000円である。
+- 1/3減免後の出願審査請求料: 請求項10項の場合は59,330円である。出願審査請求書には「特許法施行令第10条第5号ロに掲げる者に該当する請求人である。減免申請書の提出を省略する。」を記載する。
 - 特許料第1年から第3年まで: 毎年4,300円 + 請求項数 x 300円。請求項10項の場合は毎年7,300円である。
-- 減免制度: 中小企業等を対象に審査請求料及び特許料の減免措置が設けられている。ArcManagement 株式会社が対象となるかは、審査請求前に本人確認事項である。
+- 減免制度: 中小スタートアップ企業等を対象に審査請求料及び特許料の減免措置が設けられている。ArcManagement 株式会社が対象となるかは、審査請求前に本人確認事項である。
 
 ## 新規性喪失例外の留意
 
@@ -50,8 +70,9 @@
 ## マイルストーン
 
 - 出願日: 日本国特許出願完了。出願番号を本 README に追記する。
+- 出願直後: 1/3減免付き出願審査請求書をオンライン提出する。
+- 出願直後: 早期審査に関する事情説明書をオンライン提出し、スーパー早期審査を申請する。
 - 出願後1年以内: PCT 国際出願の要否を判断する。
-- 出願後3年以内: 出願審査請求の要否を判断する。
 - 出願公開後: 公開番号及び公開公報の URL を追記する。
 
 ## 参照した公式情報
@@ -61,7 +82,12 @@
 - JPO 明細書への登録商標の記載について: https://www.jpo.go.jp/system/patent/shutugan/sakusei/tourokusyohyo_kisai.html
 - JPO 初心者のための電子出願ガイド: https://www.jpo.go.jp/system/process/shutugan/pcinfo/hajimete/index.html
 - JPO PC機器等の準備: https://www.jpo.go.jp/system/process/shutugan/pcinfo/preparation/os.html
-- JPO 書面提出から電子化までの流れ: https://www.jpo.go.jp/system/process/shutugan/paper/denshikaflow.html
-- JPO 書面で手続する場合の電子化手数料について: https://www.jpo.go.jp/system/process/shutugan/paper/denshika.html
+- JPO 電子証明書の取得: https://www.jpo.go.jp/system/process/shutugan/pcinfo/preparation/purchase/index.html
+- JPO インターネット出願の概要: https://www.jpo.go.jp/system/process/shutugan/pcinfo/outline/procedure/appl.html
+- JPO スーパー早期審査について: https://www.jpo.go.jp/system/patent/shinsa/soki/super_souki.html
+- JPO 特許審査に関するスタートアップ支援策: https://www.jpo.go.jp/system/patent/shinsa/soki/patent-venture-shien.html
+- JPO 中小スタートアップ企業を対象とした減免措置: https://www.jpo.go.jp/system/process/tesuryo/genmen/genmen20190401/02_04.html
+- JPO 出願審査請求書の書き方ガイド: https://www.pcinfo.jpo.go.jp/guide/Content/Guide/Patent/ShinsaSeikyu/doc/P_ShinsaSeikyu.htm
+- JPO 早期審査に関する事情説明書の書き方ガイド: https://www.pcinfo.jpo.go.jp/guide/Content/Guide/Patent/SokiShinsa/doc/P_SokiJijoSetusmeiSho.htm
 - JPO 特許料等の減免制度: https://www.jpo.go.jp/system/process/tesuryo/genmen/genmensochi.html
 - JPO 発明の新規性喪失の例外規定: https://www.jpo.go.jp/system/laws/rule/guideline/patent/hatumei_reigai.html

@@ -1,15 +1,13 @@
-# Word 印刷・郵送提出メモ
+# Word 目視確認メモ
 
-本ディレクトリは、Markdown 原稿を Word 文書に出力し、印刷して特許庁へ郵送提出するための作業メモである。source of truth は `legal/patent/` 直下の Markdown である。
+本ディレクトリは、Markdown 原稿を Word 文書に出力し、オンライン出願前の目視確認を行うための作業メモである。source of truth は `legal/patent/` 直下の Markdown である。特許庁への提出は、オンライン出願用 HTML と PNG をインターネット出願ソフトで変換した送信ファイルにより行う。
 
 ## 方針
 
 1. `01-petition.md`、`02-specification.md`、`03-claims.md`、`04-abstract.md`、`05-drawings.md` を Word 確認用 DOCX へ変換する。
 2. Word で、書類名、見出し、段落番号、請求項番号、図番、符号、表、余白、ページ区切りを目視確認する。
-3. 図面は `figures/*.mmd` から画像化し、Word 上で図面ページとして貼り込む。
-4. 特許願、明細書、特許請求の範囲、要約書、図面の順に片面印刷する。
-5. 特許願に特許出願料14,000円分の特許印紙を貼付し、特許庁長官宛に郵送する。
-6. 書面提出後、登録情報処理機関から届く電子化手数料の払込用紙に従い、期限内に納付する。
+3. 図面は `figures/*.mmd` から画像化し、Word 上ではプレビュー用として確認する。
+4. 正式提出用には `scripts/build-online-application.py` が生成する Shift_JIS HTML と PNG を使用する。
 
 ## DOCX 生成
 
@@ -17,23 +15,22 @@
 python3 legal/patent/scripts/build-paper-docx.py
 ```
 
-生成先は `legal/patent/out/abg-patent-paper-package.docx` である。同時に確認用 HTML も `legal/patent/out/abg-patent-paper-package.html` に出力される。
+生成先は `legal/patent/out/abg-patent-word-check-package.docx` である。同時に確認用 HTML も `legal/patent/out/abg-patent-word-check-package.html` に出力される。
 
 `mmdc` が利用可能な環境では、DOCX 生成時に `figures/build.sh` が自動実行され、生成済みの SVG を図面プレビューとして DOCX に含める。`mmdc` がない場合でも、HTML では Mermaid.js により図面プレビューをブラウザ内で描画し、DOCX では Mermaid 原稿を確認用 fallback として含める。
 
 ## Word での最終確認
 
 - TODO 欄に識別番号、提出日を記入したか。
-- 特許印紙の貼付欄又は貼付位置を提出前に確認したか。
 - 各書類の先頭が新しいページから始まっているか。
 - 明細書の段落番号が欠番又は重複していないか。
 - 請求項1から10までが連続しているか。
 - 要約書が400字以内で、選択図が図1であるか。
-- 図1から図9までが白黒印刷で読めるか。
+- 図1から図9までがオンライン出願用 PNG として読めるか。
 - 明細書【符号の説明】と図中符号が一致しているか。
 - 登録商標に該当し得る固有名が、やむを得ない引用以外で本文に残っていないか。
-- 全ページを片面印刷し、ページ順が崩れていないか。
+- オンライン出願用 HTML で書類順が崩れていないか。
 
-## 書面出願で追加発生する費用
+## 提出ルートとの関係
 
-書面で提出する場合、出願料とは別に電子化手数料が発生する。2026年5月3日時点の JPO 公式情報では、電子化手数料は手続1件につき2,400円に書面1枚につき800円を加えた額である。実際の納付は、書面提出後に届く払込用紙に従って行う。
+この DOCX は提出物ではない。スーパー早期審査を狙うため、特許願、出願審査請求書、早期審査に関する事情説明書はオンライン手続で提出する。
