@@ -20,6 +20,7 @@ fi
 APP_NAME="Agent Browser Gateway"
 APP_BUNDLE="$APP_NAME.app"
 CLI_BINARY=".build/release/abg"
+CLI_RESOURCE_BUNDLE=".build/release/AgentBrowserGateway_abg.bundle"
 DIST_DIR="$ROOT/dist"
 STAGING_DIR="$DIST_DIR/agent-browser-gateway-$VERSION-macos-arm64"
 ZIP_NAME="agent-browser-gateway-$VERSION-macos-arm64.zip"
@@ -35,7 +36,7 @@ create_app_zip() {
     rm -f "$ZIP_PATH"
     (
         cd "$STAGING_DIR"
-        /usr/bin/zip -qry "$ZIP_PATH" "$APP_BUNDLE" abg
+        /usr/bin/zip -qry "$ZIP_PATH" "$APP_BUNDLE" abg AgentBrowserGateway_abg.bundle
     )
 }
 
@@ -53,6 +54,11 @@ rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
 cp -R "$APP_BUNDLE" "$STAGING_DIR/"
 cp "$CLI_BINARY" "$STAGING_DIR/abg"
+if [ ! -d "$CLI_RESOURCE_BUNDLE" ]; then
+    echo "Missing CLI resource bundle: $CLI_RESOURCE_BUNDLE" >&2
+    exit 1
+fi
+cp -R "$CLI_RESOURCE_BUNDLE" "$STAGING_DIR/AgentBrowserGateway_abg.bundle"
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> sign app and CLI"
@@ -123,6 +129,7 @@ cask "agent-browser-gateway" do
 
   app "Agent Browser Gateway.app"
   binary "abg"
+  artifact "AgentBrowserGateway_abg.bundle", target: "#{HOMEBREW_PREFIX}/bin/AgentBrowserGateway_abg.bundle"
 
   uninstall quit: "co.arcm.AgentBrowserGateway"
 

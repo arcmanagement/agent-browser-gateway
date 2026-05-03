@@ -20,8 +20,8 @@ agent-browser-gateway-extension-0.3.1.zip
 チェックサム:
 
 ```text
-4fa4b9c060f9673de85af2aa3ea02bb909417d51009acd6dfd6604cb4f4ff8dd  agent-browser-gateway-0.3.1-macos-arm64.zip
-559619e3351f2b57adaca2849fc3c316e13f842ed9e22b7670761ae1e922674a  agent-browser-gateway-extension-0.3.1.zip
+918c2d6476673f776c8d73186a131e52a7f220f856113a2a4817a776e22ba804  agent-browser-gateway-0.3.1-macos-arm64.zip
+c21185c60c0de36de77918083320e0dae706633d2b15292d5bbd230a25217f9c  agent-browser-gateway-extension-0.3.1.zip
 ```
 
 `agent-browser-gateway-0.3.1-macos-arm64.zip` の中身:
@@ -29,9 +29,10 @@ agent-browser-gateway-extension-0.3.1.zip
 ```text
 Agent Browser Gateway.app
 abg
+AgentBrowserGateway_abg.bundle
 ```
 
-`Agent Browser Gateway.app` はメニューバーアプリです。`abg` は CLI です。アプリを起動しても `abg` コマンドは自動インストールされないので、両方を配置します。
+`Agent Browser Gateway.app` はメニューバーアプリです。`abg` は CLI です。`AgentBrowserGateway_abg.bundle` は `abg install-skill` が読む CLI 用リソースです。アプリを起動しても `abg` コマンドは自動インストールされないので、CLI と bundle も配置します。
 
 ## アプリと CLI をインストール
 
@@ -43,9 +44,12 @@ sudo mkdir -p /usr/local/bin
 sudo rm -rf "/Applications/Agent Browser Gateway.app"
 sudo ditto "Agent Browser Gateway.app" "/Applications/Agent Browser Gateway.app"
 sudo install -m 755 abg /usr/local/bin/abg
+sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle
+sudo ditto AgentBrowserGateway_abg.bundle /usr/local/bin/AgentBrowserGateway_abg.bundle
 
 open "/Applications/Agent Browser Gateway.app"
 abg status
+abg install-skill
 ```
 
 `/usr/local/bin` が shell の `PATH` に入っていない場合は、`PATH` に追加するか、既に `PATH` に入っている別ディレクトリへ `abg` を配置してください。
@@ -88,6 +92,7 @@ abg tabs
 ```bash
 rm -rf "/Applications/Agent Browser Gateway.app"
 sudo rm -f /usr/local/bin/abg
+sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
@@ -100,5 +105,6 @@ Chrome 側でも `chrome://extensions` から `Agent Browser Gateway` を削除�
 1. `Agent Browser Gateway` を終了する
 2. `/Applications/Agent Browser Gateway.app` を差し替える
 3. `/usr/local/bin/abg` を差し替える
-4. 展開済み Chrome 拡張フォルダを差し替える
-5. `chrome://extensions` で拡張の reload ボタンを押す
+4. `/usr/local/bin/AgentBrowserGateway_abg.bundle` を差し替える
+5. 展開済み Chrome 拡張フォルダを差し替える
+6. `chrome://extensions` で拡張の reload ボタンを押す
