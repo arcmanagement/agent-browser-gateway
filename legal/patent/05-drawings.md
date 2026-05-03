@@ -1,6 +1,8 @@
 # 図面
 
-本図面一式は、JPO 提出前に Mermaid から SVG 又は PDF へ変換し、必要に応じてモノクロ線画として整形する。各図の符号は明細書【符号の説明】と一致させる。
+【書類名】図面
+
+本図面一式は、JPO 提出前に Mermaid から SVG、PNG、又は Word に挿入可能な画像へ変換し、白黒印刷で読める線画として整形する。各図の符号は明細書【符号の説明】と一致させる。
 
 ## 図面一覧
 
@@ -16,7 +18,7 @@
 
 【図6】プラグインアーキテクチャ。Gateway モジュール20内のプラグイン50、JavaScriptCore VM、bundled plugins、user plugins、domain transform 選択処理を示す。
 
-【図7】トークン削減ベンチ結果。Playwright `page.content()` と ABG `read --as-markdown` 等の出力文字数及び概算トークン数を示す。
+【図7】トークン削減ベンチ結果。ページ全体 HTML 取得と ABG `read --as-markdown` 等の出力文字数及び概算トークン数を示す。
 
 【図8】注釈レイヤ統合構成。共有許可済みブラウザタブ40上の注釈レイヤ100、DOM 注釈、スクリーンショット領域注釈、テキスト注釈、注釈データ110、及び AI エージェント90への返送フローを示す。
 
@@ -34,7 +36,7 @@
 - [figures/fig-8-annotation-overlay.mmd](figures/fig-8-annotation-overlay.mmd)
 - [figures/fig-9-ws-security.mmd](figures/fig-9-ws-security.mmd)
 
-## SVG 生成
+## 画像生成
 
 Mermaid CLI が利用可能な環境では、次を実行する。
 
@@ -43,4 +45,4 @@ cd legal/patent/figures
 ./build.sh
 ```
 
-SVG 生成後、図中の文字サイズ、符号、線の太さ、余白を確認する。JPO 提出用に画像形式を指定される場合は、SVG から PDF 又は PNG へ変換する。
+画像生成後、図中の文字サイズ、符号、線の太さ、余白を確認する。生成された画像を Word に貼り込み、片面印刷後も全図の符号、矢印、文字が読めることを確認する。
