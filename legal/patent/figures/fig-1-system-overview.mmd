@@ -1,0 +1,22 @@
+flowchart LR
+  subgraph B["Chrome Browser"]
+    T["Browser Tab\n40"]
+    E["Browser Extension\n10\nMV3 activeTab\nno host_permissions"]
+    T <--> E
+  end
+
+  subgraph G["Gateway Module\n20"]
+    P["Permission Manager\n70"]
+    L["Audit Log\n60"]
+    H["Plugin\n50"]
+    P <--> H
+    P --> L
+  end
+
+  C["Command Line Interface\n30"]
+  A["AI Agent\n90"]
+
+  E <--> |"WebSocket loopback\n127.0.0.1:8765\n80"| P
+  C <--> |"Unix Domain Socket\n80"| P
+  A --> |"shell command"| C
+  H --> |"Markdown / domain transform"| C

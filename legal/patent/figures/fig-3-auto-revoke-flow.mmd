@@ -1,0 +1,18 @@
+sequenceDiagram
+  participant T as Browser Tab 40
+  participant E as Browser Extension 10
+  participant P as Permission Manager 70
+  participant G as Gateway Module 20
+  participant L as Audit Log 60
+  participant C as CLI 30
+
+  T->>E: navigation event
+  E->>E: compare current origin with permitted origin
+  alt origin changed
+    E->>P: revoke(tabId, reason=origin_changed)
+    P->>G: update permitted tab list
+    G->>L: append revoke audit entry
+    G-->>C: tab no longer permitted
+  else same origin
+    E-->>P: keep permission
+  end
