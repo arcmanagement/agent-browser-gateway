@@ -20,8 +20,8 @@ agent-browser-gateway-extension-0.3.4.zip
 チェックサム:
 
 ```text
-ff0ce0c5005ac09944d27a7ababf2b26fdb3d46a622f6192e355879bc967262a  agent-browser-gateway-0.3.4-macos-arm64.zip
-18d69a52034591d29b05cec613940d406e8f04f85ee7f622b4e64901aa3f41da  agent-browser-gateway-extension-0.3.4.zip
+eff04c9fac96c92e939b25fdaca36ac1babe4015b13ac4a986c82169794b80e0  agent-browser-gateway-0.3.4-macos-arm64.zip
+bbf52f824bd4fe390d8766e3491242a5630d3752f8b73cfb62e05005f34d888e  agent-browser-gateway-extension-0.3.4.zip
 ```
 
 `agent-browser-gateway-0.3.4-macos-arm64.zip` の中身:
