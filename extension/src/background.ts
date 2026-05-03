@@ -1,4 +1,6 @@
+import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
 import type {
+  AnnotationAction,
   ApprovalDecision,
   ApprovalRequest,
   ApprovalToBackground,
@@ -13,7 +15,7 @@ import type {
 } from "./types.js";
 
 const WS_URL = "ws://127.0.0.1:8765/ws";
-const VERSION = "0.2.3";
+const VERSION = "0.3.0";
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -26,6 +28,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_described",
   "click_at",
   "fill",
+  "replace_dom",
   "upload_file",
   "type_text",
   "key_press",
@@ -528,6 +531,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "annotation_mode") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await manageAnnotationMode(tabId, readAnnotationCommand(cmd.params)));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
@@ -594,6 +600,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Fill ${quoteForIntent(value)} into the field matching selector ${quoteForIntent(selector)}.`,
       run: () => fillField(tabId, selector, value),
+    };
+  }
+  if (cmd.method === "replace_dom") {
+    const selector = cmd.params?.selector;
+    const html = cmd.params?.html;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    if (typeof html !== "string" || html.length === 0) throw new Error("html required");
+    return {
+      intent: `Replace the element matching selector ${quoteForIntent(selector)} with provided HTML.`,
+      run: () => replaceDom(tabId, selector, html),
     };
   }
   if (cmd.method === "upload_file") {
@@ -1372,6 +1388,28 @@ async function fillField(
   return res?.result ?? { found: false };
 }
 
+async function replaceDom(
+  tabId: number,
+  selector: string,
+  html: string,
+): Promise<{ found: boolean; inserted: number; selector: string }> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, markup: string) => {
+      const target = document.querySelector(sel);
+      if (!target) return { found: false, inserted: 0, selector: sel } as const;
+      const template = document.createElement("template");
+      template.innerHTML = markup.trim();
+      const nodes = Array.from(template.content.childNodes);
+      if (nodes.length === 0) return { found: false, inserted: 0, selector: sel } as const;
+      target.replaceWith(...nodes);
+      return { found: true, inserted: nodes.length, selector: sel } as const;
+    },
+    args: [selector, html],
+  });
+  return res?.result ?? { found: false, inserted: 0, selector };
+}
+
 async function uploadFile(
   tabId: number,
   selector: string,
@@ -1613,12 +1651,24 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     for (const [tabId, p] of permittedTabs) {
       sharedTabs.push({ tabId, title: p.title, url: p.url });
     }
+    const annotationState = permittedTabs.has(msg.tabId)
+      ? await manageAnnotationMode(msg.tabId, { action: "list" }).catch(() => ({
+          ok: true as const,
+          enabled: false,
+          count: 0,
+          annotations: [],
+        }))
+      : { ok: true as const, enabled: false, count: 0, annotations: [] };
     return {
       type: "state",
       permitted: permittedTabs.has(msg.tabId),
       wsConnected,
       sharedTabs,
       settings: await getSettings(),
+      annotationState: {
+        enabled: annotationState.enabled,
+        count: annotationState.count,
+      },
     };
   }
   if (msg.type === "permit") {
@@ -1635,6 +1685,13 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "set_profile_label") {
     await setProfileLabel(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "annotation_action") {
+    if (!permittedTabs.has(msg.tabId)) {
+      return { type: "error", message: "tab is not shared with ABG" };
+    }
+    await manageAnnotationMode(msg.tabId, { action: msg.action });
     return { type: "ok" };
   }
   if (msg.type === "get_approval_request") {
@@ -1668,6 +1725,13 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };
   }
+  if (
+    rawMsg.type === "annotation_action" &&
+    typeof rawMsg.tabId === "number" &&
+    isAnnotationAction(rawMsg.action)
+  ) {
+    return { type: "annotation_action", tabId: rawMsg.tabId, action: rawMsg.action };
+  }
   if (rawMsg.type === "get_approval_request" && typeof rawMsg.approvalId === "string") {
     return { type: "get_approval_request", approvalId: rawMsg.approvalId };
   }
@@ -1691,4 +1755,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isApprovalDecision(value: unknown): value is ApprovalDecision {
   return value === "allow" || value === "deny" || value === "timeout";
+}
+
+function isAnnotationAction(value: unknown): value is AnnotationAction {
+  return (
+    value === "start" ||
+    value === "stop" ||
+    value === "clear" ||
+    value === "list" ||
+    value === "add_region" ||
+    value === "add_selector"
+  );
+}
+
+function readAnnotationCommand(params: GatewayCommand["params"] | undefined): AnnotationCommand {
+  const action = isAnnotationAction(params?.action) ? params.action : "list";
+  return {
+    action,
+    selector: typeof params?.selector === "string" ? params.selector : undefined,
+    comment: typeof params?.comment === "string" ? params.comment : undefined,
+    x: typeof params?.x === "number" ? params.x : undefined,
+    y: typeof params?.y === "number" ? params.y : undefined,
+    width: typeof params?.width === "number" ? params.width : undefined,
+    height: typeof params?.height === "number" ? params.height : undefined,
+  };
 }

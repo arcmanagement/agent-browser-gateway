@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-02.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
 
-Current repo version: **v0.2.3**.
+Current repo version: **v0.3.0**.
 
 ## Shipped
 
@@ -29,25 +29,36 @@ Current repo version: **v0.2.3**.
 - Bundled `info-plugin`: smoke test that exercises the plugin loader at startup
 - Token economy benchmark in README: `~88%` reduction vs Playwright `page.content()` while preserving structure
 
-## In progress (v0.1.2)
+### v0.2.x — workflow tools and distribution polish (2026-05-03)
+- `wait` (`--selector`, `--hidden`, `--ms`) for dynamic pages
+- `table`, `describe`, and `network` observation tools for compact page inspection
+- `upload` via Chrome DevTools Protocol `DOM.setFileInputFiles`
+- `record` / `replay` for repeatable CLI-originated agent flows
+- `install-skill` installs the bundled guidance into both Claude Code and Codex skill directories
+- Homebrew-style release artifacts: macOS app/CLI zip, Chrome extension zip, and generated cask
 
-- `wait` / `wait_for` (selector / text / timeout) so dynamic pages don't need `sleep` in scripts
+### v0.3.0 — annotation mode (2026-05-03)
+- Popup and CLI entrypoints for annotation mode (`Annotate this tab`, `abg annotate --start`)
+- Numbered annotations with comments, move, resize, Delete/Backspace removal, Clear, Done, and Escape stop
+- Automatic `dom` vs `screenshot` classification for cursor annotations
+- DOM annotations track selectors, text/style metadata, scroll, iframe, and responsive layout changes
+- Screenshot annotations remain available for arbitrary visual regions, canvas, video, and ambiguous wrappers
+- `replace` operation for temporary DOM swaps from annotation-derived selectors
+
+## In progress
+
 - WS bind retry (Gateway currently does not retry if the port is already in use)
-- Skill auto-sync: `install-skill` always reflects the current CLI surface, with a version pin
-- `screenshot --clip x,y,w,h` for partial captures (saves agent-context dramatically)
-- `read --selector` and `read --as-markdown` for compact DOM extraction
-- Multi-tab UX polish in popup and menubar
+- More domain-specific annotation heuristics without accidentally selecting oversized wrappers
+- Settings UI in the Gateway window for timeout defaults, approval mode, and per-domain policy
 
-## Next (v0.2)
+## Next
 
-- Multiple Chrome profiles bound to a single Gateway (profile = extension instance)
 - MCP server as a thin wrapper over the same CLI for ecosystem coverage
-- `record` / `replay` for repeatable agent flows
-- Settings UI (in the Gateway window) for: timeout defaults, approval mode, per-domain policy
-
-## Later (v0.3+)
-
 - Audit log viewer in the Gateway UI
+- Multiple Chrome profile UX polish
+
+## Later
+
 - Daily/weekly digest of agent activity (local only, opt-in)
 - `wait_for_response` and other DevTools-Protocol-flavored tools (network idle, page load, etc.)
 

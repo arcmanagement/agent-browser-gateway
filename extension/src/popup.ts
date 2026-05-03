@@ -2,6 +2,8 @@ import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
 const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
 const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
+const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
+const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
 const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -66,6 +68,34 @@ async function refresh(): Promise<void> {
       await send({ type: "revoke", tabId });
       await refresh();
     };
+    annotationBtn.disabled = false;
+    annotationBtn.textContent = state.annotationState.enabled
+      ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Done`
+      : state.annotationState.count > 0
+        ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Resume`
+        : "Annotate this tab";
+    annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
+    annotationBtn.onclick = async () => {
+      annotationBtn.disabled = true;
+      const response = await send({
+        type: "annotation_action",
+        tabId,
+        action: state.annotationState.enabled ? "stop" : "start",
+      });
+      if (response.type === "error") {
+        statusEl.textContent = `error: ${response.message}`;
+        annotationBtn.disabled = false;
+        return;
+      }
+      window.close();
+      await refresh();
+    };
+    clearAnnotationsBtn.disabled = state.annotationState.count === 0;
+    clearAnnotationsBtn.onclick = async () => {
+      clearAnnotationsBtn.disabled = true;
+      await send({ type: "annotation_action", tabId, action: "clear" });
+      await refresh();
+    };
   } else {
     actionBtn.textContent = "Share this tab with agent";
     actionBtn.className = "primary";
@@ -73,6 +103,10 @@ async function refresh(): Promise<void> {
       await send({ type: "permit", tabId });
       await refresh();
     };
+    annotationBtn.disabled = true;
+    annotationBtn.textContent = "Annotate this tab";
+    annotationBtn.className = "secondary";
+    clearAnnotationsBtn.disabled = true;
   }
 
   const wsState = state.wsConnected

@@ -17,7 +17,7 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) var pluginHost = PluginHost(abgVersion: "0.2.3")
+    private(set) var pluginHost = PluginHost(abgVersion: "0.3.0")
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
@@ -164,6 +164,8 @@ final class GatewayCoordinator: ObservableObject {
             }
         case "fill_tab":
             return await dispatch(req: req, method: "fill")
+        case "replace_tab":
+            return await dispatch(req: req, method: "replace_dom")
         case "upload_tab":
             return await dispatch(req: req, method: "upload_file")
         case "type_tab":
@@ -178,6 +180,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "drag")
         case "wait_tab":
             return await dispatch(req: req, method: "wait_for")
+        case "annotate_tab":
+            return await dispatch(req: req, method: "annotation_mode")
         case "revoke_tab":
             guard let tabId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))

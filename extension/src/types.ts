@@ -1,5 +1,7 @@
 // Shared message types between background, popup, and Gateway.
 
+export type AnnotationAction = "start" | "stop" | "clear" | "list" | "add_region" | "add_selector";
+
 export type ExtToGateway =
   | {
       type: "hello";
@@ -27,6 +29,7 @@ export type GatewayCommand = {
   params?: {
     tabId?: number;
     selector?: string;
+    html?: string;
     value?: string;
     text?: string;
     url?: string;
@@ -69,6 +72,9 @@ export type GatewayCommand = {
     clip?: { x: number; y: number; width: number; height: number };
     // read_dom
     asMarkdown?: boolean;
+    // annotation_mode
+    action?: AnnotationAction;
+    comment?: string;
   };
 };
 
@@ -81,10 +87,12 @@ export type GatewayMethod =
   | "network_log"
   | "revoke"
   | "wait_for"
+  | "annotation_mode"
   | "click_selector"
   | "click_described"
   | "click_at"
   | "fill"
+  | "replace_dom"
   | "upload_file"
   | "type_text"
   | "key_press"
@@ -98,6 +106,7 @@ export type OperationMethod = Extract<
   | "click_described"
   | "click_at"
   | "fill"
+  | "replace_dom"
   | "upload_file"
   | "type_text"
   | "key_press"
@@ -131,7 +140,8 @@ export type PopupToBackground =
   | { type: "permit"; tabId: number }
   | { type: "revoke"; tabId: number }
   | { type: "set_operations_require_approval"; value: boolean }
-  | { type: "set_profile_label"; value: string };
+  | { type: "set_profile_label"; value: string }
+  | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
   | {
@@ -140,6 +150,7 @@ export type BackgroundToPopup =
       wsConnected: boolean;
       sharedTabs: { tabId: number; title: string; url: string }[];
       settings: ExtensionSettings;
+      annotationState: { enabled: boolean; count: number };
     }
   | { type: "ok" }
   | { type: "error"; message: string };

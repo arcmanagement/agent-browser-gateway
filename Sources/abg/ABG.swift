@@ -9,8 +9,8 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Screenshot.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, Fill.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            Click.self, Fill.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -432,6 +432,133 @@ struct Screenshot: AsyncParsableCommand {
     }
 }
 
+struct Annotate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "DOM/スクショ領域を自動判定する注釈を開始/追加/取得",
+        discussion: """
+        共有中タブに拡張機能の overlay を表示し、ユーザーがカーソルで示した対象を DOM 注釈かスクショ領域注釈に自動分類する。
+        CLI からは --selector で DOM 注釈、--x/--y/--width/--height で自動分類の領域注釈を追加できる。
+        引数なしでは現在の注釈一覧を JSON で返す。注釈には kind(dom/screenshot)、viewport/page 座標、コメント、selector/text/style が含まれる。
+
+        例:
+          abg annotate t1 --start
+          abg annotate t1 --selector "button.save" --comment "保存ボタン"
+          abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "この領域"
+          abg annotate t1
+          abg annotate t1 --stop
+          abg annotate t1 --clear
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "注釈 overlay を開始") var start: Bool = false
+    @Flag(name: .long, help: "注釈 overlay のキャプチャを停止 (既存注釈は残す)") var stop: Bool = false
+    @Flag(name: .long, help: "既存注釈を削除") var clear: Bool = false
+    @Option(name: .long, help: "DOM 注釈として追加する CSS selector") var selector: String?
+    @Option(name: .long, help: "注釈コメント") var comment: String?
+    @Option(name: .long, help: "自動分類する領域 X (viewport px)") var x: Double?
+    @Option(name: .long, help: "自動分類する領域 Y (viewport px)") var y: Double?
+    @Option(name: .long, help: "自動分類する領域幅 (viewport px)") var width: Double?
+    @Option(name: .long, help: "自動分類する領域高さ (viewport px)") var height: Double?
+    @Option(name: .long, help: "スクショ領域注釈だった場合に保存する PNG パス") var out: String?
+    @Option(name: .long, help: "出力形式: json / text") var format: String = "json"
+
+    func run() async throws {
+        let hasRegionFlag = [x, y, width, height].contains { $0 != nil }
+        let hasFullRegion = x != nil && y != nil && width != nil && height != nil
+        if hasRegionFlag && !hasFullRegion {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--x, --y, --width, and --height are all required for a region annotation.",
+            ])
+        }
+        let selectedActions = [start, stop, clear, selector != nil, hasFullRegion].filter { $0 }.count
+        if selectedActions > 1 {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass at most one of --start, --stop, --clear, --selector, or region coordinates.",
+            ])
+        }
+        if comment != nil && selector == nil && !hasFullRegion {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--comment requires --selector or --x/--y/--width/--height.",
+            ])
+        }
+        let action: String = {
+            if start { return "start" }
+            if stop { return "stop" }
+            if clear { return "clear" }
+            if selector != nil { return "add_selector" }
+            if hasFullRegion { return "add_region" }
+            return "list"
+        }()
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "action": action]
+        if let selector { params["selector"] = selector }
+        if let comment { params["comment"] = comment }
+        if hasFullRegion {
+            params["x"] = x!
+            params["y"] = y!
+            params["width"] = width!
+            params["height"] = height!
+        }
+        var result = try client.call(method: "annotate_tab", params: params)
+        if let out, action == "add_region" {
+            result = try attachRegionScreenshotIfNeeded(client: client, tabId: tabId, result: result, out: out)
+        }
+        if format == "json" {
+            printJSON(result)
+            return
+        }
+        guard format == "text" else {
+            try failWithJSON(["error": "bad_format", "message": "--format must be json or text"])
+        }
+        guard let dict = result as? [String: Any] else {
+            print(String(describing: result))
+            return
+        }
+        let enabled = (dict["enabled"] as? Bool) ?? false
+        let count = (dict["count"] as? Int) ?? 0
+        print("annotation mode: \(enabled ? "on" : "off"), \(count) annotation\(count == 1 ? "" : "s")")
+        if let annotations = dict["annotations"] as? [[String: Any]] {
+            for (index, annotation) in annotations.enumerated() {
+                let number = annotation["displayNumber"] ?? (index + 1)
+                let kind = annotation["kind"] ?? "?"
+                let selector = (annotation["selector"] as? String).map { " selector=\($0)" } ?? ""
+                let comment = (annotation["comment"] as? String).map { $0.isEmpty ? "" : " - \($0)" } ?? ""
+                let rect = annotation["viewportRect"] as? [String: Any] ?? [:]
+                let x = rect["x"] ?? "?"
+                let y = rect["y"] ?? "?"
+                let width = rect["width"] ?? "?"
+                let height = rect["height"] ?? "?"
+                print("[\(number)] \(kind) x=\(x) y=\(y) w=\(width) h=\(height)\(selector)\(comment)")
+            }
+        }
+    }
+
+    private func attachRegionScreenshotIfNeeded(client: UDSClient, tabId: Int, result: Any?, out: String) throws -> Any? {
+        guard var dict = result as? [String: Any],
+              let annotations = dict["annotations"] as? [[String: Any]],
+              let annotation = annotations.last,
+              (annotation["kind"] as? String) == "screenshot",
+              let rect = annotation["viewportRect"] as? [String: Any]
+        else {
+            return result
+        }
+        let outPath = (out as NSString).expandingTildeInPath
+        let clip = [
+            "x": rect["x"] ?? 0,
+            "y": rect["y"] ?? 0,
+            "width": rect["width"] ?? 0,
+            "height": rect["height"] ?? 0,
+        ]
+        let screenshot = try client.call(method: "screenshot_tab", params: ["tabId": tabId, "clip": clip])
+        dict["screenshot"] = try saveScreenshotResult(screenshot, outPath: outPath)
+        return dict
+    }
+}
+
 struct Console: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "共有中タブの console ログ")
     @OptionGroup var target: TabTarget
@@ -616,6 +743,54 @@ struct Type: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
         let result = try client.call(method: "type_tab", params: ["tabId": tabId, "text": text])
         appendRecordedStep(["op": "type", "tabId": tabId, "text": text])
+        printJSON(result)
+    }
+}
+
+struct Replace: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "CSS selector に一致する DOM 要素を指定 HTML に差し替え",
+        discussion: """
+        現在のタブ上だけの一時的な DOM 書き換え。通常の write operation と同じく、
+        popup の承認設定が ON の場合は実行前に承認を求める。
+
+        例:
+          abg replace t1 --selector 'svg[aria-label="github logo"]' --html '<span>★</span>'
+          abg replace t1 --selector '#logo' --html-file ./replacement.html
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "置換対象の CSS selector") var selector: String
+    @Option(name: .long, help: "差し替え HTML") var html: String?
+    @Option(name: .long, help: "差し替え HTML を読むファイルパス") var htmlFile: String?
+
+    func run() async throws {
+        if (html == nil) == (htmlFile == nil) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one of --html or --html-file.",
+            ])
+        }
+        let replacementHtml: String
+        if let html {
+            replacementHtml = html
+        } else {
+            let path = (htmlFile! as NSString).expandingTildeInPath
+            replacementHtml = try String(contentsOfFile: path, encoding: .utf8)
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "replace_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+            "html": replacementHtml,
+        ])
+        appendRecordedStep([
+            "op": "replace",
+            "tabId": tabId,
+            "selector": selector,
+            "html": replacementHtml,
+        ])
         printJSON(result)
     }
 }
@@ -1010,6 +1185,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
         return try client.call(method: "fill_tab", params: params)
+    case "replace":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        params["html"] = try requiredString(step, "html", op: op)
+        return try client.call(method: "replace_tab", params: params)
     case "type":
         params["text"] = try requiredString(step, "text", op: op)
         return try client.call(method: "type_tab", params: params)
@@ -1365,8 +1544,9 @@ struct InstallSkill: AsyncParsableCommand {
         try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
         let dest = skillDir.appendingPathComponent("SKILL.md")
         let installedVersion = readInstalledVersion(at: dest)
+        let installedMarkdown = (try? String(contentsOf: dest, encoding: .utf8))
 
-        if let installed = installedVersion, installed == version {
+        if let installed = installedVersion, installed == version, installedMarkdown == SkillBundle.markdown {
             print("up-to-date: \(dest.path) (v\(version))")
             return
         }
@@ -1378,7 +1558,11 @@ struct InstallSkill: AsyncParsableCommand {
 
         try SkillBundle.markdown.write(to: dest, atomically: true, encoding: .utf8)
         if let installed = installedVersion {
-            print("upgraded: v\(installed) -> v\(version) at \(dest.path)")
+            if installed == version {
+                print("updated: content changed at \(dest.path) (v\(version))")
+            } else {
+                print("upgraded: v\(installed) -> v\(version) at \(dest.path)")
+            }
         } else {
             print("installed: v\(version) at \(dest.path)")
         }

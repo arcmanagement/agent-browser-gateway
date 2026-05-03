@@ -31,7 +31,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 
 - **Other Chrome extensions in the same profile.** Chrome's extension model itself is not a sandbox boundary against same-profile peers. If you load malicious extensions, they can read everything you can read.
 - **Root or same-user attackers on the host machine.** If something on your Mac can read `~/Library/Application Support/AgentBrowserGateway/gateway.sock`, it can talk to the Gateway. Same for the audit log.
-- **Operations the user explicitly authorizes.** If you `abg permit` a tab and the agent then issues `click`/`fill`/`navigate`, that is by design. Operation approval mode (planned) will be opt-in for stricter UX; the per-tab consent gate is the primary boundary.
+- **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, or `navigate`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.
 
 ## Design invariants

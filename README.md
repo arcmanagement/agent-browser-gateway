@@ -79,7 +79,7 @@ The core security model:
 
 There is no "share all tabs" button. There is no `<all_urls>` permission. There is no way for an agent to see a tab you did not explicitly share.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `type`, `key`, `navigate`, and `scroll` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 
@@ -95,6 +95,10 @@ abg inspect                                      # status + shared tabs in one J
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg screenshot --latest                          # latest screenshot path
+abg annotate <tab|ref> [--start|--stop|--clear]  # cursor annotations auto-classified as DOM or screenshot
+abg annotate <tab|ref> [--format json|text]      # list current annotations
+abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
+abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
 abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
@@ -104,11 +108,12 @@ abg network <tab|ref> [--url "*api*"] [--status-min 400]
 abg read --match-url "*kintone*" --format markdown
 abg click --match-title "アプリ管理" --selector "button.save"
 
-# Operation (v0.1.1)
+# Operation
 abg click <tab|ref> --selector "<css>"            # CSS selector click
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
 abg fill <tab|ref> --selector "<css>" --value "<text>"
+abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"                       # Send text to current focus
 abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
@@ -124,8 +129,21 @@ abg replay flow.json --match-url "*kintone*"
 # Management
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
-abg install-skill                       # Install Claude Code Skill into ~/.claude/skills/
+abg install-skill                       # Install/update Claude Code + Codex Skills
 ```
+
+---
+
+## Annotation mode
+
+Annotation mode lets the human mark the current tab the way they would point at a screenshot in chat, while still preserving structured context for the agent.
+
+- Start from the extension popup with **Annotate this tab**, or from the CLI with `abg annotate t1 --start`.
+- Drag to create a numbered annotation, add a comment, and click **Done** or press Escape when finished.
+- Existing annotations can be moved with drag-and-drop, resized from their edges/corners, and deleted with Delete/Backspace while selected.
+- ABG classifies each annotation as `kind: "dom"` when a stable DOM target is available, including headings and other text blocks, otherwise as `kind: "screenshot"` for arbitrary visual regions.
+- Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, and screenshot-region coordinates for visual targets.
+- For explicit additions, use `abg annotate t1 --selector "button.save" --comment "..."` or `abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "..."`.
 
 ---
 
@@ -136,9 +154,9 @@ The agent talks to ABG by running `abg` from the shell. This is not the only des
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
-- **Skill ergonomics** — Claude Code's Skill system (`~/.claude/skills/agent-browser-gateway.md`, installed by `abg install-skill`) teaches the agent the CLI in context
+- **Skill ergonomics** — Claude Code and Codex skills (`~/.claude/skills/agent-browser-gateway/` and `~/.codex/skills/agent-browser-gateway/`, installed by `abg install-skill`) teach the agent the CLI in context
 
-A thin MCP wrapper around the same CLI is on the v0.2 roadmap for ecosystem coverage. The CLI remains the source of truth.
+A thin MCP wrapper around the same CLI is on the future roadmap for ecosystem coverage. The CLI remains the source of truth.
 
 ---
 
@@ -271,18 +289,19 @@ Currently shipped:
 - ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Read tools: `read` / `screenshot` / `console` / `table` / `describe` / `network` (with selectors, compact formats, and latest screenshot references)
-- ✅ Operation tools: `click` / `fill` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
+- ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
+- ✅ Operation tools: `click` / `fill` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
 - ✅ Wait tool: `wait --selector` / `--ms`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
-- ✅ `abg` CLI with Claude Code Skill bundled
+- ✅ `abg` CLI with Claude Code and Codex Skills bundled
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 MCP wrapper (v0.2)
+- 📋 MCP wrapper (future)
 - 📋 Firefox / Safari / Edge / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
@@ -329,13 +348,13 @@ In Chrome: open `chrome://extensions` → enable Developer mode → **Load unpac
 3. A green `ON` badge appears on the icon; the menubar shield icon fills in
 4. Verify with `abg tabs`
 
-### Hand it to Claude Code
+### Hand it to Claude Code or Codex
 
 ```bash
-abg install-skill                       # places ~/.claude/skills/agent-browser-gateway.md
+abg install-skill                       # places/updates ~/.claude/skills/ and ~/.codex/skills/
 ```
 
-Claude Code will now invoke `abg` automatically when the conversation references tabs you have shared.
+Claude Code or Codex will now invoke `abg` automatically when the conversation references tabs you have shared.
 
 ---
 
@@ -369,7 +388,7 @@ In short:
 
 ## Status
 
-🚧 **v0.2.3 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
+🚧 **v0.3.0 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
 
 ---
 

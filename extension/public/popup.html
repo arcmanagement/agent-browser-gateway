@@ -44,6 +44,28 @@
         background: #ff3b30;
         color: white;
       }
+      .annotation-actions {
+        display: grid;
+        grid-template-columns: 1fr 74px;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .annotation-actions button {
+        min-width: 0;
+      }
+      .annotation-actions button.secondary {
+        border: 1px solid #c7c7cc;
+        background: transparent;
+        color: #555;
+      }
+      .annotation-actions button.annotation-on {
+        background: #a444ff;
+        color: white;
+      }
+      .annotation-actions button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
       .status {
         font-size: 11px;
         color: #888;
@@ -119,6 +141,10 @@
     <h1>Agent Browser Gateway</h1>
     <div class="tab-info" id="tabInfo">…</div>
     <button id="actionBtn">…</button>
+    <div class="annotation-actions">
+      <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>
+      <button id="clearAnnotationsBtn" class="secondary" disabled>Clear</button>
+    </div>
     <label class="setting-row">
       <input type="checkbox" id="approvalToggle" />
       <span>Require approval for write operations</span>
