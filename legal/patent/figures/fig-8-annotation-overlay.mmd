@@ -1,16 +1,16 @@
 flowchart TD
   U["User"]
-  C["CLI 30\nabg annotate"]
+  C["Agent Interface 30\nannotation call"]
   G["Gateway Module 20"]
   P["Permission Manager 70"]
-  E["Browser Extension 10"]
+  E["Browser Operation Link 10"]
   T["Browser Tab 40\nshared tab only"]
   O["Annotation Layer 100\nArea / Text / Done / Clear"]
-  D["Annotation Data 110\nkind, comment, rect, selector, textAnchor"]
+  D["Annotation Data 110\nkind, comment, position, target, re-id"]
   A["AI Agent 90"]
 
   U --> |"popup: Annotate this tab"| E
-  A --> |"shell command"| C
+  A --> |"command / API / message"| C
   C --> |"annotation request"| G
   G --> P
   P --> |"permitted tab check"| E
@@ -19,17 +19,17 @@ flowchart TD
 
   U --> |"drag region"| O
   U --> |"select text"| O
-  C --> |"add selector / add region"| O
+  C --> |"add target / add region"| O
 
-  O --> |"stable selector"| DOM["DOM annotation\nselector + element metadata"]
-  O --> |"canvas / video / ambiguous region"| SS["Screenshot region annotation\nviewport and page rect"]
-  O --> |"multi-element selection"| TXT["Text annotation\nselected text + textAnchor"]
+  O --> |"stable structure"| DOM["Structure annotation\ntarget metadata"]
+  O --> |"visual or ambiguous region"| SS["Visual region annotation\nposition data"]
+  O --> |"multi-element selection"| TXT["Text annotation\nselected text + re-id data"]
 
   DOM --> D
   SS --> D
   TXT --> D
-  D --> |"list annotations JSON"| C
+  D --> |"list annotations"| C
   C --> A
 
-  E --> |"script blocked"| F["CDP Runtime.evaluate fallback\nbrowser-compatible path"]
+  E --> |"primary path blocked"| F["Alternative execution\nbrowser-compatible path"]
   F --> O

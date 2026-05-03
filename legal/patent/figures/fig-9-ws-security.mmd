@@ -1,19 +1,19 @@
 flowchart TD
-  R["WebSocket request\nws://127.0.0.1:8765/ws"]
-  V["Origin Verifier 120"]
-  OK["Allowed extension origin\nchrome-extension\nmoz-extension\nsafari-web-extension"]
-  BAD["Rejected origin\nhttp / https / file / null / missing\npath / query / userinfo"]
+  R["Connection request\nlocal or same-device path"]
+  V["Source Verifier 120"]
+  OK["Allowed browser-link source\norigin / token / credential"]
+  BAD["Rejected source\nunauthorized / missing / malformed"]
   W["Gateway Module 20\nmessage handling"]
   P["Permission Manager 70"]
-  L["Audit Log 60\nJSONL owner-only"]
-  FS["Support and log dirs\nowner-only"]
+  L["Audit Record 60\naccess controlled"]
+  FS["Support and record storage\naccess controlled"]
 
   R --> V
-  V --> |"scheme and shape valid"| OK
+  V --> |"source evidence valid"| OK
   V --> |"invalid or missing"| BAD
   OK --> W
   BAD --> X["close connection"]
   W --> P
   P --> L
   FS --> L
-  W --> |"extension_connected / operations / revoke"| L
+  W --> |"connect / operate / revoke"| L

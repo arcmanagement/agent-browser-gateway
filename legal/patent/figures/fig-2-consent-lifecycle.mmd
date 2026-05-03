@@ -5,10 +5,10 @@ stateDiagram-v2
   Active: Shared tab
   Revoked: Permission revoked
 
-  Idle --> Consenting: user opens extension popup
+  Idle --> Consenting: user opens share UI
   Consenting --> Active: user clicks share
   Consenting --> Idle: popup closed
-  Active --> Revoked: origin changed
+  Active --> Revoked: target identity changed
   Active --> Revoked: tab closed
   Active --> Revoked: user revoke
   Active --> Revoked: gateway revoke

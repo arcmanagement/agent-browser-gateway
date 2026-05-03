@@ -1,27 +1,27 @@
 flowchart LR
-  subgraph B["Chrome Browser"]
+  subgraph B["Device 1\nWeb Browser"]
     T["Browser Tab\n40"]
     O["Annotation Layer\n100"]
-    E["Browser Extension\n10\nMV3 activeTab\nno host_permissions"]
+    E["Browser Operation Link\n10\nadd-on or external link\nlimited tab permission"]
     T <--> E
     E --> O
     O --> T
   end
 
-  subgraph G["Gateway Module\n20"]
+  subgraph G["Gateway Module\n20\nlocal / private / cloud"]
     P["Permission Manager\n70"]
-    L["Audit Log\n60"]
+    L["Audit Record\n60"]
     H["Plugin Host\n50"]
-    V["Origin Verifier\n120"]
+    V["Source Verifier\n120"]
     V --> P
     P <--> H
     P --> L
   end
 
-  C["Command Line Interface\n30"]
+  C["Agent Operation Interface\n30"]
   A["AI Agent\n90"]
 
-  E <--> |"WebSocket loopback\n127.0.0.1:8765\n80"| V
-  C <--> |"Unix Domain Socket\n80"| P
-  A --> |"shell command"| C
-  H --> |"Markdown / domain transform"| C
+  E <--> |"Communication Path\nnetwork / USB / Bluetooth\nprivate or global\n80"| V
+  C <--> |"Communication Path\nlocal or remote\n80"| P
+  A --> |"command / API / message"| C
+  H --> |"content transform"| C

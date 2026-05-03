@@ -1,25 +1,25 @@
 sequenceDiagram
   participant A as AI Agent 90
-  participant C as CLI 30
+  participant C as Agent Interface 30
   participant G as Gateway Module 20
   participant P as Permission Manager 70
-  participant E as Browser Extension 10
+  participant E as Browser Operation Link 10
   participant T as Browser Tab 40
-  participant L as Audit Log 60
+  participant L as Audit Record 60
 
-  A->>C: abg read/annotate/click/fill
-  C->>G: JSON request over UDS
+  A->>C: command/API/message
+  C->>G: JSON request over communication path 80
   G->>P: check permitted tab
   alt tab permitted
-    G->>E: WebSocket command
-    E->>T: CDP, annotation overlay, or structured operation
+    G->>E: command over communication path 80
+    E->>T: debug API, annotation overlay, or structured operation
     T-->>E: result
     E-->>G: result
-    G->>L: append operation audit entry
+    G->>L: record operation audit entry
     G-->>C: JSON response
     C-->>A: command output
   else tab not permitted
-    G->>L: append rejected request
+    G->>L: record rejected request
     G-->>C: error
     C-->>A: error output
   end
