@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.3.1
+version: 0.3.2
 description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -25,7 +25,7 @@ abg inspect                             # status + tabs をまとめて確認
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg screenshot --latest                 # 最後に保存したスクショパス
-abg annotate <tab|ref> [--start|--stop|--clear]  # カーソル注釈 overlay。DOM/スクショを自動判定
+abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # DOM 注釈を明示追加
 abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
@@ -77,9 +77,9 @@ abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追�
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
 - **Annotation mode**:
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
-  - 注釈には `comment`、`kind` (`dom` / `screenshot`)、`viewportRect`、`rect`、DOM 注釈なら `selector` / `element.text` / style 情報が入る
-  - cursor 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。見出しや本文ブロック、`aria-label` 付き SVG、`alt` 付き画像など、意味のある要素は DOM 注釈にできる
-  - `abg annotate <ref> --start` で overlay を出す。ユーザーはドラッグで範囲作成、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。DOM 注釈は selector 追従を壊さないため移動/resize できない
+  - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る
+  - Area 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。Text 由来の注釈は必ず `kind: "text"` として扱い、選択文字列を純粋なテキストデータとして読む
+  - `abg annotate <ref> --start` で overlay を出す。ユーザーは Area でドラッグ範囲作成、Text で複数 DOM をまたぐページ本文の選択範囲作成、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。Text 注釈は四角枠ではなくテキスト選択ハイライトとして表示する。DOM / Text 注釈は selector 追従を壊さないため移動/resize できない
   - popup の `Annotate this tab` は overlay 開始後に閉じる。Done 後も注釈は残るので、確認は `abg annotate <ref>` で行う
   - DOM 注釈を深掘りするときは `selector` を使って `abg read <ref> --selector "<selector>"`。スクショ注釈の視覚確認が必要なときだけ `viewportRect` を使って `abg screenshot <ref> --x ... --y ... --width ... --height ...` を保存する
 - **canvas ベースのアプリ (Google Sheets, Figma, Google Docs 等) の操作**:

@@ -34,10 +34,20 @@ export async function manageAnnotationMode(
       type Annotation = {
         id: number;
         displayNumber?: number;
-        kind: "screenshot" | "dom";
-        source: "drag" | "cli";
+        kind: "screenshot" | "dom" | "text";
+        source: "drag" | "selection" | "cli";
         comment: string;
         selector?: string;
+        text?: string;
+        textAnchor?: {
+          selector: string;
+          index?: number;
+          startPath?: number[];
+          startOffset?: number;
+          endPath?: number[];
+          endOffset?: number;
+          fragments?: Rect[];
+        };
         rect: Rect;
         viewportRect: Rect;
         scroll: { x: number; y: number };
@@ -58,6 +68,7 @@ export async function manageAnnotationMode(
       };
       type AnnotationState = {
         enabled: boolean;
+        mode: "area" | "text";
         nextId: number;
         selectedId: number | null;
         annotations: Annotation[];
@@ -81,6 +92,7 @@ export async function manageAnnotationMode(
           didMove: boolean;
         } | null;
         suppressClickId: number | null;
+        lastSelectionSignature: string | null;
       };
       type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
@@ -147,12 +159,207 @@ export async function manageAnnotationMode(
         }
       };
       const trimText = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 180);
+      const normalizeSelectionText = (value: string): string => value.replace(/\s+/g, " ").trim();
+      type TextPoint = { node: Text; offset: number };
+      type TextSelectionMatch = { rect: Rect; rects: Rect[]; index: number };
+      const normalizedTextMapFor = (root: Element): { text: string; points: TextPoint[] } => {
+        const textParts: string[] = [];
+        const points: TextPoint[] = [];
+        let pendingSpace: TextPoint | null = null;
+        const pushPendingSpace = () => {
+          if (!pendingSpace || textParts.length === 0) {
+            pendingSpace = null;
+            return;
+          }
+          if (textParts[textParts.length - 1] !== " ") {
+            textParts.push(" ");
+            points.push(pendingSpace);
+          }
+          pendingSpace = null;
+        };
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const textNode = node as Text;
+            const parent = textNode.parentElement;
+            if (!parent || parent.closest("script, style, noscript")) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            return textNode.data.trim().length > 0
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT;
+          },
+        });
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          for (let offset = 0; offset < node.data.length; offset += 1) {
+            const char = node.data[offset] ?? "";
+            if (/\s/.test(char)) {
+              pendingSpace ??= { node, offset };
+              continue;
+            }
+            pushPendingSpace();
+            textParts.push(char);
+            points.push({ node, offset });
+          }
+        }
+        if (textParts[textParts.length - 1] === " ") {
+          textParts.pop();
+          points.pop();
+        }
+        return { text: textParts.join(""), points };
+      };
+      const rangeForTextMapSpan = (
+        points: TextPoint[],
+        startIndex: number,
+        length: number,
+      ): Range | null => {
+        const start = points[startIndex];
+        const end = points[startIndex + length - 1];
+        if (!start || !end) return null;
+        const range = document.createRange();
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset + 1);
+        return range;
+      };
+      const rectsForClientRects = (rects: DOMRect[]): Rect[] =>
+        rects
+          .map((rect) => {
+            const left = Math.max(0, rect.left);
+            const top = Math.max(0, rect.top);
+            const right = Math.min(innerWidth, rect.right);
+            const bottom = Math.min(innerHeight, rect.bottom);
+            if (right <= left || bottom <= top) return null;
+            return {
+              x: Math.round(left),
+              y: Math.round(top),
+              width: Math.round(right - left),
+              height: Math.round(bottom - top),
+            };
+          })
+          .filter((rect): rect is Rect => rect !== null);
+      const rangeRects = (range: Range): { rect: Rect; rects: Rect[] } | null => {
+        const clientRects = Array.from(range.getClientRects());
+        const fallbackClientRect = range.getBoundingClientRect();
+        const rects = rectsForClientRects(
+          clientRects.length > 0 ? clientRects : [fallbackClientRect],
+        );
+        const rect =
+          boundingRectForClientRects(clientRects) ??
+          boundingRectForClientRects([fallbackClientRect]);
+        return rect && rects.length > 0 ? { rect, rects } : null;
+      };
+      const nodePathFromRoot = (root: Node, node: Node): number[] | null => {
+        const path: number[] = [];
+        let current: Node | null = node;
+        while (current && current !== root) {
+          const parent: Node | null = current.parentNode;
+          if (!parent) return null;
+          const index = Array.prototype.indexOf.call(parent.childNodes, current);
+          if (index < 0) return null;
+          path.unshift(index);
+          current = parent;
+        }
+        return current === root ? path : null;
+      };
+      const nodeFromPath = (root: Node, path: number[]): Node | null => {
+        let current: Node | null = root;
+        for (const index of path) {
+          current = current?.childNodes[index] ?? null;
+          if (!current) return null;
+        }
+        return current;
+      };
+      const rangeAnchorFor = (
+        root: Element,
+        range: Range,
+        rect: Rect,
+      ): NonNullable<Annotation["textAnchor"]> | null => {
+        const startPath = nodePathFromRoot(root, range.startContainer);
+        const endPath = nodePathFromRoot(root, range.endContainer);
+        if (!startPath || !endPath) return null;
+        const directRects = rangeRects(range)?.rects ?? [];
+        return {
+          selector: selectorInfoFor(root).selector,
+          startPath,
+          startOffset: range.startOffset,
+          endPath,
+          endOffset: range.endOffset,
+          fragments: directRects.map((fragment) => ({
+            x: Math.round(fragment.x - rect.x),
+            y: Math.round(fragment.y - rect.y),
+            width: fragment.width,
+            height: fragment.height,
+          })),
+        };
+      };
+      const rangeForTextAnchor = (
+        root: Element,
+        anchor: NonNullable<Annotation["textAnchor"]>,
+      ): Range | null => {
+        if (
+          !anchor.startPath ||
+          !anchor.endPath ||
+          typeof anchor.startOffset !== "number" ||
+          typeof anchor.endOffset !== "number"
+        ) {
+          return null;
+        }
+        const startNode = nodeFromPath(root, anchor.startPath);
+        const endNode = nodeFromPath(root, anchor.endPath);
+        if (!startNode || !endNode) return null;
+        try {
+          const range = document.createRange();
+          range.setStart(startNode, anchor.startOffset);
+          range.setEnd(endNode, anchor.endOffset);
+          return range;
+        } catch {
+          return null;
+        }
+      };
+      const textSelectionRectsFor = (root: Element, text: string): TextSelectionMatch[] => {
+        const needle = normalizeSelectionText(text);
+        if (!needle) return [];
+        const map = normalizedTextMapFor(root);
+        const matches: TextSelectionMatch[] = [];
+        let fromIndex = 0;
+        while (matches.length < 30) {
+          const index = map.text.indexOf(needle, fromIndex);
+          if (index < 0) break;
+          const range = rangeForTextMapSpan(map.points, index, needle.length);
+          const rectInfo = range ? rangeRects(range) : null;
+          if (rectInfo) matches.push({ ...rectInfo, index });
+          fromIndex = index + Math.max(1, needle.length);
+        }
+        return matches;
+      };
+      const rectDistance = (a: Rect, b: Rect): number => {
+        const ax = a.x + a.width / 2;
+        const ay = a.y + a.height / 2;
+        const bx = b.x + b.width / 2;
+        const by = b.y + b.height / 2;
+        return Math.hypot(ax - bx, ay - by);
+      };
       const normalizeRect = (start: { x: number; y: number }, end: { x: number; y: number }) => {
         const x = Math.min(start.x, end.x);
         const y = Math.min(start.y, end.y);
         const width = Math.abs(end.x - start.x);
         const height = Math.abs(end.y - start.y);
         return { x, y, width, height };
+      };
+      const boundingRectForClientRects = (rects: DOMRect[]): Rect | null => {
+        const visible = rects.filter((rect) => rect.width > 0 && rect.height > 0);
+        if (visible.length === 0) return null;
+        const left = Math.max(0, Math.min(...visible.map((rect) => rect.left)));
+        const top = Math.max(0, Math.min(...visible.map((rect) => rect.top)));
+        const right = Math.min(innerWidth, Math.max(...visible.map((rect) => rect.right)));
+        const bottom = Math.min(innerHeight, Math.max(...visible.map((rect) => rect.bottom)));
+        if (right <= left || bottom <= top) return null;
+        return {
+          x: Math.round(left),
+          y: Math.round(top),
+          width: Math.round(right - left),
+          height: Math.round(bottom - top),
+        };
       };
       const clampRect = (rect: Rect): Rect => ({
         x: Math.round(Math.max(0, rect.x)),
@@ -353,17 +560,7 @@ export async function manageAnnotationMode(
           rect: viewportToPageRect(clamped),
         };
       };
-      const anchoredToViewportRect = (annotation: Annotation): Rect => {
-        if (annotation.kind === "dom" && annotation.selector) {
-          const element = document.querySelector(annotation.selector);
-          if (element) {
-            try {
-              return rectForElement(element);
-            } catch {
-              // Fall back to the stored visual rectangle if the DOM target is temporarily hidden.
-            }
-          }
-        }
+      const storedAnnotationRectToViewport = (annotation: Annotation): Rect => {
         if (annotation.anchor?.type === "frame") {
           const frame = document.querySelector(annotation.anchor.selector);
           const win = frame ? frameWindowFor(frame) : null;
@@ -390,6 +587,64 @@ export async function manageAnnotationMode(
           }
         }
         return pageToViewportRect(annotation.rect);
+      };
+      const textSelectionMatchForAnnotation = (
+        annotation: Annotation,
+        fallbackRect: Rect,
+      ): TextSelectionMatch | null => {
+        if (annotation.kind !== "text" || !annotation.text || !annotation.textAnchor) return null;
+        const root = document.querySelector(annotation.textAnchor.selector);
+        if (!root) return null;
+        const directRange = rangeForTextAnchor(root, annotation.textAnchor);
+        const directRects = directRange ? rangeRects(directRange) : null;
+        if (directRects) return { ...directRects, index: annotation.textAnchor.index ?? -1 };
+        const matches = textSelectionRectsFor(root, annotation.text);
+        if (matches.length === 0) return null;
+        if (typeof annotation.textAnchor.index === "number") {
+          const indexedMatch = matches.find(
+            (match) => match.index === annotation.textAnchor?.index,
+          );
+          if (indexedMatch) return indexedMatch;
+        }
+        return matches.reduce((best, candidate) =>
+          rectDistance(candidate.rect, fallbackRect) < rectDistance(best.rect, fallbackRect)
+            ? candidate
+            : best,
+        );
+      };
+      const rectForTextAnnotation = (annotation: Annotation, fallbackRect: Rect): Rect | null => {
+        return textSelectionMatchForAnnotation(annotation, fallbackRect)?.rect ?? null;
+      };
+      const highlightRectsForTextAnnotation = (
+        annotation: Annotation,
+        fallbackRect: Rect,
+      ): Rect[] | null => {
+        const matchedRects = textSelectionMatchForAnnotation(annotation, fallbackRect)?.rects;
+        if (matchedRects) return matchedRects;
+        const fragments = annotation.textAnchor?.fragments;
+        if (!fragments || fragments.length === 0) return null;
+        return fragments.map((fragment) => ({
+          x: Math.round(fallbackRect.x + fragment.x),
+          y: Math.round(fallbackRect.y + fragment.y),
+          width: fragment.width,
+          height: fragment.height,
+        }));
+      };
+      const anchoredToViewportRect = (annotation: Annotation): Rect => {
+        const fallbackRect = storedAnnotationRectToViewport(annotation);
+        const textRect = rectForTextAnnotation(annotation, fallbackRect);
+        if (textRect) return textRect;
+        if (annotation.kind === "dom" && annotation.selector) {
+          const element = document.querySelector(annotation.selector);
+          if (element) {
+            try {
+              return rectForElement(element);
+            } catch {
+              // Fall back to the stored visual rectangle if the DOM target is temporarily hidden.
+            }
+          }
+        }
+        return fallbackRect;
       };
       const isAlwaysScreenshotElement = (element: Element): boolean => {
         const tag = element.tagName.toLowerCase();
@@ -433,6 +688,65 @@ export async function manageAnnotationMode(
           fontSize: style.fontSize,
           fontFamily: style.fontFamily,
         };
+      };
+      const metadataForTextSelection = (
+        element: Element,
+        text: string,
+      ): NonNullable<Annotation["element"]> => ({
+        ...metadataForElement(element),
+        text: trimText(text),
+      });
+      const elementFromRangeContainer = (container: Node): Element | null => {
+        if (container instanceof Element) return container;
+        const parent = container.parentElement;
+        return parent ?? null;
+      };
+      const selectionRootElement = (state: AnnotationState, range: Range): Element | null => {
+        const common = elementFromRangeContainer(range.commonAncestorContainer);
+        if (common && !isOverlayElement(state, common)) return common;
+        const start = elementFromRangeContainer(range.startContainer);
+        const end = elementFromRangeContainer(range.endContainer);
+        for (const candidate of [start, end]) {
+          if (candidate && !isOverlayElement(state, candidate)) return candidate;
+        }
+        return null;
+      };
+      const selectionAnnotationTarget = (
+        state: AnnotationState,
+      ): {
+        rect: Rect;
+        text: string;
+        element?: NonNullable<Annotation["element"]>;
+        textAnchor: NonNullable<Annotation["textAnchor"]>;
+        signature: string;
+      } | null => {
+        const selectedRange = getSelection();
+        if (!selectedRange || selectedRange.isCollapsed || selectedRange.rangeCount === 0)
+          return null;
+        const text = selectedRange.toString().trim();
+        if (!text) return null;
+        const range = selectedRange.getRangeAt(0);
+        const common = elementFromRangeContainer(range.commonAncestorContainer);
+        if (common && isOverlayElement(state, common)) return null;
+        const root = selectionRootElement(state, range);
+        if (!root) return null;
+        const rectInfo = rangeRects(range);
+        const rect = rectInfo?.rect;
+        if (!rect || rect.width < 2 || rect.height < 2) return null;
+        const element = metadataForTextSelection(root, text);
+        const match = textSelectionRectsFor(root, text).reduce<TextSelectionMatch | null>(
+          (best, candidate) =>
+            !best || rectDistance(candidate.rect, rect) < rectDistance(best.rect, rect)
+              ? candidate
+              : best,
+          null,
+        );
+        const textAnchor = rangeAnchorFor(root, range, rect) ?? {
+          selector: selectorInfoFor(root).selector,
+        };
+        textAnchor.index = match?.index;
+        const signature = `${textAnchor.selector}:${text.slice(0, 120)}:${rect.x}:${rect.y}:${rect.width}:${rect.height}`;
+        return { rect, text, element, textAnchor, signature };
       };
       const elementAtCenter = (state: AnnotationState, rect: Rect): Annotation["element"] => {
         const x = rect.x + rect.width / 2;
@@ -522,7 +836,7 @@ export async function manageAnnotationMode(
           annotations,
           userMessage:
             action === "start"
-              ? "Annotation mode is active. Drag on the page to mark regions; click Done or press Escape to stop capturing."
+              ? "Annotation mode is active. Use Area to drag regions or Text to mark selected page text; click Done or press Escape to stop capturing."
               : undefined,
           nextCommand: "abg annotate <tab>",
         };
@@ -560,6 +874,13 @@ export async function manageAnnotationMode(
         const countEl = state.toolbar.querySelector("[data-count]");
         if (countEl) {
           countEl.textContent = `${state.annotations.length} annotation${state.annotations.length === 1 ? "" : "s"}`;
+        }
+        for (const modeButton of state.toolbar.querySelectorAll<HTMLButtonElement>(
+          "button[data-mode]",
+        )) {
+          const active = modeButton.dataset.mode === state.mode;
+          modeButton.classList.toggle("abg-active", active);
+          modeButton.setAttribute("aria-pressed", String(active));
         }
       };
       const editAnnotation = (state: AnnotationState, annotation: Annotation) => {
@@ -607,7 +928,57 @@ export async function manageAnnotationMode(
         for (const [index, annotation] of state.annotations.entries()) {
           const rect = anchoredToViewportRect(annotation);
           const isSelected = state.enabled && state.selectedId === annotation.id;
-          const canEditRect = annotation.kind !== "dom";
+          const canEditRect = annotation.kind === "screenshot";
+          const openAnnotationEditor = (event: MouseEvent) => {
+            if (!state.enabled) return;
+            if (state.suppressClickId === annotation.id) {
+              state.suppressClickId = null;
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+            state.selectedId = annotation.id;
+            event.stopPropagation();
+            editAnnotation(state, annotation);
+            renderAnnotations(state);
+          };
+          if (annotation.kind === "text") {
+            const group = document.createElement("div");
+            const textRects = highlightRectsForTextAnnotation(annotation, rect) ?? [];
+            const anchorRect = textRects[textRects.length - 1] ?? rect;
+            const badge = document.createElement("span");
+            const comment = document.createElement("span");
+            group.className = [
+              "abg-text-selection-group",
+              isSelected ? "abg-text-selection-selected" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            group.dataset.id = String(annotation.id);
+            group.addEventListener("click", openAnnotationEditor);
+            for (const textRect of textRects) {
+              const piece = document.createElement("span");
+              piece.className = "abg-text-selection-piece";
+              piece.dataset.id = String(annotation.id);
+              piece.role = "button";
+              piece.setAttribute("aria-label", `Annotation ${index + 1}`);
+              setRectStyle(piece, textRect);
+              group.append(piece);
+            }
+            badge.className = "abg-text-selection-badge";
+            badge.textContent = String(index + 1);
+            badge.style.left = `${Math.round(anchorRect.x + anchorRect.width - 10)}px`;
+            badge.style.top = `${Math.round(anchorRect.y + anchorRect.height - 10)}px`;
+            comment.className = "abg-text-selection-comment";
+            comment.textContent = annotation.comment;
+            comment.hidden = annotation.comment.length === 0;
+            comment.style.left = `${Math.round(Math.max(8, rect.x))}px`;
+            comment.style.top = `${Math.round(Math.min(innerHeight - 34, rect.y + rect.height + 6))}px`;
+            comment.style.maxWidth = `${Math.round(Math.min(360, Math.max(120, innerWidth - rect.x - 16)))}px`;
+            group.append(badge, comment);
+            state.layer.append(group);
+            continue;
+          }
           const box = document.createElement("button");
           const badge = document.createElement("span");
           const comment = document.createElement("span");
@@ -623,7 +994,7 @@ export async function manageAnnotationMode(
           box.type = "button";
           box.className = [
             "abg-annotation-box",
-            annotation.kind === "dom" ? "abg-annotation-dom" : "abg-annotation-screenshot",
+            annotation.kind === "screenshot" ? "abg-annotation-screenshot" : "abg-annotation-dom",
             isSelected ? "abg-annotation-selected" : "",
           ]
             .filter(Boolean)
@@ -657,17 +1028,7 @@ export async function manageAnnotationMode(
             event.stopPropagation();
           });
           box.addEventListener("click", (event) => {
-            if (!state.enabled) return;
-            if (state.suppressClickId === annotation.id) {
-              state.suppressClickId = null;
-              event.preventDefault();
-              event.stopPropagation();
-              return;
-            }
-            state.selectedId = annotation.id;
-            event.stopPropagation();
-            editAnnotation(state, annotation);
-            renderAnnotations(state);
+            openAnnotationEditor(event);
           });
           state.layer.append(box);
         }
@@ -687,6 +1048,8 @@ export async function manageAnnotationMode(
           source: Annotation["source"];
           comment?: string;
           selector?: string;
+          text?: string;
+          textAnchor?: Annotation["textAnchor"];
           element?: Annotation["element"];
           openEditor?: boolean;
         },
@@ -698,6 +1061,8 @@ export async function manageAnnotationMode(
           source: options.source,
           comment: options.comment?.trim() ?? "",
           selector: options.selector,
+          text: options.text,
+          textAnchor: options.textAnchor,
           rect: anchored.rect,
           viewportRect: anchored.viewportRect,
           scroll: anchored.scroll,
@@ -736,24 +1101,54 @@ export async function manageAnnotationMode(
           openEditor: options.openEditor,
         });
       };
+      const addTextSelectionAnnotation = (state: AnnotationState) => {
+        if (!state.enabled || state.mode !== "text") return;
+        const target = selectionAnnotationTarget(state);
+        if (!target || target.signature === state.lastSelectionSignature) return;
+        state.lastSelectionSignature = target.signature;
+        addAnnotation(state, target.rect, {
+          kind: "text",
+          source: "selection",
+          text: target.text,
+          textAnchor: target.textAnchor,
+          element: target.element,
+          openEditor: true,
+        });
+        getSelection()?.removeAllRanges();
+      };
+      const applyInteractionMode = (state: AnnotationState) => {
+        const areaEnabled = state.enabled && state.mode === "area";
+        state.capture.hidden = !areaEnabled;
+        state.capture.style.pointerEvents = areaEnabled ? "auto" : "none";
+        state.host.style.pointerEvents = state.enabled ? "auto" : "none";
+        state.layer.style.pointerEvents = "none";
+        updateToolbar(state);
+      };
+      const setMode = (state: AnnotationState, mode: AnnotationState["mode"]) => {
+        state.mode = mode;
+        state.dragStart = null;
+        state.activeDraft = null;
+        state.draft.hidden = true;
+        state.lastSelectionSignature = null;
+        if (mode === "area") getSelection()?.removeAllRanges();
+        applyInteractionMode(state);
+      };
       const setEnabled = (state: AnnotationState, enabled: boolean) => {
         state.enabled = enabled;
-        state.capture.hidden = !enabled;
-        state.capture.style.pointerEvents = enabled ? "auto" : "none";
-        state.host.style.pointerEvents = enabled ? "auto" : "none";
-        state.layer.style.pointerEvents = "none";
         if (!enabled) {
           state.dragStart = null;
           state.activeDraft = null;
           state.selectedId = null;
           state.editGesture = null;
           state.suppressClickId = null;
+          state.lastSelectionSignature = null;
           state.draft.hidden = true;
           closeEditor(state);
           renderAnnotations(state);
+          applyInteractionMode(state);
           return;
         }
-        updateToolbar(state);
+        applyInteractionMode(state);
       };
       const createState = (): AnnotationState => {
         document.getElementById("__abg_annotation_mode")?.remove();
@@ -835,6 +1230,11 @@ export async function manageAnnotationMode(
           .abg-editor button:hover {
             background: rgba(255, 255, 255, 0.18);
           }
+          .abg-toolbar button.abg-active {
+            border-color: rgba(255, 255, 255, 0.42);
+            background: rgba(255, 255, 255, 0.24);
+            color: #ffffff;
+          }
           .abg-draft,
           .abg-annotation-box {
             position: fixed;
@@ -857,11 +1257,71 @@ export async function manageAnnotationMode(
           .abg-annotation-screenshot {
             cursor: move;
           }
-          .abg-annotation-dom {
+          .abg-annotation-dom,
+          .abg-annotation-text {
             cursor: pointer;
           }
           .abg-annotation-box:hover {
             background: rgba(29, 155, 240, 0.26);
+          }
+          .abg-text-selection-group {
+            position: fixed;
+            inset: 0;
+            z-index: 2147483646;
+            pointer-events: none;
+          }
+          .abg-text-selection-piece {
+            position: fixed;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            border-radius: 2px;
+            background: rgba(88, 166, 255, 0.52);
+            box-shadow: inset 0 -1px 0 rgba(88, 166, 255, 0.68);
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-text-selection-badge {
+            position: fixed;
+            z-index: 2147483647;
+            width: 22px;
+            min-width: 22px;
+            height: 22px;
+            border-radius: 999px;
+            border: 2px solid #ffffff;
+            background: #1d9bf0;
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-text-selection-comment {
+            position: fixed;
+            z-index: 2147483647;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            border-radius: 6px;
+            padding: 4px 6px;
+            background: rgba(5, 18, 31, 0.82);
+            color: #ffffff;
+            font: 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-text-selection-piece:hover,
+          .abg-text-selection-selected .abg-text-selection-piece {
+            background: rgba(88, 166, 255, 0.64);
+          }
+          .abg-text-selection-selected .abg-text-selection-piece {
+            box-shadow:
+              inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+              inset 0 -1px 0 rgba(88, 166, 255, 0.78);
           }
           .abg-annotation-selected {
             outline: 1px solid rgba(255, 255, 255, 0.75);
@@ -1050,6 +1510,8 @@ export async function manageAnnotationMode(
         host.style.pointerEvents = "none";
         toolbar.innerHTML = `
           <span class="abg-chip"><span class="abg-dot"></span>Annotating</span>
+          <button type="button" data-action="mode-area" data-mode="area" aria-pressed="true">Area</button>
+          <button type="button" data-action="mode-text" data-mode="text" aria-pressed="false">Text</button>
           <span class="abg-count" data-count>0 annotations</span>
           <button type="button" data-action="clear">Clear</button>
           <button type="button" data-action="done">Done</button>
@@ -1059,6 +1521,7 @@ export async function manageAnnotationMode(
 
         const state: AnnotationState = {
           enabled: false,
+          mode: "area",
           nextId: 1,
           selectedId: null,
           annotations: [],
@@ -1074,6 +1537,7 @@ export async function manageAnnotationMode(
           renderTimer: null,
           editGesture: null,
           suppressClickId: null,
+          lastSelectionSignature: null,
         };
         capture.addEventListener("mousedown", (event) => {
           if (!state.enabled || event.button !== 0) return;
@@ -1131,11 +1595,14 @@ export async function manageAnnotationMode(
           const button = target?.closest<HTMLButtonElement>("button[data-action]");
           const action = button?.dataset.action;
           if (action === "done") setEnabled(state, false);
+          if (action === "mode-area") setMode(state, "area");
+          if (action === "mode-text") setMode(state, "text");
           if (action === "clear") {
             state.annotations = [];
             state.nextId = 1;
             state.selectedId = null;
             state.editGesture = null;
+            state.lastSelectionSignature = null;
             closeEditor(state);
             renderAnnotations(state);
           }
@@ -1154,7 +1621,7 @@ export async function manageAnnotationMode(
               state.editGesture = null;
               return;
             }
-            if (annotation.kind === "dom") {
+            if (annotation.kind !== "screenshot") {
               state.editGesture = null;
               return;
             }
@@ -1183,6 +1650,10 @@ export async function manageAnnotationMode(
         addEventListener(
           "mouseup",
           (event) => {
+            if (state.enabled && state.mode === "text" && !state.editGesture) {
+              window.setTimeout(() => addTextSelectionAnnotation(state), 0);
+              return;
+            }
             if (!state.editGesture) return;
             const didMove = state.editGesture.didMove;
             if (didMove) state.suppressClickId = state.editGesture.annotationId;
@@ -1213,6 +1684,15 @@ export async function manageAnnotationMode(
           },
           true,
         );
+        addEventListener(
+          "keyup",
+          () => {
+            if (state.enabled && state.mode === "text") {
+              window.setTimeout(() => addTextSelectionAnnotation(state), 0);
+            }
+          },
+          true,
+        );
         addEventListener("scroll", () => renderAnnotations(state), true);
         addEventListener("resize", () => renderAnnotations(state), true);
         ensureRenderTimer(state);
@@ -1238,6 +1718,8 @@ export async function manageAnnotationMode(
       state.selectedId ??= null;
       state.editGesture ??= null;
       state.suppressClickId ??= null;
+      state.mode ??= "area";
+      state.lastSelectionSignature ??= null;
       state.renderTimer ??= null;
       ensureRenderTimer(state);
 

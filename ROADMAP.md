@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
 
-Current repo version: **v0.3.1**.
+Current repo version: **v0.3.2**.
 
 ## Shipped
 
@@ -49,6 +49,13 @@ Current repo version: **v0.3.1**.
 - DOM annotations stay locked to their selector and cannot be moved or resized from the overlay
 - Screenshot annotations remain manually movable and resizable
 - Skill and README guidance now distinguish DOM selector annotations from screenshot-region annotations
+
+### v0.3.2 — TextAnnotation mode (2026-05-03)
+- Annotation mode now has separate **Area** and **Text** modes
+- Text annotations are first-class `kind: "text"` data with top-level selected text and `textAnchor` metadata
+- Text selections render as line-by-line selection highlights instead of screenshot-style rectangles
+- Multi-element text selections store DOM Range anchors and follow responsive layout changes
+- README, bundled app resources, and Claude/Codex skills document the text annotation workflow
 
 ## In progress
 

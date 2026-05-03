@@ -95,7 +95,7 @@ abg inspect                                      # status + shared tabs in one J
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg screenshot --latest                          # latest screenshot path
-abg annotate <tab|ref> [--start|--stop|--clear]  # cursor annotations auto-classified as DOM or screenshot
+abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
 abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
@@ -139,10 +139,10 @@ abg install-skill                       # Install/update Claude Code + Codex Ski
 Annotation mode lets the human mark the current tab the way they would point at a screenshot in chat, while still preserving structured context for the agent.
 
 - Start from the extension popup with **Annotate this tab**, or from the CLI with `abg annotate t1 --start`.
-- Drag to create a numbered annotation, add a comment, and click **Done** or press Escape when finished.
-- Screenshot annotations can be moved with drag-and-drop and resized from their edges/corners. DOM annotations stay locked to their selector so they keep following the page layout. Any selected annotation can be deleted with Delete/Backspace.
-- ABG classifies each annotation as `kind: "dom"` when a stable DOM target is available, including headings and other text blocks, otherwise as `kind: "screenshot"` for arbitrary visual regions.
-- Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, and screenshot-region coordinates for visual targets.
+- Use **Area** to drag a rectangle, or **Text** to select page text, including text that spans multiple DOM elements, and turn the selected text into a numbered annotation. Add a comment, then click **Done** or press Escape when finished.
+- Text annotations render as text-selection highlights instead of rectangular boxes. Screenshot annotations can be moved with drag-and-drop and resized from their edges/corners. DOM and text annotations stay locked to their selector so they keep following the page layout. Any selected annotation can be deleted with Delete/Backspace.
+- **Area** annotations are auto-classified as `kind: "dom"` when a stable DOM target is available, otherwise `kind: "screenshot"`. **Text** annotations are always `kind: "text"` and keep the selected text as first-class data.
+- Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, top-level `text` plus `textAnchor` metadata for text annotations, and screenshot-region coordinates for visual targets.
 - For explicit additions, use `abg annotate t1 --selector "button.save" --comment "..."` or `abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "..."`.
 
 ---
@@ -388,7 +388,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.1 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
+🚧 **v0.3.2 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
 
 ---
 

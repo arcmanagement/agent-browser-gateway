@@ -13,18 +13,18 @@
 以下の 2 つを送ります。
 
 ```text
-agent-browser-gateway-0.3.1-macos-arm64.zip
-agent-browser-gateway-extension-0.3.1.zip
+agent-browser-gateway-0.3.2-macos-arm64.zip
+agent-browser-gateway-extension-0.3.2.zip
 ```
 
 チェックサム:
 
 ```text
-918c2d6476673f776c8d73186a131e52a7f220f856113a2a4817a776e22ba804  agent-browser-gateway-0.3.1-macos-arm64.zip
-c21185c60c0de36de77918083320e0dae706633d2b15292d5bbd230a25217f9c  agent-browser-gateway-extension-0.3.1.zip
+50926202ead68b6d8750e1308373409f4cf34fdb3953c7396d271077133ccf77  agent-browser-gateway-0.3.2-macos-arm64.zip
+bdf2d49010d4531c00faee57127c06f7221d01a56dc8b71b7557cbfe62045c30  agent-browser-gateway-extension-0.3.2.zip
 ```
 
-`agent-browser-gateway-0.3.1-macos-arm64.zip` の中身:
+`agent-browser-gateway-0.3.2-macos-arm64.zip` の中身:
 
 ```text
 Agent Browser Gateway.app
@@ -34,9 +34,11 @@ AgentBrowserGateway_abg.bundle
 
 `Agent Browser Gateway.app` はメニューバーアプリです。`abg` は CLI です。`AgentBrowserGateway_abg.bundle` は `abg install-skill` が読む CLI 用リソースです。アプリを起動しても `abg` コマンドは自動インストールされないので、CLI と bundle も配置します。
 
+`Agent Browser Gateway.app` と `abg` は Developer ID 署名済みです。`Agent Browser Gateway.app` は notarization ticket を staple 済みです。
+
 ## アプリと CLI をインストール
 
-`agent-browser-gateway-0.3.1-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
+`agent-browser-gateway-0.3.2-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -56,12 +58,12 @@ abg install-skill
 
 ## Chrome 拡張をインストール
 
-`agent-browser-gateway-extension-0.3.1.zip` を、消さない場所へ展開します。
+`agent-browser-gateway-extension-0.3.2.zip` を、消さない場所へ展開します。
 
 ```bash
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 mkdir -p "$HOME/Applications/Agent Browser Gateway Extension"
-unzip agent-browser-gateway-extension-0.3.1.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
+unzip agent-browser-gateway-extension-0.3.2.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
 Chrome で以下を行います。
