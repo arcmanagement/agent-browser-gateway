@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent Browser Gateway",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Share specific Chrome tabs with AI coding agents via per-tab explicit permission.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "tabs", "storage", "debugger", "alarms"],

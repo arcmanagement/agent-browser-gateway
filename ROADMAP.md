@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
 
-Current repo version: **v0.3.3**.
+Current repo version: **v0.3.4**.
 
 ## Shipped
 
@@ -63,6 +63,11 @@ Current repo version: **v0.3.3**.
 - Extension Popup renders page-derived tab titles/URLs with DOM text APIs instead of HTML strings
 - CI permissions, local secret ignores, security policy, and signing/notarization docs are tightened
 - Extension tooling is updated to clear the current moderate `esbuild` advisory
+
+### v0.3.4 — ChatGPT Atlas annotation support (2026-05-03)
+- Annotation mode falls back to Chrome DevTools Protocol `Runtime.evaluate` when `chrome.scripting.executeScript` is blocked by browser host-permission behavior
+- Popup and CLI annotation entrypoints ensure the debugger session is attached before starting annotation mode
+- Existing Chrome behavior continues to use `chrome.scripting.executeScript` first
 
 ## In progress
 

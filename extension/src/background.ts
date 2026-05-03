@@ -15,7 +15,7 @@ import type {
 } from "./types.js";
 
 const WS_URL = "ws://127.0.0.1:8765/ws";
-const VERSION = "0.3.3";
+const VERSION = "0.3.4";
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -533,6 +533,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
     } else if (cmd.method === "annotation_mode") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
       reply(cmd.id, await manageAnnotationMode(tabId, readAnnotationCommand(cmd.params)));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
@@ -1691,6 +1692,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     if (!permittedTabs.has(msg.tabId)) {
       return { type: "error", message: "tab is not shared with ABG" };
     }
+    await attachDebugger(msg.tabId);
     await manageAnnotationMode(msg.tabId, { action: msg.action });
     return { type: "ok" };
   }

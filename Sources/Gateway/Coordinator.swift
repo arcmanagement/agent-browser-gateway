@@ -19,7 +19,7 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) var pluginHost = PluginHost(abgVersion: "0.3.3")
+    private(set) var pluginHost = PluginHost(abgVersion: "0.3.4")
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
