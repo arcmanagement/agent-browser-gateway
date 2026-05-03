@@ -10,6 +10,7 @@ Gateway.app/
 # Node / extension
 node_modules/
 extension/dist/
+dist/
 
 # macOS
 .DS_Store
@@ -28,6 +29,7 @@ audit.jsonl
 
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
+!docs/HOMEBREW.md
 !docs/PLUGINS.md
 
 # Brand experiments — final design TBD, not committed yet

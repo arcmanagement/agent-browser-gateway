@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway extension all clean test lint format release verify
+.PHONY: help install gateway extension all clean test lint format dist release verify
 
 help:
 	@printf "ABG dev targets:\n\n"
@@ -13,6 +13,7 @@ help:
 	@printf "  make format       biome format --write\n"
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
+	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
 	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
@@ -31,7 +32,7 @@ extension:
 all: gateway extension
 
 clean:
-	rm -rf .build extension/dist extension/node_modules "Agent Browser Gateway.app" Gateway.app
+	rm -rf .build dist extension/dist extension/node_modules "Agent Browser Gateway.app" Gateway.app
 
 lint:
 	cd extension && pnpm run lint
@@ -49,11 +50,12 @@ verify:
 	swift build -c release
 	cd extension && pnpm run build
 
-release:
+dist:
 ifndef VERSION
-	$(error VERSION is required, e.g. make release VERSION=0.2.3)
+	$(error VERSION is required, e.g. make dist VERSION=0.2.3)
 endif
-	@echo "Building release v$(VERSION)..."
-	./build-app.sh
-	cd extension && pnpm run build
+	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" CASK_OUTPUT="$(CASK_OUTPUT)" bash scripts/dist-macos-arm64.sh
+
+release: dist
+	@echo "Release artifacts for v$(VERSION) are in dist/"
 	@echo "Tag: git tag -s v$(VERSION) -m 'v$(VERSION)' && git push origin v$(VERSION)"
