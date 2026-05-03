@@ -44,7 +44,8 @@ secrets/
 credentials/
 
 # Claude Code session state
-.claude/
+.claude/*
+!.claude/skills
 
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
