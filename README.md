@@ -44,7 +44,7 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
          │ WebSocket (127.0.0.1:8765)
          ↓
 ┌──────────────────────────────┐
-│ Gateway.app (menubar)        │
+│ Agent Browser Gateway.app    │
 │  - Permission Manager        │
 │  - Audit Log (JSONL)         │
 └────────┬─────────────────────┘
@@ -146,7 +146,7 @@ A thin MCP wrapper around the same CLI is on the v0.2 roadmap for ecosystem cove
 
 ABG ships with an **Obsidian-style plugin system**: JavaScript modules loaded into the Gateway at startup that hook into the data flow between your browser and your AI agent. The core stays minimal (raw browser access via CDP); data transformation — Markdown conversion, redaction, command abstraction — lives in plugins.
 
-Plugins live under `Gateway.app/Contents/Resources/plugins/` (bundled defaults). Each plugin is a directory with `index.js` and optional `plugin.json`; `index.js` registers transformers via a small `abg` host API:
+Plugins live under `Agent Browser Gateway.app/Contents/Resources/plugins/` (bundled defaults). Each plugin is a directory with `index.js` and optional `plugin.json`; `index.js` registers transformers via a small `abg` host API:
 
 ```js
 // plugins/markdown-plugin/index.js (excerpt)
@@ -307,8 +307,8 @@ mise install
 ### Build the Gateway and CLI
 
 ```bash
-./build-app.sh                          # produces Gateway.app and .build/release/abg
-open Gateway.app                        # menubar shield icon appears
+./build-app.sh                          # produces Agent Browser Gateway.app and .build/release/abg
+open "Agent Browser Gateway.app"        # menubar shield icon appears
 ln -sf $(pwd)/.build/release/abg /usr/local/bin/abg
 ```
 

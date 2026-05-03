@@ -1,11 +1,13 @@
 #!/bin/bash
-# Build Gateway.app (.app bundle) from the swift build output.
+# Build Agent Browser Gateway.app (.app bundle) from the swift build output.
 # Also leaves the abg CLI binary at .build/<config>/abg.
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
 VERSION="${VERSION:-0.2.3}"
-APP="Gateway.app"
+APP_NAME="Agent Browser Gateway"
+APP="$APP_NAME.app"
+LEGACY_APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
 
 echo "==> swift build -c $CONFIG"
@@ -13,6 +15,9 @@ swift build -c "$CONFIG"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
+if [ "$LEGACY_APP" != "$APP" ]; then
+    rm -rf "$LEGACY_APP"
+fi
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
 
@@ -26,8 +31,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Gateway</string>
-    <key>CFBundleDisplayName</key><string>Agent Browser Gateway</string>
+    <key>CFBundleName</key><string>$APP_NAME</string>
+    <key>CFBundleDisplayName</key><string>$APP_NAME</string>
     <key>CFBundleIdentifier</key><string>co.arcm.AgentBrowserGateway</string>
     <key>CFBundleExecutable</key><string>Gateway</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
@@ -46,5 +51,5 @@ echo "    app:  $(pwd)/$APP"
 echo "    cli:  $(pwd)/$BIN_DIR/abg"
 echo ""
 echo "next:"
-echo "  open $APP                                    # launch menubar app"
+printf '  open "%s"                           # launch menubar app\n' "$APP"
 echo "  ln -sf $(pwd)/$BIN_DIR/abg /usr/local/bin/abg # symlink CLI to PATH"

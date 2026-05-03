@@ -6,14 +6,14 @@
 help:
 	@printf "ABG dev targets:\n\n"
 	@printf "  make install      install Node + pnpm via mise, then extension deps\n"
-	@printf "  make gateway      build Gateway.app and abg CLI (release)\n"
+	@printf "  make gateway      build Agent Browser Gateway.app and abg CLI (release)\n"
 	@printf "  make extension    build Chrome extension to extension/dist/\n"
 	@printf "  make all          gateway + extension\n"
 	@printf "  make lint         biome check\n"
 	@printf "  make format       biome format --write\n"
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
-	@printf "  make clean        remove .build, extension/dist, Gateway.app\n"
+	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
 install:
@@ -31,7 +31,7 @@ extension:
 all: gateway extension
 
 clean:
-	rm -rf .build extension/dist extension/node_modules Gateway.app
+	rm -rf .build extension/dist extension/node_modules "Agent Browser Gateway.app" Gateway.app
 
 lint:
 	cd extension && pnpm run lint

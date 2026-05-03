@@ -4,6 +4,7 @@
 DerivedData/
 *.xcodeproj/
 Package.resolved
+Agent Browser Gateway.app/
 Gateway.app/
 
 # Node / extension

@@ -41,8 +41,8 @@ struct UDSClient {
             printErrorJSON([
                 "error": "gateway_not_running",
                 "message": message,
-                "userMessage": "Gateway が起動していません。Gateway.app を起動してから、もう一度コマンドを実行してください。",
-                "nextCommand": "open Gateway.app && abg status",
+                "userMessage": "Gateway が起動していません。Agent Browser Gateway.app を起動してから、もう一度コマンドを実行してください。",
+                "nextCommand": "open \"Agent Browser Gateway.app\" && abg status",
             ])
             throw ExitCode.failure
         }

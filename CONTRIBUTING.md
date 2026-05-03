@@ -23,7 +23,7 @@ Thanks for considering a contribution. ABG is a small project with a sharp thesi
 mise trust && mise install
 
 # Build
-./build-app.sh                 # Gateway.app + .build/release/abg
+./build-app.sh                 # Agent Browser Gateway.app + .build/release/abg
 cd extension && pnpm install && pnpm run build
 
 # Iterate
