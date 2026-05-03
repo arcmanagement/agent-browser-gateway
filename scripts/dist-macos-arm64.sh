@@ -7,7 +7,7 @@ cd "$ROOT"
 
 VERSION="${VERSION:-}"
 if [ -z "$VERSION" ]; then
-    echo "VERSION is required, e.g. VERSION=0.3.0 $0" >&2
+    echo "VERSION is required, e.g. VERSION=0.3.1 $0" >&2
     exit 1
 fi
 

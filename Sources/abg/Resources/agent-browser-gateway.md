@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.3.0
+version: 0.3.1
 description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -79,7 +79,7 @@ abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追�
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
   - 注釈には `comment`、`kind` (`dom` / `screenshot`)、`viewportRect`、`rect`、DOM 注釈なら `selector` / `element.text` / style 情報が入る
   - cursor 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。見出しや本文ブロック、`aria-label` 付き SVG、`alt` 付き画像など、意味のある要素は DOM 注釈にできる
-  - `abg annotate <ref> --start` で overlay を出す。ユーザーはドラッグで範囲作成、コメント入力、範囲の DnD 移動、端/角 resize、選択中範囲の Delete/Backspace 削除、Done/Escape で停止ができる
+  - `abg annotate <ref> --start` で overlay を出す。ユーザーはドラッグで範囲作成、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。DOM 注釈は selector 追従を壊さないため移動/resize できない
   - popup の `Annotate this tab` は overlay 開始後に閉じる。Done 後も注釈は残るので、確認は `abg annotate <ref>` で行う
   - DOM 注釈を深掘りするときは `selector` を使って `abg read <ref> --selector "<selector>"`。スクショ注釈の視覚確認が必要なときだけ `viewportRect` を使って `abg screenshot <ref> --x ... --y ... --width ... --height ...` を保存する
 - **canvas ベースのアプリ (Google Sheets, Figma, Google Docs 等) の操作**:

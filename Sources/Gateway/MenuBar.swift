@@ -24,7 +24,9 @@ struct MenuBarView: View {
             ForEach(coordinator.connectedExtensionIds, id: \.self) { id in
                 let label = coordinator.extensionProfiles[id] ?? short(id)
                 let browser = coordinator.extensionBrowsers[id] ?? "browser"
-                Text("  • \(label) (\(browser))")
+                let version = coordinator.extensionVersions[id]
+                let details = version.map { "\(browser), v\($0)" } ?? browser
+                Text("  • \(label) (\(details))")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

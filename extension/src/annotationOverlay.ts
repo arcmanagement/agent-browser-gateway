@@ -607,21 +607,27 @@ export async function manageAnnotationMode(
         for (const [index, annotation] of state.annotations.entries()) {
           const rect = anchoredToViewportRect(annotation);
           const isSelected = state.enabled && state.selectedId === annotation.id;
+          const canEditRect = annotation.kind !== "dom";
           const box = document.createElement("button");
           const badge = document.createElement("span");
           const comment = document.createElement("span");
-          const handles = isSelected
-            ? ["n", "ne", "e", "se", "s", "sw", "w", "nw"].map((handle) => {
-                const el = document.createElement("span");
-                el.className = `abg-resize-handle abg-resize-${handle}`;
-                el.dataset.handle = handle;
-                return el;
-              })
-            : [];
+          const handles =
+            isSelected && canEditRect
+              ? ["n", "ne", "e", "se", "s", "sw", "w", "nw"].map((handle) => {
+                  const el = document.createElement("span");
+                  el.className = `abg-resize-handle abg-resize-${handle}`;
+                  el.dataset.handle = handle;
+                  return el;
+                })
+              : [];
           box.type = "button";
-          box.className = isSelected
-            ? "abg-annotation-box abg-annotation-selected"
-            : "abg-annotation-box";
+          box.className = [
+            "abg-annotation-box",
+            annotation.kind === "dom" ? "abg-annotation-dom" : "abg-annotation-screenshot",
+            isSelected ? "abg-annotation-selected" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
           box.dataset.id = String(annotation.id);
           setRectStyle(box, rect);
           badge.className = "abg-annotation-badge";
@@ -632,6 +638,7 @@ export async function manageAnnotationMode(
           box.append(badge, comment, ...handles);
           box.addEventListener("mousedown", (event) => {
             if (!state.enabled || event.button !== 0) return;
+            if (!canEditRect) return;
             const target = event.target instanceof HTMLElement ? event.target : null;
             const handle = target?.dataset.handle;
             state.selectedId = annotation.id;
@@ -845,8 +852,13 @@ export async function manageAnnotationMode(
             margin: 0;
             padding: 0;
             pointer-events: auto;
-            cursor: move;
             text-align: left;
+          }
+          .abg-annotation-screenshot {
+            cursor: move;
+          }
+          .abg-annotation-dom {
+            cursor: pointer;
           }
           .abg-annotation-box:hover {
             background: rgba(29, 155, 240, 0.26);
@@ -1139,6 +1151,10 @@ export async function manageAnnotationMode(
             if (!gesture) return;
             const annotation = state.annotations.find((item) => item.id === gesture.annotationId);
             if (!annotation) {
+              state.editGesture = null;
+              return;
+            }
+            if (annotation.kind === "dom") {
               state.editGesture = null;
               return;
             }

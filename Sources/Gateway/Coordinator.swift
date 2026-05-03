@@ -12,12 +12,14 @@ final class GatewayCoordinator: ObservableObject {
     @Published var extensionProfiles: [String: String] = [:]
     /// extensionId -> browser kind ("chrome", "edge", future "firefox")
     @Published var extensionBrowsers: [String: String] = [:]
+    /// extensionId -> browser extension version reported by the extension hello
+    @Published var extensionVersions: [String: String] = [:]
     @Published var statusMessage: String = "Starting…"
 
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) var pluginHost = PluginHost(abgVersion: "0.3.0")
+    private(set) var pluginHost = PluginHost(abgVersion: "0.3.1")
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
@@ -63,14 +65,16 @@ final class GatewayCoordinator: ObservableObject {
         connectedExtensionIds.removeAll { $0 == extensionId }
         extensionProfiles.removeValue(forKey: extensionId)
         extensionBrowsers.removeValue(forKey: extensionId)
+        extensionVersions.removeValue(forKey: extensionId)
         permittedTabs.removeAll { $0.extensionId == extensionId }
         Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
     }
 
     func handleExtensionMessage(_ msg: ExtensionMessage, from extensionId: String) {
         switch msg {
-        case .hello(_, _, let profileLabel, let browserKind):
+        case .hello(_, let version, let profileLabel, let browserKind):
             extensionConnected(extensionId)
+            extensionVersions[extensionId] = version
             if let label = profileLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
                 extensionProfiles[extensionId] = label
             } else {
@@ -299,6 +303,7 @@ final class GatewayCoordinator: ObservableObject {
             var dict: [String: Any] = ["extensionId": id]
             if let label = extensionProfiles[id] { dict["profile"] = label }
             if let kind = extensionBrowsers[id] { dict["browser"] = kind }
+            if let version = extensionVersions[id] { dict["version"] = version }
             return dict
         }
     }

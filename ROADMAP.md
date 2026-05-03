@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
 
-Current repo version: **v0.3.0**.
+Current repo version: **v0.3.1**.
 
 ## Shipped
 
@@ -44,6 +44,11 @@ Current repo version: **v0.3.0**.
 - DOM annotations track selectors, text/style metadata, scroll, iframe, and responsive layout changes
 - Screenshot annotations remain available for arbitrary visual regions, canvas, video, and ambiguous wrappers
 - `replace` operation for temporary DOM swaps from annotation-derived selectors
+
+### v0.3.1 — DOM annotation polish (2026-05-03)
+- DOM annotations stay locked to their selector and cannot be moved or resized from the overlay
+- Screenshot annotations remain manually movable and resizable
+- Skill and README guidance now distinguish DOM selector annotations from screenshot-region annotations
 
 ## In progress
 

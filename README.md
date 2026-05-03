@@ -140,7 +140,7 @@ Annotation mode lets the human mark the current tab the way they would point at 
 
 - Start from the extension popup with **Annotate this tab**, or from the CLI with `abg annotate t1 --start`.
 - Drag to create a numbered annotation, add a comment, and click **Done** or press Escape when finished.
-- Existing annotations can be moved with drag-and-drop, resized from their edges/corners, and deleted with Delete/Backspace while selected.
+- Screenshot annotations can be moved with drag-and-drop and resized from their edges/corners. DOM annotations stay locked to their selector so they keep following the page layout. Any selected annotation can be deleted with Delete/Backspace.
 - ABG classifies each annotation as `kind: "dom"` when a stable DOM target is available, including headings and other text blocks, otherwise as `kind: "screenshot"` for arbitrary visual regions.
 - Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, and screenshot-region coordinates for visual targets.
 - For explicit additions, use `abg annotate t1 --selector "button.save" --comment "..."` or `abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "..."`.
@@ -388,7 +388,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.0 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
+🚧 **v0.3.1 / pre-alpha.** Functional for the author's daily use. Not yet hardened for general distribution. APIs may change without notice until v1.0.
 
 ---
 
