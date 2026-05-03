@@ -24,6 +24,25 @@ dist/
 *.sock
 audit.jsonl
 
+# Local secrets / signing material
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
+*.asc
+*.gpg
+*.kdbx
+*.secrets
+secrets/
+credentials/
+
 # Claude Code session state
 .claude/
 

@@ -48,6 +48,11 @@ actor WSServer {
         // 256MB is large enough for any realistic page (full-page screenshots ~5-10MB) without
         // the OOM/crash risk of using Int.max as the per-connection buffer cap.
         app.webSocket("ws", maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024)) { req, ws in
+            guard Self.isAllowedWebSocketOrigin(req.headers.first(name: .origin)) else {
+                app.logger.warning("Rejected WebSocket connection with Origin: \(req.headers.first(name: .origin) ?? "(none)")")
+                _ = ws.close()
+                return
+            }
             ws.onText { ws, text in
                 Task { await self.handleText(ws: ws, text: text) }
             }
@@ -57,6 +62,23 @@ actor WSServer {
         }
 
         try await app.execute()
+    }
+
+    static func isAllowedWebSocketOrigin(_ origin: String?) -> Bool {
+        guard let origin = origin?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !origin.isEmpty,
+              let components = URLComponents(string: origin),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host,
+              !host.isEmpty,
+              components.user == nil,
+              components.password == nil,
+              components.path.isEmpty,
+              components.query == nil,
+              components.fragment == nil else {
+            return false
+        }
+        return ["chrome-extension", "moz-extension", "safari-web-extension"].contains(scheme)
     }
 
     private func handleText(ws: WebSocket, text: String) async {

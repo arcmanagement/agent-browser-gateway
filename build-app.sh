@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.3.2}"
+VERSION="${VERSION:-0.3.3}"
 APP_NAME="Agent Browser Gateway"
 APP="$APP_NAME.app"
 LEGACY_APP="Gateway.app"

@@ -11,6 +11,7 @@ public enum ABGConstants {
             .first!
             .appendingPathComponent("AgentBrowserGateway", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        chmod(url.path, 0o700)
         return url
     }
 
@@ -20,6 +21,7 @@ public enum ABGConstants {
             .first!
             .appendingPathComponent("Logs/AgentBrowserGateway", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        chmod(url.path, 0o700)
         return url
     }
 

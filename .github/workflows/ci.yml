@@ -6,11 +6,16 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Show Swift version
         run: swift --version

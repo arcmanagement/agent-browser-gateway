@@ -109,27 +109,25 @@ async function refresh(): Promise<void> {
     clearAnnotationsBtn.disabled = true;
   }
 
-  const wsState = state.wsConnected
-    ? '<span class="ws-ok">● Gateway connected</span>'
-    : '<span class="ws-err">● Gateway disconnected</span>';
-  statusEl.innerHTML = wsState;
+  statusEl.replaceChildren();
+  const wsStateEl = document.createElement("span");
+  wsStateEl.className = state.wsConnected ? "ws-ok" : "ws-err";
+  wsStateEl.textContent = state.wsConnected ? "● Gateway connected" : "● Gateway disconnected";
+  statusEl.append(wsStateEl);
 
   if (state.sharedTabs.length > 0) {
-    const items = state.sharedTabs
-      .map((t) => `<div class="shared-item">🔓 [${t.tabId}] ${escapeHtml(t.title || t.url)}</div>`)
-      .join("");
-    sharedListEl.innerHTML = `<h2>Shared tabs (${state.sharedTabs.length})</h2>${items}`;
+    const heading = document.createElement("h2");
+    heading.textContent = `Shared tabs (${state.sharedTabs.length})`;
+    const items = state.sharedTabs.map((t) => {
+      const item = document.createElement("div");
+      item.className = "shared-item";
+      item.textContent = `🔓 [${t.tabId}] ${t.title || t.url}`;
+      return item;
+    });
+    sharedListEl.replaceChildren(heading, ...items);
   } else {
-    sharedListEl.innerHTML = "";
+    sharedListEl.replaceChildren();
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 refresh().catch((e) => {

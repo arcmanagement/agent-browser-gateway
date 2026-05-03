@@ -14,6 +14,7 @@ actor AuditLog {
         if !FileManager.default.fileExists(atPath: path) {
             FileManager.default.createFile(atPath: path, contents: nil)
         }
+        chmod(path, 0o600)
     }
 
     struct Entry: Codable {

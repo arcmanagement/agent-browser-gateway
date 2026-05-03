@@ -1,6 +1,6 @@
 {
   "name": "agent-browser-gateway-extension",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@types/chrome": "^0.0.300",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.0",
     "typescript": "^6.0.0"
   },
   "pnpm": {

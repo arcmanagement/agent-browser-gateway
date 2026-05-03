@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
 
-Current repo version: **v0.3.2**.
+Current repo version: **v0.3.3**.
 
 ## Shipped
 
@@ -56,6 +56,13 @@ Current repo version: **v0.3.2**.
 - Text selections render as line-by-line selection highlights instead of screenshot-style rectangles
 - Multi-element text selections store DOM Range anchors and follow responsive layout changes
 - README, bundled app resources, and Claude/Codex skills document the text annotation workflow
+
+### v0.3.3 — OSS security hardening (2026-05-03)
+- Gateway WebSocket rejects non-extension Origins before accepting messages
+- Runtime support/log directories are owner-only, and the audit log is owner-only
+- Extension Popup renders page-derived tab titles/URLs with DOM text APIs instead of HTML strings
+- CI permissions, local secret ignores, security policy, and signing/notarization docs are tightened
+- Extension tooling is updated to clear the current moderate `esbuild` advisory
 
 ## In progress
 
