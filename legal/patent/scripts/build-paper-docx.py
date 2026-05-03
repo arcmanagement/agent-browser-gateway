@@ -192,7 +192,11 @@ def figure_preview_html() -> str:
         elif svg.exists():
             out.append(f'<p><img src="{svg.resolve().as_uri()}" alt="{esc(src.stem)}"></p>')
         else:
-            out.append(f"<pre>{esc(src.read_text(encoding='utf-8'))}</pre>")
+            source = src.read_text(encoding="utf-8")
+            out.append(f'<div class="mermaid">{esc(source)}</div>')
+            out.append("<details><summary>Mermaid source</summary>")
+            out.append(f"<pre>{esc(source)}</pre>")
+            out.append("</details>")
 
     out.append("</section>")
     return "\n".join(out)
@@ -283,6 +287,26 @@ def build_html() -> str:
       font-family: Menlo, Consolas, monospace;
       font-size: 8.5pt;
     }}
+    details {{
+      margin: 0 0 12pt;
+    }}
+    summary {{
+      cursor: pointer;
+      font-weight: bold;
+      margin: 4pt 0;
+    }}
+    .mermaid {{
+      border: 1px solid #bbb;
+      margin: 8pt 0 10pt;
+      padding: 8pt;
+      text-align: center;
+      page-break-inside: avoid;
+      background: #fff;
+    }}
+    .mermaid svg {{
+      max-width: 100%;
+      height: auto;
+    }}
     img {{
       display: block;
       max-width: 100%;
@@ -305,6 +329,23 @@ def build_html() -> str:
 </head>
 <body>
 {chr(10).join(sections)}
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({{
+    startOnLoad: false,
+    securityLevel: "strict",
+    theme: "base",
+    themeVariables: {{
+      background: "#ffffff",
+      primaryColor: "#ffffff",
+      primaryTextColor: "#111111",
+      primaryBorderColor: "#222222",
+      lineColor: "#222222",
+      fontFamily: "Arial, sans-serif"
+    }}
+  }});
+  await mermaid.run({{ querySelector: ".mermaid" }});
+</script>
 </body>
 </html>
 """

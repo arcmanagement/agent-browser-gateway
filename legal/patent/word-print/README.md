@@ -19,7 +19,7 @@ python3 legal/patent/scripts/build-paper-docx.py
 
 生成先は `legal/patent/out/abg-patent-paper-package.docx` である。同時に確認用 HTML も `legal/patent/out/abg-patent-paper-package.html` に出力される。
 
-`mmdc` が利用可能な環境では、DOCX 生成時に `figures/build.sh` が自動実行され、生成済みの SVG を図面プレビューとして DOCX に含める。`mmdc` がない場合でも、図面プレビュー欄に Mermaid 原稿が含まれるため、図面9点の内容を同じ DOCX 内で確認できる。
+`mmdc` が利用可能な環境では、DOCX 生成時に `figures/build.sh` が自動実行され、生成済みの SVG を図面プレビューとして DOCX に含める。`mmdc` がない場合でも、HTML では Mermaid.js により図面プレビューをブラウザ内で描画し、DOCX では Mermaid 原稿を確認用 fallback として含める。
 
 ## Word での最終確認
 
