@@ -1,0 +1,23 @@
+flowchart TD
+  G["Gateway Module\n20"]
+  VM["JavaScriptCore VM\nsame process"]
+  API["abg host API\nregisterTransform"]
+  M["markdown-plugin\nhtml-to-markdown"]
+  N["notion-plugin\nnotion-to-markdown"]
+  I["info-plugin\nloader smoke test"]
+  U["user plugins\n50"]
+  D["Domain matcher\nmanifest domains"]
+  R["Read result to CLI\n30"]
+
+  G --> VM
+  VM --> API
+  API --> M
+  API --> N
+  API --> I
+  API --> U
+  G --> D
+  D --> |"notion.so / notion.site"| N
+  D --> |"fallback"| M
+  N --> R
+  M --> R
+  U --> R

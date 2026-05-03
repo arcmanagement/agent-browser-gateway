@@ -1,0 +1,17 @@
+flowchart TB
+  A["ABG repo benchmark\nJapanese WordPress article"]
+
+  P1["Playwright page.content()\n124,476 chars\nabout 50,000 tokens\nbaseline"]
+  P2["Playwright article innerHTML\n42,070 chars\nabout 17,000 tokens"]
+  B1["ABG read --selector article --as-markdown\n11,780 chars\nabout 5,900 tokens\nabout 88 percent token reduction"]
+  P3["Playwright article innerText\n6,543 chars\nabout 3,800 tokens\nstructure lost"]
+
+  A --> P1
+  A --> P2
+  A --> B1
+  A --> P3
+
+  P1 --> C1["Cost for 1,000 reads\nabout 750 USD"]
+  P2 --> C2["Cost for 1,000 reads\nabout 255 USD"]
+  B1 --> C3["Cost for 1,000 reads\nabout 88 USD"]
+  P3 --> C4["Low tokens\nheadings links lists lost"]
