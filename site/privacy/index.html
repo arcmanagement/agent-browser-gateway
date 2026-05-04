@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy | Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="Privacy Policy for Agent Browser Gateway, including Chrome extension permissions, local storage, user data handling, and Chrome Web Store Limited Use disclosure."
+    />
+    <meta property="og:title" content="Privacy Policy | Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="How Agent Browser Gateway handles browser data, local logs, extension permissions, and user choices."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/privacy/" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="icon" type="image/png" href="/assets/logo-shield.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="nav" aria-label="Primary navigation">
+      <div class="nav-inner">
+        <a class="brand" href="/">
+          <img src="/assets/logo-shield.png" alt="" width="31" height="31" />
+          <span>Agent Browser Gateway</span>
+        </a>
+        <nav class="nav-links" aria-label="Site links">
+          <a href="/">Home</a>
+          <a href="/privacy/" aria-current="page">Privacy</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="legal-hero">
+        <div class="section-inner">
+          <div class="eyebrow">Privacy Policy</div>
+          <h1>Privacy Policy</h1>
+          <p>
+            This policy explains how Agent Browser Gateway handles browser data, extension
+            permissions, local logs, and user choices.
+          </p>
+          <p><strong>Last updated:</strong> May 4, 2026</p>
+        </div>
+      </section>
+
+      <div class="section-inner legal-content">
+        <aside class="toc" aria-label="Privacy policy sections">
+          <a href="#scope">Scope</a>
+          <a href="#summary">Summary</a>
+          <a href="#data">Data handled</a>
+          <a href="#permissions">Permissions</a>
+          <a href="#sharing">Sharing</a>
+          <a href="#security">Security</a>
+          <a href="#retention">Retention</a>
+          <a href="#choices">Choices</a>
+          <a href="#limited-use">Limited Use</a>
+          <a href="#contact">Contact</a>
+        </aside>
+
+        <article class="policy">
+          <section id="scope">
+            <h2>1. Scope</h2>
+            <p>
+              This Privacy Policy applies to Agent Browser Gateway ("ABG"), managed by
+              ArcManagement, Inc. ("ArcManagement", "we", "our", or "the product"), including the
+              Agent Browser Gateway Chrome extension, the macOS Agent Browser Gateway app, the
+              <code>abg</code> command-line interface, locally installed ABG plugins, and the website
+              at <code>agent-browser-gateway.com</code>.
+            </p>
+            <p>
+              ABG is designed as a local bridge between your browser and AI agent tools you choose
+              to run. ABG does not operate a hosted browser service or a cloud account system.
+            </p>
+          </section>
+
+          <section id="summary">
+            <h2>2. Summary</h2>
+            <ul>
+              <li>ABG does not collect analytics, telemetry, advertising identifiers, or crash reports.</li>
+              <li>ABG does not sell user data.</li>
+              <li>ABG does not expose all tabs by default. A tab must be explicitly shared by the user.</li>
+              <li>
+                Browser data requested through ABG is handled locally between the extension, the
+                macOS gateway, the CLI, and the agent process you authorize.
+              </li>
+              <li>
+                If you use ABG with an AI agent or another tool that sends data to a third-party
+                service, that service's own terms and privacy policy apply to what you send through it.
+              </li>
+            </ul>
+          </section>
+
+          <section id="data">
+            <h2>3. Data ABG handles</h2>
+            <p>
+              ABG can handle browser data only for tabs you choose to share or commands you choose
+              to run. The table below describes the main categories of data involved.
+            </p>
+
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Examples</th>
+                    <th>Purpose</th>
+                    <th>Where it is stored or processed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Extension settings</td>
+                    <td>Random extension identifier, operation approval setting, optional profile label</td>
+                    <td>Identify a local extension connection and remember user preferences</td>
+                    <td>Chrome extension local storage on your device</td>
+                  </tr>
+                  <tr>
+                    <td>Shared tab metadata</td>
+                    <td>Tab ID, title, URL, origin, sharing timestamp, optional expiration timestamp</td>
+                    <td>Track which tab has been explicitly shared and revoke access when needed</td>
+                    <td>Chrome session storage, gateway memory, and local audit log entries</td>
+                  </tr>
+                  <tr>
+                    <td>Page content</td>
+                    <td>Visible text, selected DOM content, HTML, Markdown, table data, element descriptions</td>
+                    <td>Let the local CLI or authorized agent inspect the shared tab</td>
+                    <td>Transferred from the extension to the local gateway over loopback when requested</td>
+                  </tr>
+                  <tr>
+                    <td>Screenshots and annotations</td>
+                    <td>Full or partial tab screenshots, annotation comments, selected text, coordinates, selectors</td>
+                    <td>Help the user and agent refer to visible page regions or selected text</td>
+                    <td>Processed locally; screenshots may be saved to a local path chosen by the CLI command</td>
+                  </tr>
+                  <tr>
+                    <td>Console and network information</td>
+                    <td>Console messages, request URL, method, status, type, MIME type, duration, response size</td>
+                    <td>Debug the explicitly shared tab</td>
+                    <td>Buffered in extension memory for the shared tab and returned locally on request</td>
+                  </tr>
+                  <tr>
+                    <td>Network response body</td>
+                    <td>Response body for a specific network request ID</td>
+                    <td>Debug a request when the user or authorized agent explicitly asks for it</td>
+                    <td>Fetched locally through Chrome debugging APIs and returned to the local CLI</td>
+                  </tr>
+                  <tr>
+                    <td>Operation inputs</td>
+                    <td>Selectors, text to type, coordinates, file paths, destination URLs, keyboard events</td>
+                    <td>Perform a command requested by the local CLI or authorized agent</td>
+                    <td>Processed locally by the extension and gateway; operation records are logged locally</td>
+                  </tr>
+                  <tr>
+                    <td>Audit log</td>
+                    <td>Timestamp, extension ID, tab ID, URL, action name, agent identifier, limited details</td>
+                    <td>Provide a local record of ABG reads, operations, permits, and revocations</td>
+                    <td><code>~/Library/Logs/AgentBrowserGateway/audit.jsonl</code> on your Mac</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Website data</h3>
+            <p>
+              The public website does not use forms, cookies, analytics scripts, advertising tags,
+              or tracking pixels. The website may be hosted by GitHub Pages, which may process
+              standard server logs such as IP addresses and request metadata for security and
+              service operation according to GitHub's own policies.
+            </p>
+          </section>
+
+          <section id="permissions">
+            <h2>4. Chrome extension permissions</h2>
+            <p>
+              ABG requests only the extension permissions needed for its user-facing local browser
+              sharing features. The extension declares no <code>host_permissions</code>.
+            </p>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Permission</th>
+                    <th>Why ABG uses it</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>activeTab</code></td>
+                    <td>Access the active tab only when the user explicitly shares it.</td>
+                  </tr>
+                  <tr>
+                    <td><code>scripting</code></td>
+                    <td>Read selected page content and perform structured operations in a shared tab.</td>
+                  </tr>
+                  <tr>
+                    <td><code>tabs</code></td>
+                    <td>Read tab title, URL, and lifecycle events so ABG can list and revoke shared tabs.</td>
+                  </tr>
+                  <tr>
+                    <td><code>storage</code></td>
+                    <td>Store local settings and session-scoped tab sharing state.</td>
+                  </tr>
+                  <tr>
+                    <td><code>debugger</code></td>
+                    <td>
+                      Capture screenshots, console messages, network information, file uploads, and input
+                      operations for a tab the user has shared.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>alarms</code></td>
+                    <td>Keep the extension service worker connected to the local gateway while Chrome is running.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="sharing">
+            <h2>5. Data sharing and third parties</h2>
+            <p>
+              ABG does not send browser data to servers operated by ABG. Data moves locally between
+              the Chrome extension, the macOS gateway, the <code>abg</code> CLI, and the local agent
+              process or shell command you authorize.
+            </p>
+            <p>
+              ABG is agent-agnostic. If the agent tool you use sends prompts, screenshots, page
+              content, logs, or other information to a remote AI provider or third-party service,
+              that transfer is performed by that agent or service, not by ABG. Review the privacy
+              policy and configuration of the agent you use with ABG.
+            </p>
+            <p>
+              ABG may include locally installed plugins. Plugins can transform page content before
+              it is returned to the CLI. Install plugins only from sources you trust.
+            </p>
+          </section>
+
+          <section id="security">
+            <h2>6. Security measures</h2>
+            <ul>
+              <li>The gateway listens on <code>127.0.0.1</code>, not on a public network interface.</li>
+              <li>The gateway accepts WebSocket connections only from browser-extension origins.</li>
+              <li>The Chrome extension declares no <code>host_permissions</code>.</li>
+              <li>Sharing is scoped to explicitly permitted tabs and is revoked on origin change or tab close.</li>
+              <li>Operation approval mode is enabled by default for write actions.</li>
+              <li>The gateway support and log directories are created as owner-only directories.</li>
+              <li>The audit log file is created as an owner-readable and owner-writable file.</li>
+              <li>ABG does not provide an agent command for arbitrary user-supplied JavaScript execution.</li>
+            </ul>
+          </section>
+
+          <section id="retention">
+            <h2>7. Retention</h2>
+            <ul>
+              <li>Extension settings remain in Chrome local storage until changed, reset, or uninstalled.</li>
+              <li>Shared tab state is session-scoped and can be cleared by revoking a tab or restarting Chrome.</li>
+              <li>Console and network buffers are held in extension memory and cleared when a tab is revoked or closed.</li>
+              <li>Audit log entries remain on your Mac until you delete them.</li>
+              <li>Screenshots saved by the CLI remain at the output path until you delete them.</li>
+            </ul>
+          </section>
+
+          <section id="choices">
+            <h2>8. Your choices</h2>
+            <ul>
+              <li>Do not share a tab unless you want the local agent workflow to inspect or operate it.</li>
+              <li>Use the extension popup or <code>abg revoke</code> to revoke a shared tab.</li>
+              <li>Keep operation approval mode enabled for a second local confirmation step.</li>
+              <li>Review local audit logs with <code>abg audit</code> or by opening the audit log file.</li>
+              <li>Delete local screenshots or audit logs from your Mac when you no longer need them.</li>
+              <li>Uninstall the Chrome extension and macOS app to stop using ABG.</li>
+            </ul>
+          </section>
+
+          <section id="limited-use">
+            <h2>9. Chrome Web Store Limited Use disclosure</h2>
+            <p class="note">
+              The use of information received from Google APIs will adhere to the Chrome Web Store
+              User Data Policy, including the Limited Use requirements.
+            </p>
+            <p>
+              ABG uses browser data only to provide or improve its single purpose: user-authorized,
+              local, per-tab browser access for AI agent workflows. ABG does not use browser data for
+              advertising, credit eligibility, resale, or unrelated profiling.
+            </p>
+          </section>
+
+          <section id="changes">
+            <h2>10. Changes to this policy</h2>
+            <p>
+              We may update this policy as ABG changes. Material updates will be reflected by the
+              "Last updated" date above. If a future version changes how user data is collected,
+              used, stored, or shared, the policy and Chrome Web Store disclosures should be updated
+              before that version is published.
+            </p>
+          </section>
+
+          <section id="contact">
+            <h2>11. Contact</h2>
+            <p>
+              For privacy questions about Agent Browser Gateway, contact:
+              <a href="mailto:contact@arcm.co.jp">contact@arcm.co.jp</a>.
+              ArcManagement, Inc.:
+              <a href="https://arcm.co.jp" rel="noopener">https://arcm.co.jp</a>.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+
+      <footer class="footer">
+        <div class="section-inner footer-inner">
+          <span>
+            Agent Browser Gateway is managed by
+            <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+          </span>
+          <span>
+            <a href="mailto:contact@arcm.co.jp">Contact</a>
+            <a href="/">Home</a>
+          </span>
+        </div>
+      </footer>
+  </body>
+</html>

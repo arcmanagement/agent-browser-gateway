@@ -55,6 +55,8 @@ docs/*
 
 # Brand experiments — final design TBD, not committed yet
 assets/
+!site/assets/
+!site/assets/**
 
 # Extension icons — final design TBD, not committed yet
 extension/public/icons/
