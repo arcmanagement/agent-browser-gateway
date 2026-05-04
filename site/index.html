@@ -29,6 +29,7 @@
           </a>
           <nav class="nav-links" aria-label="Site links">
             <a href="#why">Why</a>
+            <a href="#download">Download</a>
             <a href="#model">Consent</a>
             <a href="#tokens">Tokens</a>
             <a href="#compare">Compare</a>
@@ -48,8 +49,8 @@
                 default, and every local operation is designed to stay inspectable.
               </p>
               <div class="hero-actions">
-                <a class="button" href="privacy/">Read the privacy policy</a>
-                <a class="button secondary" href="#why">Why it exists</a>
+                <a class="button" href="#download">Download for macOS</a>
+                <a class="button secondary" href="privacy/">Read the privacy policy</a>
               </div>
               <div class="proof-row" aria-label="Product principles">
                 <span class="proof">Per-tab consent</span>
@@ -67,6 +68,73 @@
             width="600"
             height="534"
           />
+        </section>
+
+        <section class="band surface download-band" id="download" aria-labelledby="download-title">
+          <div class="section-inner download-layout">
+            <div class="copy">
+              <h2 id="download-title">Download the signed macOS gateway.</h2>
+              <p>
+                The current macOS distribution is a notarized DMG for Apple Silicon Macs. It
+                includes the menu bar app, the <code>abg</code> CLI, and the bundled agent skill
+                installer.
+              </p>
+              <div class="download-actions">
+                <a
+                  class="button"
+                  href="downloads/agent-browser-gateway-0.3.4-macos-arm64.dmg"
+                >
+                  Download DMG
+                </a>
+                <a
+                  class="button disabled store-button"
+                  aria-disabled="true"
+                  aria-label="Chrome Web Store coming soon"
+                  tabindex="-1"
+                  data-store-url="https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi"
+                >
+                  <img class="chrome-icon" src="assets/chrome-logo.svg" alt="" width="20" height="20" />
+                  <span class="store-label">Chrome Web Store</span>
+                  <span class="coming-soon-overlay">Coming Soon</span>
+                </a>
+                <a
+                  class="button secondary"
+                  href="downloads/agent-browser-gateway-0.3.4-macos-arm64.dmg.sha256.txt"
+                >
+                  SHA-256
+                </a>
+              </div>
+            </div>
+            <div class="download-panel" aria-label="Download details">
+              <div class="download-meta">
+                <span>Version 0.3.4</span>
+                <span>macOS 14+</span>
+                <span>Apple Silicon</span>
+              </div>
+              <div class="download-items">
+                <div>
+                  <strong>Menu bar app</strong>
+                  <span>Installs to <code>/Applications</code> and starts after setup.</span>
+                </div>
+                <div>
+                  <strong>CLI ready</strong>
+                  <span>Installs <code>abg</code> and its resource bundle under <code>/usr/local/bin</code>.</span>
+                </div>
+                <div>
+                  <strong>Skills included</strong>
+                  <span>Runs <code>abg install-skill</code> for Claude Code and Codex.</span>
+                </div>
+                <div>
+                  <strong>Chrome extension</strong>
+                  <span>The Chrome Web Store listing will be enabled after review approval.</span>
+                </div>
+              </div>
+              <p class="checksum">
+                <span>SHA-256</span>
+                <code>ae36464ef12a55e677e48526a1b83e2ebc7ac8182064671bfbcb3d5934bb2a47</code>
+              </p>
+            </div>
+          </div>
         </section>
 
         <section class="band surface" id="why" aria-labelledby="why-title">
