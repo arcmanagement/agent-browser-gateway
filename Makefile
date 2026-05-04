@@ -1,7 +1,9 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway extension all clean test lint format dist release verify
+.PHONY: help install gateway extension all clean test lint format dist pages-dmg release verify
+
+PAGES_OUTPUT_DIR ?= site/downloads
 
 help:
 	@printf "ABG dev targets:\n\n"
@@ -14,6 +16,7 @@ help:
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
+	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
 	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
@@ -55,6 +58,9 @@ ifndef VERSION
 	$(error VERSION is required, e.g. make dist VERSION=0.3.1)
 endif
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" CASK_OUTPUT="$(CASK_OUTPUT)" bash scripts/dist-macos-arm64.sh
+
+pages-dmg: dist
+	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" PAGES_OUTPUT_DIR="$(PAGES_OUTPUT_DIR)" bash scripts/dist-pages-dmg.sh
 
 release: dist
 	@echo "Release artifacts for v$(VERSION) are in dist/"
