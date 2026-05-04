@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" fill="none">
+  <rect width="1280" height="800" fill="#fafaf9"/>
+  <rect x="70" y="58" width="1140" height="684" rx="28" fill="#ffffff" stroke="#e5e5e7"/>
+  <rect x="70" y="58" width="1140" height="64" rx="28" fill="#f5f5f7"/>
+  <rect x="70" y="94" width="1140" height="28" fill="#f5f5f7"/>
+  <circle cx="104" cy="90" r="8" fill="#ff5f57"/>
+  <circle cx="132" cy="90" r="8" fill="#ffbd2e"/>
+  <circle cx="160" cy="90" r="8" fill="#28c840"/>
+  <rect x="202" y="76" width="518" height="28" rx="14" fill="#ffffff"/>
+  <circle cx="224" cy="90" r="5" fill="#34c759"/>
+  <text x="240" y="95" fill="#0a0a0a" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="12">https://example.com/support/case/1842</text>
+
+  <rect x="104" y="154" width="676" height="430" rx="18" fill="#ffffff" stroke="#e5e5e7"/>
+  <text x="136" y="204" fill="#0a0a0a" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="34" font-weight="800">Real browser context</text>
+  <text x="136" y="244" fill="#6e6e73" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="17">Use the tab you are already logged into. ABG shares only the tab you choose.</text>
+  <rect x="136" y="292" width="584" height="62" rx="12" fill="#f5f5f7"/>
+  <rect x="160" y="314" width="94" height="18" rx="9" fill="#0a0a0a"/>
+  <rect x="278" y="314" width="312" height="18" rx="9" fill="#0a0a0a" opacity=".18"/>
+  <rect x="136" y="374" width="584" height="62" rx="12" fill="#f5f5f7"/>
+  <rect x="160" y="396" width="136" height="18" rx="9" fill="#0a0a0a"/>
+  <rect x="320" y="396" width="244" height="18" rx="9" fill="#0a0a0a" opacity=".18"/>
+  <rect x="136" y="456" width="215" height="48" rx="24" fill="#0a0a0a"/>
+  <text x="172" y="487" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="750">Shared as t1</text>
+  <rect x="371" y="456" width="168" height="48" rx="24" fill="#eef8f1"/>
+  <text x="407" y="487" fill="#166534" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="750">Consent on</text>
+
+  <rect x="828" y="154" width="300" height="392" rx="20" fill="#0a0a0a"/>
+  <path d="M878 198L846 210V242C846 268 860 288 878 296C896 288 910 268 910 242V210L878 198Z" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="863" y="241" width="30" height="7" rx="2" fill="#ffffff"/>
+  <circle cx="870" cy="244.5" r="3" fill="#34c759"/>
+  <text x="932" y="219" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="800">Agent Browser</text>
+  <text x="932" y="243" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="800">Gateway</text>
+  <text x="846" y="338" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="28" font-weight="850">Share this tab</text>
+  <text x="846" y="374" fill="#a1a1aa" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16">The agent sees only this approved tab.</text>
+  <rect x="846" y="414" width="244" height="50" rx="25" fill="#34c759"/>
+  <text x="907" y="446" fill="#0a0a0a" font-family="-apple-system, BlinkMacSystemFont, 'Inter', sans-serif" font-size="16" font-weight="850">Share with agent</text>
+  <rect x="846" y="484" width="244" height="1" fill="#303035"/>
+  <text x="846" y="518" fill="#a1a1aa" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="13">Operation approval: on</text>
+
+  <rect x="104" y="616" width="1024" height="86" rx="18" fill="#0a0a0a"/>
+  <text x="136" y="655" fill="#34c759" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="16">$</text>
+  <text x="158" y="655" fill="#ffffff" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="16">abg read t1 --format markdown</text>
+  <text x="136" y="682" fill="#a1a1aa" font-family="ui-monospace, 'SF Mono', Menlo, monospace" font-size="14">Clean structured context, fewer wasted tokens, local audit trail.</text>
+</svg>

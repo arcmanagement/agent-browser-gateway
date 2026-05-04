@@ -55,9 +55,8 @@ docs/*
 
 # Brand experiments — final design TBD, not committed yet
 assets/
-
-# Extension icons — final design TBD, not committed yet
-extension/public/icons/
+!site/assets/
+!site/assets/**
 
 # License is undecided — file kept locally but not committed yet
 LICENSE
