@@ -58,9 +58,6 @@ assets/
 !site/assets/
 !site/assets/**
 
-# Extension icons — final design TBD, not committed yet
-extension/public/icons/
-
 # License is undecided — file kept locally but not committed yet
 LICENSE
 NOTICE
