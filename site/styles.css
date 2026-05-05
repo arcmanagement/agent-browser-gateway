@@ -229,43 +229,16 @@ h1 {
   opacity: 1;
 }
 
-.button.disabled .coming-soon-overlay,
-.button:disabled .coming-soon-overlay {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(10, 10, 10, 0.08);
-  color: #4d5358;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .store-button {
   position: relative;
   overflow: hidden;
   min-width: 202px;
 }
 
-.store-button .store-label {
-  color: rgba(75, 80, 86, 0.58);
-}
-
 .store-button .chrome-icon {
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
-  filter: saturate(0.82);
-  opacity: 0.76;
-}
-
-.store-button .coming-soon-overlay {
-  position: absolute;
-  inset: auto 12px auto auto;
-  transform: rotate(-8deg);
-  border: 1px solid rgba(10, 10, 10, 0.10);
-  background: #fff !important;
-  color: #22262b !important;
-  box-shadow: 0 8px 18px rgba(11, 13, 16, 0.10);
 }
 
 .button:hover {

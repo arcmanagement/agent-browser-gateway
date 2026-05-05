@@ -331,7 +331,13 @@ open "Agent Browser Gateway.app"        # menubar shield icon appears
 ln -sf $(pwd)/.build/release/abg /usr/local/bin/abg
 ```
 
-### Build and load the extension
+### Install the Chrome extension
+
+Install Agent Browser Gateway from the Chrome Web Store:
+
+https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+
+For local development, build and load the unpacked extension:
 
 ```bash
 cd extension
