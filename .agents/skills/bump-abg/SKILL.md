@@ -1,11 +1,11 @@
 ---
-name: agent-browser-gateway-bump
-description: /Users/am/agent-browser-gateway の ABG アプリをバージョン bump し、拡張・Swift app・CLI resource・docs・Homebrew Cask・一時配布 zip 手順を揃えて、必要に応じて signed/notarized build、commit、push、GitHub Release まで行うための専用 workflow。
+name: bump-abg
+description: Agent Browser Gateway リポジトリの ABG アプリをバージョン bump し、拡張・Swift app・CLI resource・docs・Homebrew Cask・一時配布 zip 手順を揃えて、必要に応じて signed/notarized build、commit、push、GitHub Release まで行うための専用 workflow。
 ---
 
-# Agent Browser Gateway Bump
+# Bump ABG
 
-Use this skill only in `/Users/am/agent-browser-gateway` when the user asks to bump, release, rebuild, package, sign, notarize, commit, push, tag, or publish Agent Browser Gateway.
+Use this skill only in the Agent Browser Gateway repository when the user asks to bump, release, rebuild, package, sign, notarize, commit, push, tag, or publish Agent Browser Gateway.
 
 ## Rules
 
