@@ -5,7 +5,7 @@ flowchart TD
   BAD["Rejected source\nunauthorized / missing / malformed"]
   W["Gateway Module 20\nmessage handling"]
   P["Permission Manager 70"]
-  L["Audit Record 60\naccess controlled"]
+  L["Audit Record 60\nrequest / response\naccess controlled"]
   FS["Support and record storage\naccess controlled"]
 
   R --> V
@@ -16,4 +16,4 @@ flowchart TD
   W --> P
   P --> L
   FS --> L
-  W --> |"connect / operate / revoke"| L
+  W --> |"connect / operate / revoke\nrequest / response summary"| L

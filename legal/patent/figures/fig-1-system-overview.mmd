@@ -16,6 +16,8 @@ flowchart LR
     V --> P
     P <--> H
     P --> L
+    H --> |"content / transform audit"| L
+    V --> |"source decision audit"| L
   end
 
   C["Agent Operation Interface\n30"]

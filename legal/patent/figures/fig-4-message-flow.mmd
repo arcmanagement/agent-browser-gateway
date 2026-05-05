@@ -9,17 +9,18 @@ sequenceDiagram
 
   A->>C: command/API/message
   C->>G: JSON request over communication path 80
+  G->>L: record request data or summary
   G->>P: check permitted tab
   alt tab permitted
     G->>E: command over communication path 80
     E->>T: debug API, annotation overlay, or structured operation
     T-->>E: result
     E-->>G: result
-    G->>L: record operation audit entry
+    G->>L: record result data or summary
     G-->>C: JSON response
     C-->>A: command output
   else tab not permitted
-    G->>L: record rejected request
+    G->>L: record rejected request and reason
     G-->>C: error
     C-->>A: error output
   end
