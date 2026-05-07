@@ -28,6 +28,8 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_described",
   "click_at",
   "fill",
+  "paste",
+  "clear",
   "replace_dom",
   "upload_file",
   "type_text",
@@ -601,6 +603,27 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Fill ${quoteForIntent(value)} into the field matching selector ${quoteForIntent(selector)}.`,
       run: () => fillField(tabId, selector, value),
+    };
+  }
+  if (cmd.method === "paste") {
+    const selector = cmd.params?.selector;
+    const rawValue = cmd.params?.value;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    if (rawValue !== undefined && typeof rawValue !== "string") {
+      throw new Error("value must be a string");
+    }
+    const value = rawValue ?? "";
+    return {
+      intent: `Paste ${new TextEncoder().encode(value).byteLength} bytes into the editable element matching selector ${quoteForIntent(selector)}.`,
+      run: () => pasteText(tabId, selector, value),
+    };
+  }
+  if (cmd.method === "clear") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    return {
+      intent: `Clear the editable element matching selector ${quoteForIntent(selector)}.`,
+      run: () => clearEditable(tabId, selector),
     };
   }
   if (cmd.method === "replace_dom") {
@@ -1387,6 +1410,495 @@ async function fillField(
     args: [selector, value],
   });
   return res?.result ?? { found: false };
+}
+
+type PasteResult = {
+  ok: boolean;
+  found: boolean;
+  focused: boolean;
+  pasted: boolean;
+  viaClipboardFallback: boolean;
+  pasteStrategy: "native" | "execCommand" | "clipboardEvent" | null;
+};
+
+type ClearResult = {
+  ok: boolean;
+  found: boolean;
+  focused: boolean;
+  cleared: boolean;
+  clearStrategy: "execCommand" | "selectionRange" | "syntheticInput" | "keyboardShortcut" | null;
+};
+
+async function pasteText(tabId: number, selector: string, value: string): Promise<PasteResult> {
+  const focusResult = await focusEditableElement(tabId, selector);
+  if (!focusResult.found || !focusResult.focused) {
+    return {
+      ok: false,
+      found: focusResult.found,
+      focused: focusResult.focused,
+      pasted: false,
+      viaClipboardFallback: false,
+      pasteStrategy: null,
+    };
+  }
+  const viaClipboardFallback = await writeClipboardText(tabId, value);
+  if (viaClipboardFallback) {
+    await focusEditableElement(tabId, selector);
+  }
+  await dispatchPasteShortcut(tabId);
+  let pasted = await editableTextIncludes(tabId, selector, value);
+  if (pasted) {
+    return {
+      ok: true,
+      found: true,
+      focused: true,
+      pasted,
+      viaClipboardFallback,
+      pasteStrategy: "native",
+    };
+  }
+
+  await insertTextWithExecCommand(tabId, selector, value);
+  pasted = await editableTextIncludes(tabId, selector, value);
+  if (pasted) {
+    return {
+      ok: true,
+      found: true,
+      focused: true,
+      pasted,
+      viaClipboardFallback,
+      pasteStrategy: "execCommand",
+    };
+  }
+
+  await dispatchClipboardPasteEvent(tabId, selector, value);
+  pasted = await editableTextIncludes(tabId, selector, value);
+  return {
+    ok: true,
+    found: true,
+    focused: true,
+    pasted,
+    viaClipboardFallback,
+    pasteStrategy: pasted ? "clipboardEvent" : null,
+  };
+}
+
+async function clearEditable(tabId: number, selector: string): Promise<ClearResult> {
+  const focusResult = await focusEditableElement(tabId, selector);
+  if (!focusResult.found || !focusResult.focused) {
+    return {
+      ok: false,
+      found: focusResult.found,
+      focused: focusResult.focused,
+      cleared: false,
+      clearStrategy: null,
+    };
+  }
+
+  await clearWithExecCommand(tabId, selector);
+  if (await editableTextEmpty(tabId, selector)) {
+    return {
+      ok: true,
+      found: true,
+      focused: true,
+      cleared: true,
+      clearStrategy: "execCommand",
+    };
+  }
+
+  await clearWithSelectionRange(tabId, selector);
+  if (await editableTextEmpty(tabId, selector)) {
+    return {
+      ok: true,
+      found: true,
+      focused: true,
+      cleared: true,
+      clearStrategy: "selectionRange",
+    };
+  }
+
+  await clearWithSyntheticInput(tabId, selector);
+  if (await editableTextEmpty(tabId, selector)) {
+    return {
+      ok: true,
+      found: true,
+      focused: true,
+      cleared: true,
+      clearStrategy: "syntheticInput",
+    };
+  }
+
+  await dispatchSelectAllBackspaceShortcut(tabId);
+  const cleared = await editableTextEmpty(tabId, selector);
+  return {
+    ok: true,
+    found: true,
+    focused: true,
+    cleared,
+    clearStrategy: cleared ? "keyboardShortcut" : null,
+  };
+}
+
+async function focusEditableElement(
+  tabId: number,
+  selector: string,
+): Promise<{ found: boolean; focused: boolean }> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { found: false, focused: false } as const;
+      const editable =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el.isContentEditable ||
+        el.getAttribute("role") === "textbox";
+      if (!editable) return { found: false, focused: false } as const;
+      el.focus({ preventScroll: true });
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        const end = el.value.length;
+        try {
+          el.setSelectionRange(end, end);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+      } else if (el.isContentEditable) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      return {
+        found: true,
+        focused: document.activeElement === el || el.contains(document.activeElement),
+      } as const;
+    },
+    args: [selector],
+  });
+  return res?.result ?? { found: false, focused: false };
+}
+
+async function clearWithExecCommand(tabId: number, selector: string): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      document.execCommand("selectAll");
+      document.execCommand("delete");
+    },
+    args: [selector],
+  });
+}
+
+async function clearWithSelectionRange(tabId: number, selector: string): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLElement
+        | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        try {
+          el.setSelectionRange(0, el.value.length);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+      } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      document.execCommand("delete");
+    },
+    args: [selector],
+  });
+}
+
+async function clearWithSyntheticInput(tabId: number, selector: string): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLElement
+        | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        try {
+          el.setSelectionRange(0, el.value.length);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+      } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      const beforeInput = new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "deleteContent",
+        data: null,
+      });
+      const canceled = !el.dispatchEvent(beforeInput);
+      if (!canceled && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+        const proto =
+          el instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (setter) setter.call(el, "");
+        else el.value = "";
+      }
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContent" }));
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    },
+    args: [selector],
+  });
+}
+
+async function writeClipboardText(tabId: number, value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return false;
+    }
+  } catch {
+    // Fall back to a page-scoped copy operation below.
+  }
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (text: string) => {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "true");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.documentElement.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.remove();
+      return copied;
+    },
+    args: [value],
+  });
+  if (!res?.result) {
+    throw new GatewayError("clipboard_write_failed", "failed to write text to the clipboard");
+  }
+  return true;
+}
+
+async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> {
+  await attachDebugger(tabId);
+  const isMac = /Mac/i.test(navigator.platform);
+  const modifierKey = isMac ? "Meta" : "Control";
+  const modifierCode = isMac ? "MetaLeft" : "ControlLeft";
+  const modifierMask = isMac ? 4 : 2;
+  const modifierVirtualKey = isMac ? 91 : 17;
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: modifierKey,
+    code: modifierCode,
+    windowsVirtualKeyCode: modifierVirtualKey,
+    nativeVirtualKeyCode: modifierVirtualKey,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "a",
+    code: "KeyA",
+    windowsVirtualKeyCode: 65,
+    nativeVirtualKeyCode: 65,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "a",
+    code: "KeyA",
+    windowsVirtualKeyCode: 65,
+    nativeVirtualKeyCode: 65,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: modifierKey,
+    code: modifierCode,
+    windowsVirtualKeyCode: modifierVirtualKey,
+    nativeVirtualKeyCode: modifierVirtualKey,
+    modifiers: 0,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Backspace",
+    code: "Backspace",
+    windowsVirtualKeyCode: 8,
+    nativeVirtualKeyCode: 8,
+    modifiers: 0,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Backspace",
+    code: "Backspace",
+    windowsVirtualKeyCode: 8,
+    nativeVirtualKeyCode: 8,
+    modifiers: 0,
+  });
+}
+
+async function dispatchPasteShortcut(tabId: number): Promise<void> {
+  await attachDebugger(tabId);
+  const isMac = /Mac/i.test(navigator.platform);
+  const modifierKey = isMac ? "Meta" : "Control";
+  const modifierCode = isMac ? "MetaLeft" : "ControlLeft";
+  const modifierMask = isMac ? 4 : 2;
+  const modifierVirtualKey = isMac ? 91 : 17;
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: modifierKey,
+    code: modifierCode,
+    windowsVirtualKeyCode: modifierVirtualKey,
+    nativeVirtualKeyCode: modifierVirtualKey,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "v",
+    code: "KeyV",
+    windowsVirtualKeyCode: 86,
+    nativeVirtualKeyCode: 86,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "v",
+    code: "KeyV",
+    windowsVirtualKeyCode: 86,
+    nativeVirtualKeyCode: 86,
+    modifiers: modifierMask,
+  });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: modifierKey,
+    code: modifierCode,
+    windowsVirtualKeyCode: modifierVirtualKey,
+    nativeVirtualKeyCode: modifierVirtualKey,
+    modifiers: 0,
+  });
+}
+
+async function insertTextWithExecCommand(
+  tabId: number,
+  selector: string,
+  value: string,
+): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, val: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        const end = el.value.length;
+        try {
+          el.setSelectionRange(end, end);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+      } else if (el.isContentEditable) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      document.execCommand("insertText", false, val);
+    },
+    args: [selector, value],
+  });
+}
+
+async function dispatchClipboardPasteEvent(
+  tabId: number,
+  selector: string,
+  value: string,
+): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, val: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", val);
+      const event = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData,
+      });
+      el.dispatchEvent(event);
+    },
+    args: [selector, value],
+  });
+}
+
+async function editableTextIncludes(
+  tabId: number,
+  selector: string,
+  value: string,
+): Promise<boolean> {
+  if (value.length === 0) return true;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const text = await readEditableText(tabId, selector).catch(() => "");
+    if (text.includes(value)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+async function editableTextEmpty(tabId: number, selector: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const text = await readEditableText(tabId, selector).catch(() => "");
+    if (text.trim().length === 0) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+async function readEditableText(tabId: number, selector: string): Promise<string> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLElement
+        | null;
+      if (!el) return "";
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el.value;
+      return el.textContent ?? "";
+    },
+    args: [selector],
+  });
+  return res?.result ?? "";
 }
 
 async function replaceDom(

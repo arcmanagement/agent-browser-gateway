@@ -168,6 +168,10 @@ final class GatewayCoordinator: ObservableObject {
             }
         case "fill_tab":
             return await dispatch(req: req, method: "fill")
+        case "paste_tab":
+            return await dispatch(req: req, method: "paste")
+        case "clear_tab":
+            return await dispatch(req: req, method: "clear")
         case "replace_tab":
             return await dispatch(req: req, method: "replace_dom")
         case "upload_tab":
@@ -266,7 +270,18 @@ final class GatewayCoordinator: ObservableObject {
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
-            await auditLog.log(action: method, extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
+            let details: [String: String]? = {
+                guard method == "paste" || method == "clear" else { return nil }
+                var values: [String: String] = [:]
+                if let selector = params["selector"] as? String {
+                    values["selector"] = selector
+                }
+                if method == "paste", let value = params["value"] as? String {
+                    values["textBytes"] = String(value.utf8.count)
+                }
+                return values.isEmpty ? nil : values
+            }()
+            await auditLog.log(action: method, extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: details)
             return CLIResponse(id: req.id, result: result)
         } catch {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))

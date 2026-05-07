@@ -79,7 +79,7 @@ The core security model:
 
 There is no "share all tabs" button. There is no `<all_urls>` permission. There is no way for an agent to see a tab you did not explicitly share.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 
@@ -113,6 +113,9 @@ abg click <tab|ref> --selector "<css>"            # CSS selector click
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
 abg fill <tab|ref> --selector "<css>" --value "<text>"
+abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
+echo "long text" | abg paste <tab|ref> --selector "<css>" --stdin
+abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"                       # Send text to current focus
@@ -130,6 +133,25 @@ abg replay flow.json --match-url "*kintone*"
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg install-skill                       # Install/update Claude Code + Codex Skills
+```
+
+Use `fill` for native `input` and `textarea` fields when value assignment is enough. Use `type`
+when the target already has focus and needs per-character keyboard events. Use `paste` for rich
+editors that ignore synthetic value updates or character events, including Lexical, ProseMirror,
+Slate, Quill, and many native editable surfaces. `paste` writes the text to the clipboard, focuses
+the selected editable element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records
+the action, tab id, selector, and byte length only, never the pasted text.
+
+Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
+target, selects its content, and deletes it. The result includes `clearStrategy`, one of
+`execCommand`, `selectionRange`, `syntheticInput`, `keyboardShortcut`, or `null`.
+
+For Lexical-class editors and other rich editors that ignore `fill`, the canonical "set this
+editor's content to X" sequence is explicit:
+
+```bash
+abg clear t1 --selector 'div[aria-label="Gemini へのプロンプトを入力"]'
+abg paste t1 --selector 'div[aria-label="Gemini へのプロンプトを入力"]' --value "new prompt"
 ```
 
 ---
@@ -290,7 +312,7 @@ Currently shipped:
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Read tools: `read` / `screenshot` / `console` / `table` / `describe` / `network` (with selectors, compact formats, and latest screenshot references)
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
-- ✅ Operation tools: `click` / `fill` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
+- ✅ Operation tools: `click` / `fill` / `paste` / `clear` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
 - ✅ Wait tool: `wait --selector` / `--ms`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling

@@ -43,6 +43,8 @@ abg click <tab|ref> --selector "<css>"           # CSS selector でクリック
 abg click <tab|ref> --id <n>                     # describe の id でクリック
 abg click <tab|ref> --x <px> --y <px>            # 座標でクリック (canvas にも有効)
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea に入力
+abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
+abg clear <tab|ref> --selector "<css>"           # Clear an editable target before paste
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # 現在のタブ上で一時的に DOM 差し替え
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"              # 現在フォーカスにテキスト送信 (Sheets セル等)

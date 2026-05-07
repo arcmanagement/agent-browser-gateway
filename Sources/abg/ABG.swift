@@ -10,7 +10,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, Fill.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Click.self, Fill.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -723,6 +723,69 @@ struct Fill: AsyncParsableCommand {
     }
 }
 
+struct Paste: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Paste text through the system clipboard and native paste shortcut",
+        discussion: """
+        Writes the provided text to the clipboard, focuses the selected editable element,
+        then dispatches Cmd+V on macOS or Ctrl+V on other platforms. This is intended for
+        rich editors such as Lexical, ProseMirror, Slate, and Quill.
+
+        Examples:
+          abg paste t1 --selector '[contenteditable="true"]' --value "hello"
+          echo "long text" | abg paste t1 --selector '[contenteditable="true"]' --stdin
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target editable CSS selector") var selector: String
+    @Option(name: .long, help: "Text to paste") var value: String?
+    @Flag(name: .long, help: "Read text to paste from standard input") var stdin: Bool = false
+
+    func run() async throws {
+        if stdin == (value != nil) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one of --value or --stdin.",
+            ])
+        }
+        let text: String
+        if stdin {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            text = String(data: data, encoding: .utf8) ?? ""
+        } else {
+            text = value ?? ""
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "paste_tab", params: ["tabId": tabId, "selector": selector, "value": text])
+        appendRecordedStep(["op": "paste", "tabId": tabId, "selector": selector, "value": text])
+        printJSON(result)
+    }
+}
+
+struct Clear: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Clear an editable element",
+        discussion: """
+        Focuses the selected editable element, selects its contents, and deletes them.
+        Use this before `abg paste` when you want to replace rich-editor content.
+
+        Example:
+          abg clear t1 --selector '[contenteditable="true"]'
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target editable CSS selector") var selector: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "clear_tab", params: ["tabId": tabId, "selector": selector])
+        appendRecordedStep(["op": "clear", "tabId": tabId, "selector": selector])
+        printJSON(result)
+    }
+}
+
 struct Type: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "現在フォーカスがある場所にテキストを送る (canvas 等にも有効)")
     @OptionGroup var match: TabMatchOptions
@@ -1185,6 +1248,13 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
         return try client.call(method: "fill_tab", params: params)
+    case "paste":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        params["value"] = stringValue(step, "value") ?? ""
+        return try client.call(method: "paste_tab", params: params)
+    case "clear":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "clear_tab", params: params)
     case "replace":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["html"] = try requiredString(step, "html", op: op)
