@@ -416,7 +416,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.5 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.3.6 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 

@@ -1,8 +1,13 @@
 import XCTest
+import GatewayCore
 @testable import Gateway
 
 @MainActor
 final class PluginHostTests: XCTestCase {
+    struct TestError: Error, LocalizedError {
+        let errorDescription: String?
+    }
+
     func testLoadsPluginAndRunsRegisteredTransform() throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -73,6 +78,114 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(result?["ok"] as? Bool, true)
         XCTAssertEqual(result?["echo"] as? String, "hi")
         XCTAssertEqual(result?["plugin"] as? String, "command-plugin")
+    }
+
+    func testCommandContextTabPasteDispatchesAndResolves() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "tab-plugin",
+            source: """
+            abg.registerCommand("write", async function (args, context) {
+              const result = await context.tab.paste({ selector: args.selector, value: args.value });
+              return { ok: true, result };
+            });
+            """
+        )
+
+        var calls: [(method: String, params: [String: Any])] = []
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            return AnyCodable(["ok": true, "fromDispatcher": true])
+        }
+        host.loadAll(from: [root])
+
+        let result = try await host.runCommand(
+            plugin: "tab-plugin",
+            command: "write",
+            args: ["selector": "#prompt", "value": "hello"],
+            tabId: 42
+        ).value as? [String: Any]
+
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.method, "paste_tab")
+        XCTAssertEqual(calls.first?.params["tabId"] as? Int, 42)
+        XCTAssertEqual(calls.first?.params["selector"] as? String, "#prompt")
+        XCTAssertEqual(calls.first?.params["value"] as? String, "hello")
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        let dispatchResult = result?["result"] as? [String: Any]
+        XCTAssertEqual(dispatchResult?["ok"] as? Bool, true)
+        XCTAssertEqual(dispatchResult?["fromDispatcher"] as? Bool, true)
+    }
+
+    func testCommandContextTabRejectsWhenDispatcherThrows() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "tab-plugin",
+            source: """
+            abg.registerCommand("write", async function (args, context) {
+              return await context.tab.paste({ selector: args.selector, value: args.value });
+            });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test") { _, _ in
+            throw TestError(errorDescription: "dispatcher failed")
+        }
+        host.loadAll(from: [root])
+
+        do {
+            _ = try await host.runCommand(
+                plugin: "tab-plugin",
+                command: "write",
+                args: ["selector": "#prompt", "value": "hello"],
+                tabId: 42
+            )
+            XCTFail("Expected dispatcher rejection")
+        } catch let error as PluginCommandError {
+            XCTAssertTrue(error.localizedDescription.contains("dispatcher failed"))
+        }
+    }
+
+    func testCommandContextTabRejectsWithoutTabId() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "tab-plugin",
+            source: """
+            abg.registerCommand("write", async function (args, context) {
+              try {
+                await context.tab.paste({ selector: args.selector, value: args.value });
+                return { ok: true };
+              } catch (error) {
+                return { ok: false, error: error.error, message: error.message };
+              }
+            });
+            """
+        )
+
+        var dispatchCount = 0
+        let host = PluginHost(abgVersion: "test") { _, _ in
+            dispatchCount += 1
+            return AnyCodable(["ok": true])
+        }
+        host.loadAll(from: [root])
+
+        let result = try await host.runCommand(
+            plugin: "tab-plugin",
+            command: "write",
+            args: ["selector": "#prompt", "value": "hello"],
+            tabId: nil
+        ).value as? [String: Any]
+
+        XCTAssertEqual(dispatchCount, 0)
+        XCTAssertEqual(result?["ok"] as? Bool, false)
+        XCTAssertEqual(result?["error"] as? String, "no_tab_context")
+        XCTAssertTrue((result?["message"] as? String)?.contains("context.tab.paste") == true)
     }
 
     func testPluginExceptionDoesNotCrashLoader() throws {

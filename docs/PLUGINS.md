@@ -141,6 +141,45 @@ Audit logs record command invocations with `action: "plugin_command_run"`, the p
 name, argument key list, and serialized argument byte length. Argument values are never written to
 the audit log because prompts and payloads may contain sensitive data.
 
+The bundled agent skill in `Sources/abg/Resources/agent-browser-gateway.md` contains the concise
+agent-facing authoring guide. Keep this tutorial as the deeper human-facing reference.
+
+### Tab API
+
+Command handlers can drive the shared tab with `context.tab.<action>(options)`. Each method returns a
+Promise resolving to the same JSON shape as the corresponding CLI primitive, and rejects with
+`{ error: "no_tab_context", message: "..." }` when the command was invoked without `--tab-id`.
+
+Available methods:
+
+- `context.tab.paste({ selector, value })` mirrors `abg paste`.
+- `context.tab.clear({ selector })` mirrors `abg clear`.
+- `context.tab.fill({ selector, value })` mirrors `abg fill`.
+- `context.tab.click({ selector })`, `context.tab.click({ x, y })`, or `context.tab.click({ id })`
+  mirrors `abg click`.
+- `context.tab.key({ key, modifiers })` mirrors `abg key`.
+- `context.tab.read({ selector, format })` mirrors `abg read`; `format: "markdown"` enables Markdown
+  conversion.
+- `context.tab.describe({ filter, depth })` mirrors `abg describe`.
+- `context.tab.wait({ selector, hidden, ms })` mirrors `abg wait`.
+- `context.tab.screenshot({ selector, x, y, width, height })` mirrors `abg screenshot`; clipping uses
+  `x`, `y`, `width`, and `height`.
+
+Plugin-issued tab actions route through the same Gateway dispatch path as CLI calls, so per-tab
+consent, operation approval, debug bar behavior, and audit logging apply uniformly. Do not shell out
+from JavaScript or log raw argument values.
+
+```js
+abg.registerCommand("clear-and-paste", async function (args, context) {
+  if (context.tabId == null) {
+    return { ok: false, error: "no_tab_context" };
+  }
+  await context.tab.clear({ selector: args.selector });
+  await context.tab.paste({ selector: args.selector, value: args.value });
+  return { ok: true };
+});
+```
+
 ### Hello Command Example
 
 ```text

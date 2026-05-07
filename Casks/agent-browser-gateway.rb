@@ -1,6 +1,6 @@
 cask "agent-browser-gateway" do
-  version "0.3.5"
-  # TODO: update sha256 after the v0.3.5 app zip is generated and uploaded.
+  version "0.3.6"
+  # TODO: update sha256 after the v0.3.6 app zip is generated and uploaded.
   sha256 :no_check
 
   url "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"

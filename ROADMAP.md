@@ -2,9 +2,15 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-07.
 
-Current repo version: **v0.3.5**.
+Current repo version: **v0.3.6**.
 
 ## Shipped
+
+### v0.3.6 — Plugin commands API and authoring guide (2026-05-07)
+- Added first-class plugin commands from PR #118 as the headline public API for this release.
+- Documented user plugin authoring in the bundled ABG skill, including `plugin.json` command metadata,
+  `abg.registerCommand`, handler context, invocation forms, and audit-log privacy rules.
+- Kept `docs/PLUGINS.md` as the deeper human-facing tutorial and cross-linked it from the skill.
 
 ### v0.3.5 — Rich editor paste and clear primitives (2026-05-07)
 - Added `abg paste` with native paste, `execCommand`, and synthetic `ClipboardEvent` fallback paths for rich text editors.

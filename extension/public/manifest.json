@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent Browser Gateway",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Share specific Chrome tabs with AI coding agents via per-tab explicit permission.",
   "homepage_url": "https://agent-browser-gateway.com/",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArPR/lUgvlST8qBzTXZqgQFC9vybUUmG3F8fgK6W5n2Tnko9fOc98kLW8vi2ZGvvCwWjPlkYrx4e6kidd67cFw05uGVst5awKgNYB2nYQgwFVC2oy8dhZOwJsxzLziNNtetpS1UBGh3RAjSGzIx/5LC0V6uLbojIg5kKhFSsB0kyPXtbSfwWJLbAG5jwOAPVKiKtK61we1tLQfuLpMCK1gY2z9BrK8g5ZZzJvf6D8i60tNvBgo9d9zuaoeoEE5g4c9gFHgrb3gQo0yXuzAR4HeEttu4hj8aHpK4An2EJFH97sAFUYHK+W88/2j7MkAtmBphofbOExwXU6SocnK6jSMQIDAQAB",

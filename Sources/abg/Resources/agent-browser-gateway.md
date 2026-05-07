@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.3.5
+version: 0.3.6
 description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -68,7 +68,170 @@ abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追加
+abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 ```
+
+## Authoring a user plugin
+
+Use a user plugin when a repeated ABG workflow needs a stable local command or a site-specific transform.
+User plugins live under `~/.abg/plugins/<name>/`. First-party bundled plugins live under
+`Agent Browser Gateway.app/Contents/Resources/plugins/` and, in this repo, under `plugins/`.
+
+Recommended layout:
+
+```text
+hello-plugin/
+  index.js      # required
+  plugin.json   # recommended for help/list metadata
+  README.md     # encouraged for human context
+```
+
+`plugin.json` describes the plugin for `abg plugin list`, `abg <plugin> --help`, and command help:
+
+```json
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "author": "your-name",
+  "description": "Minimal ABG command plugin.",
+  "domains": ["https://example.com/*"],
+  "transforms": ["example-clean-markdown"],
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" },
+        { "name": "loud", "type": "boolean", "required": false, "default": false }
+      ]
+    }
+  ]
+}
+```
+
+Command arg `type` may be `"string"`, `"boolean"`, `"number"`, or `"object"`. Registering the command
+in `index.js` is the source of truth; manifest command metadata is for discovery and help.
+
+The host API available in `index.js` is intentionally small:
+
+```js
+abg.log("loaded " + abg.plugin.name + " on ABG " + abg.version);
+
+abg.registerTransform("example-clean-markdown", function (input) {
+  return String(input).trim();
+});
+
+abg.registerCommand("greet", async function (args, context) {
+  const name = args.name || "ABG";
+  const message = args.loud ? ("HELLO, " + name).toUpperCase() : "Hello, " + name;
+  return {
+    ok: true,
+    message,
+    plugin: context.plugin.name,
+    pluginVersion: context.plugin.version || null
+  };
+});
+```
+
+- `abg.log(msg)` writes a plugin startup/runtime line to stderr. Do not log prompts, credentials,
+  payloads, or raw argument values.
+- `abg.plugin.name`, `abg.plugin.version`, and `abg.version` expose plugin/Gateway metadata.
+- `abg.registerTransform(name, fn)` registers a synchronous string-to-string transform. Domain
+  Markdown transforms declared in `plugin.json` can run before generic `read --format markdown`.
+- `abg.registerCommand(name, handler)` registers a dynamic CLI command in v0.3.6. The handler
+  signature is `(args, context) => result | Promise<result>`.
+- `context.plugin.name` is always present. `context.plugin.version` is present when the manifest has
+  `version`. `context.tabId` is present only when the caller passes `--tab-id`; do not assume a shared
+  tab exists otherwise.
+- `context.tab.<action>(options)` exposes Promise-based tab primitives when `context.tabId` exists:
+  `paste`, `clear`, `fill`, `click`, `key`, `read`, `describe`, `wait`, and `screenshot`.
+  See `docs/PLUGINS.md` for the full Tab API surface and examples.
+
+Invoke commands as dynamic ABG subcommands:
+
+```bash
+abg hello greet --name "world"
+abg hello greet --json '{"name":"world","loud":true}'
+printf '{"name":"world"}' | abg hello greet --stdin
+abg hello --help
+abg plugin list
+```
+
+`--key value` becomes a string/number/boolean value in `args`, `--flag` becomes `true`, JSON
+`--stdin` and `--json` merge object values into `args`, and non-JSON stdin is passed as
+`args.stdin`. `abg <plugin> --help` shows manifest-driven command and arg specs. `abg plugin list`
+prefers the running Gateway view and shows registered commands per plugin; use `--local-only` only
+when you need filesystem metadata without the daemon.
+
+Audit logs for plugin commands record `argsKeys` and `argsBytes` only. Argument values are never
+recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.
+
+Plugins can drive a shared tab directly through `context.tab` when the command is invoked with
+`--tab-id`:
+
+```js
+abg.registerCommand("clear-and-paste", async function (args, context) {
+  if (context.tabId == null) {
+    return { ok: false, error: "no_tab_context" };
+  }
+  await context.tab.clear({ selector: args.selector });
+  await context.tab.paste({ selector: args.selector, value: args.value });
+  return { ok: true };
+});
+```
+
+Plugin-issued tab actions use the same Gateway dispatch path as normal ABG primitives. Do not shell
+out from plugin JavaScript, bypass per-tab consent, or log raw argument values.
+
+Minimal worked example mirroring the bundled `plugins/info-plugin` `ping` command. See
+`plugins/info-plugin/index.js` and `plugins/info-plugin/plugin.json` in this repo for the first-party
+example.
+
+```js
+// ~/.abg/plugins/hello-plugin/index.js
+abg.registerCommand("greet", async function (args, context) {
+  const name = args.name || "ABG";
+  return {
+    ok: true,
+    message: "Hello, " + name,
+    plugin: context.plugin.name
+  };
+});
+```
+
+```json
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "author": "your-name",
+  "description": "Minimal ABG command plugin.",
+  "domains": [],
+  "transforms": [],
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" }
+      ]
+    }
+  ]
+}
+```
+
+```bash
+abg hello greet --name "world"
+```
+
+```json
+{
+  "message": "Hello, world",
+  "ok": true,
+  "plugin": "hello"
+}
+```
+
+For deeper details, examples, and installation/update commands, see `docs/PLUGINS.md`.
 
 ## 注意点
 

@@ -19,7 +19,12 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) var pluginHost = PluginHost(abgVersion: "0.3.5")
+    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.3.6") { [weak self] method, params in
+        guard let self else {
+            throw PluginTabAPIError.dispatcherUnavailable
+        }
+        return try await self.dispatchPluginTabCommand(method: method, params: params)
+    }
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
@@ -269,6 +274,16 @@ final class GatewayCoordinator: ObservableObject {
                 )
             )
         }
+    }
+
+    private func dispatchPluginTabCommand(method: String, params: [String: Any]) async throws -> AnyCodable {
+        let response = await handleCLIRequest(
+            CLIRequest(id: UUID().uuidString, method: method, params: AnyCodable(params))
+        )
+        if let error = response.error {
+            throw PluginTabAPIError.dispatchFailed(code: error.code, message: error.message)
+        }
+        return response.result ?? AnyCodable(NSNull())
     }
 
     /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,

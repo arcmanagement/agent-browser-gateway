@@ -58,9 +58,16 @@ final class PluginHost {
     private var transforms: [String: JSValue] = [:]
     private var commands: [String: [String: JSValue]] = [:]
     private let abgVersion: String
+    private let tabDispatcher: @MainActor (String, [String: Any]) async throws -> AnyCodable
 
-    init(abgVersion: String) {
+    init(
+        abgVersion: String,
+        tabDispatcher: @escaping @MainActor (String, [String: Any]) async throws -> AnyCodable = { _, _ in
+            throw PluginTabAPIError.dispatcherUnavailable
+        }
+    ) {
         self.abgVersion = abgVersion
+        self.tabDispatcher = tabDispatcher
     }
 
     func loadAll(from searchPaths: [URL]) {
@@ -140,9 +147,116 @@ final class PluginHost {
             pluginObject.setObject(version, forKeyedSubscript: "version" as NSString)
         }
         contextObject.setObject(pluginObject, forKeyedSubscript: "plugin" as NSString)
+        contextObject.setObject(makeTabObject(context: plugin.context, tabId: tabId), forKeyedSubscript: "tab" as NSString)
 
         guard let result = fn.call(withArguments: [args, contextObject]) else { return AnyCodable(NSNull()) }
         return try await resolveJSResult(result, context: plugin.context)
+    }
+
+    private func makeTabObject(context: JSContext, tabId: Int?) -> JSValue {
+        let tabObject = JSValue(newObjectIn: context)!
+        let methods: [(jsName: String, cliMethod: String)] = [
+            ("paste", "paste_tab"),
+            ("clear", "clear_tab"),
+            ("fill", "fill_tab"),
+            ("click", "click_tab"),
+            ("key", "key_tab"),
+            ("read", "read_tab"),
+            ("describe", "describe_tab"),
+            ("wait", "wait_tab"),
+            ("screenshot", "screenshot_tab"),
+        ]
+        for method in methods {
+            let fn: @convention(block) (JSValue?) -> JSValue = { [weak self] options in
+                guard let self else {
+                    return PluginHost.rejectedPromise(
+                        context: context,
+                        code: "plugin_host_tab_api_missing",
+                        message: "Plugin tab API is not available."
+                    )
+                }
+                return JSValue(newPromiseIn: context, fromExecutor: { resolve, reject in
+                    Task { @MainActor in
+                        guard let tabId else {
+                            reject?.call(withArguments: [
+                                PluginHost.makeJSError(
+                                    context: context,
+                                    code: "no_tab_context",
+                                    message: "context.tab.\(method.jsName) requires the command to run with a tab context."
+                                ),
+                            ])
+                            return
+                        }
+                        do {
+                            var params = self.optionsDictionary(options, context: context)
+                            params["tabId"] = tabId
+                            params = self.normalizeTabParams(method: method.jsName, params: params)
+                            let result = try await self.tabDispatcher(method.cliMethod, params)
+                            resolve?.call(withArguments: [result.value])
+                        } catch {
+                            reject?.call(withArguments: [PluginHost.makeJSError(context: context, error: error)])
+                        }
+                    }
+                })!
+            }
+            tabObject.setObject(fn, forKeyedSubscript: method.jsName as NSString)
+        }
+        return tabObject
+    }
+
+    private func optionsDictionary(_ value: JSValue?, context: JSContext) -> [String: Any] {
+        guard let value, !value.isUndefined, !value.isNull else { return [:] }
+        return jsValueToJSON(value, context: context) as? [String: Any] ?? [:]
+    }
+
+    private func normalizeTabParams(method: String, params: [String: Any]) -> [String: Any] {
+        var normalized = params
+        switch method {
+        case "read":
+            if let format = normalized["format"] as? String, format == "markdown" {
+                normalized["asMarkdown"] = true
+            }
+        case "screenshot":
+            if normalized["clip"] == nil,
+               let x = normalized["x"],
+               let y = normalized["y"],
+               let width = normalized["width"],
+               let height = normalized["height"] {
+                normalized["clip"] = ["x": x, "y": y, "width": width, "height": height]
+                normalized.removeValue(forKey: "x")
+                normalized.removeValue(forKey: "y")
+                normalized.removeValue(forKey: "width")
+                normalized.removeValue(forKey: "height")
+            }
+        case "wait":
+            if normalized["sleepMs"] == nil, let ms = normalized["ms"] {
+                normalized["sleepMs"] = ms
+                normalized.removeValue(forKey: "ms")
+            }
+        default:
+            break
+        }
+        return normalized
+    }
+
+    private static func rejectedPromise(context: JSContext, code: String, message: String) -> JSValue {
+        JSValue(newPromiseIn: context, fromExecutor: { _, reject in
+            reject?.call(withArguments: [makeJSError(context: context, code: code, message: message)])
+        })!
+    }
+
+    private static func makeJSError(context: JSContext, error: Error) -> JSValue {
+        if let tabError = error as? PluginTabAPIError {
+            return makeJSError(context: context, code: tabError.code, message: tabError.errorDescription ?? tabError.code)
+        }
+        return makeJSError(context: context, code: "tab_command_failed", message: error.localizedDescription)
+    }
+
+    private static func makeJSError(context: JSContext, code: String, message: String) -> JSValue {
+        let error = JSValue(newObjectIn: context)!
+        error.setObject(code, forKeyedSubscript: "error" as NSString)
+        error.setObject(message, forKeyedSubscript: "message" as NSString)
+        return error
     }
 
     private func loadPluginsInDir(_ dir: URL) {
@@ -368,6 +482,29 @@ enum PluginCommandError: Error, LocalizedError {
             return "Plugin command not found: \(plugin) \(command)"
         case .handlerFailed(let message):
             return message
+        }
+    }
+}
+
+enum PluginTabAPIError: Error, LocalizedError {
+    case dispatcherUnavailable
+    case dispatchFailed(code: String, message: String)
+
+    var code: String {
+        switch self {
+        case .dispatcherUnavailable:
+            return "plugin_host_tab_api_missing"
+        case .dispatchFailed(let code, _):
+            return code
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .dispatcherUnavailable:
+            return "Plugin tab API dispatcher is not configured."
+        case .dispatchFailed(let code, let message):
+            return "\(code): \(message)"
         }
     }
 }
