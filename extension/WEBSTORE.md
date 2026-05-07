@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.3.4.zip
+dist/agent-browser-gateway-extension-0.3.5.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -97,7 +97,7 @@ browser data on ABG-operated servers.
 Suggested reviewer test instructions:
 
 ```text
-No account is required. To test: download the signed macOS gateway DMG from https://agent-browser-gateway.com/downloads/agent-browser-gateway-0.3.4-macos-arm64.dmg, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. For help, contact contact@arcm.co.jp.
+No account is required. To test: download the signed macOS gateway DMG from https://agent-browser-gateway.com/downloads/agent-browser-gateway-0.3.5-macos-arm64.dmg, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. For help, contact contact@arcm.co.jp.
 ```
 
 ## Stable Chrome extension ID

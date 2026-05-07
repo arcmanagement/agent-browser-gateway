@@ -13,18 +13,18 @@
 以下の 2 つを送ります。
 
 ```text
-agent-browser-gateway-0.3.4-macos-arm64.zip
-agent-browser-gateway-extension-0.3.4.zip
+agent-browser-gateway-0.3.5-macos-arm64.zip
+agent-browser-gateway-extension-0.3.5.zip
 ```
 
 チェックサム:
 
 ```text
-7cf84832c4958cdf6654f1df25c06044b3b5a4d722e02fcd2e7e6290973b736a  agent-browser-gateway-0.3.4-macos-arm64.zip
-3ee5087cd71777211fb2eea8458b7a39951c9a0219890417345c75b1a388a6d7  agent-browser-gateway-extension-0.3.4.zip
+TODO: update after signed v0.3.5 artifacts are generated  agent-browser-gateway-0.3.5-macos-arm64.zip
+TODO: update after extension v0.3.5 artifact is generated  agent-browser-gateway-extension-0.3.5.zip
 ```
 
-`agent-browser-gateway-0.3.4-macos-arm64.zip` の中身:
+`agent-browser-gateway-0.3.5-macos-arm64.zip` の中身:
 
 ```text
 Agent Browser Gateway.app
@@ -38,7 +38,7 @@ AgentBrowserGateway_abg.bundle
 
 ## アプリと CLI をインストール
 
-`agent-browser-gateway-0.3.4-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
+`agent-browser-gateway-0.3.5-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -58,12 +58,12 @@ abg install-skill
 
 ## Chrome 拡張をインストール
 
-`agent-browser-gateway-extension-0.3.4.zip` を、消さない場所へ展開します。
+`agent-browser-gateway-extension-0.3.5.zip` を、消さない場所へ展開します。
 
 ```bash
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 mkdir -p "$HOME/Applications/Agent Browser Gateway Extension"
-unzip agent-browser-gateway-extension-0.3.4.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
+unzip agent-browser-gateway-extension-0.3.5.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
 Chrome で以下を行います。

@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-03.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-07.
 
-Current repo version: **v0.3.4**.
+Current repo version: **v0.3.5**.
 
 ## Shipped
+
+### v0.3.5 — Rich editor paste and clear primitives (2026-05-07)
+- Added `abg paste` with native paste, `execCommand`, and synthetic `ClipboardEvent` fallback paths for rich text editors.
+- Added `abg clear` with independent clearing strategies for editors that ignore synthetic key events.
+- Documented `clear` then `paste` as the replacement-content idiom for rich editor workflows.
 
 ### v0.1 — read-only baseline (2026-05-01)
 - macOS 14+ menubar app (Swift / SwiftUI `MenuBarExtra`)
