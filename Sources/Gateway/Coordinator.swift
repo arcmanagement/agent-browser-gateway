@@ -91,7 +91,7 @@ final class GatewayCoordinator: ObservableObject {
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
-                Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": reason]) }
+                Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": AnyCodable(reason)]) }
             }
         case .tabUpdated(let tabId, let url, let title, let origin):
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
@@ -209,14 +209,65 @@ final class GatewayCoordinator: ObservableObject {
                 if let v = e.extensionId { dict["extensionId"] = v }
                 if let v = e.tabId { dict["tabId"] = v }
                 if let v = e.url { dict["url"] = v }
-                if let v = e.details { dict["details"] = v }
+                if let v = e.details { dict["details"] = v.mapValues(\.value) }
                 return dict
             }
             return CLIResponse(id: req.id, result: AnyCodable(summarized))
         case "plugins":
             return CLIResponse(id: req.id, result: AnyCodable(pluginHost.loadedPluginSummaries()))
+        case "plugin_command_list":
+            return CLIResponse(id: req.id, result: AnyCodable(pluginHost.commandList()))
+        case "plugin_command_run":
+            return await handlePluginCommandRun(req: req)
         default:
             return CLIResponse(id: req.id, error: ErrorPayload(code: "unknown_method", message: req.method))
+        }
+    }
+
+    private func handlePluginCommandRun(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let pluginName = params["pluginName"] as? String,
+              let commandName = params["command"] as? String
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "pluginName and command are required"))
+        }
+        let args = params["args"] as? [String: Any] ?? [:]
+        let tabId = params["tabId"] as? Int
+        do {
+            let argsData = try? JSONSerialization.data(withJSONObject: args, options: [])
+            await auditLog.log(
+                action: "plugin_command_run",
+                tabId: tabId,
+                agent: "cli",
+                details: [
+                    "plugin": AnyCodable(pluginName),
+                    "command": AnyCodable(commandName),
+                    "argsKeys": AnyCodable(args.keys.sorted()),
+                    "argsBytes": AnyCodable(argsData?.count ?? 0),
+                ]
+            )
+            let result = try await pluginHost.runCommand(plugin: pluginName, command: commandName, args: args, tabId: tabId)
+            return CLIResponse(id: req.id, result: result)
+        } catch let error as PluginCommandError {
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "plugin_command_failed",
+                    message: error.localizedDescription,
+                    plugin: pluginName,
+                    command: commandName
+                )
+            )
+        } catch {
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "plugin_command_failed",
+                    message: error.localizedDescription,
+                    plugin: pluginName,
+                    command: commandName
+                )
+            )
         }
     }
 
@@ -270,14 +321,14 @@ final class GatewayCoordinator: ObservableObject {
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
-            let details: [String: String]? = {
+            let details: [String: AnyCodable]? = {
                 guard method == "paste" || method == "clear" else { return nil }
-                var values: [String: String] = [:]
+                var values: [String: AnyCodable] = [:]
                 if let selector = params["selector"] as? String {
-                    values["selector"] = selector
+                    values["selector"] = AnyCodable(selector)
                 }
                 if method == "paste", let value = params["value"] as? String {
-                    values["textBytes"] = String(value.utf8.count)
+                    values["textBytes"] = AnyCodable(value.utf8.count)
                 }
                 return values.isEmpty ? nil : values
             }()

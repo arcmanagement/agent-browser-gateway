@@ -29,6 +29,52 @@ final class PluginHostTests: XCTestCase {
         XCTAssertNil(host.transform(name: "missing", input: "abg"))
     }
 
+    func testLoadsPluginAndRunsRegisteredCommand() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "command-plugin",
+            manifest: """
+            {
+              "name": "command-plugin",
+              "version": "0.1.0",
+              "commands": [
+                {
+                  "name": "ping",
+                  "description": "Return a ping response.",
+                  "args": [
+                    { "name": "message", "type": "string", "required": false, "default": "pong" }
+                  ]
+                }
+              ]
+            }
+            """,
+            source: """
+            abg.registerCommand("ping", async function (args, context) {
+              return { ok: true, echo: args.message || "pong", plugin: context.plugin.name };
+            });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [root])
+
+        let commands = host.commandList()
+        XCTAssertEqual(commands.first?["plugin"] as? String, "command-plugin")
+        XCTAssertEqual(commands.first?["command"] as? String, "ping")
+
+        let result = try await host.runCommand(
+            plugin: "command-plugin",
+            command: "ping",
+            args: ["message": "hi"],
+            tabId: nil
+        ).value as? [String: Any]
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(result?["echo"] as? String, "hi")
+        XCTAssertEqual(result?["plugin"] as? String, "command-plugin")
+    }
+
     func testPluginExceptionDoesNotCrashLoader() throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }

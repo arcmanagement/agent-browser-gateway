@@ -24,10 +24,10 @@ actor AuditLog {
         let url: String?
         let action: String
         let agent: String?
-        let details: [String: String]?
+        let details: [String: AnyCodable]?
     }
 
-    func log(action: String, extensionId: String? = nil, tabId: Int? = nil, url: String? = nil, agent: String? = nil, details: [String: String]? = nil) {
+    func log(action: String, extensionId: String? = nil, tabId: Int? = nil, url: String? = nil, agent: String? = nil, details: [String: AnyCodable]? = nil) {
         let entry = Entry(ts: Date(), extensionId: extensionId, tabId: tabId, url: url, action: action, agent: agent, details: details)
         guard let data = try? encoder.encode(entry) else { return }
         guard let handle = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) else { return }

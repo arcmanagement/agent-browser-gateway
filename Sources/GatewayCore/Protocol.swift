@@ -166,14 +166,27 @@ public struct ErrorPayload: Codable, Sendable {
     public let nextCommand: String?
     public let hint: String?
     public let tabId: Int?
+    public let plugin: String?
+    public let command: String?
 
-    public init(code: String, message: String, userMessage: String? = nil, nextCommand: String? = nil, hint: String? = nil, tabId: Int? = nil) {
+    public init(
+        code: String,
+        message: String,
+        userMessage: String? = nil,
+        nextCommand: String? = nil,
+        hint: String? = nil,
+        tabId: Int? = nil,
+        plugin: String? = nil,
+        command: String? = nil
+    ) {
         self.code = code
         self.message = message
         self.userMessage = userMessage
         self.nextCommand = nextCommand
         self.hint = hint
         self.tabId = tabId
+        self.plugin = plugin
+        self.command = command
     }
 }
 

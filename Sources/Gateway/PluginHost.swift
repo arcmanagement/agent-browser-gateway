@@ -1,8 +1,42 @@
 import Foundation
+import GatewayCore
 import JavaScriptCore
 
 @MainActor
 final class PluginHost {
+    struct CommandArgSpec: Codable {
+        let name: String
+        let type: String?
+        let required: Bool?
+        let `default`: AnyCodable?
+    }
+
+    struct CommandSpec: Codable {
+        let name: String
+        let description: String?
+        let args: [CommandArgSpec]?
+
+        init(name: String, description: String? = nil, args: [CommandArgSpec]? = nil) {
+            self.name = name
+            self.description = description
+            self.args = args
+        }
+
+        init(from decoder: Decoder) throws {
+            let single = try decoder.singleValueContainer()
+            if let name = try? single.decode(String.self) {
+                self.init(name: name)
+                return
+            }
+            let keyed = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                name: try keyed.decode(String.self, forKey: .name),
+                description: try keyed.decodeIfPresent(String.self, forKey: .description),
+                args: try keyed.decodeIfPresent([CommandArgSpec].self, forKey: .args)
+            )
+        }
+    }
+
     struct Manifest: Codable {
         let name: String?
         let version: String?
@@ -10,7 +44,7 @@ final class PluginHost {
         let description: String?
         let domains: [String]?
         let transforms: [String]?
-        let commands: [String]?
+        let commands: [CommandSpec]?
     }
 
     struct LoadedPlugin {
@@ -22,6 +56,7 @@ final class PluginHost {
 
     private(set) var plugins: [LoadedPlugin] = []
     private var transforms: [String: JSValue] = [:]
+    private var commands: [String: [String: JSValue]] = [:]
     private let abgVersion: String
 
     init(abgVersion: String) {
@@ -56,6 +91,58 @@ final class PluginHost {
             }
         }
         return nil
+    }
+
+    func commandList() -> [[String: Any]] {
+        plugins.flatMap { plugin -> [[String: Any]] in
+            let manifestCommands = Dictionary(
+                uniqueKeysWithValues: (plugin.manifest?.commands ?? []).map { ($0.name, $0) }
+            )
+            return (commands[plugin.name] ?? [:]).keys.sorted().map { commandName in
+                var dict: [String: Any] = [
+                    "plugin": plugin.name,
+                    "command": commandName,
+                ]
+                if let version = plugin.manifest?.version { dict["version"] = version }
+                if let spec = manifestCommands[commandName] {
+                    if let description = spec.description { dict["description"] = description }
+                    if let args = spec.args {
+                        dict["args"] = args.map { arg in
+                            var argDict: [String: Any] = ["name": arg.name]
+                            if let type = arg.type { argDict["type"] = type }
+                            if let required = arg.required { argDict["required"] = required }
+                            if let defaultValue = arg.default { argDict["default"] = defaultValue.value }
+                            return argDict
+                        }
+                    }
+                }
+                return dict
+            }
+        }
+    }
+
+    func hasPlugin(named pluginName: String) -> Bool {
+        plugins.contains { $0.name == pluginName }
+    }
+
+    func runCommand(plugin pluginName: String, command commandName: String, args: [String: Any], tabId: Int?) async throws -> AnyCodable {
+        guard let plugin = plugins.first(where: { $0.name == pluginName }) else {
+            throw PluginCommandError.pluginNotFound(pluginName)
+        }
+        guard let fn = commands[pluginName]?[commandName] else {
+            throw PluginCommandError.commandNotFound(pluginName, commandName)
+        }
+        let contextObject = JSValue(newObjectIn: plugin.context)!
+        if let tabId { contextObject.setObject(tabId, forKeyedSubscript: "tabId" as NSString) }
+        let pluginObject = JSValue(newObjectIn: plugin.context)!
+        pluginObject.setObject(plugin.name, forKeyedSubscript: "name" as NSString)
+        if let version = plugin.manifest?.version {
+            pluginObject.setObject(version, forKeyedSubscript: "version" as NSString)
+        }
+        contextObject.setObject(pluginObject, forKeyedSubscript: "plugin" as NSString)
+
+        guard let result = fn.call(withArguments: [args, contextObject]) else { return AnyCodable(NSNull()) }
+        return try await resolveJSResult(result, context: plugin.context)
     }
 
     private func loadPluginsInDir(_ dir: URL) {
@@ -97,12 +184,21 @@ final class PluginHost {
                 self?.transforms[transformName] = fn
             }
         }
+        let registerCommandFn: @convention(block) (String, JSValue) -> Void = { [weak self] commandName, fn in
+            MainActor.assumeIsolated {
+                self?.registerCommand(plugin: name, commandName: commandName, fn: fn)
+            }
+        }
         let abg = JSValue(newObjectIn: context)!
         abg.setObject(logFn, forKeyedSubscript: "log" as NSString)
         abg.setObject(registerFn, forKeyedSubscript: "registerTransform" as NSString)
+        abg.setObject(registerCommandFn, forKeyedSubscript: "registerCommand" as NSString)
         abg.setObject(abgVersion, forKeyedSubscript: "version" as NSString)
         let pluginInfo = JSValue(newObjectIn: context)!
         pluginInfo.setObject(name, forKeyedSubscript: "name" as NSString)
+        if let version = manifest?.version {
+            pluginInfo.setObject(version, forKeyedSubscript: "version" as NSString)
+        }
         abg.setObject(pluginInfo, forKeyedSubscript: "plugin" as NSString)
         context.setObject(abg, forKeyedSubscript: "abg" as NSString)
 
@@ -115,6 +211,7 @@ final class PluginHost {
         }
         context.evaluateScript(source, withSourceURL: url)
         plugins.append(LoadedPlugin(name: name, context: context, sourceURL: url, manifest: manifest))
+        warnForUnregisteredManifestCommands(plugin: name, manifest: manifest)
         stderr("loaded plugin \(name)")
     }
 
@@ -129,7 +226,11 @@ final class PluginHost {
             if let description = plugin.manifest?.description { dict["description"] = description }
             if let domains = plugin.manifest?.domains { dict["domains"] = domains }
             if let transforms = plugin.manifest?.transforms { dict["transforms"] = transforms }
-            if let commands = plugin.manifest?.commands { dict["commands"] = commands }
+            let registeredCommands = (commands[plugin.name] ?? [:]).keys.sorted()
+            if !registeredCommands.isEmpty { dict["registeredCommands"] = registeredCommands }
+            if let commands = plugin.manifest?.commands {
+                dict["commands"] = commands.map { commandSpecDictionary($0) }
+            }
             return dict
         }
     }
@@ -137,7 +238,93 @@ final class PluginHost {
     private func readManifest(from dir: URL) -> Manifest? {
         let url = dir.appendingPathComponent("plugin.json")
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(Manifest.self, from: data)
+        do {
+            return try JSONDecoder().decode(Manifest.self, from: data)
+        } catch {
+            stderr("manifest decode failed for \(dir.lastPathComponent): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func registerCommand(plugin: String, commandName: String, fn: JSValue) {
+        let normalized = commandName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            stderr("\(plugin) ignored command with empty name")
+            return
+        }
+        guard fn.isObject else {
+            stderr("\(plugin) ignored command \(normalized): handler must be a function")
+            return
+        }
+        if commands[plugin]?[normalized] != nil {
+            stderr("\(plugin) ignored duplicate command \(normalized)")
+            return
+        }
+        var pluginCommands = commands[plugin] ?? [:]
+        pluginCommands[normalized] = fn
+        commands[plugin] = pluginCommands
+    }
+
+    private func warnForUnregisteredManifestCommands(plugin: String, manifest: Manifest?) {
+        let registered = Set((commands[plugin] ?? [:]).keys)
+        for spec in manifest?.commands ?? [] where !registered.contains(spec.name) {
+            stderr("\(plugin) manifest declares command \(spec.name) but index.js did not register it")
+        }
+    }
+
+    private func commandSpecDictionary(_ spec: CommandSpec) -> [String: Any] {
+        var dict: [String: Any] = ["name": spec.name]
+        if let description = spec.description { dict["description"] = description }
+        if let args = spec.args {
+            dict["args"] = args.map { arg in
+                var argDict: [String: Any] = ["name": arg.name]
+                if let type = arg.type { argDict["type"] = type }
+                if let required = arg.required { argDict["required"] = required }
+                if let defaultValue = arg.default { argDict["default"] = defaultValue.value }
+                return argDict
+            }
+        }
+        return dict
+    }
+
+    private func resolveJSResult(_ value: JSValue, context: JSContext) async throws -> AnyCodable {
+        if value.isUndefined || value.isNull { return AnyCodable(NSNull()) }
+        if let then = value.forProperty("then"), !then.isUndefined, then.isObject {
+            return try await withCheckedThrowingContinuation { continuation in
+                final class Box {
+                    var done = false
+                }
+                let box = Box()
+                let resolve: @convention(block) (JSValue) -> Void = { resolved in
+                    guard !box.done else { return }
+                    box.done = true
+                    continuation.resume(returning: AnyCodable(self.jsValueToJSON(resolved, context: context)))
+                }
+                let reject: @convention(block) (JSValue) -> Void = { rejected in
+                    guard !box.done else { return }
+                    box.done = true
+                    let message = rejected.forProperty("message")?.toString() ?? rejected.toString() ?? "Plugin command failed"
+                    continuation.resume(throwing: PluginCommandError.handlerFailed(message))
+                }
+                _ = value.invokeMethod("then", withArguments: [resolve, reject])
+            }
+        }
+        return AnyCodable(jsValueToJSON(value, context: context))
+    }
+
+    private func jsValueToJSON(_ value: JSValue, context: JSContext) -> Any {
+        if value.isUndefined || value.isNull { return NSNull() }
+        guard let json = context.objectForKeyedSubscript("JSON"),
+              let stringified = json.invokeMethod("stringify", withArguments: [value]),
+              !stringified.isUndefined,
+              !stringified.isNull,
+              let jsonString = stringified.toString(),
+              let data = jsonString.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data)
+        else {
+            return value.toString() ?? NSNull()
+        }
+        return object
     }
 
     private func manifestMatches(url: String, manifest: Manifest) -> Bool {
@@ -165,5 +352,22 @@ final class PluginHost {
         let home = FileManager.default.homeDirectoryForCurrentUser
         paths.append(home.appendingPathComponent(".abg/plugins"))
         return paths
+    }
+}
+
+enum PluginCommandError: Error, LocalizedError {
+    case pluginNotFound(String)
+    case commandNotFound(String, String)
+    case handlerFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .pluginNotFound(let plugin):
+            return "Plugin not found: \(plugin)"
+        case .commandNotFound(let plugin, let command):
+            return "Plugin command not found: \(plugin) \(command)"
+        case .handlerFailed(let message):
+            return message
+        }
     }
 }

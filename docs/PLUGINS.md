@@ -46,7 +46,15 @@ my-plugin/
   "description": "Short human-readable summary.",
   "domains": ["https://mail.google.com/*"],
   "transforms": ["gmail-clean-markdown"],
-  "commands": []
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" }
+      ]
+    }
+  ]
 }
 ```
 
@@ -66,6 +74,119 @@ Transforms are synchronous string-to-string functions. The Gateway calls `html-t
 generic `abg read --format markdown` output. If a plugin manifest declares `domains` and a transform
 name containing `markdown`, the Gateway tries that transform first when the shared tab URL matches
 one of the domain globs.
+
+## Commands API
+
+Plugins can also expose first-class CLI commands:
+
+```js
+abg.registerCommand("greet", async function (args, context) {
+  return {
+    message: "Hello, " + (args.name || "ABG"),
+    plugin: context.plugin.name,
+    version: context.plugin.version
+  };
+});
+```
+
+The handler signature is:
+
+```js
+(args, context) => result | Promise<result>
+```
+
+`args` is a JSON object built by the CLI. `context` contains the current plugin metadata as
+`context.plugin.name` and `context.plugin.version`, plus `context.tabId` when the caller passes
+`--tab-id`.
+
+Registering the command in JavaScript is the source of truth. `plugin.json` command metadata is for
+documentation and CLI help. If the manifest declares a command that `index.js` does not register,
+the Gateway logs a startup warning and keeps loading the plugin.
+
+Command metadata supports `string`, `boolean`, `number`, and `object` argument types:
+
+```json
+{
+  "name": "hello-plugin",
+  "version": "0.1.0",
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" },
+        { "name": "loud", "type": "boolean", "required": false, "default": false }
+      ]
+    }
+  ]
+}
+```
+
+Invoke plugin commands as dynamic ABG subcommands:
+
+```bash
+abg hello-plugin greet --name "Ada" --loud
+abg hello-plugin greet --json '{"name":"Ada","loud":true}'
+printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
+```
+
+`--key value` becomes `{ "key": value }`; `--flag` becomes `{ "flag": true }`. Scalar values are
+parsed as booleans or numbers when possible, otherwise they remain strings. `--json` and JSON
+`--stdin` merge object values into `args`; non-JSON stdin is passed as `args.stdin`.
+
+The command result is serialized as JSON to stdout. Handler failures are returned as structured JSON
+errors containing `error`, `message`, `plugin`, and `command`.
+
+Audit logs record command invocations with `action: "plugin_command_run"`, the plugin name, command
+name, argument key list, and serialized argument byte length. Argument values are never written to
+the audit log because prompts and payloads may contain sensitive data.
+
+### Hello Command Example
+
+```text
+hello-plugin/
+  index.js
+  plugin.json
+```
+
+```js
+abg.registerCommand("greet", async function (args) {
+  const name = args.name || "ABG";
+  return { ok: true, message: "Hello, " + name };
+});
+```
+
+```json
+{
+  "name": "hello-plugin",
+  "version": "0.1.0",
+  "description": "Minimal ABG command plugin.",
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" }
+      ]
+    }
+  ]
+}
+```
+
+After installing or bundling the plugin and restarting the Gateway:
+
+```bash
+abg hello-plugin greet --name "Ada"
+```
+
+Expected output:
+
+```json
+{
+  "message": "Hello, Ada",
+  "ok": true
+}
+```
 
 ## Per-Domain Markdown Plugin
 

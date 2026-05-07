@@ -1,9 +1,17 @@
 {
-  "name": "info-plugin",
+  "name": "info",
   "version": "0.1.0",
   "author": "arcmanagement",
   "description": "Smoke test plugin that logs Gateway plugin host metadata at startup.",
   "domains": [],
   "transforms": [],
-  "commands": []
+  "commands": [
+    {
+      "name": "ping",
+      "description": "Return a JSON ping response for plugin command smoke tests.",
+      "args": [
+        { "name": "message", "type": "string", "required": false, "default": "pong" }
+      ]
+    }
+  ]
 }

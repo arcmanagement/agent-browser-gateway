@@ -3,6 +3,32 @@ import Foundation
 import GatewayCore
 
 @main
+enum ABGMain {
+    static func main() async {
+        let args = Array(CommandLine.arguments.dropFirst())
+        if args == ["--help"] || args == ["-h"] {
+            print(ABG.helpMessage())
+            printRuntimePluginCommandSummary()
+            Foundation.exit(0)
+        }
+        if shouldRunDynamicPluginCommand(args) {
+            do {
+                try runDynamicPluginCommand(args)
+                Foundation.exit(0)
+            } catch is ExitCode {
+                Foundation.exit(1)
+            } catch {
+                printErrorJSON([
+                    "error": "plugin_command_cli_failed",
+                    "message": error.localizedDescription,
+                ])
+                Foundation.exit(1)
+            }
+        }
+        await ABG.main()
+    }
+}
+
 struct ABG: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "abg",
@@ -16,6 +42,187 @@ struct ABG: AsyncParsableCommand {
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
         ]
     )
+}
+
+private let builtInTopLevelCommands: Set<String> = [
+    "status", "tabs", "inspect",
+    "read", "screenshot", "annotate", "console", "table", "describe", "network",
+    "click", "fill", "paste", "clear", "replace", "type", "key", "navigate", "scroll", "drag", "upload",
+    "wait",
+    "record", "replay",
+    "revoke", "audit", "plugin", "install-skill",
+    "help", "completion",
+]
+
+private func shouldRunDynamicPluginCommand(_ args: [String]) -> Bool {
+    guard let first = args.first, !first.hasPrefix("-") else { return false }
+    return !builtInTopLevelCommands.contains(first)
+}
+
+private func printRuntimePluginCommandSummary() {
+    guard let commands = try? UDSClient().call(method: "plugin_command_list") as? [[String: Any]],
+          !commands.isEmpty
+    else { return }
+    print("\nPLUGIN COMMANDS:")
+    for row in commands {
+        let plugin = row["plugin"] as? String ?? ""
+        let command = row["command"] as? String ?? ""
+        let description = row["description"] as? String
+        if let description, !description.isEmpty {
+            print("  \(plugin) \(command)  \(description)")
+        } else {
+            print("  \(plugin) \(command)")
+        }
+    }
+}
+
+private func runDynamicPluginCommand(_ rawArgs: [String]) throws {
+    let pluginName = rawArgs[0]
+    guard rawArgs.count >= 2 else {
+        try printPluginHelp(pluginName: pluginName)
+        throw ExitCode.failure
+    }
+    if rawArgs[1] == "--help" || rawArgs[1] == "-h" {
+        try printPluginHelp(pluginName: pluginName)
+        return
+    }
+    let commandName = rawArgs[1]
+    let trailing = Array(rawArgs.dropFirst(2))
+    if trailing.contains("--help") || trailing.contains("-h") {
+        try printPluginCommandHelp(pluginName: pluginName, commandName: commandName)
+        return
+    }
+    let parsed = try parsePluginCommandArgs(trailing)
+    var params: [String: Any] = [
+        "pluginName": pluginName,
+        "command": commandName,
+        "args": parsed.args,
+    ]
+    if let tabId = parsed.tabId { params["tabId"] = tabId }
+    let result = try UDSClient().call(method: "plugin_command_run", params: params)
+    printJSON(result)
+}
+
+private func printPluginHelp(pluginName: String) throws {
+    let commands = try pluginCommands(pluginName: pluginName)
+    guard !commands.isEmpty else {
+        try failWithJSON([
+            "error": "plugin_not_found",
+            "message": "No loaded plugin commands found for \(pluginName).",
+            "nextCommand": "abg plugin list --loaded",
+        ])
+    }
+    print("USAGE: abg \(pluginName) <command> [--key value] [--flag] [--json '{...}'] [--stdin]")
+    print("\nCOMMANDS:")
+    for row in commands {
+        let command = row["command"] as? String ?? ""
+        let description = row["description"] as? String
+        if let description, !description.isEmpty {
+            print("  \(command)  \(description)")
+        } else {
+            print("  \(command)")
+        }
+    }
+}
+
+private func printPluginCommandHelp(pluginName: String, commandName: String) throws {
+    let commands = try pluginCommands(pluginName: pluginName)
+    guard let row = commands.first(where: { ($0["command"] as? String) == commandName }) else {
+        try failWithJSON([
+            "error": "plugin_command_not_found",
+            "message": "No loaded command \(pluginName) \(commandName).",
+            "nextCommand": "abg \(pluginName) --help",
+        ])
+    }
+    print("USAGE: abg \(pluginName) \(commandName) [--key value] [--flag] [--json '{...}'] [--stdin]")
+    if let description = row["description"] as? String, !description.isEmpty {
+        print("\n\(description)")
+    }
+    guard let args = row["args"] as? [[String: Any]], !args.isEmpty else { return }
+    print("\nARGUMENTS:")
+    for arg in args {
+        let name = arg["name"] as? String ?? ""
+        let type = arg["type"] as? String ?? "string"
+        let required = (arg["required"] as? Bool) == true ? "required" : "optional"
+        if let defaultValue = arg["default"] {
+            print("  --\(name)  \(type), \(required), default: \(defaultValue)")
+        } else {
+            print("  --\(name)  \(type), \(required)")
+        }
+    }
+}
+
+private func pluginCommands(pluginName: String) throws -> [[String: Any]] {
+    let rows = try UDSClient().call(method: "plugin_command_list") as? [[String: Any]] ?? []
+    return rows.filter { ($0["plugin"] as? String) == pluginName }
+}
+
+private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [String: Any], tabId: Int?) {
+    var args: [String: Any] = [:]
+    var tabId: Int?
+    var index = 0
+    while index < rawArgs.count {
+        let token = rawArgs[index]
+        guard token.hasPrefix("--") else {
+            try failWithJSON([
+                "error": "unexpected_argument",
+                "message": "Unexpected argument: \(token). Use --key value or --flag.",
+            ])
+        }
+        let key = String(token.dropFirst(2))
+        guard !key.isEmpty else {
+            try failWithJSON(["error": "bad_argument", "message": "Empty option name is not allowed."])
+        }
+        switch key {
+        case "json":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--json requires a JSON object value."])
+            }
+            let object = try parseJSONObject(rawArgs[index], label: "--json")
+            args.merge(object) { _, new in new }
+        case "stdin":
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            if let object = try? parseJSONObject(text, label: "--stdin") {
+                args.merge(object) { _, new in new }
+            } else {
+                args["stdin"] = text
+            }
+        case "tab-id":
+            index += 1
+            guard rawArgs.indices.contains(index), let parsed = Int(rawArgs[index]) else {
+                try failWithJSON(["error": "missing_value", "message": "--tab-id requires an integer value."])
+            }
+            tabId = parsed
+        default:
+            if rawArgs.indices.contains(index + 1), !rawArgs[index + 1].hasPrefix("--") {
+                index += 1
+                args[key] = parseScalar(rawArgs[index])
+            } else {
+                args[key] = true
+            }
+        }
+        index += 1
+    }
+    return (args, tabId)
+}
+
+private func parseJSONObject(_ text: String, label: String) throws -> [String: Any] {
+    guard let data = text.data(using: .utf8),
+          let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+        try failWithJSON(["error": "bad_json", "message": "\(label) must be a JSON object."])
+    }
+    return object
+}
+
+private func parseScalar(_ text: String) -> Any {
+    if text == "true" { return true }
+    if text == "false" { return false }
+    if let int = Int(text) { return int }
+    if let double = Double(text) { return double }
+    return text
 }
 
 struct TabTarget: ParsableArguments {
@@ -1344,22 +1551,57 @@ struct Plugin: AsyncParsableCommand {
 }
 
 struct PluginManifest: Codable {
+    struct CommandArgSpec: Codable {
+        let name: String
+        let type: String?
+        let required: Bool?
+        let `default`: AnyCodable?
+    }
+
+    struct CommandSpec: Codable {
+        let name: String
+        let description: String?
+        let args: [CommandArgSpec]?
+
+        init(from decoder: Decoder) throws {
+            let single = try decoder.singleValueContainer()
+            if let name = try? single.decode(String.self) {
+                self.name = name
+                self.description = nil
+                self.args = nil
+                return
+            }
+            let keyed = try decoder.container(keyedBy: CodingKeys.self)
+            self.name = try keyed.decode(String.self, forKey: .name)
+            self.description = try keyed.decodeIfPresent(String.self, forKey: .description)
+            self.args = try keyed.decodeIfPresent([CommandArgSpec].self, forKey: .args)
+        }
+    }
+
     let name: String?
     let version: String?
     let author: String?
     let description: String?
     let domains: [String]?
     let transforms: [String]?
-    let commands: [String]?
+    let commands: [CommandSpec]?
 }
 
 struct PluginList: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "list", abstract: "plugin 一覧を表示")
     @Flag(name: .long, help: "起動中 Gateway が実際にロード済みの plugin を表示") var loaded: Bool = false
+    @Flag(name: .long, help: "Gateway 経由ではなく CLI ローカル inventory のみを表示") var localOnly: Bool = false
 
     func run() async throws {
         if loaded {
             let result = try UDSClient().call(method: "plugins")
+            printJSON(result)
+            return
+        }
+        // Default: prefer the running Gateway's view (it knows what is actually
+        // loaded, including registered commands). Fall back to CLI-local
+        // inventory when the daemon is unreachable, or when --local-only is set.
+        if !localOnly, let result = try? UDSClient().call(method: "plugins") {
             printJSON(result)
             return
         }
@@ -1487,6 +1729,19 @@ func bundledPluginDirectories() -> [URL] {
        !roots.contains(resourcePlugins) {
         roots.append(resourcePlugins)
     }
+    // CLI binaries are commonly installed standalone (e.g. /usr/local/bin/abg,
+    // Homebrew shims) where Bundle.main.resourceURL does not point inside the
+    // menubar app. Probe known menubar app installation paths so plugins
+    // shipped inside the .app bundle still surface in `abg plugin list`.
+    let homeApp = NSHomeDirectory() + "/Applications/Agent Browser Gateway.app"
+    for appPath in ["/Applications/Agent Browser Gateway.app", homeApp] {
+        let appPlugins = URL(fileURLWithPath: appPath)
+            .appendingPathComponent("Contents/Resources/plugins", isDirectory: true)
+        if FileManager.default.fileExists(atPath: appPlugins.path),
+           !roots.contains(appPlugins) {
+            roots.append(appPlugins)
+        }
+    }
     return roots
 }
 
@@ -1524,7 +1779,22 @@ func pluginInfo(at dir: URL, source: String) -> [String: Any]? {
     if let description = manifest?.description { dict["description"] = description }
     if let domains = manifest?.domains { dict["domains"] = domains }
     if let transforms = manifest?.transforms { dict["transforms"] = transforms }
-    if let commands = manifest?.commands { dict["commands"] = commands }
+    if let commands = manifest?.commands {
+        dict["commands"] = commands.map { command in
+            var commandDict: [String: Any] = ["name": command.name]
+            if let description = command.description { commandDict["description"] = description }
+            if let args = command.args {
+                commandDict["args"] = args.map { arg in
+                    var argDict: [String: Any] = ["name": arg.name]
+                    if let type = arg.type { argDict["type"] = type }
+                    if let required = arg.required { argDict["required"] = required }
+                    if let defaultValue = arg.default { argDict["default"] = defaultValue.value }
+                    return argDict
+                }
+            }
+            return commandDict
+        }
+    }
     return dict
 }
 
