@@ -15,6 +15,7 @@
 - [checklist.md](checklist.md): 出願前チェックリスト、自己レビュー記録、進歩性論点メモである。
 - [word-print/README.md](word-print/README.md): Word 出力による目視確認メモである。
 - [scripts/build-online-application.py](scripts/build-online-application.py): オンライン出願用の Shift_JIS HTML と図面 PNG を生成する補助スクリプトである。
+- [scripts/build-followup-procedures.py](scripts/build-followup-procedures.py): 出願審査請求書及び早期審査に関する事情説明書の Shift_JIS HTML を生成する補助スクリプトである。
 - [scripts/build-paper-docx.py](scripts/build-paper-docx.py): Word 確認用 DOCX を生成する補助スクリプトである。
 
 ## オンライン提出手順
