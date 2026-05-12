@@ -3,8 +3,8 @@ flowchart TD
   VM["JavaScriptCore VM\nsame process"]
   API["abg host API\nregisterTransform"]
   M["markdown-plugin\nhtml-to-markdown"]
-  N["notion-plugin\nnotion-to-markdown"]
-  I["info-plugin\nloader smoke test"]
+  N["domain-plugin\nsite-specific cleanup"]
+  I["policy-plugin\nredact / summarize / reject"]
   U["user plugins\n50"]
   D["Domain matcher\nmanifest domains"]
   R["Read result to agent interface\n30"]
@@ -16,7 +16,7 @@ flowchart TD
   API --> I
   API --> U
   G --> D
-  D --> |"notion.so / notion.site"| N
+  D --> |"matched domain"| N
   D --> |"fallback"| M
   N --> R
   M --> R
