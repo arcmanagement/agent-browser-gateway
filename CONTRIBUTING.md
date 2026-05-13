@@ -38,12 +38,16 @@ swift build -c release
 
 ## Commits
 
-- Conventional-style is appreciated but not required. Reasonable English summary in 50-72 chars.
-- Sign your commits if you can (`git commit -s`). DCO is the long-term plan; not enforced yet.
+- Conventional Commits style is appreciated but not required. Use a clear English summary, 50-72 chars on the subject line.
+- **Sign off every commit** with `git commit -s`. This appends a `Signed-off-by:` trailer and certifies that you agree to the [Developer Certificate of Origin v1.1](https://developercertificate.org/). PRs without DCO sign-off cannot be merged.
 
-## CLA / Licensing
+## Licensing (inbound = outbound)
 
-The license under which ABG will be released is not yet decided. While the license is undecided, external contributions are not yet being accepted. Once the license is published, prior contributors will be contacted before any retroactive change of terms.
+By submitting a contribution, you agree that your contribution is licensed to the project under the **Business Source License 1.1** — the same license as the rest of the project. See [LICENSE](LICENSE). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under this license.
+
+You retain copyright in your contribution. ArcManagement Co., Ltd. may, at its sole discretion, distribute the project (including your contribution) under a different license in the future, including the Apache License 2.0 as described in LICENSE (Change License after the Change Date), or under a commercial license for paying users.
+
+For information on the project's licensing strategy and commercial licensing, see [COMMERCIAL.md](COMMERCIAL.md).
 
 ## Code style
 
