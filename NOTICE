@@ -1,0 +1,13 @@
+Agent Browser Gateway (ABG)
+Copyright 2026 ArcManagement Co., Ltd.
+
+This product includes software developed at:
+
+* Vapor (https://vapor.codes) — MIT License
+* Apple SwiftNIO (https://github.com/apple/swift-nio) — Apache-2.0
+* Apple Swift Argument Parser (https://github.com/apple/swift-argument-parser) — Apache-2.0
+* esbuild (https://esbuild.github.io) — MIT License
+* Biome (https://biomejs.dev) — MIT/Apache-2.0
+* TypeScript (https://www.typescriptlang.org) — Apache-2.0
+
+Their license terms are reproduced in their respective source distributions.
