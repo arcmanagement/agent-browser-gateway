@@ -422,7 +422,47 @@ In short:
 
 ## License
 
-License is not yet decided. The repository is published as source for the author's own use; usage by others is not yet authorised.
+Agent Browser Gateway is licensed under the **Business Source License 1.1** (BUSL-1.1). See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+```
+Copyright 2026 ArcManagement Co., Ltd.
+
+Licensed under the Business Source License 1.1 (the "License").
+You may not use this file except in compliance with the License.
+A copy of the License is provided in the LICENSE file at the root
+of this repository, and is also available at:
+
+    https://mariadb.com/bsl11/
+```
+
+### What is permitted without a commercial license
+
+- Personal, non-commercial use by individuals (modification and redistribution included)
+- Non-profit, educational, academic, or research use
+- Evaluation or proof-of-concept use, up to **90 days** from first use
+- Contributing improvements to ABG itself
+
+### What requires a commercial license
+
+Any **business or revenue-generating use**, including internal company tooling, embedded use in products or services, and hosted offerings, requires a commercial license from ArcManagement Co., Ltd.
+
+See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`licensing@arcm.co.jp`).
+
+### Change to Apache License 2.0 after 4 years
+
+Each version of ABG converts to the **Apache License 2.0** four years after its public release date. The free-use community continues to grow with the project, and older versions become permissively licensed over time.
+
+### Future license-grant changes
+
+ArcManagement reserves the right to revise the Additional Use Grant for **future releases** of ABG (for example, to expand free use to small organizations under a stated size threshold). Such revisions apply only to releases that explicitly reference them; previously published releases remain governed by their original Additional Use Grant in perpetuity.
+
+### Trademarks
+
+"ABG" and "Agent Browser Gateway" are trademarks of ArcManagement Co., Ltd. The Business Source License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
+
+### Contributing
+
+Inbound contributions are licensed to the project under the same Business Source License 1.1 (inbound = outbound). Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
