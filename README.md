@@ -439,20 +439,19 @@ of this repository, and is also available at:
 
 ArcManagement publishes the full source code of every release of ABG publicly on GitHub for **transparency and security verification**. We commit to maintaining this source-public model — users and security researchers can always inspect what ABG does on their machines.
 
-### What is permitted under the license
+### Free use
 
-- **Personal use** by individuals — research, experiment, testing for public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, religious observance
-- **Use by noncommercial organizations** — charitable organizations, educational institutions, public research organizations, public safety or health organizations, environmental protection organizations, government institutions
+ABG is **free for personal, hobby, learning, and non-profit use** — individuals exploring or building hobby projects, students, researchers, educational institutions, and other non-commercial organizations don't need to do anything special.
 
-### What requires a commercial license
+### Using ABG to make money? Let's talk.
 
-Any **commercial use** — including internal business operations of for-profit organizations, embedded use in paid or unpaid services to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement, Inc.
+If ABG is part of how you or your company generates revenue (shipped in a product or service, used in paid client work, hosted as a service, etc.), a commercial license is the right path. **Just email [`license@arcm.co.jp`](mailto:license@arcm.co.jp)** — we're friendly, pricing is case-by-case, and we'd rather find an arrangement that works than turn anyone away.
 
-See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`license@arcm.co.jp`).
+See [COMMERCIAL.md](COMMERCIAL.md) for more.
 
 ### Modifications and redistribution
 
-Under PolyForm Strict, redistribution and creation of derivative works are **not permitted by default**. If you wish to fork or extend ABG, please contact us at `license@arcm.co.jp` to discuss the terms.
+The PolyForm Strict License doesn't grant rights to modify or redistribute ABG by default. If you want to fork it, integrate it into your own work, or build something on top — get in touch at `license@arcm.co.jp` and we'll figure something out.
 
 ### Patents
 
