@@ -45,7 +45,7 @@ swift build -c release
 
 By submitting a contribution, you agree that your contribution is licensed to the project under the **PolyForm Strict License 1.0.0** — the same license as the rest of the project. See [LICENSE](LICENSE). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under this license.
 
-In addition, you grant ArcManagement Co., Ltd. the right to **relicense** your contribution (alone or as part of the work) under different terms in the future, at ArcManagement's sole discretion. This includes the right to grant **commercial licenses** for the contribution as part of the project's commercial-licensing program (see [COMMERCIAL.md](COMMERCIAL.md)).
+In addition, you grant ArcManagement, Inc. the right to **relicense** your contribution (alone or as part of the work) under different terms in the future, at ArcManagement's sole discretion. This includes the right to grant **commercial licenses** for the contribution as part of the project's commercial-licensing program (see [COMMERCIAL.md](COMMERCIAL.md)).
 
 You retain copyright in your contribution. The relicensing grant does not transfer copyright; it only authorizes ArcManagement to distribute your contribution under additional or alternative terms.
 

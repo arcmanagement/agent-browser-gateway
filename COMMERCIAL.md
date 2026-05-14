@@ -7,7 +7,7 @@ PolyForm Strict permits use only for **noncommercial purposes**:
 - Personal use by individuals — research, experiment, testing for public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, religious observance
 - Use by charitable organizations, educational institutions, public research organizations, public safety or health organizations, environmental protection organizations, and government institutions
 
-**Any commercial use — including internal business operations of for-profit organizations, embedded use in paid or unpaid products / services offered to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement Co., Ltd.**
+**Any commercial use — including internal business operations of for-profit organizations, embedded use in paid or unpaid products / services offered to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement, Inc.**
 
 ## Who needs a commercial license?
 
@@ -40,7 +40,7 @@ Please contact **license@arcm.co.jp** to start a conversation. We will work with
 
 ## Patents
 
-ArcManagement Co., Ltd. holds a pending Japanese patent application (Application No. 特願2026-080620, filed 2026-05-12) covering aspects of ABG. The PolyForm Strict License grants a patent license for noncommercial use. Commercial license agreements include explicit patent terms tailored to the commercial use case.
+ArcManagement, Inc. holds a pending Japanese patent application (Application No. 特願2026-080620, filed 2026-05-12) covering aspects of ABG. The PolyForm Strict License grants a patent license for noncommercial use. Commercial license agreements include explicit patent terms tailored to the commercial use case.
 
 ## Modifications and redistribution
 
@@ -48,9 +48,9 @@ Under the PolyForm Strict License, redistribution and modification of the softwa
 
 ## Trademarks
 
-"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement Co., Ltd. See [TRADEMARK.md](TRADEMARK.md).
+"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. See [TRADEMARK.md](TRADEMARK.md).
 
 ## Contact
 
-ArcManagement Co., Ltd.
+ArcManagement, Inc.
 Email: license@arcm.co.jp

@@ -425,7 +425,7 @@ In short:
 Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ```
-Copyright 2026 ArcManagement Co., Ltd.
+Copyright 2026 ArcManagement, Inc.
 
 Licensed under the PolyForm Strict License 1.0.0 (the "License").
 You may not use this file except in compliance with the License.
@@ -446,7 +446,7 @@ ArcManagement publishes the full source code of every release of ABG publicly on
 
 ### What requires a commercial license
 
-Any **commercial use** — including internal business operations of for-profit organizations, embedded use in paid or unpaid services to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement Co., Ltd.
+Any **commercial use** — including internal business operations of for-profit organizations, embedded use in paid or unpaid services to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement, Inc.
 
 See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`license@arcm.co.jp`).
 
@@ -460,11 +460,11 @@ ArcManagement holds a pending Japanese patent application covering aspects of AB
 
 ### Trademarks
 
-"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement Co., Ltd. The PolyForm Strict License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
+"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. The PolyForm Strict License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
 
 ### Contributing
 
-By submitting a contribution, you agree that your contribution is licensed to the project under the same PolyForm Strict License 1.0.0 (inbound = outbound). You also grant ArcManagement Co., Ltd. the right to relicense your contribution under different terms in the future (including under a commercial license for paying users), should the need arise. Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
+By submitting a contribution, you agree that your contribution is licensed to the project under the same PolyForm Strict License 1.0.0 (inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution under different terms in the future (including under a commercial license for paying users), should the need arise. Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
