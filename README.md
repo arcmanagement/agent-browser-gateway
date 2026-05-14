@@ -446,7 +446,7 @@ of this repository, and is also available at:
 
 Any **business or revenue-generating use**, including internal company tooling, embedded use in products or services, and hosted offerings, requires a commercial license from ArcManagement Co., Ltd.
 
-See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`licensing@arcm.co.jp`).
+See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`license@arcm.co.jp`).
 
 ### Change to Apache License 2.0 after 4 years
 

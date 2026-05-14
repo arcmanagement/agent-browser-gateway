@@ -24,7 +24,7 @@ If you are unsure whether your use case requires a commercial license, contact u
 
 ## How to obtain a commercial license
 
-Email **licensing@arcm.co.jp** with:
+Email **license@arcm.co.jp** with:
 
 1. Your organization name and country of incorporation
 2. A brief description of how you intend to use ABG (internal tool, embedded in product, hosted service, etc.)
@@ -41,7 +41,7 @@ Pricing is determined per engagement. Commercial license fees scale with organiz
 - **Standard tier** — for established businesses
 - **Enterprise tier** — for organizations requiring custom terms, indemnification, or extended support
 
-Contact licensing@arcm.co.jp for current pricing.
+Contact license@arcm.co.jp for current pricing.
 
 ## Future license-grant changes
 
@@ -64,4 +64,4 @@ ArcManagement Co., Ltd. holds pending patent applications covering aspects of AB
 ## Contact
 
 ArcManagement Co., Ltd.
-Email: licensing@arcm.co.jp
+Email: license@arcm.co.jp

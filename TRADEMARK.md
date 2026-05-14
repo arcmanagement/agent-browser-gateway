@@ -36,7 +36,7 @@ Names that would not be acceptable:
 
 ## Reporting trademark concerns
 
-If you believe someone is using these trademarks in a way that may confuse users or harm the project, please email **licensing@arcm.co.jp**.
+If you believe someone is using these trademarks in a way that may confuse users or harm the project, please email **license@arcm.co.jp**.
 
 ## Future changes
 
