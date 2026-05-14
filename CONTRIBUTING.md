@@ -43,7 +43,7 @@ swift build -c release
 
 ## Licensing (inbound = outbound + relicensing grant)
 
-By submitting a contribution, you agree that your contribution is licensed to the project under the same terms as the project — the **PolyForm Small Business License 1.0.0 with the ArcManagement Additional Free Use Grant** (see [LICENSE](LICENSE)). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under these terms.
+By submitting a contribution, you agree that your contribution is licensed to the project under the same terms as the project — the **PolyForm Strict License 1.0.0 with the ArcManagement Additional Free Use Grant** (see [LICENSE](LICENSE)). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under these terms.
 
 In addition, you grant ArcManagement, Inc. the right to **relicense** your contribution (alone or as part of the work) under different terms in the future, at ArcManagement's sole discretion. This includes the right to grant **commercial licenses** for the contribution as part of the project's commercial-licensing program (see [COMMERCIAL.md](COMMERCIAL.md)).
 

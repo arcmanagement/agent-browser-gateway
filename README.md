@@ -422,12 +422,12 @@ In short:
 
 ## License
 
-Agent Browser Gateway is licensed under the **PolyForm Small Business License 1.0.0** with an **ArcManagement Additional Free Use Grant** that broadens the free tier for small organizations. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0** with an **ArcManagement Additional Free Use Grant** that broadens the free tier to small companies for commercial use. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ```
 Copyright 2026 ArcManagement, Inc.
 
-Licensed under the PolyForm Small Business License 1.0.0, with the
+Licensed under the PolyForm Strict License 1.0.0, with the
 ArcManagement Additional Free Use Grant (see LICENSE for full text).
 ```
 
@@ -437,26 +437,26 @@ ArcManagement publishes the full source code of every release of ABG publicly on
 
 ### Free use — who qualifies
 
-ABG is **free** for personal use, non-profit purposes, and for any company that satisfies **either**:
+ABG is **free** for the following uses:
 
-- **PolyForm small-business threshold**: fewer than 100 employees & contractors, **and** less than USD 1,000,000 (inflation-adjusted) annual revenue, or
-- **ArcManagement threshold**: fewer than 50 employees & contractors, **and** less than JPY 500,000,000 annual revenue
+- **Personal, hobby, learning, non-profit, educational, and public research** — individuals, students, charitable organizations, schools, public research institutions, government bodies
+- **Small companies** for any use including commercial — companies with **fewer than 50 employees & contractors** AND **less than JPY 500,000,000 annual revenue**
 
-If your company meets either set of thresholds, you can use ABG in production at no charge. No registration required.
+No registration required for free use.
 
 ### Larger organizations — let's talk
 
-If your company exceeds both thresholds, a commercial license is the right path. Email [`license@arcm.co.jp`](mailto:license@arcm.co.jp) — pricing is case-by-case and we'd rather find an arrangement that works than turn anyone away.
+If your company exceeds the free-use threshold (50 employees / JPY 500M revenue), a commercial license is the right path. Email [`license@arcm.co.jp`](mailto:license@arcm.co.jp) — pricing is case-by-case.
 
 See [COMMERCIAL.md](COMMERCIAL.md) for more.
 
 ### Contributing — let's build together
 
-Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (PolyForm Small Business License 1.0.0 + ArcManagement Additional Free Use Grant, inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (PolyForm Strict License 1.0.0 + ArcManagement Additional Free Use Grant, inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Patents
 
-ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for permitted free uses; commercial license agreements include explicit patent terms.
+ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for permitted uses; commercial license agreements include explicit patent terms.
 
 ### Trademarks
 

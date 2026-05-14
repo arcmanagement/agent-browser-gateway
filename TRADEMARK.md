@@ -2,7 +2,7 @@
 
 "ABG™" and "Agent Browser Gateway™" are **unregistered trademarks** of **ArcManagement, Inc.** ("ArcManagement"). The ™ symbol indicates ArcManagement's claim to these names as common-law trademarks; no formal trademark registration is currently in effect.
 
-The PolyForm Small Business License under which Agent Browser Gateway is distributed (see [LICENSE](LICENSE)) does **not** grant any right to use these trademarks, except as expressly required by the License (for example, retaining the License notice and the project name in source distributions).
+The PolyForm Strict License under which Agent Browser Gateway is distributed (see [LICENSE](LICENSE)) does **not** grant any right to use these trademarks, except as expressly required by the License (for example, retaining the License notice and the project name in source distributions).
 
 ## Permitted uses without a separate trademark license
 
