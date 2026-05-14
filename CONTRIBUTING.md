@@ -41,11 +41,13 @@ swift build -c release
 - Conventional Commits style is appreciated but not required. Use a clear English summary, 50-72 chars on the subject line.
 - **Sign off every commit** with `git commit -s`. This appends a `Signed-off-by:` trailer and certifies that you agree to the [Developer Certificate of Origin v1.1](https://developercertificate.org/). PRs without DCO sign-off cannot be merged.
 
-## Licensing (inbound = outbound)
+## Licensing (inbound = outbound + relicensing grant)
 
-By submitting a contribution, you agree that your contribution is licensed to the project under the **Business Source License 1.1** — the same license as the rest of the project. See [LICENSE](LICENSE). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under this license.
+By submitting a contribution, you agree that your contribution is licensed to the project under the **PolyForm Strict License 1.0.0** — the same license as the rest of the project. See [LICENSE](LICENSE). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under this license.
 
-You retain copyright in your contribution. ArcManagement Co., Ltd. may, at its sole discretion, distribute the project (including your contribution) under a different license in the future, including the Apache License 2.0 as described in LICENSE (Change License after the Change Date), or under a commercial license for paying users.
+In addition, you grant ArcManagement Co., Ltd. the right to **relicense** your contribution (alone or as part of the work) under different terms in the future, at ArcManagement's sole discretion. This includes the right to grant **commercial licenses** for the contribution as part of the project's commercial-licensing program (see [COMMERCIAL.md](COMMERCIAL.md)).
+
+You retain copyright in your contribution. The relicensing grant does not transfer copyright; it only authorizes ArcManagement to distribute your contribution under additional or alternative terms.
 
 For information on the project's licensing strategy and commercial licensing, see [COMMERCIAL.md](COMMERCIAL.md).
 

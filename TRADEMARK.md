@@ -1,8 +1,8 @@
 # Trademark Policy
 
-"ABG", "Agent Browser Gateway", and any associated logos are trademarks of **ArcManagement Co., Ltd.** ("ArcManagement").
+"ABG™" and "Agent Browser Gateway™" are **unregistered trademarks** of **ArcManagement Co., Ltd.** ("ArcManagement"). The ™ symbol indicates ArcManagement's claim to these names as common-law trademarks; no formal trademark registration is currently in effect.
 
-The Business Source License 1.1 under which Agent Browser Gateway is distributed (see [LICENSE](LICENSE)) does **not** grant any right to use these trademarks, except as expressly required by the License (for example, retaining the License notice and the project name in source distributions).
+The PolyForm Strict License under which Agent Browser Gateway is distributed (see [LICENSE](LICENSE)) does **not** grant any right to use these trademarks, except as expressly required by the License (for example, retaining the License notice and the project name in source distributions).
 
 ## Permitted uses without a separate trademark license
 
@@ -38,6 +38,6 @@ Names that would not be acceptable:
 
 If you believe someone is using these trademarks in a way that may confuse users or harm the project, please email **license@arcm.co.jp**.
 
-## Future changes
+## Registration status
 
-ArcManagement may register "ABG" and "Agent Browser Gateway" as trademarks in one or more jurisdictions. Once registered, the rights and obligations described above will be enforced under applicable trademark law in addition to the terms of this policy.
+As of 2026-05, no formal trademark registration has been filed. ArcManagement may file a registration in one or more jurisdictions in the future. Until registration, these marks are protected as **unregistered (common-law) trademarks** under Japanese unfair-competition law and equivalent foreign doctrines, and are designated with the ™ symbol. Once registered, the ® symbol will replace ™ and the rights and obligations described above will be enforced under applicable trademark-registration law in addition to the terms of this policy.

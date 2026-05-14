@@ -1,95 +1,72 @@
-License text copyright (c) 2020 MariaDB Corporation Ab, All Rights Reserved.
-"Business Source License" is a trademark of MariaDB Corporation Ab.
+# PolyForm Strict License 1.0.0
 
-Parameters
+<https://polyformproject.org/licenses/strict/1.0.0>
 
-Licensor:             ArcManagement Co., Ltd.
-Licensed Work:        Agent Browser Gateway (ABG). The Licensed Work is (c) 2026
-                      ArcManagement Co., Ltd.
-Additional Use Grant: Use of the Licensed Work is permitted without a separate
-                      commercial license only for the following purposes:
+## Acceptance
 
-                      (a) Personal, non-commercial use by individuals, including
-                          modification and redistribution of the Licensed Work
-                          under the terms of this License;
-                      (b) Non-profit, educational, academic, or research use by
-                          non-commercial organizations;
-                      (c) Evaluation or proof-of-concept use, for a period not
-                          exceeding ninety (90) days from the date of first use,
-                          prior to procuring a commercial license;
-                      (d) Use solely to develop, test, or contribute improvements
-                          to the Licensed Work itself.
+In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
 
-                      Any other use — including but not limited to internal
-                      business operations of any for-profit, governmental, or
-                      other organization; the provision of services to third
-                      parties (whether paid or unpaid); or any use that directly
-                      or indirectly supports a revenue-generating activity —
-                      requires a commercial license from ArcManagement Co., Ltd.
+## Copyright License
 
-                      Licensor reserves the right to publish, for each future
-                      release of the Licensed Work, a revised Additional Use
-                      Grant — including expanded permissions (for example, free
-                      use for organizations below a stated size or revenue
-                      threshold) or new restrictions. Any such revision applies
-                      only to releases that explicitly reference it; previously
-                      published releases remain governed by their original
-                      Additional Use Grant in perpetuity.
+The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose, other than distributing the software or making changes or new works based on the software.
 
-                      For information about commercial licenses, contact
-                      ArcManagement Co., Ltd. at license@arcm.co.jp.
-Change Date:          Four years from the date the Licensed Work is published.
-                      For each version of the Licensed Work, the publication
-                      date is the date the corresponding Git tag is published
-                      on the public repository at
-                      https://github.com/arcmanagement/agent-browser-gateway.
-Change License:       Apache License, Version 2.0
+## Patent License
 
-For information about alternative licensing arrangements for the Licensed Work,
-please contact license@arcm.co.jp.
+The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
 
-Notice
+## Noncommercial Purposes
 
-Business Source License 1.1
+Any noncommercial purpose is a permitted purpose.
 
-Terms
+## Personal Uses
 
-The Licensor hereby grants you the right to copy, modify, create derivative
-works, redistribute, and make non-production use of the Licensed Work. The
-Licensor may make an Additional Use Grant, above, permitting limited production
-use.
+Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
 
-Effective on the Change Date, or the fourth anniversary of the first publicly
-available distribution of a specific version of the Licensed Work under this
-License, whichever comes first, the Licensor hereby grants you rights under
-the terms of the Change License, and the rights granted in the paragraph
-above terminate.
+## Noncommercial Organizations
 
-If your use of the Licensed Work does not comply with the requirements
-currently in effect as described in this License, you must purchase a
-commercial license from the Licensor, its affiliated entities, or authorized
-resellers, or you must refrain from using the Licensed Work.
+Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
 
-All copies of the original and modified Licensed Work, and derivative works
-of the Licensed Work, are subject to this License. This License applies
-separately for each version of the Licensed Work and the Change Date may vary
-for each version of the Licensed Work released by Licensor.
+## Fair Use
 
-You must conspicuously display this License on each original or modified copy
-of the Licensed Work. If you receive the Licensed Work in original or
-modified form from a third party, the terms and conditions set forth in this
-License apply to your use of that work.
+You may have "fair use" rights for the software under the law. These terms do not limit them.
 
-Any use of the Licensed Work in violation of this License will automatically
-terminate your rights under this License for the current and all other
-versions of the Licensed Work.
+## No Other Rights
 
-This License does not grant you any right in any trademark or logo of
-Licensor or its affiliates (provided that you may use a trademark or logo of
-Licensor as expressly required by this License).
+These terms do not allow you to sublicense or transfer any of your licenses to anyone else, or prevent the licensor from granting licenses to anyone else.  These terms do not imply any other licenses.
 
-TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE LICENSED WORK IS PROVIDED ON
-AN "AS IS" BASIS. LICENSOR HEREBY DISCLAIMS ALL WARRANTIES AND CONDITIONS,
-EXPRESS OR IMPLIED, INCLUDING (WITHOUT LIMITATION) WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, AND
-TITLE.
+## Patent Defense
+
+If you make any written claim that the software infringes or contributes to infringement of any patent, your patent license for the software granted under these terms ends immediately. If your company makes such a claim, your patent license ends immediately for work on behalf of your company.
+
+## Violations
+
+The first time you are notified in writing that you have violated any of these terms, or done anything with the software not covered by your licenses, your licenses can nonetheless continue if you come into full compliance with these terms, and take practical steps to correct past violations, within 32 days of receiving notice.  Otherwise, all your licenses end immediately.
+
+## No Liability
+
+***As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.***
+
+## Definitions
+
+The **licensor** is ArcManagement Co., Ltd., and the **software** is Agent Browser Gateway (ABG), copyright © 2026 ArcManagement Co., Ltd., made available by the licensor under these terms.
+
+**You** refers to the individual or entity agreeing to these terms.
+
+**Your company** is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization.  **Control** means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise.  Control can be direct or indirect.
+
+**Your licenses** are all the licenses granted to you for the software under these terms.
+
+**Use** means anything you do with the software requiring one of your licenses.
+
+---
+
+# Commercial Use Notice
+
+Use of Agent Browser Gateway (ABG) for **any commercial purpose**, including but not limited to internal business operations of any for-profit organization, embedded use in paid products or services, or any revenue-generating activity, requires a **separate commercial license** from ArcManagement Co., Ltd.
+
+For information about commercial licenses, please contact:
+
+ArcManagement Co., Ltd.
+Email: license@arcm.co.jp
+
+See COMMERCIAL.md for details on the commercial licensing program.

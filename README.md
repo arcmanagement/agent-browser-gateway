@@ -422,47 +422,49 @@ In short:
 
 ## License
 
-Agent Browser Gateway is licensed under the **Business Source License 1.1** (BUSL-1.1). See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ```
 Copyright 2026 ArcManagement Co., Ltd.
 
-Licensed under the Business Source License 1.1 (the "License").
+Licensed under the PolyForm Strict License 1.0.0 (the "License").
 You may not use this file except in compliance with the License.
 A copy of the License is provided in the LICENSE file at the root
 of this repository, and is also available at:
 
-    https://mariadb.com/bsl11/
+    https://polyformproject.org/licenses/strict/1.0.0/
 ```
 
-### What is permitted without a commercial license
+### Transparency commitment
 
-- Personal, non-commercial use by individuals (modification and redistribution included)
-- Non-profit, educational, academic, or research use
-- Evaluation or proof-of-concept use, up to **90 days** from first use
-- Contributing improvements to ABG itself
+ArcManagement publishes the full source code of every release of ABG publicly on GitHub for **transparency and security verification**. We commit to maintaining this source-public model — users and security researchers can always inspect what ABG does on their machines.
+
+### What is permitted under the license
+
+- **Personal use** by individuals — research, experiment, testing for public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, religious observance
+- **Use by noncommercial organizations** — charitable organizations, educational institutions, public research organizations, public safety or health organizations, environmental protection organizations, government institutions
 
 ### What requires a commercial license
 
-Any **business or revenue-generating use**, including internal company tooling, embedded use in products or services, and hosted offerings, requires a commercial license from ArcManagement Co., Ltd.
+Any **commercial use** — including internal business operations of for-profit organizations, embedded use in paid or unpaid services to third parties, hosted services, or any revenue-generating activity — requires a separate commercial license from ArcManagement Co., Ltd.
 
 See [COMMERCIAL.md](COMMERCIAL.md) for details and contact information (`license@arcm.co.jp`).
 
-### Change to Apache License 2.0 after 4 years
+### Modifications and redistribution
 
-Each version of ABG converts to the **Apache License 2.0** four years after its public release date. The free-use community continues to grow with the project, and older versions become permissively licensed over time.
+Under PolyForm Strict, redistribution and creation of derivative works are **not permitted by default**. If you wish to fork or extend ABG, please contact us at `license@arcm.co.jp` to discuss the terms.
 
-### Future license-grant changes
+### Patents
 
-ArcManagement reserves the right to revise the Additional Use Grant for **future releases** of ABG (for example, to expand free use to small organizations under a stated size threshold). Such revisions apply only to releases that explicitly reference them; previously published releases remain governed by their original Additional Use Grant in perpetuity.
+ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for noncommercial use; commercial license agreements include explicit patent terms.
 
 ### Trademarks
 
-"ABG" and "Agent Browser Gateway" are trademarks of ArcManagement Co., Ltd. The Business Source License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
+"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement Co., Ltd. The PolyForm Strict License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
 
 ### Contributing
 
-Inbound contributions are licensed to the project under the same Business Source License 1.1 (inbound = outbound). Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
+By submitting a contribution, you agree that your contribution is licensed to the project under the same PolyForm Strict License 1.0.0 (inbound = outbound). You also grant ArcManagement Co., Ltd. the right to relicense your contribution under different terms in the future (including under a commercial license for paying users), should the need arise. Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
