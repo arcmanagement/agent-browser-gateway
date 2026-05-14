@@ -1,51 +1,60 @@
 # Commercial Licensing
 
-Agent Browser Gateway (ABG) is **free for personal and non-profit use** under the [PolyForm Strict License 1.0.0](LICENSE).
+Agent Browser Gateway (ABG) is licensed under the [PolyForm Small Business License 1.0.0](LICENSE), with an [ArcManagement Additional Free Use Grant](LICENSE#arcmanagement-additional-free-use-grant) that broadens the free tier for small organizations.
 
-If you want to use ABG to make money, we'd love to hear from you. **Just drop us a line at `license@arcm.co.jp`** — we're friendly and we want to find an arrangement that works for both sides.
+## Free use — who qualifies
 
-## When to reach out
+ABG is **free to use** for personal projects, non-profit purposes, and for any company that satisfies **either** of the following:
 
-Concrete situations where a commercial license is the right path:
+- **PolyForm small-business threshold**: fewer than 100 employees & contractors, **and** less than USD 1,000,000 (inflation-adjusted) annual revenue
+- **ArcManagement threshold**: fewer than 50 employees & contractors, **and** less than JPY 500,000,000 annual revenue
 
-- You're shipping a product or service that ABG is part of
-- You're offering ABG (or a fork of it) as a hosted service
-- You're a contractor or consultant using ABG to deliver paid client work
-- ABG is part of how your company makes money in some other way
+If your company meets either set of thresholds, you can use ABG in production — internally, in your products, for client work — at no charge. You do not need to register or notify us.
 
-If you're **not sure** whether your situation fits, just ask. We're happy to clarify and we won't chase down early adopters who reach out in good faith.
+## When a commercial license is required
+
+If your company exceeds both free-use thresholds, please get in touch. Concrete situations:
+
+- A company over 100 employees and over USD 1M (or 50 employees and JPY 500M) revenue
+- Embedding ABG in a paid product or hosted service that operates at the above scale
+
+We'd love to hear how you'd like to use ABG, and we'll work with you on terms that make sense for your situation.
 
 ## How to start the conversation
 
 Email **`license@arcm.co.jp`** with a few lines:
 
-1. Your name / organization and where you're based
-2. How you'd like to use ABG (one or two sentences is plenty)
-3. Anything specific you need (term length, support, etc.) — totally optional
+1. Your organization name and where you're based
+2. How you'd like to use ABG (one or two sentences)
+3. Anything specific you need (term length, support, etc.) — optional
 
 We'll respond within a few business days.
 
 ## Pricing
 
-ABG is early. We'd rather find great first customers than maximize revenue today. Pricing is **case-by-case, generally friendly to small teams**, and we'd rather find an arrangement that works than turn anyone away.
+ABG is early. We'd rather find great first commercial customers than maximize revenue today. Pricing is **case-by-case** and we'll work with you to find an arrangement that fits.
 
 ## Why we use a non-OSI license
 
-We publish ABG's full source code for **transparency** — anyone can inspect what ABG does on their machine. We chose the PolyForm Strict License (rather than a permissive license like MIT or Apache) so we can keep the option to build a sustainable business around ABG.
+We publish ABG's full source code for **transparency** — anyone can inspect what ABG does on their machine. We chose the PolyForm Small Business License (plus our extended free-use grant) because we want to keep the option to build a sustainable business around ABG while keeping ABG free for individuals, hobbyists, students, and small companies.
 
-**We're not interested in policing every developer.** If you're an individual learning, experimenting, or building hobby projects with ABG, you don't need a license. If ABG is part of how your work generates revenue, please get in touch — we'll figure it out together.
+We're not interested in policing every developer. If you're a person, a student, a non-profit, or a small company meeting either threshold, you don't need to do anything — just use ABG.
 
 ## Patents
 
-ArcManagement, Inc. holds a pending Japanese patent application (Application No. 特願2026-080620, filed 2026-05-12) covering aspects of ABG. The PolyForm Strict License grants a patent license for non-commercial use. Commercial licenses include explicit patent terms.
+ArcManagement, Inc. holds a pending Japanese patent application (Application No. 特願2026-080620, filed 2026-05-12) covering aspects of ABG. The PolyForm Small Business License grants a patent license for permitted uses. Commercial license agreements include explicit patent terms.
 
 ## Modifications and redistribution
 
-PolyForm Strict doesn't grant the right to modify or redistribute ABG by default. If you want to fork, integrate into your own product, or extend it — get in touch and we'll work something out.
+The PolyForm Small Business License permits modifications and redistribution for permitted purposes. If you fork ABG or build derivative works, please keep the LICENSE / NOTICE files intact and respect the same free-use thresholds.
 
 ## Trademarks
 
 "ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. See [TRADEMARK.md](TRADEMARK.md).
+
+## Future revisions
+
+The free-use thresholds and other commercial terms may be adjusted for **future releases** of ABG. Past releases will always remain governed by the terms in effect at the time of their release.
 
 ## Contact
 

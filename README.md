@@ -422,48 +422,45 @@ In short:
 
 ## License
 
-Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Agent Browser Gateway is licensed under the **PolyForm Small Business License 1.0.0** with an **ArcManagement Additional Free Use Grant** that broadens the free tier for small organizations. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ```
 Copyright 2026 ArcManagement, Inc.
 
-Licensed under the PolyForm Strict License 1.0.0 (the "License").
-You may not use this file except in compliance with the License.
-A copy of the License is provided in the LICENSE file at the root
-of this repository, and is also available at:
-
-    https://polyformproject.org/licenses/strict/1.0.0/
+Licensed under the PolyForm Small Business License 1.0.0, with the
+ArcManagement Additional Free Use Grant (see LICENSE for full text).
 ```
 
 ### Transparency commitment
 
-ArcManagement publishes the full source code of every release of ABG publicly on GitHub for **transparency and security verification**. We commit to maintaining this source-public model — users and security researchers can always inspect what ABG does on their machines.
+ArcManagement publishes the full source code of every release of ABG publicly on GitHub for **transparency and security verification**. Users and security researchers can always inspect what ABG does on their machines.
 
-### Free use
+### Free use — who qualifies
 
-ABG is **free for personal, hobby, learning, and non-profit use** — individuals exploring or building hobby projects, students, researchers, educational institutions, and other non-commercial organizations don't need to do anything special.
+ABG is **free** for personal use, non-profit purposes, and for any company that satisfies **either**:
 
-### Using ABG to make money? Let's talk.
+- **PolyForm small-business threshold**: fewer than 100 employees & contractors, **and** less than USD 1,000,000 (inflation-adjusted) annual revenue, or
+- **ArcManagement threshold**: fewer than 50 employees & contractors, **and** less than JPY 500,000,000 annual revenue
 
-If ABG is part of how you or your company generates revenue (shipped in a product or service, used in paid client work, hosted as a service, etc.), a commercial license is the right path. **Just email [`license@arcm.co.jp`](mailto:license@arcm.co.jp)** — we're friendly, pricing is case-by-case, and we'd rather find an arrangement that works than turn anyone away.
+If your company meets either set of thresholds, you can use ABG in production at no charge. No registration required.
+
+### Larger organizations — let's talk
+
+If your company exceeds both thresholds, a commercial license is the right path. Email [`license@arcm.co.jp`](mailto:license@arcm.co.jp) — pricing is case-by-case and we'd rather find an arrangement that works than turn anyone away.
 
 See [COMMERCIAL.md](COMMERCIAL.md) for more.
 
-### Modifications and redistribution
+### Contributing — let's build together
 
-The PolyForm Strict License doesn't grant rights to modify or redistribute ABG by default. If you want to fork it, integrate it into your own work, or build something on top — get in touch at `license@arcm.co.jp` and we'll figure something out.
+Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (PolyForm Small Business License 1.0.0 + ArcManagement Additional Free Use Grant, inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Patents
 
-ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for noncommercial use; commercial license agreements include explicit patent terms.
+ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for permitted free uses; commercial license agreements include explicit patent terms.
 
 ### Trademarks
 
-"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. The PolyForm Strict License does not grant any rights to use these trademarks, except as required for reasonable and customary use in describing the origin of the work. See [TRADEMARK.md](TRADEMARK.md).
-
-### Contributing
-
-By submitting a contribution, you agree that your contribution is licensed to the project under the same PolyForm Strict License 1.0.0 (inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution under different terms in the future (including under a commercial license for paying users), should the need arise. Contributors must sign off each commit per the Developer Certificate of Origin (DCO); see [CONTRIBUTING.md](CONTRIBUTING.md).
+"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. See [TRADEMARK.md](TRADEMARK.md).
 
 ---
 
