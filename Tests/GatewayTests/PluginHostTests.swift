@@ -242,6 +242,27 @@ final class PluginHostTests: XCTestCase {
         )
     }
 
+    func testBundledMarkdownPluginNormalizesSlackSenderName() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let html =
+            #"<div><img src="https://cdn.example/avatar.png">"# +
+            #"<span data-qa="message_sender_name"><span aria-label="Ada Lovelace">Ada Lovelace</span><span>Ada Lovelace</span></span>"# +
+            #"<span aria-hidden="true"> : </span>"# +
+            #"<a href="https://example.slack.com/archives/C0EXAMPLE0/p1710000000000000">12:19</a></div>"#
+        let markdown = try XCTUnwrap(host.transform(name: "html-to-markdown", input: html))
+
+        XCTAssertEqual(
+            markdown,
+            "[img]Ada Lovelace [12:19](https://example.slack.com/archives/C0EXAMPLE0/p1710000000000000)"
+        )
+        XCTAssertFalse(markdown.contains("Ada LovelaceAda Lovelace"))
+        XCTAssertFalse(markdown.contains("Ada Lovelace :"))
+    }
+
     func testDomainTransformUsesMatchingPluginManifest() throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }
