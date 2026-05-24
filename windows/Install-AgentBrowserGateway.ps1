@@ -87,6 +87,26 @@ function Wait-GatewayReady {
     throw "Gateway was installed, but did not become ready within 10 seconds. Try running: agent-browser-gateway.exe"
 }
 
+function Send-EnvironmentChangeNotification {
+    Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError=true, CharSet=System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(
+    System.IntPtr hWnd,
+    uint Msg,
+    System.IntPtr wParam,
+    string lParam,
+    uint fuFlags,
+    uint uTimeout,
+    out System.IntPtr lpdwResult);
+"@ -ErrorAction SilentlyContinue
+
+    $HwndBroadcast = [System.IntPtr]0xffff
+    $WmSettingChange = 0x001a
+    $SmtoAbortIfHung = 0x0002
+    $Result = [System.IntPtr]::Zero
+    [void][Win32.NativeMethods]::SendMessageTimeout($HwndBroadcast, $WmSettingChange, [System.IntPtr]::Zero, "Environment", $SmtoAbortIfHung, 5000, [ref]$Result)
+}
+
 Stop-ExistingGateway
 Wait-GatewayPortFree
 
@@ -110,6 +130,7 @@ if (-not $NoPathUpdate) {
     if ($Parts -notcontains $InstallDir) {
         $NewPath = (($Parts + $InstallDir) -join ';')
         [Environment]::SetEnvironmentVariable("Path", $NewPath, "User")
+        Send-EnvironmentChangeNotification
         Write-Host "Added to user PATH: $InstallDir"
         Write-Host "Open a new PowerShell window for PATH changes to take effect."
     } else {

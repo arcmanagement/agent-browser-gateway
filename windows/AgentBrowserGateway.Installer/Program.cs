@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using AgentBrowserGateway.Core;
 
@@ -378,6 +379,7 @@ internal sealed class SetupForm : Form
 
         parts.Add(installDir);
         Environment.SetEnvironmentVariable("Path", string.Join(';', parts), EnvironmentVariableTarget.User);
+        NativeMethods.BroadcastEnvironmentChange();
     }
 
     private static void RunInstallSkill(string installDir)
@@ -493,4 +495,33 @@ internal sealed class SetupForm : Form
     }
 
     private sealed record ProcessResult(int ExitCode, string Output);
+
+    private static class NativeMethods
+    {
+        private const int HwndBroadcast = 0xffff;
+        private const int WmSettingChange = 0x001a;
+        private const int SmtoAbortIfHung = 0x0002;
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern nint SendMessageTimeout(
+            nint hwnd,
+            uint msg,
+            nint wParam,
+            string lParam,
+            uint fuFlags,
+            uint uTimeout,
+            out nint lpdwResult);
+
+        public static void BroadcastEnvironmentChange()
+        {
+            _ = SendMessageTimeout(
+                new nint(HwndBroadcast),
+                WmSettingChange,
+                0,
+                "Environment",
+                SmtoAbortIfHung,
+                5000,
+                out _);
+        }
+    }
 }
