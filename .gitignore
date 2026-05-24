@@ -7,6 +7,14 @@ Package.resolved
 Agent Browser Gateway.app/
 Gateway.app/
 
+# .NET / WinUI
+**/bin/
+**/obj/
+TestResults/
+*.user
+*.suo
+.vs/
+
 # Node / extension
 node_modules/
 extension/dist/

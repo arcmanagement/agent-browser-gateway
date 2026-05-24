@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>abg</AssemblyName>
+    <RootNamespace>AgentBrowserGateway.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AgentBrowserGateway.Core\AgentBrowserGateway.Core.csproj" />
+    <EmbeddedResource Include="Resources\agent-browser-gateway.windows.md" />
+  </ItemGroup>
+</Project>

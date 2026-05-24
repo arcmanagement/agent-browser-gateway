@@ -1,0 +1,35 @@
+name: Windows CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore windows/AgentBrowserGateway.Windows.sln
+
+      - name: Build
+        run: |
+          dotnet build windows/AgentBrowserGateway.Core/AgentBrowserGateway.Core.csproj -c Release --no-restore
+          dotnet build windows/AgentBrowserGateway.Cli/AgentBrowserGateway.Cli.csproj -c Release --no-restore
+          dotnet build windows/AgentBrowserGateway.Windows/AgentBrowserGateway.Windows.csproj -c Release -r win-x64 -p:Platform=x64
+
+      - name: Test
+        run: dotnet test windows/AgentBrowserGateway.Tests/AgentBrowserGateway.Tests.csproj -c Release
+
+      - name: Package Windows zip
+        shell: pwsh
+        run: ./scripts/dist-windows-x64.ps1 -Version 0.3.6

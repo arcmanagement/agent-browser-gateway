@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway extension all clean test lint format dist pages-dmg release verify
+.PHONY: help install gateway extension all clean test lint format dist pages-dmg windows-dist release verify
 
 PAGES_OUTPUT_DIR ?= site/downloads
 
@@ -17,6 +17,7 @@ help:
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
 	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
+	@printf "  make windows-dist build Windows x64 zip (run from Windows with dotnet)\n"
 	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
@@ -61,6 +62,12 @@ endif
 
 pages-dmg: dist
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" PAGES_OUTPUT_DIR="$(PAGES_OUTPUT_DIR)" bash scripts/dist-pages-dmg.sh
+
+windows-dist:
+ifndef VERSION
+	$(error VERSION is required, e.g. make windows-dist VERSION=0.3.6)
+endif
+	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)"
 
 release: dist
 	@echo "Release artifacts for v$(VERSION) are in dist/"
