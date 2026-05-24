@@ -1,0 +1,18 @@
+sequenceDiagram
+  participant T as Browser Tab 40
+  participant E as Browser Operation Link 10
+  participant P as Permission Manager 70
+  participant G as Gateway Module 20
+  participant L as Audit Record 60
+  participant C as Agent Interface 30
+
+  T->>E: navigation event
+  E->>E: compare current target identity with permitted identity
+  alt target identity changed
+    E->>P: revoke(tabId, reason=target_changed)
+    P->>G: update permitted tab list
+    G->>L: record revoke audit entry
+    G-->>C: tab no longer permitted
+  else same target
+    E-->>P: keep permission
+  end

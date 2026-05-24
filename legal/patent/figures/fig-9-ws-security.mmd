@@ -1,0 +1,19 @@
+flowchart TD
+  R["Connection request\nlocal or same-device path"]
+  V["Source Verifier 120"]
+  OK["Allowed browser-link source\norigin / token / credential"]
+  BAD["Rejected source\nunauthorized / missing / malformed"]
+  W["Gateway Module 20\nmessage handling"]
+  P["Permission Manager 70"]
+  L["Audit Record 60\nrequest / response\naccess controlled"]
+  FS["Support and record storage\naccess controlled"]
+
+  R --> V
+  V --> |"source evidence valid"| OK
+  V --> |"invalid or missing"| BAD
+  OK --> W
+  BAD --> X["close connection"]
+  W --> P
+  P --> L
+  FS --> L
+  W --> |"connect / operate / revoke\nrequest / response summary"| L

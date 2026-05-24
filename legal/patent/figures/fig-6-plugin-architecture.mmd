@@ -1,0 +1,23 @@
+flowchart TD
+  G["Gateway Module\n20"]
+  VM["JavaScriptCore VM\nsame process"]
+  API["abg host API\nregisterTransform"]
+  M["markdown-plugin\nhtml-to-markdown"]
+  N["domain-plugin\nsite-specific cleanup"]
+  I["policy-plugin\nredact / summarize / reject"]
+  U["user plugins\n50"]
+  D["Domain matcher\nmanifest domains"]
+  R["Read result to agent interface\n30"]
+
+  G --> VM
+  VM --> API
+  API --> M
+  API --> N
+  API --> I
+  API --> U
+  G --> D
+  D --> |"matched domain"| N
+  D --> |"fallback"| M
+  N --> R
+  M --> R
+  U --> R

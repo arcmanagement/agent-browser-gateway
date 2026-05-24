@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml)
 
+Patent Pending: JP 2026-080620
+
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
 - 📖 **Fully open source** — Every line of code that touches your browser is auditable

@@ -1,0 +1,18 @@
+flowchart LR
+  subgraph X["Broad access model"]
+    X1["Broad add-on model\ncomprehensive access"]
+    X2["Many tabs and targets\ncontinuously reachable"]
+    X3["Cloud or owner update risk"]
+    X1 --> X2 --> X3
+  end
+
+  subgraph Y["ABG model"]
+    Y1["Operation Link 10\nadd-on or external link\nno broad persistent access"]
+    Y2["User grants access\nper tab"]
+    Y3["Gateway 20\nlocal / private / cloud"]
+    Y4["Browser control API\npermitted tab only"]
+    Y5["Auto revoke\ntarget identity change"]
+    Y1 --> Y2 --> Y3 --> Y4 --> Y5
+  end
+
+  X3 -. "risk surface" .-> Y5
