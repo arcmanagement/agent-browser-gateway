@@ -177,6 +177,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "focus_selector")
         case "hover_tab":
             return await dispatch(req: req, method: "hover_selector")
+        case "select_tab":
+            return await dispatch(req: req, method: "select_option")
         case "fill_tab":
             return await dispatch(req: req, method: "fill")
         case "paste_tab":

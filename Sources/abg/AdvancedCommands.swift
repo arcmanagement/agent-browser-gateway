@@ -155,3 +155,34 @@ struct Hover: AsyncParsableCommand {
         printJSON(result)
     }
 }
+
+struct SelectOption: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "select",
+        abstract: "Select a native dropdown option by value or visible label"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target select element CSS selector") var selector: String
+    @Option(name: .long, help: "Option value to select") var value: String?
+    @Option(name: .long, help: "Visible option label to select") var label: String?
+
+    func run() async throws {
+        guard (value == nil) != (label == nil) else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one of --value or --label.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "selector": selector]
+        if let value { params["value"] = value }
+        if let label { params["label"] = label }
+        let result = try client.call(method: "select_tab", params: params)
+        var step: [String: Any] = ["op": "select", "tabId": tabId, "selector": selector]
+        if let value { step["value"] = value }
+        if let label { step["label"] = label }
+        appendRecordedStep(step)
+        printJSON(result)
+    }
+}

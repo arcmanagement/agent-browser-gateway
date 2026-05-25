@@ -36,7 +36,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, DblClick.self, Focus.self, Hover.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "read", "screenshot", "annotate", "console", "table", "describe", "network",
-    "click", "dblclick", "focus", "hover", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "drag", "upload",
+    "click", "dblclick", "focus", "hover", "select", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "drag", "upload",
     "wait",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -1508,6 +1508,11 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "hover":
         params["selector"] = try requiredString(step, "selector", op: op)
         return try client.call(method: "hover_tab", params: params)
+    case "select":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        if let value = stringValue(step, "value") { params["value"] = value }
+        if let label = stringValue(step, "label") { params["label"] = label }
+        return try client.call(method: "select_tab", params: params)
     case "fill":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
