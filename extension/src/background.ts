@@ -112,6 +112,7 @@ const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
 const snapshotRefCache = new Map<number, Map<string, string>>();
 const attachedTabs = new Set<number>();
+const streamingTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
 
 let extensionId: string | null = null;
@@ -303,6 +304,18 @@ function sendWS(msg: ExtToGateway): void {
   ws.send(JSON.stringify(msg));
 }
 
+function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
+  if (!streamingTabs.has(tabId)) return;
+  sendWS({
+    type: "runtime_event",
+    tabId,
+    event: {
+      ...event,
+      ts: new Date().toISOString(),
+    },
+  });
+}
+
 // ---------- Tab permission ----------
 
 async function permitTab(tabId: number): Promise<void> {
@@ -329,6 +342,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   permittedTabs.delete(tabId);
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
+  streamingTabs.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
@@ -378,6 +392,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
+    streamingTabs.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
     await detachDebugger(tabId);
@@ -442,6 +457,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     buf.push({ ts: Date.now(), level: p.type, text });
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
+    emitStreamEvent(source.tabId, { kind: "console", level: p.type, text });
   } else if (method === "Runtime.exceptionThrown") {
     const ex = (
       params as { exceptionDetails?: { text?: string; exception?: { description?: string } } }
@@ -452,6 +468,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     buf.push({ ts: Date.now(), level: "error", text });
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
+    emitStreamEvent(source.tabId, { kind: "console", level: "error", text });
   } else if (method === "Network.requestWillBeSent") {
     const p = params as {
       requestId: string;
@@ -472,6 +489,14 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       ts: new Date((p.wallTime ?? Date.now() / 1000) * 1000).toISOString(),
       startTime: p.timestamp,
     });
+    emitStreamEvent(source.tabId, {
+      kind: "network",
+      phase: "request",
+      requestId: p.requestId,
+      method: p.request.method,
+      url: p.request.url,
+      resourceType: p.type?.toLowerCase(),
+    });
     while (buf.length > 200) buf.shift();
     networkBuffers.set(source.tabId, buf);
   } else if (method === "Network.responseReceived") {
@@ -488,6 +513,14 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       entry.mimeType = p.response.mimeType;
       if (p.response.url) entry.url = p.response.url;
     }
+    emitStreamEvent(source.tabId, {
+      kind: "network",
+      phase: "response",
+      requestId: p.requestId,
+      status: p.response.status,
+      url: p.response.url,
+      resourceType: p.type?.toLowerCase(),
+    });
   } else if (method === "Network.loadingFinished") {
     const p = params as { requestId: string; timestamp: number; encodedDataLength?: number };
     activeNetworkRequests.get(source.tabId)?.delete(p.requestId);
@@ -496,6 +529,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
       entry.encodedDataLength = p.encodedDataLength;
     }
+    emitStreamEvent(source.tabId, {
+      kind: "network",
+      phase: "finished",
+      requestId: p.requestId,
+      encodedDataLength: p.encodedDataLength,
+    });
   } else if (method === "Network.loadingFailed") {
     const p = params as { requestId: string; timestamp: number; errorText?: string };
     activeNetworkRequests.get(source.tabId)?.delete(p.requestId);
@@ -504,6 +543,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
       entry.errorText = p.errorText;
     }
+    emitStreamEvent(source.tabId, {
+      kind: "network",
+      phase: "failed",
+      requestId: p.requestId,
+      errorText: p.errorText,
+    });
   }
 });
 
@@ -569,6 +614,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
       reply(cmd.id, await manageAnnotationMode(tabId, readAnnotationCommand(cmd.params)));
+    } else if (cmd.method === "stream_control") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
@@ -1612,6 +1660,54 @@ async function printPagePDF(tabId: number): Promise<{ dataUrl: string; url: stri
     url: tab.url ?? "",
     title: tab.title ?? "",
   };
+}
+
+async function setRuntimeStream(
+  tabId: number,
+  enabled: boolean,
+): Promise<{ ok: true; enabled: boolean; tabId: number }> {
+  if (enabled) {
+    streamingTabs.add(tabId);
+    await attachDebugger(tabId);
+    await installDomMutationStream(tabId);
+  } else {
+    streamingTabs.delete(tabId);
+  }
+  return { ok: true, enabled, tabId };
+}
+
+async function installDomMutationStream(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const key = "__abgRuntimeStreamInstalled";
+      const win = window as unknown as Record<string, unknown>;
+      if (win[key]) return;
+      win[key] = true;
+      let pending = 0;
+      const observer = new MutationObserver((mutations) => {
+        pending += mutations.length;
+        if (pending === mutations.length) {
+          setTimeout(() => {
+            const count = pending;
+            pending = 0;
+            chrome.runtime.sendMessage({
+              type: "stream_dom_mutation",
+              count,
+              url: location.href,
+              title: document.title,
+            });
+          }, 100);
+        }
+      });
+      observer.observe(document.documentElement, {
+        childList: true,
+        attributes: true,
+        characterData: true,
+        subtree: true,
+      });
+    },
+  });
 }
 
 async function extractTables(
@@ -3290,8 +3386,18 @@ async function scrollElementIntoView(
 
 // ---------- Popup messaging ----------
 
-chrome.runtime.onMessage.addListener((rawMsg: unknown, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
   (async () => {
+    if (isRecord(rawMsg) && rawMsg.type === "stream_dom_mutation" && sender.tab?.id) {
+      emitStreamEvent(sender.tab.id, {
+        kind: "dom_mutation",
+        count: typeof rawMsg.count === "number" ? rawMsg.count : 0,
+        url: typeof rawMsg.url === "string" ? rawMsg.url : undefined,
+        title: typeof rawMsg.title === "string" ? rawMsg.title : undefined,
+      });
+      sendResponse({ type: "ok" });
+      return;
+    }
     const msg = parseRuntimeMessage(rawMsg);
     if (!msg) {
       const reply: RuntimeResponse = { type: "error", message: "unknown message" };

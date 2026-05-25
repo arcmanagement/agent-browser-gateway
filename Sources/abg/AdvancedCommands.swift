@@ -189,6 +189,45 @@ struct Snapshot: AsyncParsableCommand {
     }
 }
 
+struct Stream: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "stream",
+        abstract: "Manage local runtime event streaming",
+        subcommands: [StreamEnable.self, StreamStatus.self, StreamDisable.self]
+    )
+}
+
+struct StreamEnable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "enable", abstract: "Enable runtime stream for one shared tab")
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Requested stream port. Current Gateway stream uses the Gateway WebSocket port.") var port: Int?
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if let port { params["port"] = port }
+        let result = try client.call(method: "stream_enable", params: params)
+        printJSON(result)
+    }
+}
+
+struct StreamStatus: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "status", abstract: "Show runtime stream state")
+    func run() async throws {
+        let result = try UDSClient().call(method: "stream_status")
+        printJSON(result)
+    }
+}
+
+struct StreamDisable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "disable", abstract: "Disable runtime stream")
+    func run() async throws {
+        let result = try UDSClient().call(method: "stream_disable")
+        printJSON(result)
+    }
+}
+
 struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget

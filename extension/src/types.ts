@@ -21,6 +21,7 @@ export type ExtToGateway =
   | { type: "tab_revoked"; tabId: number; reason: string }
   | { type: "tab_updated"; tabId: number; url: string; title: string; origin: string }
   | { type: "tab_closed"; tabId: number }
+  | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }
   | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
 
 export type GatewayCommand = {
@@ -33,6 +34,7 @@ export type GatewayCommand = {
     value?: string;
     label?: string;
     checked?: boolean;
+    enabled?: boolean;
     replaceEditable?: boolean;
     dryRun?: boolean;
     text?: string;
@@ -111,6 +113,7 @@ export type GatewayMethod =
   | "revoke"
   | "wait_for"
   | "annotation_mode"
+  | "stream_control"
   | "click_selector"
   | "click_described"
   | "click_at"
