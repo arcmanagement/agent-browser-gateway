@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.3.6
+version: 0.3.7
 description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -177,7 +177,7 @@ abg.registerCommand("greet", async function (args, context) {
 - `abg.plugin.name`, `abg.plugin.version`, and `abg.version` expose plugin/Gateway metadata.
 - `abg.registerTransform(name, fn)` registers a synchronous string-to-string transform. Domain
   Markdown transforms declared in `plugin.json` can run before generic `read --format markdown`.
-- `abg.registerCommand(name, handler)` registers a dynamic CLI command in v0.3.6. The handler
+- `abg.registerCommand(name, handler)` registers a dynamic CLI command. The handler
   signature is `(args, context) => result | Promise<result>`.
 - `context.plugin.name` is always present. `context.plugin.version` is present when the manifest has
   `version`. `context.tabId` is present only when the caller passes `--tab-id`; do not assume a shared
