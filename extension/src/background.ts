@@ -600,9 +600,12 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       throw new Error("value must be a string");
     }
     const value = rawValue ?? "";
+    const dryRun = cmd.params?.dryRun === true;
     return {
-      intent: `Fill ${quoteForIntent(value)} into the field matching selector ${quoteForIntent(selector)}.`,
-      run: () => fillField(tabId, selector, value),
+      intent: dryRun
+        ? `Preview editable replacement for selector ${quoteForIntent(selector)}.`
+        : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}.`,
+      run: () => fillField(tabId, selector, value, dryRun),
     };
   }
   if (cmd.method === "paste") {
@@ -1386,30 +1389,178 @@ async function drag(
   return { ok: true, from: fromPoint, to: toPoint, steps };
 }
 
+type EditableKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
+
+type FillResult = {
+  ok: boolean;
+  found: boolean;
+  kind?: EditableKind;
+  dryRun?: boolean;
+  beforeLength?: number;
+  afterLength?: number;
+  replacementLength?: number;
+  strategy?: "valueSetter" | "selectionReplacement" | "textContentFallback" | "preview";
+};
+
 async function fillField(
   tabId: number,
   selector: string,
   value: string,
-): Promise<{ found: boolean }> {
+  dryRun: boolean,
+): Promise<FillResult> {
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel: string, val: string) => {
-      const el = document.querySelector(sel) as HTMLInputElement | HTMLTextAreaElement | null;
-      if (!el) return { found: false } as const;
-      const proto =
-        el instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-      if (setter) setter.call(el, val);
-      else el.value = val;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
+    func: (sel: string, val: string, previewOnly: boolean) => {
+      type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
+      const el = document.querySelector(sel) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLElement
+        | null;
+      if (!el) return { ok: false, found: false } as const;
+
+      const kindOf = (target: Element): LocalKind => {
+        if (target instanceof HTMLInputElement) return "input";
+        if (target instanceof HTMLTextAreaElement) return "textarea";
+        if ((target as HTMLElement).isContentEditable) return "contenteditable";
+        if (target.getAttribute("role") === "textbox") return "role-textbox";
+        return "unsupported";
+      };
+      const currentText = (target: typeof el): string => {
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          return target.value;
+        }
+        return target.textContent ?? "";
+      };
+      const dispatchReplacementEvents = (target: Element, text: string, inputType: string): void => {
+        const beforeInput = new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType,
+          data: text,
+        });
+        target.dispatchEvent(beforeInput);
+        target.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType,
+            data: text,
+          }),
+        );
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const selectEditableContents = (target: HTMLElement): void => {
+        target.focus({ preventScroll: true });
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      };
+
+      const kind = kindOf(el);
+      if (kind === "unsupported") {
+        return { ok: false, found: true, kind, replacementLength: val.length } as const;
+      }
+
+      const beforeLength = currentText(el).length;
+      if (previewOnly) {
+        return {
+          ok: true,
+          found: true,
+          kind,
+          dryRun: true,
+          beforeLength,
+          replacementLength: val.length,
+          strategy: "preview",
+        } as const;
+      }
+
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        const proto =
+          el instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        el.focus({ preventScroll: true });
+        try {
+          el.setSelectionRange(0, el.value.length);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+        el.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertReplacementText",
+            data: val,
+          }),
+        );
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (setter) setter.call(el, val);
+        else el.value = val;
+        el.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertReplacementText",
+            data: val,
+          }),
+        );
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return {
+          ok: true,
+          found: true,
+          kind,
+          beforeLength,
+          afterLength: el.value.length,
+          replacementLength: val.length,
+          strategy: "valueSetter",
+        } as const;
+      }
+
+      selectEditableContents(el);
+      el.dispatchEvent(
+        new InputEvent("beforeinput", {
+          bubbles: true,
+          cancelable: true,
+          inputType: "insertReplacementText",
+          data: val,
+        }),
+      );
+      const inserted = document.execCommand("insertText", false, val);
+      if (!inserted || currentText(el) !== val) {
+        el.textContent = val;
+        dispatchReplacementEvents(el, val, "insertReplacementText");
+        return {
+          ok: true,
+          found: true,
+          kind,
+          beforeLength,
+          afterLength: currentText(el).length,
+          replacementLength: val.length,
+          strategy: "textContentFallback",
+        } as const;
+      }
+      el.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertReplacementText",
+          data: val,
+        }),
+      );
       el.dispatchEvent(new Event("change", { bubbles: true }));
-      return { found: true } as const;
+      return {
+        ok: true,
+        found: true,
+        kind,
+        beforeLength,
+        afterLength: currentText(el).length,
+        replacementLength: val.length,
+        strategy: "selectionReplacement",
+      } as const;
     },
-    args: [selector, value],
+    args: [selector, value, dryRun],
   });
-  return res?.result ?? { found: false };
+  return res?.result ?? { ok: false, found: false };
 }
 
 type PasteResult = {
