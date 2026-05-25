@@ -43,6 +43,7 @@ abg click <tab|ref> --selector "<css>"           # CSS selector でクリック
 abg click <tab|ref> --id <n>                     # describe の id でクリック
 abg click <tab|ref> --x <px> --y <px>            # 座標でクリック (canvas にも有効)
 abg dblclick <tab|ref> --selector "<css>"        # CSS selector でダブルクリック
+abg focus <tab|ref> --selector "<css>"           # クリックせず focus する
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable に入力
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt

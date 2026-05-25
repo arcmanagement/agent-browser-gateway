@@ -28,6 +28,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_described",
   "click_at",
   "dblclick_selector",
+  "focus_selector",
   "fill",
   "paste",
   "clear",
@@ -602,6 +603,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Double-click the element matching selector ${quoteForIntent(selector)}.`,
       run: () => doubleClickSelector(tabId, selector),
+    };
+  }
+  if (cmd.method === "focus_selector") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    return {
+      intent: `Focus the element matching selector ${quoteForIntent(selector)} without clicking it.`,
+      run: () => focusElement(tabId, selector),
     };
   }
   if (cmd.method === "fill") {
@@ -1753,6 +1762,29 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
     cleared,
     clearStrategy: cleared ? "keyboardShortcut" : null,
   };
+}
+
+async function focusElement(
+  tabId: number,
+  selector: string,
+): Promise<{ found: boolean; focused: boolean; tag?: string; activeTag?: string }> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { found: false, focused: false } as const;
+      el.focus({ preventScroll: true });
+      const active = document.activeElement;
+      return {
+        found: true,
+        focused: active === el || el.contains(active),
+        tag: el.tagName.toLowerCase(),
+        activeTag: active?.tagName.toLowerCase(),
+      } as const;
+    },
+    args: [selector],
+  });
+  return res?.result ?? { found: false, focused: false };
 }
 
 async function focusEditableElement(

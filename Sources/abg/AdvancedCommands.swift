@@ -115,3 +115,23 @@ struct DblClick: AsyncParsableCommand {
         printJSON(result)
     }
 }
+
+struct Focus: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "focus",
+        abstract: "Focus an element without clicking it"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Focus target CSS selector") var selector: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "focus_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+        ])
+        appendRecordedStep(["op": "focus", "tabId": tabId, "selector": selector])
+        printJSON(result)
+    }
+}
