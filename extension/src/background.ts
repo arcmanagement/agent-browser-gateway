@@ -526,6 +526,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
       reply(cmd.id, result);
+    } else if (cmd.method === "pdf") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await printPagePDF(tabId));
     } else if (cmd.method === "console") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const logs = consoleBuffers.get(tabId) ?? [];
@@ -1017,6 +1020,19 @@ async function screenshot(
     data: string;
   };
   return { dataUrl: `data:image/png;base64,${result.data}` };
+}
+
+async function printPagePDF(tabId: number): Promise<{ dataUrl: string; url: string; title: string }> {
+  await attachDebugger(tabId);
+  const tab = await chrome.tabs.get(tabId);
+  const result = (await chrome.debugger.sendCommand({ tabId }, "Page.printToPDF", {
+    printBackground: true,
+  })) as { data: string };
+  return {
+    dataUrl: `data:application/pdf;base64,${result.data}`,
+    url: tab.url ?? "",
+    title: tab.title ?? "",
+  };
 }
 
 async function extractTables(

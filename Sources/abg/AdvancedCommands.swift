@@ -9,6 +9,24 @@ struct Keyboard: AsyncParsableCommand {
     )
 }
 
+struct PDF: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "pdf",
+        abstract: "Save the current page as a PDF"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Output PDF path") var out: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "pdf_tab", params: ["tabId": tabId])
+        let outPath = (out as NSString).expandingTildeInPath
+        let saved = try savePDFResult(result, outPath: outPath)
+        printJSON(saved)
+    }
+}
+
 struct KeyboardInsertText: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "inserttext",
