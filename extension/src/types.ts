@@ -31,6 +31,8 @@ export type GatewayCommand = {
     selector?: string;
     html?: string;
     value?: string;
+    replaceEditable?: boolean;
+    dryRun?: boolean;
     text?: string;
     url?: string;
     x?: number;

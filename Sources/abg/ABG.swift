@@ -36,7 +36,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, Fill.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Click.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "read", "screenshot", "annotate", "console", "table", "describe", "network",
-    "click", "fill", "paste", "clear", "replace", "type", "key", "navigate", "scroll", "drag", "upload",
+    "click", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "navigate", "scroll", "drag", "upload",
     "wait",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -916,16 +916,64 @@ struct Click: AsyncParsableCommand {
 }
 
 struct Fill: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "input/textarea にテキスト入力 (selector 必須)")
+    static let configuration = CommandConfiguration(abstract: "input/textarea/contenteditable にテキスト入力 (selector 必須)")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の CSS selector") var selector: String
     @Option(name: .long, help: "入力する値") var value: String
+    @Flag(name: .long, help: "対象種別と置換予定サイズだけを返し、DOM は変更しない") var dryRun: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "fill_tab", params: ["tabId": tabId, "selector": selector, "value": value])
-        appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": value])
+        let result = try client.call(method: "fill_tab", params: ["tabId": tabId, "selector": selector, "value": value, "dryRun": dryRun])
+        if !dryRun {
+            appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": value])
+        }
+        printJSON(result)
+    }
+}
+
+struct ReplaceEditable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "replace-editable",
+        abstract: "Replace an input, textarea, or contenteditable target without clipboard dependence"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target editable CSS selector") var selector: String
+    @Option(name: .long, help: "Replacement text") var value: String?
+    @Option(name: .long, help: "Read replacement text from a file") var textFile: String?
+    @Flag(name: .long, help: "Read replacement text from stdin") var stdin: Bool = false
+    @Flag(name: .long, help: "Preview target metadata and replacement length without changing the page") var dryRun: Bool = false
+
+    func run() async throws {
+        let sources = [value != nil, textFile != nil, stdin].filter { $0 }.count
+        guard sources == 1 else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one of --value, --text-file, or --stdin.",
+            ])
+        }
+        let text: String
+        if let value {
+            text = value
+        } else if let textFile {
+            text = try String(contentsOfFile: (textFile as NSString).expandingTildeInPath, encoding: .utf8)
+        } else {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            text = String(data: data, encoding: .utf8) ?? ""
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "fill_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+            "value": text,
+            "replaceEditable": true,
+            "dryRun": dryRun,
+        ])
+        if !dryRun {
+            appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": text])
+        }
         printJSON(result)
     }
 }

@@ -114,7 +114,9 @@ abg click --match-title "アプリ管理" --selector "button.save"
 abg click <tab|ref> --selector "<css>"            # CSS selector click
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
-abg fill <tab|ref> --selector "<css>" --value "<text>"
+abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable replacement
+abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
+abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
 echo "long text" | abg paste <tab|ref> --selector "<css>" --stdin
 abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
@@ -137,19 +139,23 @@ abg audit [--lines 50]                  # Local audit log
 abg install-skill                       # Install/update Claude Code + Codex Skills
 ```
 
-Use `fill` for native `input` and `textarea` fields when value assignment is enough. Use `type`
-when the target already has focus and needs per-character keyboard events. Use `paste` for rich
-editors that ignore synthetic value updates or character events, including Lexical, ProseMirror,
-Slate, Quill, and many native editable surfaces. `paste` writes the text to the clipboard, focuses
-the selected editable element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records
-the action, tab id, selector, and byte length only, never the pasted text.
+Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
+replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids
+clipboard dependence, and returns the detected editable kind plus replacement lengths. Use
+`replace-editable` when the stronger command name makes a CMS/rich-editor workflow clearer; it uses
+the same replacement path and can read from `--text-file` or `--stdin`. Use `type` when the target
+already has focus and needs per-character keyboard events. Use `paste` for rich editors that ignore
+synthetic value updates or character events, including Lexical, ProseMirror, Slate, Quill, and many
+native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable
+element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records the action, tab id,
+selector, and byte length only, never the pasted text.
 
 Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
 target, selects its content, and deletes it. The result includes `clearStrategy`, one of
 `execCommand`, `selectionRange`, `syntheticInput`, `keyboardShortcut`, or `null`.
 
-For Lexical-class editors and other rich editors that ignore `fill`, the canonical "set this
-editor's content to X" sequence is explicit:
+For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
+"set this editor's content to X" sequence stays explicit:
 
 ```bash
 abg clear t1 --selector 'div[aria-label="Gemini へのプロンプトを入力"]'
