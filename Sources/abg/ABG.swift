@@ -572,10 +572,23 @@ struct Read: AsyncParsableCommand {
     @Flag(name: .long, help: "HTML を Markdown に変換 (token 効率)") var asMarkdown: Bool = false
     @Option(name: .long, help: "出力形式: json / markdown / text / html") var format: String = "json"
     @Flag(name: .long, help: "Markdown 出力で画像 URL を残す") var keepImages: Bool = false
+    @Flag(name: .long, help: "selector の editable value を input/textarea/contenteditable aware に返す") var editableValue: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
+        if editableValue {
+            guard let selector else {
+                try failWithJSON(["error": "selector_required", "message": "--editable-value requires --selector."])
+            }
+            let result = try client.call(method: "get_tab", params: [
+                "tabId": tabId,
+                "kind": "editable-value",
+                "selector": selector,
+            ])
+            printJSON(result)
+            return
+        }
         var params: [String: Any] = ["tabId": tabId]
         if let s = selector { params["selector"] = s }
         let wantsMarkdown = asMarkdown || format == "markdown"

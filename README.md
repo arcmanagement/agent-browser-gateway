@@ -95,7 +95,9 @@ abg status                                       # Gateway state, connected exte
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
+abg get editable-value <tab|ref> "<css>"         # Rich-editor visible text + serialized HTML
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
 abg find role <tab|ref> button click --name "Submit"
@@ -196,6 +198,8 @@ target, selects its content, and deletes it. The result includes `clearStrategy`
 Use `get` when a script needs one compact value instead of a larger `read` payload. `get text/html`
 returns one selector-scoped value, `get count` returns a match count, `get box` returns a viewport
 rect, and `get styles --props display,color` keeps computed-style reads small.
+Use `get editable-value` or `read --editable-value` for rich editors when the visible editable text
+and serialized contenteditable DOM may diverge.
 Use `is-visible`, `is-enabled`, and `is-checked` for conditionals; a false predicate still exits
 successfully and returns `{ "value": false }`.
 Use `find` when CSS selectors would be brittle. `find role t1 button click --name "Save"` resolves

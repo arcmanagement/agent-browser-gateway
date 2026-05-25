@@ -41,10 +41,10 @@ struct Get: AsyncParsableCommand {
 
     func run() async throws {
         let normalizedKind = kind.lowercased()
-        guard ["text", "html", "value", "attr", "title", "url", "count", "box", "styles"].contains(normalizedKind) else {
+        guard ["text", "html", "value", "editable-value", "attr", "title", "url", "count", "box", "styles"].contains(normalizedKind) else {
             try failWithJSON([
                 "error": "bad_getter",
-                "message": "Getter must be one of text/html/value/attr/title/url/count/box/styles.",
+                "message": "Getter must be one of text/html/value/editable-value/attr/title/url/count/box/styles.",
             ])
         }
         if normalizedKind == "attr", name == nil {
