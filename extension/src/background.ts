@@ -29,6 +29,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_at",
   "dblclick_selector",
   "focus_selector",
+  "hover_selector",
   "fill",
   "paste",
   "clear",
@@ -611,6 +612,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Focus the element matching selector ${quoteForIntent(selector)} without clicking it.`,
       run: () => focusElement(tabId, selector),
+    };
+  }
+  if (cmd.method === "hover_selector") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    return {
+      intent: `Move the mouse over the element matching selector ${quoteForIntent(selector)}.`,
+      run: () => hoverSelector(tabId, selector),
     };
   }
   if (cmd.method === "fill") {
@@ -1353,6 +1362,21 @@ async function doubleClickSelector(
       clickCount,
     });
   }
+  return { ok: true, selector, x: point.x, y: point.y };
+}
+
+async function hoverSelector(
+  tabId: number,
+  selector: string,
+): Promise<{ ok: true; selector: string; x: number; y: number }> {
+  await attachDebugger(tabId);
+  const point = await resolvePoint(tabId, { kind: "selector", selector });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "none",
+  });
   return { ok: true, selector, x: point.x, y: point.y };
 }
 

@@ -135,3 +135,23 @@ struct Focus: AsyncParsableCommand {
         printJSON(result)
     }
 }
+
+struct Hover: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "hover",
+        abstract: "Move the mouse to the center of an element"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Hover target CSS selector") var selector: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "hover_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+        ])
+        appendRecordedStep(["op": "hover", "tabId": tabId, "selector": selector])
+        printJSON(result)
+    }
+}
