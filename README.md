@@ -353,6 +353,11 @@ The distinction is practical: Playwright is excellent when you want a repeatable
 automation owns; ABG is for safely exposing one human-owned tab to an agent, with JSON output,
 local-only transport, and a visible audit trail.
 
+ABG intentionally does not expose a general-purpose `eval` command to agents. Parity gaps that
+look like eval are handled as named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`,
+or manifest-backed plugin commands). `wait --fn` is limited to readiness predicates and returns
+only success or timeout state, not arbitrary extracted data.
+
 ---
 
 ## MVP scope (v0.1)

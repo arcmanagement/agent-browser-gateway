@@ -85,7 +85,7 @@ abg wait <tab|ref> --ms 1500                     # 単純 sleep
 abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
-abg wait <tab|ref> --fn "window.ready === true"
+abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
 
 # 反復フロー
 abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録
