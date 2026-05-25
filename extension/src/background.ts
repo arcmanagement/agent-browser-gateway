@@ -27,6 +27,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
   "click_described",
   "click_at",
+  "click_ref",
   "dblclick_selector",
   "focus_selector",
   "hover_selector",
@@ -109,6 +110,7 @@ const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
+const snapshotRefCache = new Map<number, Map<string, string>>();
 const attachedTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
 
@@ -537,6 +539,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "find") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await runFindCommand(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "snapshot") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await snapshotTab(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
@@ -609,6 +614,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Click at page coordinates (${x}, ${y}).`,
       run: () => clickAt(tabId, x, y),
+    };
+  }
+  if (cmd.method === "click_ref") {
+    const ref = cmd.params?.ref;
+    if (typeof ref !== "string" || ref.length === 0) throw new Error("ref required");
+    return {
+      intent: `Click snapshot ref ${quoteForIntent(ref)}.`,
+      run: () => clickSnapshotRef(tabId, ref),
     };
   }
   if (cmd.method === "click_described") {
@@ -1390,6 +1403,183 @@ function applyFindIndexModifier(
     return matches[resolvedIndex] ? [matches[resolvedIndex] as FindMatch] : [];
   }
   return matches;
+}
+
+async function snapshotTab(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<unknown> {
+  const selector = typeof params.selector === "string" ? params.selector : undefined;
+  const depth = typeof params.depth === "number" ? Math.max(1, Math.min(12, params.depth)) : 5;
+  const interactiveOnly = params.interactiveOnly === true;
+  const compact = params.compact === true;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (opts: { selector?: string; depth: number; interactiveOnly: boolean; compact: boolean }) => {
+      type SnapshotElement = {
+        ref: string;
+        role: string;
+        name: string;
+        text: string;
+        selector: string;
+        box: { x: number; y: number; width: number; height: number };
+        interactive: boolean;
+      };
+      const cssEscape = (value: string): string => {
+        const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
+          .CSS?.escape;
+        return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
+      };
+      const normalize = (value: string | null | undefined): string =>
+        (value ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+      const roleOf = (el: Element): string => {
+        const explicit = el.getAttribute("role");
+        if (explicit) return explicit.toLowerCase();
+        const tag = el.tagName.toLowerCase();
+        if (tag === "a" && (el as HTMLAnchorElement).href) return "link";
+        if (tag === "button") return "button";
+        if (tag === "select") return "combobox";
+        if (tag === "textarea") return "textbox";
+        if (tag === "img") return "img";
+        if (tag === "input") {
+          const type = ((el as HTMLInputElement).type || "text").toLowerCase();
+          if (type === "checkbox") return "checkbox";
+          if (type === "radio") return "radio";
+          if (type === "submit" || type === "button") return "button";
+          return "textbox";
+        }
+        return "generic";
+      };
+      const selectorFor = (el: Element): string => {
+        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+          return `#${cssEscape(el.id)}`;
+        }
+        for (const attr of ["data-testid", "data-test", "name", "aria-label", "placeholder", "title", "alt"]) {
+          const value = el.getAttribute(attr);
+          if (value) {
+            const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
+            if (document.querySelectorAll(selector).length === 1) return selector;
+          }
+        }
+        const parts: string[] = [];
+        let current: Element | null = el;
+        while (current && parts.length < opts.depth) {
+          const parent: Element | null = current.parentElement;
+          const tag = current.tagName.toLowerCase();
+          if (!parent) {
+            parts.unshift(tag);
+            break;
+          }
+          const siblings = Array.from(parent.children).filter(
+            (child) => child.tagName === current?.tagName,
+          );
+          const nth = siblings.indexOf(current) + 1;
+          parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
+          current = parent;
+        }
+        return parts.join(" > ");
+      };
+      const nameOf = (el: Element): string => {
+        const input = el as HTMLInputElement;
+        return normalize(
+          el.getAttribute("aria-label") ||
+            el.getAttribute("alt") ||
+            el.getAttribute("title") ||
+            input.placeholder ||
+            input.value ||
+            (el as HTMLElement).innerText ||
+            el.textContent,
+        );
+      };
+      const isInteractive = (el: Element): boolean => {
+        const role = roleOf(el);
+        return (
+          ["button", "link", "textbox", "checkbox", "radio", "combobox"].includes(role) ||
+          el.hasAttribute("onclick") ||
+          el.hasAttribute("tabindex") ||
+          (el as HTMLElement).isContentEditable
+        );
+      };
+      const boxOf = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const root = opts.selector ? document.querySelector(opts.selector) : document.body;
+      if (!root) {
+        return { url: location.href, title: document.title, selector: opts.selector, found: false, elements: [] };
+      }
+      const query = [
+        "a[href]",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "img",
+        "[role]",
+        "[aria-label]",
+        "[title]",
+        "[data-testid]",
+        "[data-test]",
+        "[contenteditable='true']",
+      ].join(",");
+      const elements: SnapshotElement[] = [];
+      const candidates = Array.from(root.querySelectorAll(query));
+      if (root instanceof Element && root.matches(query)) candidates.unshift(root);
+      for (const el of candidates) {
+        const interactive = isInteractive(el);
+        if (opts.interactiveOnly && !interactive) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        elements.push({
+          ref: `@e${elements.length + 1}`,
+          role: roleOf(el),
+          name: nameOf(el),
+          text: normalize((el as HTMLElement).innerText || el.textContent),
+          selector: selectorFor(el),
+          box: boxOf(el),
+          interactive,
+        });
+        if (elements.length >= 250) break;
+      }
+      return {
+        url: location.href,
+        title: document.title,
+        selector: opts.selector,
+        found: true,
+        generatedAt: new Date().toISOString(),
+        elements: opts.compact
+          ? elements.map(({ selector: _selector, interactive: _interactive, ...element }) => element)
+          : elements,
+        refMap: Object.fromEntries(elements.map((element) => [element.ref, element.selector])),
+      };
+    },
+    args: [{ selector, depth, interactiveOnly, compact }],
+  });
+  const result = res?.result as
+    | { refMap?: Record<string, string>; elements?: unknown[] }
+    | undefined;
+  const refMap = new Map<string, string>();
+  for (const [ref, resolvedSelector] of Object.entries(result?.refMap ?? {})) {
+    refMap.set(ref, resolvedSelector);
+  }
+  snapshotRefCache.set(tabId, refMap);
+  if (result && "refMap" in result) {
+    delete result.refMap;
+  }
+  return result ?? { found: false, elements: [] };
+}
+
+async function clickSnapshotRef(tabId: number, ref: string): Promise<unknown> {
+  const selector = snapshotRefCache.get(tabId)?.get(ref);
+  if (!selector) {
+    throw new GatewayError("snapshot_ref_not_found", `snapshot ref not found or stale: ${ref}`);
+  }
+  return clickSelector(tabId, selector);
 }
 
 async function screenshot(

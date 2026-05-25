@@ -163,6 +163,32 @@ struct Find: AsyncParsableCommand {
     }
 }
 
+struct Snapshot: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "snapshot",
+        abstract: "Capture an AI-oriented accessibility snapshot with stable refs"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Limit snapshot to a CSS selector subtree") var selector: String?
+    @Option(name: .long, help: "Maximum DOM ancestor depth to include in selectors") var depth: Int = 5
+    @Flag(name: .long, help: "Only include interactive elements") var interactiveOnly: Bool = false
+    @Flag(name: .long, help: "Omit verbose selector/html-adjacent details") var compact: Bool = false
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "depth": max(1, min(depth, 12)),
+            "interactiveOnly": interactiveOnly,
+            "compact": compact,
+        ]
+        if let selector { params["selector"] = selector }
+        let result = try client.call(method: "snapshot_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget

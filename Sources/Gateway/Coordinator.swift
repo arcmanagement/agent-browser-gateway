@@ -155,6 +155,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "predicate")
         case "find_tab":
             return await dispatch(req: req, method: "find")
+        case "snapshot_tab":
+            return await dispatch(req: req, method: "snapshot")
         case "screenshot_tab":
             return await dispatch(req: req, method: "screenshot")
         case "pdf_tab":
@@ -172,6 +174,8 @@ final class GatewayCoordinator: ObservableObject {
             let params = (req.params?.value as? [String: Any]) ?? [:]
             if params["selector"] != nil {
                 return await dispatch(req: req, method: "click_selector")
+            } else if params["ref"] != nil {
+                return await dispatch(req: req, method: "click_ref")
             } else if params["id"] != nil {
                 return await dispatch(req: req, method: "click_described")
             } else if params["x"] != nil, params["y"] != nil {
