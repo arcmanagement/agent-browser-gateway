@@ -186,3 +186,41 @@ struct SelectOption: AsyncParsableCommand {
         printJSON(result)
     }
 }
+
+struct Check: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "check",
+        abstract: "Ensure a checkbox is checked"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+
+    func run() async throws {
+        try runCheckedState(commandName: "check", checked: true, target: target, selector: selector)
+    }
+}
+
+struct Uncheck: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "uncheck",
+        abstract: "Ensure a checkbox is unchecked"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+
+    func run() async throws {
+        try runCheckedState(commandName: "uncheck", checked: false, target: target, selector: selector)
+    }
+}
+
+func runCheckedState(commandName: String, checked: Bool, target: TabTarget, selector: String) throws {
+    let client = UDSClient()
+    let tabId = try resolveTabId(client: client, target: target)
+    let result = try client.call(method: "checked_state_tab", params: [
+        "tabId": tabId,
+        "selector": selector,
+        "checked": checked,
+    ])
+    appendRecordedStep(["op": commandName, "tabId": tabId, "selector": selector])
+    printJSON(result)
+}

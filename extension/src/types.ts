@@ -32,6 +32,7 @@ export type GatewayCommand = {
     html?: string;
     value?: string;
     label?: string;
+    checked?: boolean;
     replaceEditable?: boolean;
     dryRun?: boolean;
     text?: string;
@@ -98,6 +99,7 @@ export type GatewayMethod =
   | "focus_selector"
   | "hover_selector"
   | "select_option"
+  | "set_checked"
   | "fill"
   | "paste"
   | "clear"
@@ -121,6 +123,7 @@ export type OperationMethod = Extract<
   | "focus_selector"
   | "hover_selector"
   | "select_option"
+  | "set_checked"
   | "fill"
   | "paste"
   | "clear"
