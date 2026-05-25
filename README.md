@@ -101,6 +101,8 @@ abg get styles <tab|ref> "<css>" --props display,color
 abg find role <tab|ref> button click --name "Submit"
 abg find text <tab|ref> "Welcome" text
 abg find label <tab|ref> "Email" fill --value "me@example.com"
+abg find first <tab|ref> "button" click
+abg find nth <tab|ref> 2 ".result" text          # zero-based index
 abg is-visible <tab|ref> --selector "<css>"      # Boolean predicates for shell flows
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
@@ -184,6 +186,8 @@ Use `find` when CSS selectors would be brittle. `find role t1 button click --nam
 by role and accessible name, while `text`, `label`, `placeholder`, `alt`, `title`, and `testid`
 cover common Playwright-style locators. Use `inspect` or `text` actions to inspect matches before
 mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
+`find first`, `find last`, and `find nth` apply explicit index modifiers to a CSS selector; `nth`
+uses zero-based indexes so scripts can align with array-style JSON output.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:

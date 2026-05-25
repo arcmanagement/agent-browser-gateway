@@ -50,6 +50,8 @@ export type GatewayCommand = {
     role?: string;
     locator?: string;
     query?: string;
+    indexModifier?: string;
+    index?: number;
     exact?: boolean;
     grid?: string;
     urlPattern?: string;

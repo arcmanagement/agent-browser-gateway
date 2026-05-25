@@ -1544,7 +1544,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["checked"] = op == "check"
         return try client.call(method: "checked_state_tab", params: params)
     case "find":
-        for key in ["locator", "role", "query", "action", "value", "exact"] {
+        for key in ["locator", "role", "query", "action", "value", "exact", "indexModifier", "index"] {
             if let value = step[key] { params[key] = value }
         }
         return try client.call(method: "find_tab", params: params)

@@ -85,10 +85,10 @@ struct Find: AsyncParsableCommand {
 
     func run() async throws {
         let normalizedLocator = locator.lowercased()
-        guard ["role", "text", "label", "placeholder", "alt", "title", "testid"].contains(normalizedLocator) else {
+        guard ["role", "text", "label", "placeholder", "alt", "title", "testid", "first", "last", "nth"].contains(normalizedLocator) else {
             try failWithJSON([
                 "error": "bad_locator",
-                "message": "Locator must be one of role/text/label/placeholder/alt/title/testid.",
+                "message": "Locator must be one of role/text/label/placeholder/alt/title/testid/first/last/nth.",
             ])
         }
         let client = UDSClient()
@@ -107,7 +107,30 @@ struct Find: AsyncParsableCommand {
         ]
 
         let action: String
-        if normalizedLocator == "role" {
+        if ["first", "last", "nth"].contains(normalizedLocator) {
+            params["locator"] = "css"
+            params["indexModifier"] = normalizedLocator
+            let queryIndex: Int
+            if normalizedLocator == "nth" {
+                let rawIndex = try requireArg(args, index: offset, error: [
+                    "error": "index_required",
+                    "message": "Usage: abg find nth <tab> <zero-based-index> <selector> [action]",
+                ])
+                guard let index = Int(rawIndex), index >= 0 else {
+                    try failWithJSON(["error": "bad_index", "message": "nth index must be a zero-based integer."])
+                }
+                params["index"] = index
+                queryIndex = offset + 1
+            } else {
+                queryIndex = offset
+            }
+            let query = try requireArg(args, index: queryIndex, error: [
+                "error": "query_required",
+                "message": "Usage: abg find \(normalizedLocator) <tab> <selector> [action]",
+            ])
+            params["query"] = query
+            action = args.indices.contains(queryIndex + 1) ? args[queryIndex + 1].lowercased() : "inspect"
+        } else if normalizedLocator == "role" {
             let role = try requireArg(args, index: offset, error: [
                 "error": "role_required",
                 "message": "Usage: abg find role <tab> <role> [action] --name <accessible name>",
@@ -130,6 +153,8 @@ struct Find: AsyncParsableCommand {
             var step: [String: Any] = ["op": "find", "tabId": tabId, "locator": normalizedLocator, "action": action]
             if let query = params["query"] { step["query"] = query }
             if let role = params["role"] { step["role"] = role }
+            if let indexModifier = params["indexModifier"] { step["indexModifier"] = indexModifier }
+            if let index = params["index"] { step["index"] = index }
             if let value { step["value"] = value }
             if exact { step["exact"] = true }
             appendRecordedStep(step)
