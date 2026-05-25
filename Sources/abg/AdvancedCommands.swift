@@ -95,3 +95,23 @@ func runKeyEdge(
     appendRecordedStep(step)
     printJSON(result)
 }
+
+struct DblClick: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "dblclick",
+        abstract: "Double-click an element selected by CSS"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Double-click target CSS selector") var selector: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "dblclick_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+        ])
+        appendRecordedStep(["op": "dblclick", "tabId": tabId, "selector": selector])
+        printJSON(result)
+    }
+}

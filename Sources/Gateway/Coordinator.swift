@@ -171,6 +171,8 @@ final class GatewayCoordinator: ObservableObject {
             } else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "selector, id, or (x,y) required"))
             }
+        case "dblclick_tab":
+            return await dispatch(req: req, method: "dblclick_selector")
         case "fill_tab":
             return await dispatch(req: req, method: "fill")
         case "paste_tab":
