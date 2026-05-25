@@ -151,6 +151,15 @@ abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); wor
 abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
+# Wait
+abg wait <tab|ref> --selector "<css>"
+abg wait <tab|ref> --selector "<css>" --hidden
+abg wait <tab|ref> --ms 1500
+abg wait <tab|ref> --text "Welcome"
+abg wait <tab|ref> --url "**/dashboard"
+abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --fn "window.ready === true"
+
 # Repeatable flows
 abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
 abg replay flow.json --dry-run

@@ -1313,6 +1313,10 @@ struct Wait: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "待つ CSS selector") var selector: String?
     @Flag(name: .long, help: "selector が消えるのを待つ (デフォルトは現れるのを待つ)") var hidden: Bool = false
+    @Option(name: .long, help: "document visible text に含まれるまで待つ") var text: String?
+    @Option(name: .long, help: "current URL が glob に一致するまで待つ") var url: String?
+    @Option(name: .long, help: "load state: networkidle / load / domcontentloaded") var load: String?
+    @Option(name: .long, help: "JavaScript predicate expression が truthy になるまで待つ") var fn: String?
     @Option(name: .long, help: "固定 sleep ミリ秒 (selector を使わないとき)") var ms: Int?
     @Option(name: .long, help: "selector のタイムアウト ms (デフォルト 10000)") var timeout: Int = 10_000
 
@@ -1320,14 +1324,26 @@ struct Wait: AsyncParsableCommand {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "timeoutMs": timeout]
+        let modes = [selector != nil, text != nil, url != nil, load != nil, fn != nil, ms != nil].filter { $0 }.count
+        guard modes == 1 else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
+            ])
+        }
         if let s = selector {
             params["selector"] = s
             params["hidden"] = hidden
+        } else if let text {
+            params["text"] = text
+        } else if let url {
+            params["urlPattern"] = url
+        } else if let load {
+            params["loadState"] = load
+        } else if let fn {
+            params["predicate"] = fn
         } else if let m = ms {
             params["sleepMs"] = m
-        } else {
-            FileHandle.standardError.write(Data("specify --selector or --ms\n".utf8))
-            throw ExitCode.failure
         }
         let result = try client.call(method: "wait_tab", params: params)
         var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
@@ -1336,6 +1352,10 @@ struct Wait: AsyncParsableCommand {
             if hidden { step["hidden"] = true }
         }
         if let ms { step["ms"] = ms }
+        if let text { step["text"] = text }
+        if let url { step["url"] = url }
+        if let load { step["load"] = load }
+        if let fn { step["fn"] = fn }
         appendRecordedStep(step)
         printJSON(result)
     }
@@ -1608,6 +1628,14 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             if boolValue(step, "hidden") == true { params["hidden"] = true }
         } else if let ms = intValue(step, "ms") {
             params["sleepMs"] = ms
+        } else if let text = stringValue(step, "text") {
+            params["text"] = text
+        } else if let url = stringValue(step, "url") {
+            params["urlPattern"] = url
+        } else if let load = stringValue(step, "load") {
+            params["loadState"] = load
+        } else if let fn = stringValue(step, "fn") {
+            params["predicate"] = fn
         }
         params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
         return try client.call(method: "wait_tab", params: params)

@@ -108,6 +108,7 @@ class GatewayError extends Error {
 const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
+const activeNetworkRequests = new Map<number, Set<string>>();
 const attachedTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
 
@@ -458,6 +459,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       request: { method: string; url: string };
     };
     const buf = networkBuffers.get(source.tabId) ?? [];
+    const active = activeNetworkRequests.get(source.tabId) ?? new Set<string>();
+    active.add(p.requestId);
+    activeNetworkRequests.set(source.tabId, active);
     buf.push({
       requestId: p.requestId,
       method: p.request.method,
@@ -484,6 +488,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     }
   } else if (method === "Network.loadingFinished") {
     const p = params as { requestId: string; timestamp: number; encodedDataLength?: number };
+    activeNetworkRequests.get(source.tabId)?.delete(p.requestId);
     const entry = findNetworkEntry(source.tabId, p.requestId);
     if (entry) {
       entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
@@ -491,6 +496,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     }
   } else if (method === "Network.loadingFailed") {
     const p = params as { requestId: string; timestamp: number; errorText?: string };
+    activeNetworkRequests.get(source.tabId)?.delete(p.requestId);
     const entry = findNetworkEntry(source.tabId, p.requestId);
     if (entry) {
       entry.durationMs = Math.max(0, Math.round((p.timestamp - entry.startTime) * 1000));
@@ -2900,7 +2906,8 @@ type WaitParams = NonNullable<GatewayCommand["params"]>;
 type WaitResult =
   | { ok: true; mode: "sleep"; ms: number }
   | { ok: true; mode: "selector"; found: boolean; elapsedMs: number; selector: string }
-  | { ok: false; error: "timeout"; selector: string; timeoutMs: number };
+  | { ok: true; mode: "text" | "url" | "load" | "predicate"; elapsedMs: number }
+  | { ok: false; error: "timeout"; mode: string; timeoutMs: number };
 
 async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   const sleepMs = typeof params.sleepMs === "number" ? params.sleepMs : undefined;
@@ -2908,10 +2915,55 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
     await new Promise((r) => setTimeout(r, Math.max(0, sleepMs)));
     return { ok: true, mode: "sleep", ms: sleepMs };
   }
+  const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : 10_000;
+  const text = typeof params.text === "string" ? params.text : undefined;
+  if (text !== undefined) {
+    return waitUntil(tabId, "text", timeoutMs, async () => {
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (needle: string) => (document.body?.innerText ?? document.documentElement.innerText ?? "").includes(needle),
+        args: [text],
+      });
+      return res?.result === true;
+    });
+  }
+  const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  if (urlPattern !== undefined) {
+    return waitUntil(tabId, "url", timeoutMs, async () => {
+      const tab = await chrome.tabs.get(tabId);
+      return globMatch(urlPattern, tab.url ?? "");
+    });
+  }
+  const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
+  if (loadState !== undefined) {
+    await attachDebugger(tabId);
+    return waitUntil(tabId, "load", timeoutMs, async () => {
+      if (loadState === "networkidle") return (activeNetworkRequests.get(tabId)?.size ?? 0) === 0;
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (state: string) => {
+          if (state === "domcontentloaded") return document.readyState === "interactive" || document.readyState === "complete";
+          return document.readyState === "complete";
+        },
+        args: [loadState],
+      });
+      return res?.result === true;
+    }, loadState === "networkidle" ? 500 : 0);
+  }
+  const predicate = typeof params.predicate === "string" ? params.predicate : undefined;
+  if (predicate !== undefined) {
+    await attachDebugger(tabId);
+    return waitUntil(tabId, "predicate", timeoutMs, async () => {
+      const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+        expression: `Boolean(${predicate})`,
+        returnByValue: true,
+      })) as { result?: { value?: boolean }; exceptionDetails?: unknown };
+      return !res.exceptionDetails && res.result?.value === true;
+    });
+  }
   const selector = typeof params.selector === "string" ? params.selector : undefined;
   if (!selector) throw new Error("wait_for needs --selector or --ms");
   const hidden = params.hidden === true;
-  const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : 10_000;
   const pollMs = 200;
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -2944,7 +2996,33 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
     }
     await new Promise((r) => setTimeout(r, pollMs));
   }
-  return { ok: false, error: "timeout", selector, timeoutMs };
+  return { ok: false, error: "timeout", mode: "selector", timeoutMs };
+}
+
+async function waitUntil(
+  tabId: number,
+  mode: "text" | "url" | "load" | "predicate",
+  timeoutMs: number,
+  predicate: () => Promise<boolean>,
+  stableMs = 0,
+): Promise<WaitResult> {
+  const pollMs = 200;
+  const start = Date.now();
+  let stableSince: number | null = null;
+  while (Date.now() - start < timeoutMs) {
+    const matches = await predicate();
+    if (matches) {
+      if (stableMs === 0) return { ok: true, mode, elapsedMs: Date.now() - start };
+      stableSince = stableSince ?? Date.now();
+      if (Date.now() - stableSince >= stableMs) {
+        return { ok: true, mode, elapsedMs: Date.now() - start };
+      }
+    } else {
+      stableSince = null;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return { ok: false, error: "timeout", mode, timeoutMs };
 }
 
 async function scrollTab(
