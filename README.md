@@ -98,6 +98,9 @@ abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
+abg find role <tab|ref> button click --name "Submit"
+abg find text <tab|ref> "Welcome" text
+abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg is-visible <tab|ref> --selector "<css>"      # Boolean predicates for shell flows
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
@@ -177,6 +180,10 @@ returns one selector-scoped value, `get count` returns a match count, `get box` 
 rect, and `get styles --props display,color` keeps computed-style reads small.
 Use `is-visible`, `is-enabled`, and `is-checked` for conditionals; a false predicate still exits
 successfully and returns `{ "value": false }`.
+Use `find` when CSS selectors would be brittle. `find role t1 button click --name "Save"` resolves
+by role and accessible name, while `text`, `label`, `placeholder`, `alt`, `title`, and `testid`
+cover common Playwright-style locators. Use `inspect` or `text` actions to inspect matches before
+mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:

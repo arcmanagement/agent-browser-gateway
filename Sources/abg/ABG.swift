@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Get.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            Read.self, Get.self, Find.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "get", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
+    "read", "get", "find", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait",
@@ -1543,6 +1543,11 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["selector"] = try requiredString(step, "selector", op: op)
         params["checked"] = op == "check"
         return try client.call(method: "checked_state_tab", params: params)
+    case "find":
+        for key in ["locator", "role", "query", "action", "value", "exact"] {
+            if let value = step[key] { params[key] = value }
+        }
+        return try client.call(method: "find_tab", params: params)
     case "fill":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""

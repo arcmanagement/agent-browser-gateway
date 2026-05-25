@@ -47,6 +47,10 @@ export type GatewayCommand = {
     kind?: string;
     props?: string[];
     name?: string;
+    role?: string;
+    locator?: string;
+    query?: string;
+    exact?: boolean;
     grid?: string;
     urlPattern?: string;
     method?: string;
@@ -79,7 +83,7 @@ export type GatewayCommand = {
     // read_dom
     asMarkdown?: boolean;
     // annotation_mode
-    action?: AnnotationAction;
+    action?: AnnotationAction | string;
     comment?: string;
   };
 };
@@ -88,6 +92,7 @@ export type GatewayMethod =
   | "read_dom"
   | "get_dom"
   | "predicate"
+  | "find"
   | "screenshot"
   | "pdf"
   | "console"

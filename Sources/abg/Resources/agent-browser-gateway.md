@@ -26,6 +26,9 @@ abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
+abg find role <tab|ref> button click --name "Submit"
+abg find text <tab|ref> "Welcome" text
+abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg is-visible <tab|ref> --selector "<css>"      # false も正常JSONで返す
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"

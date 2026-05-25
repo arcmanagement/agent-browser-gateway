@@ -528,6 +528,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "predicate") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getPredicate(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "find") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await runFindCommand(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
@@ -1126,6 +1129,227 @@ async function getPredicate(
     args: [kind, selector],
   });
   return res?.result ?? { kind, selector, found: false, value: false };
+}
+
+type FindMatch = {
+  index: number;
+  selector: string;
+  tag: string;
+  role: string;
+  text: string;
+  value?: string;
+  box: { x: number; y: number; width: number; height: number };
+};
+
+async function runFindCommand(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<unknown> {
+  const locator = typeof params.locator === "string" ? params.locator : "";
+  const query = typeof params.query === "string" ? params.query : "";
+  const role = typeof params.role === "string" ? params.role : undefined;
+  const action = typeof params.action === "string" ? params.action : "inspect";
+  const exact = params.exact === true;
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(100, params.limit)) : 20;
+  const matches = await findSemanticMatches(tabId, { locator, query, role, exact, limit });
+  if (action === "inspect") {
+    return { locator, query, role, exact, count: matches.length, matches };
+  }
+  const first = matches[0];
+  if (!first) return { ok: false, locator, query, role, action, count: 0, matches: [] };
+  if (action === "text") {
+    return { ok: true, locator, query, role, action, match: first, value: first.text };
+  }
+
+  await requireOperationApproval(
+    "find" as OperationMethod,
+    tabId,
+    `Run find action ${quoteForIntent(action)} on ${quoteForIntent(first.selector)}.`,
+  );
+
+  if (action === "click") return { action, match: first, result: await clickSelector(tabId, first.selector) };
+  if (action === "fill") {
+    const value = typeof params.value === "string" ? params.value : "";
+    return { action, match: first, result: await fillField(tabId, first.selector, value, false) };
+  }
+  if (action === "type") {
+    const value = typeof params.value === "string" ? params.value : "";
+    await focusElement(tabId, first.selector);
+    return { action, match: first, result: await typeText(tabId, value) };
+  }
+  if (action === "hover") return { action, match: first, result: await hoverSelector(tabId, first.selector) };
+  if (action === "focus") return { action, match: first, result: await focusElement(tabId, first.selector) };
+  if (action === "check") return { action, match: first, result: await setChecked(tabId, first.selector, true) };
+  if (action === "uncheck") return { action, match: first, result: await setChecked(tabId, first.selector, false) };
+  return { ok: false, error: "unsupported_find_action", action, supportedActions: ["inspect", "text", "click", "fill", "type", "hover", "focus", "check", "uncheck"] };
+}
+
+async function findSemanticMatches(
+  tabId: number,
+  params: { locator: string; query: string; role?: string; exact: boolean; limit: number },
+): Promise<FindMatch[]> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (opts: { locator: string; query: string; role?: string; exact: boolean; limit: number }) => {
+      type LocalMatch = {
+        index: number;
+        selector: string;
+        tag: string;
+        role: string;
+        text: string;
+        value?: string;
+        box: { x: number; y: number; width: number; height: number };
+      };
+      const cssEscape = (value: string): string => {
+        const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
+          .CSS?.escape;
+        return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
+      };
+      const normalize = (value: string | null | undefined): string =>
+        (value ?? "").replace(/\s+/g, " ").trim();
+      const matchesText = (value: string): boolean => {
+        const left = normalize(value);
+        const right = normalize(opts.query);
+        return opts.exact
+          ? left === right
+          : left.toLowerCase().includes(right.toLowerCase());
+      };
+      const roleOf = (el: Element): string => {
+        const explicit = el.getAttribute("role");
+        if (explicit) return explicit.toLowerCase();
+        const tag = el.tagName.toLowerCase();
+        if (tag === "a" && (el as HTMLAnchorElement).href) return "link";
+        if (tag === "button") return "button";
+        if (tag === "select") return "combobox";
+        if (tag === "textarea") return "textbox";
+        if (tag === "img") return "img";
+        if (tag === "input") {
+          const type = ((el as HTMLInputElement).type || "text").toLowerCase();
+          if (type === "checkbox") return "checkbox";
+          if (type === "radio") return "radio";
+          if (type === "submit" || type === "button") return "button";
+          return "textbox";
+        }
+        return "generic";
+      };
+      const textOf = (el: Element): string => {
+        const input = el as HTMLInputElement;
+        return normalize(
+          el.getAttribute("aria-label") ||
+            el.getAttribute("alt") ||
+            el.getAttribute("title") ||
+            input.placeholder ||
+            input.value ||
+            (el as HTMLElement).innerText ||
+            el.textContent,
+        );
+      };
+      const selectorFor = (el: Element): string => {
+        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+          return `#${cssEscape(el.id)}`;
+        }
+        for (const attr of ["data-testid", "data-test", "name", "aria-label", "placeholder", "title", "alt"]) {
+          const value = el.getAttribute(attr);
+          if (value) {
+            const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
+            if (document.querySelectorAll(selector).length === 1) return selector;
+          }
+        }
+        const parts: string[] = [];
+        let current: Element | null = el;
+        while (current && parts.length < 5) {
+          const parent: Element | null = current.parentElement;
+          const tag = current.tagName.toLowerCase();
+          if (!parent) {
+            parts.unshift(tag);
+            break;
+          }
+          const siblings = Array.from(parent.children).filter(
+            (child) => child.tagName === current?.tagName,
+          );
+          const nth = siblings.indexOf(current) + 1;
+          parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
+          current = parent;
+        }
+        return parts.join(" > ");
+      };
+      const boxOf = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const pushMatch = (matches: LocalMatch[], el: Element): void => {
+        if (matches.some((match) => document.querySelector(match.selector) === el)) return;
+        matches.push({
+          index: matches.length,
+          selector: selectorFor(el),
+          tag: el.tagName.toLowerCase(),
+          role: roleOf(el),
+          text: textOf(el),
+          value: (el as HTMLInputElement).value,
+          box: boxOf(el),
+        });
+      };
+
+      const matches: LocalMatch[] = [];
+      if (opts.locator === "label") {
+        for (const label of Array.from(document.querySelectorAll("label"))) {
+          if (!matchesText(label.textContent ?? "")) continue;
+          const control = label.control ?? label.querySelector("input, textarea, select, [contenteditable='true']");
+          if (control) pushMatch(matches, control);
+          if (matches.length >= opts.limit) break;
+        }
+        return matches;
+      }
+
+      const candidates = Array.from(
+        document.querySelectorAll(
+          [
+            "a[href]",
+            "button",
+            "input",
+            "textarea",
+            "select",
+            "img",
+            "[role]",
+            "[aria-label]",
+            "[placeholder]",
+            "[title]",
+            "[data-testid]",
+            "[data-test]",
+            "[contenteditable='true']",
+          ].join(","),
+        ),
+      );
+      for (const el of candidates) {
+        if (opts.locator === "role") {
+          if (opts.role && roleOf(el) !== opts.role.toLowerCase()) continue;
+          if (opts.query && !matchesText(textOf(el))) continue;
+        } else if (opts.locator === "text") {
+          if (!matchesText(textOf(el))) continue;
+        } else if (opts.locator === "placeholder") {
+          if (!matchesText(el.getAttribute("placeholder") ?? "")) continue;
+        } else if (opts.locator === "alt") {
+          if (!matchesText(el.getAttribute("alt") ?? "")) continue;
+        } else if (opts.locator === "title") {
+          if (!matchesText(el.getAttribute("title") ?? "")) continue;
+        } else if (opts.locator === "testid") {
+          if (!matchesText(el.getAttribute("data-testid") ?? el.getAttribute("data-test") ?? "")) continue;
+        } else {
+          continue;
+        }
+        pushMatch(matches, el);
+        if (matches.length >= opts.limit) break;
+      }
+      return matches;
+    },
+    args: [params],
+  });
+  return (res?.result ?? []) as FindMatch[];
 }
 
 async function screenshot(
