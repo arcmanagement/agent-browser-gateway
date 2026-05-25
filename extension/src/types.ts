@@ -100,6 +100,7 @@ export type GatewayMethod =
   | "upload_file"
   | "type_text"
   | "key_press"
+  | "keyboard_insert_text"
   | "navigate"
   | "scroll"
   | "drag";
@@ -116,6 +117,7 @@ export type OperationMethod = Extract<
   | "upload_file"
   | "type_text"
   | "key_press"
+  | "keyboard_insert_text"
   | "navigate"
   | "scroll"
   | "drag"

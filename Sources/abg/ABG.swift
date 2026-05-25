@@ -36,7 +36,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Click.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Keyboard.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "read", "screenshot", "annotate", "console", "table", "describe", "network",
-    "click", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "navigate", "scroll", "drag", "upload",
+    "click", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keyboard", "navigate", "scroll", "drag", "upload",
     "wait",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -1523,6 +1523,9 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             params["modifiers"] = modifiers.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
         }
         return try client.call(method: "key_tab", params: params)
+    case "keyboard_insert_text":
+        params["text"] = try requiredString(step, "text", op: op)
+        return try client.call(method: "keyboard_insert_text_tab", params: params)
     case "navigate":
         params["url"] = try requiredString(step, "url", op: op)
         return try client.call(method: "navigate_tab", params: params)
