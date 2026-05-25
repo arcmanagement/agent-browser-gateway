@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Get.self, Find.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "get", "find", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
+    "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait",
@@ -904,6 +904,7 @@ struct Click: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "クリック対象の CSS selector") var selector: String?
     @Option(name: .long, help: "`abg describe` の element id") var id: Int?
+    @Option(name: .long, help: "`abg snapshot` の element ref (例: @e1)") var ref: String?
     @Flag(name: .long, help: "`abg describe --all` 由来の id を解決") var all: Bool = false
     @Option(name: .long, help: "`abg describe --grid` 由来の id を解決 (例: 10x10)") var grid: String?
     @Option(name: .long, help: "`abg describe --limit` と同じ件数で id を解決") var limit: Int?
@@ -916,21 +917,23 @@ struct Click: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId]
         if let s = selector { params["selector"] = s }
         if let id { params["id"] = id }
+        if let ref { params["ref"] = ref }
         if all { params["all"] = true }
         if let grid { params["grid"] = grid }
         if let limit { params["limit"] = limit }
         if let xx = x { params["x"] = xx }
         if let yy = y { params["y"] = yy }
-        guard selector != nil || id != nil || (x != nil && y != nil) else {
+        guard selector != nil || id != nil || ref != nil || (x != nil && y != nil) else {
             try failWithJSON([
                 "error": "bad_params",
-                "message": "specify --selector, --id, or both --x and --y",
+                "message": "specify --selector, --id, --ref, or both --x and --y",
             ])
         }
         let result = try client.call(method: "click_tab", params: params)
         var step: [String: Any] = ["op": "click", "tabId": tabId]
         if let selector { step["selector"] = selector }
         if let id { step["id"] = id }
+        if let ref { step["ref"] = ref }
         if all { step["all"] = true }
         if let grid { step["grid"] = grid }
         if let limit { step["limit"] = limit }
@@ -1541,7 +1544,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             ?? "/tmp/abg-replay-\(tabId)-\(Int(Date().timeIntervalSince1970)).png"
         return try saveScreenshotResult(result, outPath: outPath)
     case "click":
-        for key in ["selector", "id", "all", "grid", "limit", "x", "y"] {
+        for key in ["selector", "id", "ref", "all", "grid", "limit", "x", "y"] {
             if let value = step[key] { params[key] = value }
         }
         return try client.call(method: "click_tab", params: params)

@@ -53,6 +53,10 @@ export type GatewayCommand = {
     indexModifier?: string;
     index?: number;
     exact?: boolean;
+    ref?: string;
+    depth?: number;
+    interactiveOnly?: boolean;
+    compact?: boolean;
     grid?: string;
     urlPattern?: string;
     method?: string;
@@ -97,6 +101,7 @@ export type GatewayMethod =
   | "get_dom"
   | "predicate"
   | "find"
+  | "snapshot"
   | "screenshot"
   | "pdf"
   | "console"
@@ -109,6 +114,7 @@ export type GatewayMethod =
   | "click_selector"
   | "click_described"
   | "click_at"
+  | "click_ref"
   | "dblclick_selector"
   | "focus_selector"
   | "hover_selector"
@@ -134,6 +140,7 @@ export type OperationMethod = Extract<
   | "click_selector"
   | "click_described"
   | "click_at"
+  | "click_ref"
   | "dblclick_selector"
   | "focus_selector"
   | "hover_selector"

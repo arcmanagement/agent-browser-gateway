@@ -31,6 +31,8 @@ abg find text <tab|ref> "Welcome" text
 abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg find first <tab|ref> "button" click
 abg find nth <tab|ref> 2 ".result" text          # zero-based index
+abg snapshot <tab|ref> --interactive-only --compact
+abg click <tab|ref> --ref @e1                    # 最新 snapshot の ref
 abg is-visible <tab|ref> --selector "<css>"      # false も正常JSONで返す
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
