@@ -1,10 +1,16 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-07.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-25.
 
-Current repo version: **v0.3.6**.
+Current repo version: **v0.3.7**.
 
 ## Shipped
+
+### v0.3.7 — Agent-browser / Playwright parity CLI expansion (2026-05-25)
+- Completed Epic #96 by shipping the autonomous-agent CLI parity layer across focused sub-issues.
+- Added compact inspection primitives (`inspect`, `get`, `find`, `snapshot`, predicates, multi-tab snapshots) so agents can avoid brittle CSS and oversized DOM reads.
+- Expanded browser actions (`dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll-into-view`, key down/up, direct text insertion, PDF, richer waits, stream, and editable validation) while preserving per-tab consent and approval-mode boundaries.
+- Refreshed README and the bundled Claude/Codex skill guidance so the documented command surface matches the release.
 
 ### v0.3.6 — Plugin commands API and authoring guide (2026-05-07)
 - Added first-class plugin commands from PR #118 as the headline public API for this release.

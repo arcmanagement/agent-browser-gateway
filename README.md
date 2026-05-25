@@ -411,10 +411,10 @@ Currently shipped:
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
 - ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
-- ✅ Read tools: `read` / `screenshot` / `console` / `table` / `describe` / `network` (with selectors, compact formats, and latest screenshot references)
+- ✅ Read and inspection tools: `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
-- ✅ Operation tools: `click` / `fill` / `paste` / `clear` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
-- ✅ Wait tool: `wait --selector` / `--ms`
+- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
+- ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
@@ -517,7 +517,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.6 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.3.7 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
