@@ -51,6 +51,8 @@ abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # 現在の�
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"              # 現在フォーカスにテキスト送信 (Sheets セル等)
 abg key <tab|ref> <key> [--modifiers ctrl,shift] # キー入力 (Enter/Space/ArrowDown/a 等)
+abg keydown <tab|ref> Shift              # keyDown のみ。hold-key 操作用
+abg keyup <tab|ref> Shift                # keyUp のみ
 abg keyboard inserttext <tab|ref> "<text>"       # keydown/char/keyup なしで直接 text insert
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
 abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール (内側 div も可)
