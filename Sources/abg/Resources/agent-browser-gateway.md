@@ -82,6 +82,10 @@ abg drag <tab|ref> --from-selector ".a" --to-selector ".b"    # DnD
 abg wait <tab|ref> --selector "<css>"            # 要素が出現するまで (デフォルト 10s)
 abg wait <tab|ref> --selector "<css>" --hidden   # 要素が消えるまで
 abg wait <tab|ref> --ms 1500                     # 単純 sleep
+abg wait <tab|ref> --text "Welcome"
+abg wait <tab|ref> --url "**/dashboard"
+abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --fn "window.ready === true"
 
 # 反復フロー
 abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録

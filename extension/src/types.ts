@@ -80,6 +80,8 @@ export type GatewayCommand = {
     hidden?: boolean;
     sleepMs?: number;
     timeoutMs?: number;
+    loadState?: string;
+    predicate?: string;
     // screenshot
     clip?: { x: number; y: number; width: number; height: number };
     // read_dom
