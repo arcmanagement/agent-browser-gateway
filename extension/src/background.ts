@@ -827,7 +827,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const phase = cmd.method === "key_down" ? "down" : "up";
     return {
       intent: `Dispatch key ${phase} for ${quoteForIntent(chord)}.`,
-      run: () => keyEdge(tabId, cmd.method === "key_down" ? "keyDown" : "keyUp", key, code, modifiers),
+      run: () =>
+        keyEdge(tabId, cmd.method === "key_down" ? "keyDown" : "keyUp", key, code, modifiers),
     };
   }
   if (cmd.method === "navigate") {
@@ -1179,8 +1180,7 @@ async function getDomValue(
       if (getter === "box") return { ...base, found: true, value: boxOf(first) };
       if (getter === "styles") {
         const computed = getComputedStyle(first);
-        const keys =
-          styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
+        const keys = styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
         const values: Record<string, string> = {};
         for (const key of keys) values[key] = computed.getPropertyValue(key);
         return { ...base, found: true, value: values };
@@ -1224,9 +1224,7 @@ async function getPredicate(
       }
       if (predicate === "checked") {
         const value =
-          el instanceof HTMLInputElement
-            ? el.checked
-            : el.getAttribute("aria-checked") === "true";
+          el instanceof HTMLInputElement ? el.checked : el.getAttribute("aria-checked") === "true";
         return { ...base, value };
       }
       return { ...base, value: false };
@@ -1258,17 +1256,28 @@ async function validateEditable(
     func: (sel: string | undefined, useSelection: boolean, ruleText: string) => {
       const readText = (): { found: boolean; source: string; text: string; html?: string } => {
         if (useSelection) {
-          return { found: true, source: "selection", text: String(window.getSelection()?.toString() ?? "") };
+          return {
+            found: true,
+            source: "selection",
+            text: String(window.getSelection()?.toString() ?? ""),
+          };
         }
         if (!sel) return { found: false, source: "selector", text: "" };
-        const el = document.querySelector(sel) as HTMLElement | HTMLInputElement | HTMLTextAreaElement | null;
+        const el = document.querySelector(sel) as
+          | HTMLElement
+          | HTMLInputElement
+          | HTMLTextAreaElement
+          | null;
         if (!el) return { found: false, source: "selector", text: "" };
         if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
           return { found: true, source: "value", text: el.value, html: el.outerHTML };
         }
         return {
           found: true,
-          source: el.isContentEditable || el.getAttribute("role") === "textbox" ? "editableText" : "textContent",
+          source:
+            el.isContentEditable || el.getAttribute("role") === "textbox"
+              ? "editableText"
+              : "textContent",
           text: el.innerText || el.textContent || "",
           html: el.outerHTML,
         };
@@ -1283,8 +1292,8 @@ async function validateEditable(
       const scanQuotedAssignments = (text: string, ruleId: string) => {
         const issues: ValidationIssue[] = [];
         const re = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(['"])/g;
-        let match: RegExpExecArray | null;
-        while ((match = re.exec(text))) {
+        let match = re.exec(text);
+        while (match) {
           const quote = match[2] ?? "";
           const valueStart = re.lastIndex;
           let i = valueStart;
@@ -1314,14 +1323,24 @@ async function validateEditable(
               message: `Attribute ${match[1] ?? ""} starts with ${quote} but no matching quote was found before a boundary.`,
             });
           }
+          match = re.exec(text);
         }
         return issues;
       };
       const source = readText();
-      const enabledRules = new Set(ruleText.split(",").map((part) => part.trim()).filter(Boolean));
+      const enabledRules = new Set(
+        ruleText
+          .split(",")
+          .map((part) => part.trim())
+          .filter(Boolean),
+      );
       const issues: ValidationIssue[] = [];
-      if (enabledRules.has("html-attrs")) issues.push(...scanQuotedAssignments(source.html ?? source.text, "html-attrs/unbalanced-quote"));
-      if (enabledRules.has("shortcodes")) issues.push(...scanQuotedAssignments(source.text, "shortcodes/unbalanced-quote"));
+      if (enabledRules.has("html-attrs"))
+        issues.push(
+          ...scanQuotedAssignments(source.html ?? source.text, "html-attrs/unbalanced-quote"),
+        );
+      if (enabledRules.has("shortcodes"))
+        issues.push(...scanQuotedAssignments(source.text, "shortcodes/unbalanced-quote"));
       return {
         ok: source.found && issues.every((issue) => issue.severity !== "error"),
         found: source.found,
@@ -1388,7 +1407,8 @@ async function runFindCommand(
     `Run find action ${quoteForIntent(action)} on ${quoteForIntent(first.selector)}.`,
   );
 
-  if (action === "click") return { action, match: first, result: await clickSelector(tabId, first.selector) };
+  if (action === "click")
+    return { action, match: first, result: await clickSelector(tabId, first.selector) };
   if (action === "fill") {
     const value = typeof params.value === "string" ? params.value : "";
     return { action, match: first, result: await fillField(tabId, first.selector, value, false) };
@@ -1398,11 +1418,30 @@ async function runFindCommand(
     await focusElement(tabId, first.selector);
     return { action, match: first, result: await typeText(tabId, value) };
   }
-  if (action === "hover") return { action, match: first, result: await hoverSelector(tabId, first.selector) };
-  if (action === "focus") return { action, match: first, result: await focusElement(tabId, first.selector) };
-  if (action === "check") return { action, match: first, result: await setChecked(tabId, first.selector, true) };
-  if (action === "uncheck") return { action, match: first, result: await setChecked(tabId, first.selector, false) };
-  return { ok: false, error: "unsupported_find_action", action, supportedActions: ["inspect", "text", "click", "fill", "type", "hover", "focus", "check", "uncheck"] };
+  if (action === "hover")
+    return { action, match: first, result: await hoverSelector(tabId, first.selector) };
+  if (action === "focus")
+    return { action, match: first, result: await focusElement(tabId, first.selector) };
+  if (action === "check")
+    return { action, match: first, result: await setChecked(tabId, first.selector, true) };
+  if (action === "uncheck")
+    return { action, match: first, result: await setChecked(tabId, first.selector, false) };
+  return {
+    ok: false,
+    error: "unsupported_find_action",
+    action,
+    supportedActions: [
+      "inspect",
+      "text",
+      "click",
+      "fill",
+      "type",
+      "hover",
+      "focus",
+      "check",
+      "uncheck",
+    ],
+  };
 }
 
 async function findSemanticMatches(
@@ -1411,7 +1450,13 @@ async function findSemanticMatches(
 ): Promise<FindMatch[]> {
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (opts: { locator: string; query: string; role?: string; exact: boolean; limit: number }) => {
+    func: (opts: {
+      locator: string;
+      query: string;
+      role?: string;
+      exact: boolean;
+      limit: number;
+    }) => {
       type LocalMatch = {
         index: number;
         selector: string;
@@ -1431,9 +1476,7 @@ async function findSemanticMatches(
       const matchesText = (value: string): boolean => {
         const left = normalize(value);
         const right = normalize(opts.query);
-        return opts.exact
-          ? left === right
-          : left.toLowerCase().includes(right.toLowerCase());
+        return opts.exact ? left === right : left.toLowerCase().includes(right.toLowerCase());
       };
       const roleOf = (el: Element): string => {
         const explicit = el.getAttribute("role");
@@ -1469,7 +1512,15 @@ async function findSemanticMatches(
         if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
-        for (const attr of ["data-testid", "data-test", "name", "aria-label", "placeholder", "title", "alt"]) {
+        for (const attr of [
+          "data-testid",
+          "data-test",
+          "name",
+          "aria-label",
+          "placeholder",
+          "title",
+          "alt",
+        ]) {
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
@@ -1527,7 +1578,9 @@ async function findSemanticMatches(
       if (opts.locator === "label") {
         for (const label of Array.from(document.querySelectorAll("label"))) {
           if (!matchesText(label.textContent ?? "")) continue;
-          const control = label.control ?? label.querySelector("input, textarea, select, [contenteditable='true']");
+          const control =
+            label.control ??
+            label.querySelector("input, textarea, select, [contenteditable='true']");
           if (control) pushMatch(matches, control);
           if (matches.length >= opts.limit) break;
         }
@@ -1566,7 +1619,8 @@ async function findSemanticMatches(
         } else if (opts.locator === "title") {
           if (!matchesText(el.getAttribute("title") ?? "")) continue;
         } else if (opts.locator === "testid") {
-          if (!matchesText(el.getAttribute("data-testid") ?? el.getAttribute("data-test") ?? "")) continue;
+          if (!matchesText(el.getAttribute("data-testid") ?? el.getAttribute("data-test") ?? ""))
+            continue;
         } else {
           continue;
         }
@@ -1586,7 +1640,8 @@ function applyFindIndexModifier(
   index: number | undefined,
 ): FindMatch[] {
   if (modifier === "first") return matches.slice(0, 1);
-  if (modifier === "last") return matches.length > 0 ? [matches[matches.length - 1] as FindMatch] : [];
+  if (modifier === "last")
+    return matches.length > 0 ? [matches[matches.length - 1] as FindMatch] : [];
   if (modifier === "nth") {
     const resolvedIndex = index ?? 0;
     return matches[resolvedIndex] ? [matches[resolvedIndex] as FindMatch] : [];
@@ -1604,7 +1659,12 @@ async function snapshotTab(
   const compact = params.compact === true;
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (opts: { selector?: string; depth: number; interactiveOnly: boolean; compact: boolean }) => {
+    func: (opts: {
+      selector?: string;
+      depth: number;
+      interactiveOnly: boolean;
+      compact: boolean;
+    }) => {
       type SnapshotElement = {
         ref: string;
         role: string;
@@ -1643,7 +1703,15 @@ async function snapshotTab(
         if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
-        for (const attr of ["data-testid", "data-test", "name", "aria-label", "placeholder", "title", "alt"]) {
+        for (const attr of [
+          "data-testid",
+          "data-test",
+          "name",
+          "aria-label",
+          "placeholder",
+          "title",
+          "alt",
+        ]) {
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
@@ -1700,7 +1768,13 @@ async function snapshotTab(
       };
       const root = opts.selector ? document.querySelector(opts.selector) : document.body;
       if (!root) {
-        return { url: location.href, title: document.title, selector: opts.selector, found: false, elements: [] };
+        return {
+          url: location.href,
+          title: document.title,
+          selector: opts.selector,
+          found: false,
+          elements: [],
+        };
       }
       const query = [
         "a[href]",
@@ -1742,7 +1816,9 @@ async function snapshotTab(
         found: true,
         generatedAt: new Date().toISOString(),
         elements: opts.compact
-          ? elements.map(({ selector: _selector, interactive: _interactive, ...element }) => element)
+          ? elements.map(
+              ({ selector: _selector, interactive: _interactive, ...element }) => element,
+            )
           : elements,
         refMap: Object.fromEntries(elements.map((element) => [element.ref, element.selector])),
       };
@@ -1790,7 +1866,9 @@ async function screenshot(
   return { dataUrl: `data:image/png;base64,${result.data}` };
 }
 
-async function printPagePDF(tabId: number): Promise<{ dataUrl: string; url: string; title: string }> {
+async function printPagePDF(
+  tabId: number,
+): Promise<{ dataUrl: string; url: string; title: string }> {
   await attachDebugger(tabId);
   const tab = await chrome.tabs.get(tabId);
   const result = (await chrome.debugger.sendCommand({ tabId }, "Page.printToPDF", {
@@ -2499,7 +2577,11 @@ async function fillField(
         }
         return target.textContent ?? "";
       };
-      const dispatchReplacementEvents = (target: Element, text: string, inputType: string): void => {
+      const dispatchReplacementEvents = (
+        target: Element,
+        text: string,
+        inputType: string,
+      ): void => {
         const beforeInput = new InputEvent("beforeinput", {
           bubbles: true,
           cancelable: true,
@@ -3348,7 +3430,8 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
     return waitUntil(tabId, "text", timeoutMs, async () => {
       const [res] = await chrome.scripting.executeScript({
         target: { tabId },
-        func: (needle: string) => (document.body?.innerText ?? document.documentElement.innerText ?? "").includes(needle),
+        func: (needle: string) =>
+          (document.body?.innerText ?? document.documentElement.innerText ?? "").includes(needle),
         args: [text],
       });
       return res?.result === true;
@@ -3364,18 +3447,25 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
   if (loadState !== undefined) {
     await attachDebugger(tabId);
-    return waitUntil(tabId, "load", timeoutMs, async () => {
-      if (loadState === "networkidle") return (activeNetworkRequests.get(tabId)?.size ?? 0) === 0;
-      const [res] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (state: string) => {
-          if (state === "domcontentloaded") return document.readyState === "interactive" || document.readyState === "complete";
-          return document.readyState === "complete";
-        },
-        args: [loadState],
-      });
-      return res?.result === true;
-    }, loadState === "networkidle" ? 500 : 0);
+    return waitUntil(
+      tabId,
+      "load",
+      timeoutMs,
+      async () => {
+        if (loadState === "networkidle") return (activeNetworkRequests.get(tabId)?.size ?? 0) === 0;
+        const [res] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (state: string) => {
+            if (state === "domcontentloaded")
+              return document.readyState === "interactive" || document.readyState === "complete";
+            return document.readyState === "complete";
+          },
+          args: [loadState],
+        });
+        return res?.result === true;
+      },
+      loadState === "networkidle" ? 500 : 0,
+    );
   }
   const predicate = typeof params.predicate === "string" ? params.predicate : undefined;
   if (predicate !== undefined) {
@@ -3427,7 +3517,7 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
 }
 
 async function waitUntil(
-  tabId: number,
+  _tabId: number,
   mode: "text" | "url" | "load" | "predicate",
   timeoutMs: number,
   predicate: () => Promise<boolean>,

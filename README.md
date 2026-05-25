@@ -106,6 +106,7 @@ abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg find first <tab|ref> "button" click
 abg find nth <tab|ref> 2 ".result" text          # zero-based index
 abg snapshot <tab|ref> --interactive-only --compact
+abg snapshot --tabs "post:t1:.editor,preview:t2:main,template:t3:.template"
 abg click <tab|ref> --ref @e1                    # ref from the most recent snapshot for that tab
 abg is-visible <tab|ref> --selector "<css>"      # Boolean predicates for shell flows
 abg is-enabled <tab|ref> --selector "<css>"
@@ -215,6 +216,9 @@ uses zero-based indexes so scripts can align with array-style JSON output.
 Use `snapshot` when an agent needs an inspectable list of visible accessible elements. Each snapshot
 assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab and can be used with
 `abg click <tab> --ref @e1`.
+Use `snapshot --tabs "name:tab:selector,..."` for before/after evidence across multiple already
+shared tabs. Each target reports partial failure independently, so one missing selector does not
+drop successful captures.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -376,6 +380,22 @@ Use **Playwright / browser test tooling** for:
 The distinction is practical: Playwright is excellent when you want a repeatable browser that the
 automation owns; ABG is for safely exposing one human-owned tab to an agent, with JSON output,
 local-only transport, and a visible audit trail.
+
+### Feature parity for autonomous agents
+
+| Capability | ABG | Vercel agent-browser / Playwright | ABG boundary |
+|---|---|---|---|
+| Existing logged-in browser session | Implemented via explicit shared tabs | Usually launched or framework-owned browser contexts | ABG never exposes unshared tabs |
+| Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
+| Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` |
+| Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
+| Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
+| Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
+| Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
+| AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
+| Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
+| General JavaScript eval | Intentionally unsupported | Playwright `evaluate`, agent-browser eval-like tools | Use named primitives or manifest-backed plugins instead |
+| Global browser control | Out of scope | Common in automation frameworks | Per-tab consent, origin revoke, local audit log |
 
 ABG intentionally does not expose a general-purpose `eval` command to agents. Parity gaps that
 look like eval are handled as named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`,
