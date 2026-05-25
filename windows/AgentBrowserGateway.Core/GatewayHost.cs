@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 
 namespace AgentBrowserGateway.Core;
@@ -238,6 +239,7 @@ public sealed class GatewayHost
                 "scroll_tab" => await DispatchAsync(request, "scroll", cancellationToken).ConfigureAwait(false),
                 "drag_tab" => await DispatchAsync(request, "drag", cancellationToken).ConfigureAwait(false),
                 "wait_tab" => await DispatchAsync(request, "wait_for", cancellationToken).ConfigureAwait(false),
+                "eval_tab" => await HandleEvalTabAsync(request, cancellationToken).ConfigureAwait(false),
                 "annotate_tab" => await DispatchAsync(request, "annotation_mode", cancellationToken).ConfigureAwait(false),
                 "revoke_tab" => await HandleRevokeTabAsync(request, cancellationToken).ConfigureAwait(false),
                 "audit" => await HandleAuditAsync(request, cancellationToken).ConfigureAwait(false),
@@ -317,6 +319,54 @@ public sealed class GatewayHost
         }
         await _auditLog.LogAsync(method, tab.ExtensionId, tab.TabId, tab.Url, "cli", details, cancellationToken).ConfigureAwait(false);
         return Ok(request, result);
+    }
+
+    private async Task<CliResponse> HandleEvalTabAsync(CliRequest request, CancellationToken cancellationToken)
+    {
+        var tabId = request.Params.GetInt("tabId");
+        var script = request.Params.GetString("script");
+        if (tabId is null || script is null) return Error(request, "bad_params", "tabId and script required");
+        var tab = FindTab(tabId.Value);
+        if (tab is null) return Error(request, TabUnavailableError(tabId.Value));
+
+        var details = new Dictionary<string, object?>
+        {
+            ["script"] = script,
+            ["scriptBytes"] = Encoding.UTF8.GetByteCount(script),
+            ["approvalMode"] = "per-call",
+            ["approver"] = "local_extension_user",
+            ["tabTitle"] = tab.Title
+        };
+        if (request.Params.GetInt("maxBytes") is int maxBytes) details["maxBytes"] = maxBytes;
+
+        try
+        {
+            var result = await SendCommandAsync(tab.ExtensionId, "eval_script", request.Params, cancellationToken).ConfigureAwait(false);
+            details["ok"] = true;
+            if (result is { ValueKind: JsonValueKind.Object })
+            {
+                if (result.Value.TryGetProperty("ok", out var ok)) details["ok"] = JsonUtil.ToObject(ok);
+                if (result.Value.TryGetProperty("resultSummary", out var summary)) details["resultSummary"] = JsonUtil.ToObject(summary);
+                if (result.Value.TryGetProperty("approval", out var approval)) details["approval"] = JsonUtil.ToObject(approval);
+                if (result.Value.TryGetProperty("error", out var error)) details["error"] = JsonUtil.ToObject(error);
+            }
+            await _auditLog.LogAsync("eval_script", tab.ExtensionId, tab.TabId, tab.Url, "cli", details, cancellationToken).ConfigureAwait(false);
+            return Ok(request, result);
+        }
+        catch (GatewayCommandException ex)
+        {
+            details["ok"] = false;
+            details["error"] = ex.Message;
+            await _auditLog.LogAsync("eval_script", tab.ExtensionId, tab.TabId, tab.Url, "cli", details, cancellationToken).ConfigureAwait(false);
+            return Error(request, ex.Code, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            details["ok"] = false;
+            details["error"] = ex.Message;
+            await _auditLog.LogAsync("eval_script", tab.ExtensionId, tab.TabId, tab.Url, "cli", details, cancellationToken).ConfigureAwait(false);
+            return Error(request, "command_failed", ex.Message);
+        }
     }
 
     private async Task<CliResponse> HandleRevokeTabAsync(CliRequest request, CancellationToken cancellationToken)

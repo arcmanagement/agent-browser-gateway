@@ -5,6 +5,7 @@ const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
 const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
 const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
 const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
+const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
@@ -44,6 +45,22 @@ async function refresh(): Promise<void> {
       statusEl.textContent = `error: ${response.message}`;
     }
     approvalToggleEl.disabled = false;
+  };
+
+  evalToggleEl.checked = state.settings.evalEnabled;
+  evalToggleEl.disabled = false;
+  evalToggleEl.onchange = async () => {
+    const nextValue = evalToggleEl.checked;
+    evalToggleEl.disabled = true;
+    const response = await send({
+      type: "set_eval_enabled",
+      value: nextValue,
+    });
+    if (response.type === "error") {
+      evalToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+    }
+    evalToggleEl.disabled = false;
   };
 
   // Only seed the profile input once per popup open so the user's typing isn't clobbered.

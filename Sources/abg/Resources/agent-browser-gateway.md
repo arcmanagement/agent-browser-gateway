@@ -91,6 +91,7 @@ abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
+abg eval <tab|ref> --script "return window.__STATE__" --approve  # extension popup でも eval 有効化が必要
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
 abg stream status
 abg stream disable
@@ -279,6 +280,7 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - `tabId` は Chrome 内部のタブ ID で、ブラウザ再起動で変わる。通常は `abg tabs --compact` の `ref` (`t1` など) か `--match-url` / `--match-title` を使う
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
+- `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF、CLI の `--approve`、正確な script を表示する per-call approval の 3 段階が揃わないと実行されない。audit には script source と result type/bytes summary が残る
 - **Annotation mode**:
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
   - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る

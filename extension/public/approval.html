@@ -40,6 +40,24 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .script {
+        box-sizing: border-box;
+        max-height: 190px;
+        margin: 0 0 12px;
+        padding: 8px;
+        overflow: auto;
+        border: 1px solid #c7c7cc;
+        border-radius: 6px;
+        background: rgba(127, 127, 127, 0.12);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .script[hidden] {
+        display: none;
+      }
       .actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -80,6 +98,7 @@
       <div class="tab-title" id="tabTitle"></div>
       <div class="tab-url" id="tabUrl"></div>
     </div>
+    <pre class="script" id="scriptBlock" hidden></pre>
     <div class="actions">
       <button class="primary" id="allowBtn" disabled>Allow</button>
       <button class="danger" id="denyBtn" disabled>Deny</button>

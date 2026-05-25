@@ -2,6 +2,7 @@ import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverla
 import type {
   AnnotationAction,
   ApprovalDecision,
+  ApprovalMethod,
   ApprovalRequest,
   ApprovalToBackground,
   BackgroundToApproval,
@@ -19,8 +20,11 @@ const VERSION = "0.3.7";
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
+const EVAL_DEFAULT_MAX_BYTES = 64 * 1024;
+const EVAL_HARD_MAX_BYTES = 256 * 1024;
 const DEFAULT_SETTINGS: ExtensionSettings = {
   operationsRequireApproval: true,
+  evalEnabled: false,
   profileLabel: "",
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
@@ -162,20 +166,27 @@ async function getOrCreateExtensionId(): Promise<string> {
 // ---------- Persistent settings ----------
 
 async function getSettings(): Promise<ExtensionSettings> {
-  const stored = await chrome.storage.local.get(["operationsRequireApproval", "profileLabel"]);
+  const stored = await chrome.storage.local.get([
+    "operationsRequireApproval",
+    "evalEnabled",
+    "profileLabel",
+  ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
       ? stored.operationsRequireApproval
       : DEFAULT_SETTINGS.operationsRequireApproval;
+  const evalEnabled =
+    typeof stored.evalEnabled === "boolean" ? stored.evalEnabled : DEFAULT_SETTINGS.evalEnabled;
   const profileLabel =
     typeof stored.profileLabel === "string" ? stored.profileLabel : DEFAULT_SETTINGS.profileLabel;
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
+    typeof stored.evalEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string"
   ) {
-    await chrome.storage.local.set({ operationsRequireApproval, profileLabel });
+    await chrome.storage.local.set({ operationsRequireApproval, evalEnabled, profileLabel });
   }
-  return { operationsRequireApproval, profileLabel };
+  return { operationsRequireApproval, evalEnabled, profileLabel };
 }
 
 async function ensureSettingsStored(): Promise<void> {
@@ -185,6 +196,13 @@ async function ensureSettingsStored(): Promise<void> {
 async function setOperationsRequireApproval(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, operationsRequireApproval: value };
+  await chrome.storage.local.set(settings);
+  return settings;
+}
+
+async function setEvalEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  const settings: ExtensionSettings = { ...current, evalEnabled: value };
   await chrome.storage.local.set(settings);
   return settings;
 }
@@ -610,6 +628,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "eval_script") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await runApprovedEval(tabId, cmd.params ?? {}));
     } else if (cmd.method === "annotation_mode") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -904,14 +925,16 @@ async function requireOperationApproval(
 }
 
 async function requestOperationApproval(
-  method: OperationMethod,
+  method: ApprovalMethod,
   tabId: number,
   intent: string,
+  script?: string,
 ): Promise<ApprovalResolution> {
   const request: ApprovalRequest = {
     id: crypto.randomUUID(),
     method,
     intent,
+    script,
     tab: await getApprovalTab(tabId),
     createdAt: Date.now(),
     timeoutMs: APPROVAL_TIMEOUT_MS,
@@ -946,8 +969,8 @@ async function requestOperationApproval(
     const approvalWindow = await chrome.windows.create({
       type: "popup",
       url: approvalUrl.href,
-      width: 380,
-      height: 220,
+      width: script === undefined ? 380 : 520,
+      height: script === undefined ? 240 : 420,
     });
     if (typeof approvalWindow.id === "number") {
       pending.windowId = approvalWindow.id;
@@ -3542,6 +3565,200 @@ async function waitUntil(
   return { ok: false, error: "timeout", mode, timeoutMs };
 }
 
+type EvalResult = {
+  ok: boolean;
+  tabId: number;
+  url: string;
+  title: string;
+  value?: unknown;
+  error?: string;
+  message?: string;
+  resultSummary: {
+    type: string;
+    jsonBytes: number;
+    maxBytes: number;
+    truncated: boolean;
+  };
+  approval: {
+    mode: "per-call";
+    approver: "local_extension_user";
+    approvedAt: string;
+  };
+};
+
+async function runApprovedEval(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<EvalResult> {
+  const settings = await getSettings();
+  if (!settings.evalEnabled) {
+    throw new GatewayError(
+      "eval_disabled",
+      "Approved JavaScript eval is disabled. Enable it in the ABG extension popup before running abg eval.",
+    );
+  }
+  if (params.approve !== true) {
+    throw new GatewayError("approval_required", "abg eval requires --approve on every call.");
+  }
+  const script = typeof params.script === "string" ? params.script : "";
+  if (script.trim().length === 0) throw new Error("script required");
+  const maxBytes =
+    typeof params.maxBytes === "number"
+      ? Math.max(1, Math.min(EVAL_HARD_MAX_BYTES, Math.floor(params.maxBytes)))
+      : EVAL_DEFAULT_MAX_BYTES;
+
+  const approval = await requestOperationApproval(
+    "eval_script",
+    tabId,
+    `Run approved JavaScript eval (${new TextEncoder().encode(script).byteLength} bytes).`,
+    script,
+  );
+  if (approval.decision !== "allow") {
+    throw new GatewayError("user_denied", approval.message);
+  }
+
+  await attachDebugger(tabId);
+  const expression = `(${evalPageFunction.toString()})(${JSON.stringify(script)}, ${maxBytes})`;
+  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  })) as {
+    result?: { value?: Omit<EvalResult, "tabId" | "url" | "title" | "approval"> };
+    exceptionDetails?: { text: string; exception?: { description?: string } };
+  };
+  if (res.exceptionDetails) {
+    throw new GatewayError(
+      "eval_failed",
+      res.exceptionDetails.exception?.description ?? res.exceptionDetails.text,
+    );
+  }
+  const tab = await chrome.tabs.get(tabId);
+  const value = res.result?.value;
+  if (!value) {
+    throw new GatewayError("eval_failed", "eval returned no result");
+  }
+  return {
+    ...value,
+    tabId,
+    url: tab.url ?? "",
+    title: tab.title ?? "",
+    approval: {
+      mode: "per-call",
+      approver: "local_extension_user",
+      approvedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function evalPageFunction(source: string, maxBytes: number) {
+  const typeOf = (value: unknown): string => {
+    if (value === null) return "null";
+    if (Array.isArray(value)) return "array";
+    if (typeof Node !== "undefined" && value instanceof Node) return "dom-node";
+    return typeof value;
+  };
+
+  const seen = new WeakSet<object>();
+  const sanitize = (value: unknown, depth: number): unknown => {
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      return value;
+    }
+    if (typeof value === "undefined") return { __abgType: "undefined" };
+    if (typeof value === "bigint") return { __abgType: "bigint", value: String(value) };
+    if (typeof value === "symbol") return { __abgType: "symbol", value: String(value) };
+    if (typeof value === "function") {
+      const candidate = value as { name?: string };
+      return { __abgType: "function", name: candidate.name ?? "" };
+    }
+    if (typeof Node !== "undefined" && value instanceof Node) {
+      const element = value instanceof Element ? value : undefined;
+      return {
+        __abgType: "dom-node",
+        nodeType: value.nodeType,
+        nodeName: value.nodeName,
+        id: element?.id || undefined,
+        className: element?.className || undefined,
+        text: value.textContent?.replace(/\s+/g, " ").trim().slice(0, 200) || undefined,
+      };
+    }
+    if (typeof value !== "object" || value === null) return String(value);
+    if (seen.has(value)) return { __abgType: "circular" };
+    seen.add(value);
+    if (depth >= 6) return { __abgType: "max-depth", type: typeOf(value) };
+    if (Array.isArray(value)) {
+      const items = value.slice(0, 100).map((item) => sanitize(item, depth + 1));
+      if (value.length > items.length) {
+        items.push({ __abgType: "truncated-items", omitted: value.length - items.length });
+      }
+      return items;
+    }
+    const out: Record<string, unknown> = {};
+    const keys = Object.keys(value as Record<string, unknown>);
+    for (const key of keys.slice(0, 100)) {
+      try {
+        out[key] = sanitize((value as Record<string, unknown>)[key], depth + 1);
+      } catch (e) {
+        out[key] = {
+          __abgType: "property-error",
+          message: e instanceof Error ? e.message : String(e),
+        };
+      }
+    }
+    if (keys.length > 100) out.__abgTruncatedKeys = keys.length - 100;
+    return out;
+  };
+
+  const run = async (): Promise<unknown> => {
+    try {
+      // biome-ignore lint/security/noGlobalEval: this is the explicit, user-approved eval escape hatch.
+      const globalEval = globalThis.eval;
+      return await globalEval(source);
+    } catch (e) {
+      if (!(e instanceof SyntaxError)) throw e;
+      const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as (
+        body: string,
+      ) => () => Promise<unknown>;
+      try {
+        return await AsyncFunction(`"use strict";\nreturn (${source});`)();
+      } catch (expressionError) {
+        if (!(expressionError instanceof SyntaxError)) throw expressionError;
+      }
+      return await AsyncFunction(`"use strict";\n${source}`)();
+    }
+  };
+
+  return run().then((value) => {
+    const sanitized = sanitize(value, 0);
+    const json = JSON.stringify(sanitized);
+    const jsonBytes = new TextEncoder().encode(json).byteLength;
+    const summary = {
+      type: typeOf(value),
+      jsonBytes,
+      maxBytes,
+      truncated: jsonBytes > maxBytes,
+    };
+    if (jsonBytes > maxBytes) {
+      return {
+        ok: false,
+        error: "result_too_large",
+        message: `Eval result is ${jsonBytes} bytes, which exceeds the ${maxBytes} byte cap.`,
+        resultSummary: summary,
+      };
+    }
+    return {
+      ok: true,
+      value: sanitized,
+      resultSummary: summary,
+    };
+  });
+}
+
 async function scrollTab(
   tabId: number,
   deltaX: number,
@@ -3684,6 +3901,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     await setOperationsRequireApproval(msg.value);
     return { type: "ok" };
   }
+  if (msg.type === "set_eval_enabled") {
+    await setEvalEnabled(msg.value);
+    return { type: "ok" };
+  }
   if (msg.type === "set_profile_label") {
     await setProfileLabel(msg.value);
     return { type: "ok" };
@@ -3723,6 +3944,9 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_operations_require_approval" && typeof rawMsg.value === "boolean") {
     return { type: "set_operations_require_approval", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_eval_enabled" && typeof rawMsg.value === "boolean") {
+    return { type: "set_eval_enabled", value: rawMsg.value };
   }
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };

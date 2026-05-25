@@ -50,6 +50,8 @@ internal static class Program
                 return await ScreenshotAsync(rest).ConfigureAwait(false);
             case "console":
                 return await TargetDispatchAsync(rest, "console_tab").ConfigureAwait(false);
+            case "eval":
+                return await EvalAsync(rest).ConfigureAwait(false);
             case "table":
                 return await TargetDispatchAsync(rest, "table_tab", ["selector"]).ConfigureAwait(false);
             case "describe":
@@ -224,6 +226,48 @@ internal static class Program
         var parsed = ParseArgs(args);
         var lines = parsed.Options.TryGetValue("lines", out var value) ? ToInt(value) : 50;
         return await CallAndPrintAsync("audit", new Dictionary<string, object?> { ["lines"] = lines }).ConfigureAwait(false);
+    }
+
+    private static async Task<int> EvalAsync(string[] args)
+    {
+        var parsed = ParseArgs(args);
+        var sourceCount = (parsed.Options.ContainsKey("script") ? 1 : 0) +
+                          (parsed.Options.ContainsKey("script-file") ? 1 : 0) +
+                          (parsed.Flags.Contains("stdin") ? 1 : 0);
+        if (sourceCount != 1) throw new CliUsageException("Pass exactly one script source: --script, --script-file, or --stdin.");
+        if (!parsed.Flags.Contains("approve")) throw new CliUsageException("abg eval requires --approve on every call.");
+
+        string script;
+        if (parsed.Options.TryGetValue("script", out var inlineScript))
+        {
+            script = inlineScript;
+        }
+        else if (parsed.Options.TryGetValue("script-file", out var scriptFile))
+        {
+            script = await File.ReadAllTextAsync(AbgPaths.ExpandUserPath(scriptFile)).ConfigureAwait(false);
+        }
+        else
+        {
+            using var reader = new StreamReader(Console.OpenStandardInput(), Encoding.UTF8);
+            script = await reader.ReadToEndAsync().ConfigureAwait(false);
+        }
+
+        var tabId = await ResolveTabIdAsync(parsed).ConfigureAwait(false);
+        var parameters = BaseTabParams(tabId, parsed);
+        parameters["script"] = script;
+        parameters["approve"] = true;
+        parameters["maxBytes"] = parsed.Options.TryGetValue("max-bytes", out var maxBytes) ? ToInt(maxBytes) : 65_536;
+        var response = await Client.CallAsync("eval_tab", parameters).ConfigureAwait(false);
+        if (!EnsureSuccess(response, out var result)) return 1;
+        PrintJson(result);
+        if (result.HasValue &&
+            result.Value.ValueKind == JsonValueKind.Object &&
+            result.Value.TryGetProperty("ok", out var ok) &&
+            ok.ValueKind == JsonValueKind.False)
+        {
+            return 1;
+        }
+        return 0;
     }
 
     private static async Task<int> TargetDispatchAsync(
@@ -455,6 +499,7 @@ internal static class Program
           abg read <tab|ref> [--selector <css>] [--format markdown|text|html|json]
           abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]
           abg console <tab|ref>
+          abg eval <tab|ref> --script "document.title" --approve
           abg table <tab|ref> [--selector table]
           abg describe <tab|ref>
           abg network <tab|ref> [--url *api*] [--status-min 400]

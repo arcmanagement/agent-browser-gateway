@@ -165,6 +165,9 @@ abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --fn "window.ready === true"
 
+# Escape hatch
+abg eval <tab|ref> --script "document.title" --approve  # disabled by default + local approval
+
 # Runtime stream
 abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
 abg stream status
@@ -213,6 +216,10 @@ cover common Playwright-style locators. Use `inspect` or `text` actions to inspe
 mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
 `find first`, `find last`, and `find nth` apply explicit index modifiers to a CSS selector; `nth`
 uses zero-based indexes so scripts can align with array-style JSON output.
+Use `eval` only as the long-tail escape hatch when named primitives are not enough. It is disabled
+by default in the extension popup, every call must pass `--approve`, and Chrome still opens a local
+approval window containing the exact script. The audit log records the script source plus result
+type/size summary; sanitized return values are capped by `--max-bytes`.
 Use `snapshot` when an agent needs an inspectable list of visible accessible elements. Each snapshot
 assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab and can be used with
 `abg click <tab> --ref @e1`.
@@ -394,13 +401,13 @@ local-only transport, and a visible audit trail.
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
-| General JavaScript eval | Intentionally unsupported | Playwright `evaluate`, agent-browser eval-like tools | Use named primitives or manifest-backed plugins instead |
+| General JavaScript eval | `eval --approve` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval, exact script display, audit summary, result size cap |
 | Global browser control | Out of scope | Common in automation frameworks | Per-tab consent, origin revoke, local audit log |
 
-ABG intentionally does not expose a general-purpose `eval` command to agents. Parity gaps that
-look like eval are handled as named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`,
-or manifest-backed plugin commands). `wait --fn` is limited to readiness predicates and returns
-only success or timeout state, not arbitrary extracted data.
+ABG treats general-purpose JavaScript eval as an explicit escape hatch, not the default automation
+surface. Prefer named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`, or
+manifest-backed plugin commands) whenever they cover the workflow. `wait --fn` remains limited to
+readiness predicates and returns only success or timeout state, not arbitrary extracted data.
 
 ---
 
@@ -511,7 +518,7 @@ Threat model and the explicit non-goals are in [SECURITY.md](SECURITY.md). To re
 In short:
 - We **defend against** prompt injection that tries to leak un-shared tabs, accidental over-sharing, and silent audit-log tampering.
 - We **do not defend against** other malicious extensions in the same Chrome profile (Chrome's responsibility), root attackers on your machine, or operations the user explicitly authorizes.
-- We **never expose** an "execute arbitrary JavaScript" tool to agents. The CLI surface is curated.
+- We expose JavaScript eval only as a disabled-by-default, per-call-approved escape hatch. The normal CLI surface is curated and named.
 
 ---
 
