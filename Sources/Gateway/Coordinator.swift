@@ -249,6 +249,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "drag")
         case "wait_tab":
             return await dispatch(req: req, method: "wait_for")
+        case "eval_tab":
+            return await handleEvalTab(req: req)
         case "annotate_tab":
             return await dispatch(req: req, method: "annotation_mode")
         case "validate_editable_tab":
@@ -459,6 +461,65 @@ final class GatewayCoordinator: ObservableObject {
         } catch {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
         }
+    }
+
+    private func handleEvalTab(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let tabId = params["tabId"] as? Int,
+              let script = params["script"] as? String
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId and script required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        var auditDetails: [String: AnyCodable] = [
+            "script": AnyCodable(script),
+            "scriptBytes": AnyCodable(script.utf8.count),
+            "approvalMode": AnyCodable("per-call"),
+            "approver": AnyCodable("local_extension_user"),
+            "tabTitle": AnyCodable(tab.title),
+        ]
+        if let maxBytes = params["maxBytes"] as? Int {
+            auditDetails["maxBytes"] = AnyCodable(maxBytes)
+        }
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "eval_script", params: AnyCodable(params))
+            auditDetails["ok"] = AnyCodable(true)
+            if let dict = result?.value as? [String: Any] {
+                if let ok = dict["ok"] as? Bool {
+                    auditDetails["ok"] = AnyCodable(ok)
+                }
+                if let summary = dict["resultSummary"] as? [String: Any] {
+                    auditDetails["resultSummary"] = AnyCodable(summary)
+                }
+                if let approval = dict["approval"] as? [String: Any] {
+                    auditDetails["approval"] = AnyCodable(approval)
+                }
+                if let error = dict["error"] as? String {
+                    auditDetails["error"] = AnyCodable(error)
+                }
+            }
+            await auditLog.log(action: "eval_script", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            auditDetails["ok"] = AnyCodable(false)
+            auditDetails["error"] = AnyCodable(error.localizedDescription)
+            await auditLog.log(action: "eval_script", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
+        }
+    }
+
+    private func extensionErrorPayload(from error: Error) -> ErrorPayload {
+        let message = error.localizedDescription
+        if let separator = message.firstIndex(of: ":") {
+            let code = String(message[..<separator])
+            let body = String(message[message.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if code.range(of: #"^[a-z0-9_]+$"#, options: .regularExpression) != nil, !body.isEmpty {
+                return ErrorPayload(code: code, message: body)
+            }
+        }
+        return ErrorPayload(code: "command_failed", message: message)
     }
 
     private func tabSummary(_ tab: PermittedTab) -> [String: Any] {

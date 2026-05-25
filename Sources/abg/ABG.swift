@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -48,7 +48,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
+    "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
@@ -815,6 +815,60 @@ struct Console: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, target: target)
         let result = try client.call(method: "console_tab", params: ["tabId": tabId])
         printJSON(result)
+    }
+}
+
+struct Eval: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Run an explicitly approved JavaScript eval on a shared tab",
+        discussion: """
+        Eval is an escape hatch. It is disabled by default in the extension popup and every call must pass --approve, which opens a local approval window with the exact script.
+        Prefer named primitives such as read/get/find/wait when they cover the workflow.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "JavaScript source to evaluate") var script: String?
+    @Option(name: .long, help: "Read JavaScript source from a local file") var scriptFile: String?
+    @Flag(name: .long, help: "Read JavaScript source from stdin") var stdin: Bool = false
+    @Flag(name: .long, help: "Required on every eval call; the extension still asks the user to approve") var approve: Bool = false
+    @Option(name: .long, help: "Maximum sanitized result JSON bytes (default 65536, hard cap 262144)") var maxBytes: Int = 65_536
+
+    func run() async throws {
+        let script = try readScriptSource()
+        guard approve else {
+            try failWithJSON([
+                "error": "approval_required",
+                "message": "abg eval requires --approve on every call. The extension will still show a local approval window.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "eval_tab", params: [
+            "tabId": tabId,
+            "script": script,
+            "approve": true,
+            "maxBytes": maxBytes,
+        ])
+        printJSON(result)
+        if let dict = result as? [String: Any], (dict["ok"] as? Bool) == false {
+            throw ExitCode.failure
+        }
+    }
+
+    private func readScriptSource() throws -> String {
+        let sourceCount = [script != nil, scriptFile != nil, stdin].filter { $0 }.count
+        guard sourceCount == 1 else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one script source: --script, --script-file, or --stdin.",
+            ])
+        }
+        if let script { return script }
+        if let scriptFile {
+            return try String(contentsOfFile: (scriptFile as NSString).expandingTildeInPath, encoding: .utf8)
+        }
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 

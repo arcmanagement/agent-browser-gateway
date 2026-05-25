@@ -3,6 +3,7 @@ import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } fro
 const intentEl = document.getElementById("intent") as HTMLDivElement;
 const tabTitleEl = document.getElementById("tabTitle") as HTMLDivElement;
 const tabUrlEl = document.getElementById("tabUrl") as HTMLDivElement;
+const scriptBlockEl = document.getElementById("scriptBlock") as HTMLPreElement;
 const allowBtn = document.getElementById("allowBtn") as HTMLButtonElement;
 const denyBtn = document.getElementById("denyBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -48,6 +49,13 @@ async function load(): Promise<void> {
   intentEl.textContent = request.intent;
   tabTitleEl.textContent = request.tab.title || "(untitled)";
   tabUrlEl.textContent = request.tab.url || "(no URL)";
+  if (request.script !== undefined) {
+    scriptBlockEl.textContent = request.script;
+    scriptBlockEl.hidden = false;
+  } else {
+    scriptBlockEl.textContent = "";
+    scriptBlockEl.hidden = true;
+  }
   allowBtn.disabled = false;
   denyBtn.disabled = false;
 
@@ -65,6 +73,8 @@ function showError(message: string): void {
   intentEl.textContent = "Unable to load approval request.";
   tabTitleEl.textContent = "";
   tabUrlEl.textContent = "";
+  scriptBlockEl.textContent = "";
+  scriptBlockEl.hidden = true;
   statusEl.textContent = message;
   allowBtn.disabled = true;
   denyBtn.disabled = true;

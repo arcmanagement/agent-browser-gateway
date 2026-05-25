@@ -90,6 +90,10 @@ export type GatewayCommand = {
     timeoutMs?: number;
     loadState?: string;
     predicate?: string;
+    // eval_script
+    script?: string;
+    approve?: boolean;
+    maxBytes?: number;
     // screenshot
     clip?: { x: number; y: number; width: number; height: number };
     // read_dom
@@ -114,6 +118,7 @@ export type GatewayMethod =
   | "network_log"
   | "revoke"
   | "wait_for"
+  | "eval_script"
   | "annotation_mode"
   | "validate_editable"
   | "stream_control"
@@ -170,15 +175,18 @@ export type OperationMethod = Extract<
 
 export type ExtensionSettings = {
   operationsRequireApproval: boolean;
+  evalEnabled: boolean;
   profileLabel: string;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
+export type ApprovalMethod = OperationMethod | "eval_script";
 
 export type ApprovalRequest = {
   id: string;
-  method: OperationMethod;
+  method: ApprovalMethod;
   intent: string;
+  script?: string;
   tab: {
     tabId: number;
     title: string;
@@ -193,6 +201,7 @@ export type PopupToBackground =
   | { type: "permit"; tabId: number }
   | { type: "revoke"; tabId: number }
   | { type: "set_operations_require_approval"; value: boolean }
+  | { type: "set_eval_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 

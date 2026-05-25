@@ -4,6 +4,10 @@ Living document. Reflects current intent, not commitment. Last updated 2026-05-2
 
 Current repo version: **v0.3.7**.
 
+## Unreleased
+
+- Added the approved JavaScript eval escape hatch: disabled by default in extension settings, gated by `abg eval --approve`, shown in a local approval window with the exact script, audited with script source and result summary, and capped by sanitized result size.
+
 ## Shipped
 
 ### v0.3.7 — Agent-browser / Playwright parity CLI expansion (2026-05-25)

@@ -34,6 +34,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 - **Root or same-user attackers on the host machine.** If something on your Mac can read `~/Library/Application Support/AgentBrowserGateway/gateway.sock`, it can talk to the Gateway. Same for the audit log.
 - **User-installed plugins.** Plugins under `~/.abg/plugins` are local code loaded by the Gateway. ABG does not auto-download plugins; install only plugins you trust.
 - **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, or `navigate`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary.
+- **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When enabled, every call still requires `--approve` plus a local approval window showing the exact script; the audit log records the script source and result summary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.
 
 ## Design invariants
@@ -45,6 +46,6 @@ If a future PR violates any of these, it should be rejected:
 3. The Gateway WebSocket accepts browser-extension origins only. Do not weaken the `Origin` allowlist to accept arbitrary `http://`, `https://`, `file://`, `null`, or missing origins.
 4. The CLI Unix socket is created with `chmod 0700`.
 5. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
-6. There is no MCP/CLI tool that executes arbitrary user-supplied JavaScript in a permitted tab. Tools are curated, structured, and named.
+6. General JavaScript eval is never available silently: it must be disabled by default, require explicit per-call approval, show the exact script locally, and write an audit entry with script source plus result type/size summary. Prefer curated, structured, named tools whenever possible.
 7. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
 8. The audit log records every read and every operation, with the originating agent identifier where available.
