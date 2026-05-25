@@ -88,6 +88,9 @@ abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
+abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
+abg stream status
+abg stream disable
 
 # 反復フロー
 abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録

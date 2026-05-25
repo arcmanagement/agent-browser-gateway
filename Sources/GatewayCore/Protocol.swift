@@ -35,10 +35,11 @@ public enum ExtensionMessage: Codable, Sendable {
     case tabRevoked(tabId: Int, reason: String)
     case tabUpdated(tabId: Int, url: String, title: String, origin: String)
     case tabClosed(tabId: Int)
+    case runtimeEvent(tabId: Int, event: AnyCodable)
     case response(id: String, result: AnyCodable?, error: ErrorPayload?)
 
-    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, reason, id, result, error }
-    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", response }
+    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, reason, event, id, result, error }
+    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", response }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -73,6 +74,11 @@ public enum ExtensionMessage: Codable, Sendable {
             )
         case .tabClosed:
             self = .tabClosed(tabId: try c.decode(Int.self, forKey: .tabId))
+        case .runtimeEvent:
+            self = .runtimeEvent(
+                tabId: try c.decode(Int.self, forKey: .tabId),
+                event: try c.decode(AnyCodable.self, forKey: .event)
+            )
         case .response:
             self = .response(
                 id: try c.decode(String.self, forKey: .id),
@@ -111,6 +117,10 @@ public enum ExtensionMessage: Codable, Sendable {
         case .tabClosed(let tabId):
             try c.encode(MsgType.tabClosed, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
+        case .runtimeEvent(let tabId, let event):
+            try c.encode(MsgType.runtimeEvent, forKey: .type)
+            try c.encode(tabId, forKey: .tabId)
+            try c.encode(event, forKey: .event)
         case .response(let id, let result, let error):
             try c.encode(MsgType.response, forKey: .type)
             try c.encode(id, forKey: .id)

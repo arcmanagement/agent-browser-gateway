@@ -162,6 +162,11 @@ abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --fn "window.ready === true"
 
+# Runtime stream
+abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
+abg stream status
+abg stream disable
+
 # Repeatable flows
 abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
 abg replay flow.json --dry-run
@@ -202,6 +207,9 @@ uses zero-based indexes so scripts can align with array-style JSON output.
 Use `snapshot` when an agent needs an inspectable list of visible accessible elements. Each snapshot
 assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab and can be used with
 `abg click <tab> --ref @e1`.
+Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
+network, and console events. The stream endpoint is loopback-only and scoped to the currently
+enabled shared tab; unsharing the tab stops further events.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:

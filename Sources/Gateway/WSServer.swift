@@ -7,6 +7,7 @@ actor WSServer {
     private var app: Application?
     private var sockets: [String: WebSocket] = [:]
     private var extensionIdBySocket: [ObjectIdentifier: String] = [:]
+    private var runtimeStreamSockets: [ObjectIdentifier: WebSocket] = [:]
 
     init(coordinator: GatewayCoordinator) {
         self.coordinator = coordinator
@@ -60,6 +61,12 @@ actor WSServer {
                 Task { await self.handleClose(ws: ws) }
             }
         }
+        app.webSocket("stream", maxFrameSize: .init(integerLiteral: 16 * 1024 * 1024)) { _, ws in
+            Task { await self.handleRuntimeStream(ws: ws) }
+            _ = ws.onClose.always { _ in
+                Task { await self.handleRuntimeStreamClose(ws: ws) }
+            }
+        }
 
         try await app.execute()
     }
@@ -109,6 +116,24 @@ actor WSServer {
         let coord = coordinator
         await MainActor.run {
             coord?.extensionDisconnected(extId)
+        }
+    }
+
+    private func handleRuntimeStream(ws: WebSocket) async {
+        runtimeStreamSockets[ObjectIdentifier(ws)] = ws
+    }
+
+    private func handleRuntimeStreamClose(ws: WebSocket) async {
+        runtimeStreamSockets.removeValue(forKey: ObjectIdentifier(ws))
+    }
+
+    func broadcastRuntimeEvent(_ text: String) async {
+        for (id, socket) in runtimeStreamSockets {
+            do {
+                try await socket.send(text)
+            } catch {
+                runtimeStreamSockets.removeValue(forKey: id)
+            }
         }
     }
 

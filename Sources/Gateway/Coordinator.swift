@@ -28,6 +28,8 @@ final class GatewayCoordinator: ObservableObject {
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
+    private var streamTabId: Int?
+    private var streamExtensionId: String?
 
     private init() {}
 
@@ -108,8 +110,32 @@ final class GatewayCoordinator: ObservableObject {
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
+                if streamTabId == tabId {
+                    streamTabId = nil
+                    streamExtensionId = nil
+                }
                 Task { await auditLog.log(action: "tab_closed", extensionId: extensionId, tabId: tabId, url: url) }
             }
+        case .runtimeEvent(let tabId, let event):
+            guard streamTabId == tabId else { return }
+            var payload: [String: Any] = [
+                "tabId": tabId,
+                "ts": ISO8601DateFormatter().string(from: Date()),
+            ]
+            if let tab = permittedTabs.first(where: { $0.tabId == tabId }) {
+                payload["url"] = tab.url
+                payload["title"] = tab.title
+            }
+            if let eventDict = event.value as? [String: Any] {
+                for (key, value) in eventDict { payload[key] = value }
+            } else {
+                payload["event"] = event.value
+            }
+            guard JSONSerialization.isValidJSONObject(payload),
+                  let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let text = String(data: data, encoding: .utf8)
+            else { return }
+            Task { await wsServer?.broadcastRuntimeEvent(text) }
         case .response(let id, let result, let error):
             if let cont = inflight.removeValue(forKey: id) {
                 if let error = error {
@@ -225,6 +251,12 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "wait_for")
         case "annotate_tab":
             return await dispatch(req: req, method: "annotation_mode")
+        case "stream_enable":
+            return await handleStreamEnable(req: req)
+        case "stream_status":
+            return CLIResponse(id: req.id, result: AnyCodable(streamStatus()))
+        case "stream_disable":
+            return await handleStreamDisable(req: req)
         case "revoke_tab":
             guard let tabId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
@@ -314,6 +346,49 @@ final class GatewayCoordinator: ObservableObject {
             throw PluginTabAPIError.dispatchFailed(code: error.code, message: error.message)
         }
         return response.result ?? AnyCodable(NSNull())
+    }
+
+    private func handleStreamEnable(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        do {
+            _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tabId, "enabled": true]))
+            streamTabId = tabId
+            streamExtensionId = tab.extensionId
+            await auditLog.log(action: "stream_enable", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
+            var status = streamStatus()
+            if let requestedPort = params["port"] as? Int, requestedPort != ABGConstants.wsPort {
+                status["portNote"] = "Custom stream ports are not started separately yet; use the Gateway stream URL."
+            }
+            return CLIResponse(id: req.id, result: AnyCodable(status))
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
+        }
+    }
+
+    private func handleStreamDisable(req: CLIRequest) async -> CLIResponse {
+        if let tabId = streamTabId, let extensionId = streamExtensionId {
+            _ = try? await sendCommand(to: extensionId, method: "stream_control", params: AnyCodable(["tabId": tabId, "enabled": false]))
+            await auditLog.log(action: "stream_disable", extensionId: extensionId, tabId: tabId, agent: "cli")
+        }
+        streamTabId = nil
+        streamExtensionId = nil
+        return CLIResponse(id: req.id, result: AnyCodable(streamStatus()))
+    }
+
+    private func streamStatus() -> [String: Any] {
+        var status: [String: Any] = [
+            "enabled": streamTabId != nil,
+            "wsUrl": "ws://\(ABGConstants.wsHost):\(ABGConstants.wsPort)/stream",
+            "events": ["dom_mutation", "network", "console"],
+            "localOnly": true,
+        ]
+        if let streamTabId { status["tabId"] = streamTabId }
+        return status
     }
 
     /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,
