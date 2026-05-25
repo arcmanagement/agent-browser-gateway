@@ -96,6 +96,7 @@ abg tabs [--compact] [--format text]             # List shared tabs with short r
 abg inspect                                      # status + shared tabs in one JSON response
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
+abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
 abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations

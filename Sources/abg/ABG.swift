@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            Read.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
@@ -46,7 +46,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "screenshot", "annotate", "console", "table", "describe", "network",
+    "read", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait",
     "record", "replay",
@@ -407,6 +407,30 @@ func saveScreenshotResult(_ result: Any?, outPath: String) throws -> [String: An
     try png.write(to: URL(fileURLWithPath: outPath))
     try outPath.write(to: latestScreenshotMarker(), atomically: true, encoding: .utf8)
     return ["path": outPath, "bytes": png.count]
+}
+
+func savePDFResult(_ result: Any?, outPath: String) throws -> [String: Any] {
+    guard let dict = result as? [String: Any], let dataUrl = dict["dataUrl"] as? String else {
+        FileHandle.standardError.write(Data("unexpected response: \(String(describing: result))\n".utf8))
+        throw ExitCode.failure
+    }
+    guard let comma = dataUrl.firstIndex(of: ",") else {
+        FileHandle.standardError.write(Data("invalid dataUrl\n".utf8))
+        throw ExitCode.failure
+    }
+    let b64 = String(dataUrl[dataUrl.index(after: comma)...])
+    guard let pdf = Data(base64Encoded: b64) else {
+        FileHandle.standardError.write(Data("base64 decode failed\n".utf8))
+        throw ExitCode.failure
+    }
+    try pdf.write(to: URL(fileURLWithPath: outPath))
+    var response: [String: Any] = [
+        "path": outPath,
+        "bytes": pdf.count,
+    ]
+    if let url = dict["url"] { response["url"] = url }
+    if let title = dict["title"] { response["title"] = title }
+    return response
 }
 
 func appendRecordedStep(_ step: [String: Any]) {

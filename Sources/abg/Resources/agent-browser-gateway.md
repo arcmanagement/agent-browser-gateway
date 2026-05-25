@@ -24,6 +24,7 @@ abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title
 abg inspect                             # status + tabs をまとめて確認
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
+abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
 abg screenshot --latest                 # 最後に保存したスクショパス
 abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
