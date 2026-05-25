@@ -136,6 +136,7 @@ abg keyup <tab|ref> Shift
 abg keyboard inserttext <tab|ref> "<text>"        # CDP Input.insertText without key events
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
 abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
+abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
 # Repeatable flows

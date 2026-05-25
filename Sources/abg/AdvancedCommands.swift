@@ -224,3 +224,23 @@ func runCheckedState(commandName: String, checked: Bool, target: TabTarget, sele
     appendRecordedStep(["op": commandName, "tabId": tabId, "selector": selector])
     printJSON(result)
 }
+
+struct ScrollIntoView: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "scroll-into-view",
+        abstract: "Scroll an element into the viewport"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target CSS selector") var selector: String
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "scroll_into_view_tab", params: [
+            "tabId": tabId,
+            "selector": selector,
+        ])
+        appendRecordedStep(["op": "scroll-into-view", "tabId": tabId, "selector": selector])
+        printJSON(result)
+    }
+}

@@ -63,6 +63,7 @@ abg keyup <tab|ref> Shift                # keyUp のみ
 abg keyboard inserttext <tab|ref> "<text>"       # keydown/char/keyup なしで直接 text insert
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
 abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール (内側 div も可)
+abg scroll-into-view <tab|ref> --selector "<css>" # 要素を viewport 中央へスクロール
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"    # DnD
 
 # 待機系

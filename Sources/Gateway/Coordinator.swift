@@ -205,6 +205,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "navigate")
         case "scroll_tab":
             return await dispatch(req: req, method: "scroll")
+        case "scroll_into_view_tab":
+            return await dispatch(req: req, method: "scroll_into_view")
         case "drag_tab":
             return await dispatch(req: req, method: "drag")
         case "wait_tab":
