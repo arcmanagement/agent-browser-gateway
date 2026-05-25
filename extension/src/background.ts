@@ -27,6 +27,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
   "click_described",
   "click_at",
+  "dblclick_selector",
   "fill",
   "paste",
   "clear",
@@ -593,6 +594,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Click the element with describe id ${id}.`,
       run: () => clickDescribedElement(tabId, id, cmd.params ?? {}),
+    };
+  }
+  if (cmd.method === "dblclick_selector") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    return {
+      intent: `Double-click the element matching selector ${quoteForIntent(selector)}.`,
+      run: () => doubleClickSelector(tabId, selector),
     };
   }
   if (cmd.method === "fill") {
@@ -1305,6 +1314,37 @@ async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true 
     clickCount: 1,
   });
   return { ok: true };
+}
+
+async function doubleClickSelector(
+  tabId: number,
+  selector: string,
+): Promise<{ ok: true; selector: string; x: number; y: number }> {
+  await attachDebugger(tabId);
+  const point = await resolvePoint(tabId, { kind: "selector", selector });
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+    button: "none",
+  });
+  for (const clickCount of [1, 2]) {
+    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount,
+    });
+    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount,
+    });
+  }
+  return { ok: true, selector, x: point.x, y: point.y };
 }
 
 async function clickDescribedElement(
