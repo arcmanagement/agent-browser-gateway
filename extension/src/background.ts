@@ -34,6 +34,8 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "upload_file",
   "type_text",
   "key_press",
+  "key_down",
+  "key_up",
   "keyboard_insert_text",
   "navigate",
   "scroll",
@@ -677,6 +679,20 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Press ${quoteForIntent(chord)}.`,
       run: () => keyPress(tabId, key, code, modifiers),
+    };
+  }
+  if (cmd.method === "key_down" || cmd.method === "key_up") {
+    const key = cmd.params?.key;
+    if (typeof key !== "string" || key.length === 0) throw new Error("key required");
+    const code = typeof cmd.params?.code === "string" ? cmd.params.code : undefined;
+    const modifiers = Array.isArray(cmd.params?.modifiers)
+      ? cmd.params.modifiers.filter((modifier): modifier is string => typeof modifier === "string")
+      : [];
+    const chord = [...modifiers, key].join("+");
+    const phase = cmd.method === "key_down" ? "down" : "up";
+    return {
+      intent: `Dispatch key ${phase} for ${quoteForIntent(chord)}.`,
+      run: () => keyEdge(tabId, cmd.method === "key_down" ? "keyDown" : "keyUp", key, code, modifiers),
     };
   }
   if (cmd.method === "navigate") {
@@ -2225,6 +2241,27 @@ async function keyPress(
     ...base,
   });
   return { ok: true };
+}
+
+async function keyEdge(
+  tabId: number,
+  type: "keyDown" | "keyUp",
+  key: string,
+  code: string | undefined,
+  modifiers: string[],
+): Promise<{ ok: true; type: "keyDown" | "keyUp" }> {
+  await attachDebugger(tabId);
+  const mods = modifiersToBitmask(modifiers);
+  const resolvedCode =
+    code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
+  const resolvedKey = key === "Space" ? " " : key;
+  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    type,
+    key: resolvedKey,
+    code: resolvedCode,
+    modifiers: mods,
+  });
+  return { ok: true, type };
 }
 
 type WaitParams = NonNullable<GatewayCommand["params"]>;
