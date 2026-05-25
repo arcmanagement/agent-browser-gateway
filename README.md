@@ -115,6 +115,7 @@ abg click <tab|ref> --selector "<css>"            # CSS selector click
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
 abg dblclick <tab|ref> --selector "<css>"         # Selector double-click via CDP
+abg focus <tab|ref> --selector "<css>"            # Focus without click side effects
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable replacement
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
