@@ -1148,12 +1148,25 @@ async function runFindCommand(
   const locator = typeof params.locator === "string" ? params.locator : "";
   const query = typeof params.query === "string" ? params.query : "";
   const role = typeof params.role === "string" ? params.role : undefined;
+  const indexModifier = typeof params.indexModifier === "string" ? params.indexModifier : undefined;
+  const index = typeof params.index === "number" ? params.index : undefined;
   const action = typeof params.action === "string" ? params.action : "inspect";
   const exact = params.exact === true;
   const limit = typeof params.limit === "number" ? Math.max(1, Math.min(100, params.limit)) : 20;
-  const matches = await findSemanticMatches(tabId, { locator, query, role, exact, limit });
+  const allMatches = await findSemanticMatches(tabId, { locator, query, role, exact, limit });
+  const matches = applyFindIndexModifier(allMatches, indexModifier, index);
   if (action === "inspect") {
-    return { locator, query, role, exact, count: matches.length, matches };
+    return {
+      locator,
+      query,
+      role,
+      exact,
+      indexModifier,
+      index,
+      totalCount: allMatches.length,
+      count: matches.length,
+      matches,
+    };
   }
   const first = matches[0];
   if (!first) return { ok: false, locator, query, role, action, count: 0, matches: [] };
@@ -1296,6 +1309,13 @@ async function findSemanticMatches(
       };
 
       const matches: LocalMatch[] = [];
+      if (opts.locator === "css") {
+        for (const el of Array.from(document.querySelectorAll(opts.query))) {
+          pushMatch(matches, el);
+          if (matches.length >= opts.limit) break;
+        }
+        return matches;
+      }
       if (opts.locator === "label") {
         for (const label of Array.from(document.querySelectorAll("label"))) {
           if (!matchesText(label.textContent ?? "")) continue;
@@ -1350,6 +1370,20 @@ async function findSemanticMatches(
     args: [params],
   });
   return (res?.result ?? []) as FindMatch[];
+}
+
+function applyFindIndexModifier(
+  matches: FindMatch[],
+  modifier: string | undefined,
+  index: number | undefined,
+): FindMatch[] {
+  if (modifier === "first") return matches.slice(0, 1);
+  if (modifier === "last") return matches.length > 0 ? [matches[matches.length - 1] as FindMatch] : [];
+  if (modifier === "nth") {
+    const resolvedIndex = index ?? 0;
+    return matches[resolvedIndex] ? [matches[resolvedIndex] as FindMatch] : [];
+  }
+  return matches;
 }
 
 async function screenshot(
