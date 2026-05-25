@@ -522,6 +522,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await readDom(tabId, cmd.params?.selector);
       reply(cmd.id, result);
+    } else if (cmd.method === "get_dom") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await getDomValue(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
@@ -1001,6 +1004,81 @@ async function readDom(tabId: number, selector: string | undefined): Promise<Dom
     );
   }
   return res.result?.value ?? { url: "", title: "", origin: "", text: "" };
+}
+
+async function getDomValue(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<unknown> {
+  const kind = typeof params.kind === "string" ? params.kind : "";
+  const selector = typeof params.selector === "string" ? params.selector : undefined;
+  const name = typeof params.name === "string" ? params.name : undefined;
+  const props = Array.isArray(params.props)
+    ? params.props.filter((prop): prop is string => typeof prop === "string")
+    : undefined;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (
+      getter: string,
+      sel: string | undefined,
+      attrName: string | undefined,
+      styleProps: string[] | undefined,
+    ) => {
+      const selected = sel ? Array.from(document.querySelectorAll(sel)) : [];
+      const first = selected[0] as HTMLElement | undefined;
+      const textOf = (el: Element): string =>
+        ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
+      const boxOf = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
+      };
+      const base = {
+        kind: getter,
+        selector: sel,
+        url: location.href,
+        title: document.title,
+      };
+      if (getter === "title") return { ...base, value: document.title };
+      if (getter === "url") return { ...base, value: location.href };
+      if (!sel) return { ...base, found: false, error: "selector_required" };
+      if (getter === "count") return { ...base, value: selected.length };
+      if (!first) return { ...base, found: false };
+      if (getter === "text") return { ...base, found: true, value: textOf(first) };
+      if (getter === "html") return { ...base, found: true, value: first.outerHTML };
+      if (getter === "value") {
+        let value: string | string[] | boolean | null = null;
+        if (first instanceof HTMLInputElement) {
+          value = first.type === "checkbox" || first.type === "radio" ? first.checked : first.value;
+        } else if (first instanceof HTMLTextAreaElement) {
+          value = first.value;
+        } else if (first instanceof HTMLSelectElement) {
+          value = Array.from(first.selectedOptions).map((option) => option.value);
+        }
+        return { ...base, found: true, value };
+      }
+      if (getter === "attr") {
+        if (!attrName) return { ...base, found: true, error: "attr_name_required" };
+        return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
+      }
+      if (getter === "box") return { ...base, found: true, value: boxOf(first) };
+      if (getter === "styles") {
+        const computed = getComputedStyle(first);
+        const keys =
+          styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
+        const values: Record<string, string> = {};
+        for (const key of keys) values[key] = computed.getPropertyValue(key);
+        return { ...base, found: true, value: values };
+      }
+      return { ...base, found: false, error: "unknown_getter" };
+    },
+    args: [kind, selector, name, props],
+  });
+  return res?.result ?? { kind, selector, found: false };
 }
 
 async function screenshot(

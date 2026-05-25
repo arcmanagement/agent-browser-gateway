@@ -95,6 +95,9 @@ abg status                                       # Gateway state, connected exte
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
+abg get attr <tab|ref> "<css>" --name href
+abg get styles <tab|ref> "<css>" --props display,color
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
@@ -165,6 +168,10 @@ selector, and byte length only, never the pasted text.
 Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
 target, selects its content, and deletes it. The result includes `clearStrategy`, one of
 `execCommand`, `selectionRange`, `syntheticInput`, `keyboardShortcut`, or `null`.
+
+Use `get` when a script needs one compact value instead of a larger `read` payload. `get text/html`
+returns one selector-scoped value, `get count` returns a match count, `get box` returns a viewport
+rect, and `get styles --props display,color` keeps computed-style reads small.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:

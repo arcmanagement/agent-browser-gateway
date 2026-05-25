@@ -45,6 +45,8 @@ export type GatewayCommand = {
     all?: boolean;
     limit?: number;
     kind?: string;
+    props?: string[];
+    name?: string;
     grid?: string;
     urlPattern?: string;
     method?: string;
@@ -84,6 +86,7 @@ export type GatewayCommand = {
 
 export type GatewayMethod =
   | "read_dom"
+  | "get_dom"
   | "screenshot"
   | "pdf"
   | "console"
