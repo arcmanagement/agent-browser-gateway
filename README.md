@@ -98,6 +98,9 @@ abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
+abg is-visible <tab|ref> --selector "<css>"      # Boolean predicates for shell flows
+abg is-enabled <tab|ref> --selector "<css>"
+abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
@@ -172,6 +175,8 @@ target, selects its content, and deletes it. The result includes `clearStrategy`
 Use `get` when a script needs one compact value instead of a larger `read` payload. `get text/html`
 returns one selector-scoped value, `get count` returns a match count, `get box` returns a viewport
 rect, and `get styles --props display,color` keeps computed-style reads small.
+Use `is-visible`, `is-enabled`, and `is-checked` for conditionals; a false predicate still exits
+successfully and returns `{ "value": false }`.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:

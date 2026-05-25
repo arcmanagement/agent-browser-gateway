@@ -525,6 +525,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "get_dom") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getDomValue(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "predicate") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await getPredicate(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
@@ -1079,6 +1082,50 @@ async function getDomValue(
     args: [kind, selector, name, props],
   });
   return res?.result ?? { kind, selector, found: false };
+}
+
+async function getPredicate(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ kind: string; selector?: string; found: boolean; value: boolean }> {
+  const kind = typeof params.kind === "string" ? params.kind : "";
+  const selector = typeof params.selector === "string" ? params.selector : undefined;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (predicate: string, sel: string | undefined) => {
+      const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
+      const base = { kind: predicate, selector: sel, found: !!el };
+      if (!el) return { ...base, value: false };
+      const visible = (target: HTMLElement): boolean => {
+        const rect = target.getBoundingClientRect();
+        const style = getComputedStyle(target);
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          Number(style.opacity || "1") !== 0
+        );
+      };
+      if (predicate === "visible") return { ...base, value: visible(el) };
+      if (predicate === "enabled") {
+        const disabled =
+          "disabled" in el && Boolean((el as HTMLButtonElement | HTMLInputElement).disabled);
+        const ariaDisabled = el.getAttribute("aria-disabled") === "true";
+        return { ...base, value: !disabled && !ariaDisabled };
+      }
+      if (predicate === "checked") {
+        const value =
+          el instanceof HTMLInputElement
+            ? el.checked
+            : el.getAttribute("aria-checked") === "true";
+        return { ...base, value };
+      }
+      return { ...base, value: false };
+    },
+    args: [kind, selector],
+  });
+  return res?.result ?? { kind, selector, found: false, value: false };
 }
 
 async function screenshot(

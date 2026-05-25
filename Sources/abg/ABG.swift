@@ -36,6 +36,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Get.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
+            IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
@@ -47,6 +48,7 @@ struct ABG: AsyncParsableCommand {
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "read", "get", "screenshot", "pdf", "annotate", "console", "table", "describe", "network",
+    "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait",
     "record", "replay",

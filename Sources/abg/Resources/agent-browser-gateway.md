@@ -26,6 +26,9 @@ abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
+abg is-visible <tab|ref> --selector "<css>"      # false も正常JSONで返す
+abg is-enabled <tab|ref> --selector "<css>"
+abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
 abg screenshot --latest                 # 最後に保存したスクショパス

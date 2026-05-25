@@ -70,6 +70,44 @@ struct Get: AsyncParsableCommand {
     }
 }
 
+struct IsVisible: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "CSS selector") var selector: String
+    func run() async throws {
+        try runPredicate(kind: "visible", target: target, selector: selector)
+    }
+}
+
+struct IsEnabled: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "is-enabled", abstract: "Return whether a selector is enabled")
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "CSS selector") var selector: String
+    func run() async throws {
+        try runPredicate(kind: "enabled", target: target, selector: selector)
+    }
+}
+
+struct IsChecked: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "is-checked", abstract: "Return whether a checkbox is checked")
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "CSS selector") var selector: String
+    func run() async throws {
+        try runPredicate(kind: "checked", target: target, selector: selector)
+    }
+}
+
+func runPredicate(kind: String, target: TabTarget, selector: String) throws {
+    let client = UDSClient()
+    let tabId = try resolveTabId(client: client, target: target)
+    let result = try client.call(method: "predicate_tab", params: [
+        "tabId": tabId,
+        "kind": kind,
+        "selector": selector,
+    ])
+    printJSON(result)
+}
+
 struct KeyboardInsertText: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "inserttext",
