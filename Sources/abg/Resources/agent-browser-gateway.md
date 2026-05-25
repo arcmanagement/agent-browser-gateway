@@ -23,7 +23,9 @@ abg status                              # Gateway 起動状況、接続中拡張
 abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url)
 abg inspect                             # status + tabs をまとめて確認
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
+abg get editable-value <tab|ref> "<css>"
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
 abg find role <tab|ref> button click --name "Submit"

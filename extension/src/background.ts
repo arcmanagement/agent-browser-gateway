@@ -1134,6 +1134,41 @@ async function getDomValue(
         }
         return { ...base, found: true, value };
       }
+      if (getter === "editable-value") {
+        let editableText = "";
+        let kind = "unsupported";
+        let source = "none";
+        if (first instanceof HTMLInputElement) {
+          editableText = first.value;
+          kind = "input";
+          source = "value";
+        } else if (first instanceof HTMLTextAreaElement) {
+          editableText = first.value;
+          kind = "textarea";
+          source = "value";
+        } else if (first.isContentEditable) {
+          editableText = first.innerText || first.textContent || "";
+          kind = "contenteditable";
+          source = "innerText";
+        } else if (first.getAttribute("role") === "textbox") {
+          editableText = first.innerText || first.textContent || "";
+          kind = "role-textbox";
+          source = "innerText";
+        } else {
+          return { ...base, found: true, editable: false, kind, error: "not_editable" };
+        }
+        const normalizedHtmlText = textOf(first);
+        return {
+          ...base,
+          found: true,
+          editable: true,
+          kind,
+          source,
+          editableText,
+          html: first.outerHTML,
+          differsFromHtmlText: editableText.replace(/\s+/g, " ").trim() !== normalizedHtmlText,
+        };
+      }
       if (getter === "attr") {
         if (!attrName) return { ...base, found: true, error: "attr_name_required" };
         return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
