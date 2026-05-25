@@ -59,6 +59,8 @@ export type GatewayCommand = {
     depth?: number;
     interactiveOnly?: boolean;
     compact?: boolean;
+    rules?: string;
+    selection?: boolean;
     grid?: string;
     urlPattern?: string;
     method?: string;
@@ -113,6 +115,7 @@ export type GatewayMethod =
   | "revoke"
   | "wait_for"
   | "annotation_mode"
+  | "validate_editable"
   | "stream_control"
   | "click_selector"
   | "click_described"

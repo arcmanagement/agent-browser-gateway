@@ -614,6 +614,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
       reply(cmd.id, await manageAnnotationMode(tabId, readAnnotationCommand(cmd.params)));
+    } else if (cmd.method === "validate_editable") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await validateEditable(tabId, cmd.params ?? {}));
     } else if (cmd.method === "stream_control") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
@@ -1231,6 +1234,109 @@ async function getPredicate(
     args: [kind, selector],
   });
   return res?.result ?? { kind, selector, found: false, value: false };
+}
+
+type ValidationIssue = {
+  ruleId: string;
+  severity: "error" | "warning";
+  offset: number;
+  line: number;
+  column: number;
+  context: string;
+  message: string;
+};
+
+async function validateEditable(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<unknown> {
+  const selector = typeof params.selector === "string" ? params.selector : undefined;
+  const selection = params.selection === true;
+  const rules = typeof params.rules === "string" ? params.rules : "html-attrs,shortcodes";
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string | undefined, useSelection: boolean, ruleText: string) => {
+      const readText = (): { found: boolean; source: string; text: string; html?: string } => {
+        if (useSelection) {
+          return { found: true, source: "selection", text: String(window.getSelection()?.toString() ?? "") };
+        }
+        if (!sel) return { found: false, source: "selector", text: "" };
+        const el = document.querySelector(sel) as HTMLElement | HTMLInputElement | HTMLTextAreaElement | null;
+        if (!el) return { found: false, source: "selector", text: "" };
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+          return { found: true, source: "value", text: el.value, html: el.outerHTML };
+        }
+        return {
+          found: true,
+          source: el.isContentEditable || el.getAttribute("role") === "textbox" ? "editableText" : "textContent",
+          text: el.innerText || el.textContent || "",
+          html: el.outerHTML,
+        };
+      };
+      const locationOf = (text: string, offset: number) => {
+        const prefix = text.slice(0, offset);
+        const lines = prefix.split(/\n/);
+        return { line: lines.length, column: (lines.at(-1) ?? "").length + 1 };
+      };
+      const contextOf = (text: string, offset: number): string =>
+        text.slice(Math.max(0, offset - 40), Math.min(text.length, offset + 80));
+      const scanQuotedAssignments = (text: string, ruleId: string) => {
+        const issues: ValidationIssue[] = [];
+        const re = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(['"])/g;
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(text))) {
+          const quote = match[2] ?? "";
+          const valueStart = re.lastIndex;
+          let i = valueStart;
+          let closed = false;
+          while (i < text.length) {
+            const ch = text[i];
+            if (ch === "\\" && i + 1 < text.length) {
+              i += 2;
+              continue;
+            }
+            if (ch === quote) {
+              closed = true;
+              break;
+            }
+            if (ch === "\n" || ch === "]" || ch === ">") break;
+            i += 1;
+          }
+          if (!closed) {
+            const loc = locationOf(text, match.index);
+            issues.push({
+              ruleId,
+              severity: "error",
+              offset: match.index,
+              line: loc.line,
+              column: loc.column,
+              context: contextOf(text, match.index),
+              message: `Attribute ${match[1] ?? ""} starts with ${quote} but no matching quote was found before a boundary.`,
+            });
+          }
+        }
+        return issues;
+      };
+      const source = readText();
+      const enabledRules = new Set(ruleText.split(",").map((part) => part.trim()).filter(Boolean));
+      const issues: ValidationIssue[] = [];
+      if (enabledRules.has("html-attrs")) issues.push(...scanQuotedAssignments(source.html ?? source.text, "html-attrs/unbalanced-quote"));
+      if (enabledRules.has("shortcodes")) issues.push(...scanQuotedAssignments(source.text, "shortcodes/unbalanced-quote"));
+      return {
+        ok: source.found && issues.every((issue) => issue.severity !== "error"),
+        found: source.found,
+        selector: sel,
+        source: source.source,
+        rules: Array.from(enabledRules),
+        issueCount: issues.length,
+        errorCount: issues.filter((issue) => issue.severity === "error").length,
+        textLength: source.text.length,
+        issues,
+      };
+    },
+    args: [selector, selection, rules],
+  });
+  return res?.result ?? { ok: false, found: false, issues: [] };
 }
 
 type FindMatch = {

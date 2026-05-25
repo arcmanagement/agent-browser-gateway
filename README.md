@@ -169,6 +169,10 @@ abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/st
 abg stream status
 abg stream disable
 
+# Validation
+abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
+abg validate editable <tab|ref> --selection
+
 # Repeatable flows
 abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
 abg replay flow.json --dry-run
@@ -214,6 +218,9 @@ assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab 
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
+Use `validate editable` before saving CMS/editor content when broken HTML-like or shortcode
+attributes would be hard to spot visually. It reports compact machine-readable issue locations and
+does not mutate the page.
 
 For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
 "set this editor's content to X" sequence stays explicit:
