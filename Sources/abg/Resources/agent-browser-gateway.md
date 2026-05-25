@@ -45,6 +45,8 @@ abg click <tab|ref> --x <px> --y <px>            # 座標でクリック (canvas
 abg dblclick <tab|ref> --selector "<css>"        # CSS selector でダブルクリック
 abg focus <tab|ref> --selector "<css>"           # クリックせず focus する
 abg hover <tab|ref> --selector "<css>"           # 要素中心へ mouseMoved
+abg select <tab|ref> --selector "select" --value "x"
+abg select <tab|ref> --selector "select" --label "Visible label"
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable に入力
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt

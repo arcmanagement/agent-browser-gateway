@@ -30,6 +30,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "dblclick_selector",
   "focus_selector",
   "hover_selector",
+  "select_option",
   "fill",
   "paste",
   "clear",
@@ -620,6 +621,19 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Move the mouse over the element matching selector ${quoteForIntent(selector)}.`,
       run: () => hoverSelector(tabId, selector),
+    };
+  }
+  if (cmd.method === "select_option") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    const value = typeof cmd.params?.value === "string" ? cmd.params.value : undefined;
+    const label = typeof cmd.params?.label === "string" ? cmd.params.label : undefined;
+    if ((value === undefined) === (label === undefined)) {
+      throw new Error("exactly one of value or label required");
+    }
+    return {
+      intent: `Select an option in ${quoteForIntent(selector)}.`,
+      run: () => selectOption(tabId, selector, { value, label }),
     };
   }
   if (cmd.method === "fill") {
@@ -1378,6 +1392,64 @@ async function hoverSelector(
     button: "none",
   });
   return { ok: true, selector, x: point.x, y: point.y };
+}
+
+async function selectOption(
+  tabId: number,
+  selector: string,
+  choice: { value?: string; label?: string },
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selectedValues?: string[];
+  selectedLabels?: string[];
+  changed?: boolean;
+}> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, value: string | undefined, label: string | undefined) => {
+      const select = document.querySelector(sel) as HTMLSelectElement | null;
+      if (!select) return { ok: false, found: false } as const;
+      if (!(select instanceof HTMLSelectElement)) {
+        return { ok: false, found: true, error: "not_select" } as const;
+      }
+      const before = Array.from(select.selectedOptions).map((option) => option.value);
+      const options = Array.from(select.options);
+      const option = options.find((candidate) =>
+        value !== undefined
+          ? candidate.value === value
+          : candidate.textContent?.replace(/\s+/g, " ").trim() === label,
+      );
+      if (!option) {
+        return {
+          ok: false,
+          found: true,
+          error: "option_not_found",
+          selectedValues: before,
+        } as const;
+      }
+      for (const candidate of options) {
+        candidate.selected = candidate === option;
+      }
+      const after = Array.from(select.selectedOptions).map((selected) => selected.value);
+      const changed = before.join("\u0000") !== after.join("\u0000");
+      if (changed) {
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return {
+        ok: true,
+        found: true,
+        changed,
+        selectedValues: after,
+        selectedLabels: Array.from(select.selectedOptions).map((selected) =>
+          (selected.textContent ?? "").replace(/\s+/g, " ").trim(),
+        ),
+      } as const;
+    },
+    args: [selector, choice.value, choice.label],
+  });
+  return res?.result ?? { ok: false, found: false };
 }
 
 async function clickDescribedElement(

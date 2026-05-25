@@ -31,6 +31,7 @@ export type GatewayCommand = {
     selector?: string;
     html?: string;
     value?: string;
+    label?: string;
     replaceEditable?: boolean;
     dryRun?: boolean;
     text?: string;
@@ -96,6 +97,7 @@ export type GatewayMethod =
   | "dblclick_selector"
   | "focus_selector"
   | "hover_selector"
+  | "select_option"
   | "fill"
   | "paste"
   | "clear"
@@ -118,6 +120,7 @@ export type OperationMethod = Extract<
   | "dblclick_selector"
   | "focus_selector"
   | "hover_selector"
+  | "select_option"
   | "fill"
   | "paste"
   | "clear"
