@@ -34,6 +34,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "upload_file",
   "type_text",
   "key_press",
+  "keyboard_insert_text",
   "navigate",
   "scroll",
   "drag",
@@ -655,6 +656,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Type ${quoteForIntent(text)} into the focused element.`,
       run: () => typeText(tabId, text),
+    };
+  }
+  if (cmd.method === "keyboard_insert_text") {
+    const text = cmd.params?.text;
+    if (typeof text !== "string") throw new Error("text required");
+    return {
+      intent: `Insert ${new TextEncoder().encode(text).byteLength} bytes into the focused element without key events.`,
+      run: () => keyboardInsertText(tabId, text),
     };
   }
   if (cmd.method === "key_press") {
@@ -2147,6 +2156,15 @@ async function typeText(tabId: number, text: string): Promise<{ ok: true }> {
     });
   }
   return { ok: true };
+}
+
+async function keyboardInsertText(
+  tabId: number,
+  text: string,
+): Promise<{ ok: true; insertedBytes: number }> {
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
+  return { ok: true, insertedBytes: new TextEncoder().encode(text).byteLength };
 }
 
 const KEY_CODE_MAP: Record<string, string> = {

@@ -185,6 +185,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "type_text")
         case "key_tab":
             return await dispatch(req: req, method: "key_press")
+        case "keyboard_insert_text_tab":
+            return await dispatch(req: req, method: "keyboard_insert_text")
         case "navigate_tab":
             return await dispatch(req: req, method: "navigate")
         case "scroll_tab":

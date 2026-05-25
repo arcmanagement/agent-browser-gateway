@@ -124,6 +124,7 @@ abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary 
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"                       # Send text to current focus
 abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
+abg keyboard inserttext <tab|ref> "<text>"        # CDP Input.insertText without key events
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
 abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
