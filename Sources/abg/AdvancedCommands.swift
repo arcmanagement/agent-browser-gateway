@@ -228,6 +228,38 @@ struct StreamDisable: AsyncParsableCommand {
     }
 }
 
+struct Validate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "validate",
+        abstract: "Read-only validators for editable content",
+        subcommands: [ValidateEditable.self]
+    )
+}
+
+struct ValidateEditable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "editable", abstract: "Validate selector or selection editable text")
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Editable CSS selector") var selector: String?
+    @Flag(name: .long, help: "Validate current selected text") var selection: Bool = false
+    @Option(name: .long, help: "Comma-separated rules: html-attrs,shortcodes") var rules: String = "html-attrs,shortcodes"
+
+    func run() async throws {
+        guard selection || selector != nil else {
+            try failWithJSON(["error": "bad_params", "message": "Pass --selector or --selection."])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "rules": rules,
+            "selection": selection,
+        ]
+        if let selector { params["selector"] = selector }
+        let result = try client.call(method: "validate_editable_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget

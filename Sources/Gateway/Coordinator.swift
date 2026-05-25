@@ -251,6 +251,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "wait_for")
         case "annotate_tab":
             return await dispatch(req: req, method: "annotation_mode")
+        case "validate_editable_tab":
+            return await dispatch(req: req, method: "validate_editable")
         case "stream_enable":
             return await handleStreamEnable(req: req)
         case "stream_status":

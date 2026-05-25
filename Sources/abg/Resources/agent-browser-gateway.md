@@ -93,6 +93,8 @@ abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
 abg stream status
 abg stream disable
+abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
+abg validate editable <tab|ref> --selection
 
 # 反復フロー
 abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録
