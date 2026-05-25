@@ -173,9 +173,15 @@ struct Snapshot: AsyncParsableCommand {
     @Option(name: .long, help: "Maximum DOM ancestor depth to include in selectors") var depth: Int = 5
     @Flag(name: .long, help: "Only include interactive elements") var interactiveOnly: Bool = false
     @Flag(name: .long, help: "Omit verbose selector/html-adjacent details") var compact: Bool = false
+    @Option(name: .long, help: "Comma-separated name:tab:selector targets for multi-tab selector snapshots") var tabs: String?
 
     func run() async throws {
         let client = UDSClient()
+        if let tabs {
+            let result = try runMultiTabSnapshot(client: client, spec: tabs)
+            printJSON(result)
+            return
+        }
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = [
             "tabId": tabId,
@@ -186,6 +192,60 @@ struct Snapshot: AsyncParsableCommand {
         if let selector { params["selector"] = selector }
         let result = try client.call(method: "snapshot_tab", params: params)
         printJSON(result)
+    }
+
+    private func runMultiTabSnapshot(client: UDSClient, spec: String) throws -> [String: Any] {
+        let targets = try parseSnapshotTargets(spec)
+        var results: [[String: Any]] = []
+        for target in targets {
+            var row: [String: Any] = [
+                "name": target.name,
+                "tab": target.tab,
+                "selector": target.selector,
+                "capturedAt": ISO8601DateFormatter().string(from: Date()),
+            ]
+            do {
+                let tabId = try resolveTabId(client: client, tabToken: target.tab, matchUrl: nil, matchTitle: nil, first: false)
+                row["tabId"] = tabId
+                let read = try client.call(method: "read_tab", params: [
+                    "tabId": tabId,
+                    "selector": target.selector,
+                ]) as? [String: Any] ?? [:]
+                let count = try client.call(method: "get_tab", params: [
+                    "tabId": tabId,
+                    "kind": "count",
+                    "selector": target.selector,
+                ]) as? [String: Any] ?? [:]
+                row["ok"] = true
+                row["url"] = read["url"] ?? ""
+                row["title"] = read["title"] ?? ""
+                row["matchCount"] = count["value"] ?? 0
+                row["text"] = read["text"] ?? ""
+                row["html"] = read["html"] ?? ""
+            } catch {
+                row["ok"] = false
+                row["error"] = error.localizedDescription
+            }
+            results.append(row)
+        }
+        return [
+            "ok": results.allSatisfy { ($0["ok"] as? Bool) == true },
+            "targetCount": results.count,
+            "targets": results,
+        ]
+    }
+
+    private func parseSnapshotTargets(_ spec: String) throws -> [(name: String, tab: String, selector: String)] {
+        try spec.split(separator: ",").map { raw in
+            let parts = raw.split(separator: ":", maxSplits: 2).map(String.init)
+            guard parts.count == 3, !parts[0].isEmpty, !parts[1].isEmpty, !parts[2].isEmpty else {
+                try failWithJSON([
+                    "error": "bad_tabs_spec",
+                    "message": "--tabs entries must be name:tab:selector, separated by commas.",
+                ])
+            }
+            return (name: parts[0], tab: parts[1], selector: parts[2])
+        }
     }
 }
 
