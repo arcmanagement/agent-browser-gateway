@@ -27,6 +27,49 @@ struct PDF: AsyncParsableCommand {
     }
 }
 
+struct Get: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "get",
+        abstract: "Small read-only getters for text, html, value, attr, title, url, count, box, and styles"
+    )
+    @OptionGroup var match: TabMatchOptions
+    @Argument(help: "Getter kind: text/html/value/attr/title/url/count/box/styles") var kind: String
+    @Argument(help: "tab ID/ref and optional selector, or selector only when --match-url/title is used") var args: [String] = []
+    @Option(name: .long, help: "CSS selector (alternative to positional selector)") var selector: String?
+    @Option(name: .long, help: "Attribute name for `get attr`") var name: String?
+    @Option(name: .long, help: "Comma-separated computed style properties for `get styles`") var props: String?
+
+    func run() async throws {
+        let normalizedKind = kind.lowercased()
+        guard ["text", "html", "value", "attr", "title", "url", "count", "box", "styles"].contains(normalizedKind) else {
+            try failWithJSON([
+                "error": "bad_getter",
+                "message": "Getter must be one of text/html/value/attr/title/url/count/box/styles.",
+            ])
+        }
+        if normalizedKind == "attr", name == nil {
+            try failWithJSON(["error": "bad_params", "message": "`abg get attr` requires --name."])
+        }
+        let client = UDSClient()
+        let hasMatch = match.matchUrl != nil || match.matchTitle != nil
+        let tabToken = hasMatch ? nil : try requireArg(args, index: 0, error: [
+            "error": "tab_required",
+            "message": "Usage: abg get <kind> <tab> [selector]",
+        ])
+        let positionalSelectorIndex = hasMatch ? 0 : 1
+        let resolvedSelector = selector ?? (args.indices.contains(positionalSelectorIndex) ? args[positionalSelectorIndex] : nil)
+        let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
+        var params: [String: Any] = ["tabId": tabId, "kind": normalizedKind]
+        if let resolvedSelector { params["selector"] = resolvedSelector }
+        if let name { params["name"] = name }
+        if let props {
+            params["props"] = props.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        let result = try client.call(method: "get_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct KeyboardInsertText: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "inserttext",

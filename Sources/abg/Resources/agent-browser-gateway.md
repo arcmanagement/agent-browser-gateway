@@ -23,6 +23,9 @@ abg status                              # Gateway 起動状況、接続中拡張
 abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url)
 abg inspect                             # status + tabs をまとめて確認
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
+abg get attr <tab|ref> "<css>" --name href
+abg get styles <tab|ref> "<css>" --props display,color
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
 abg screenshot --latest                 # 最後に保存したスクショパス

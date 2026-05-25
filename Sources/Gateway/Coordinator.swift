@@ -149,6 +149,8 @@ final class GatewayCoordinator: ObservableObject {
             ]))
         case "read_tab":
             return await handleReadTab(req: req)
+        case "get_tab":
+            return await dispatch(req: req, method: "get_dom")
         case "screenshot_tab":
             return await dispatch(req: req, method: "screenshot")
         case "pdf_tab":
