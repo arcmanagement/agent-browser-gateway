@@ -70,6 +70,74 @@ struct Get: AsyncParsableCommand {
     }
 }
 
+struct Find: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "find",
+        abstract: "Find elements by semantic locators and optionally act on them"
+    )
+    @OptionGroup var match: TabMatchOptions
+    @Argument(help: "Locator kind: role/text/label/placeholder/alt/title/testid") var locator: String
+    @Argument(help: "tab, query pieces, and optional action") var args: [String] = []
+    @Option(name: .long, help: "Accessible name for role locators") var name: String?
+    @Option(name: .long, help: "Value used by fill/type actions") var value: String?
+    @Flag(name: .long, help: "Use exact text matching instead of case-insensitive contains") var exact: Bool = false
+    @Option(name: .long, help: "Maximum matches to return") var limit: Int = 20
+
+    func run() async throws {
+        let normalizedLocator = locator.lowercased()
+        guard ["role", "text", "label", "placeholder", "alt", "title", "testid"].contains(normalizedLocator) else {
+            try failWithJSON([
+                "error": "bad_locator",
+                "message": "Locator must be one of role/text/label/placeholder/alt/title/testid.",
+            ])
+        }
+        let client = UDSClient()
+        let hasMatch = match.matchUrl != nil || match.matchTitle != nil
+        let tabToken = hasMatch ? nil : try requireArg(args, index: 0, error: [
+            "error": "tab_required",
+            "message": "Usage: abg find <locator> <tab> <query> [action]",
+        ])
+        let offset = hasMatch ? 0 : 1
+        let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "locator": normalizedLocator,
+            "exact": exact,
+            "limit": max(1, min(limit, 100)),
+        ]
+
+        let action: String
+        if normalizedLocator == "role" {
+            let role = try requireArg(args, index: offset, error: [
+                "error": "role_required",
+                "message": "Usage: abg find role <tab> <role> [action] --name <accessible name>",
+            ])
+            params["role"] = role
+            if let name { params["query"] = name }
+            action = args.indices.contains(offset + 1) ? args[offset + 1].lowercased() : "inspect"
+        } else {
+            let query = try requireArg(args, index: offset, error: [
+                "error": "query_required",
+                "message": "Usage: abg find \(normalizedLocator) <tab> <query> [action]",
+            ])
+            params["query"] = query
+            action = args.indices.contains(offset + 1) ? args[offset + 1].lowercased() : "inspect"
+        }
+        params["action"] = action
+        if let value { params["value"] = value }
+        let result = try client.call(method: "find_tab", params: params)
+        if action != "inspect" && action != "text" {
+            var step: [String: Any] = ["op": "find", "tabId": tabId, "locator": normalizedLocator, "action": action]
+            if let query = params["query"] { step["query"] = query }
+            if let role = params["role"] { step["role"] = role }
+            if let value { step["value"] = value }
+            if exact { step["exact"] = true }
+            appendRecordedStep(step)
+        }
+        printJSON(result)
+    }
+}
+
 struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget
