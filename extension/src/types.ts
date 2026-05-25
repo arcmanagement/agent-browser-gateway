@@ -112,6 +112,7 @@ export type GatewayMethod =
   | "keyboard_insert_text"
   | "navigate"
   | "scroll"
+  | "scroll_into_view"
   | "drag";
 
 export type OperationMethod = Extract<
@@ -136,6 +137,7 @@ export type OperationMethod = Extract<
   | "keyboard_insert_text"
   | "navigate"
   | "scroll"
+  | "scroll_into_view"
   | "drag"
 >;
 

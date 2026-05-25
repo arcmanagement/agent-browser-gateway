@@ -36,7 +36,7 @@ struct ABG: AsyncParsableCommand {
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
             Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Record.self, Replay.self,
             Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
@@ -47,7 +47,7 @@ struct ABG: AsyncParsableCommand {
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "read", "screenshot", "annotate", "console", "table", "describe", "network",
-    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "drag", "upload",
+    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -1559,6 +1559,9 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         if let atX = doubleValue(step, "atX") { params["atX"] = atX }
         if let atY = doubleValue(step, "atY") { params["atY"] = atY }
         return try client.call(method: "scroll_tab", params: params)
+    case "scroll-into-view":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "scroll_into_view_tab", params: params)
     case "drag":
         for key in ["fromSelector", "toSelector", "fromX", "fromY", "toX", "toY", "steps"] {
             if let value = step[key] { params[key] = value }

@@ -44,6 +44,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "keyboard_insert_text",
   "navigate",
   "scroll",
+  "scroll_into_view",
   "drag",
 ]);
 
@@ -766,6 +767,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Drag from ${describeDragPoint(from)} to ${describeDragPoint(to)}.`,
       run: () => drag(tabId, from, to, steps),
+    };
+  }
+  if (cmd.method === "scroll_into_view") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    return {
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)} into view.`,
+      run: () => scrollElementIntoView(tabId, selector),
     };
   }
   const deltaX = cmd.params?.deltaX ?? 0;
@@ -2565,6 +2574,51 @@ async function scrollTab(
     deltaY,
   });
   return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
+}
+
+async function scrollElementIntoView(
+  tabId: number,
+  selector: string,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selector: string;
+  box?: { x: number; y: number; width: number; height: number };
+  visible?: boolean;
+}> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { ok: false, found: false, selector: sel } as const;
+      el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const visible =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        rect.bottom >= 0 &&
+        rect.right >= 0 &&
+        rect.top <= innerHeight &&
+        rect.left <= innerWidth;
+      return {
+        ok: true,
+        found: true,
+        selector: sel,
+        box: {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+        visible,
+      } as const;
+    },
+    args: [selector],
+  });
+  return res?.result ?? { ok: false, found: false, selector };
 }
 
 // ---------- Popup messaging ----------
