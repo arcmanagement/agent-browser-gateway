@@ -87,6 +87,7 @@ export type GatewayCommand = {
 export type GatewayMethod =
   | "read_dom"
   | "get_dom"
+  | "predicate"
   | "screenshot"
   | "pdf"
   | "console"
