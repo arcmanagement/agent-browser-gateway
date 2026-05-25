@@ -56,7 +56,7 @@ verify:
 
 dist:
 ifndef VERSION
-	$(error VERSION is required, e.g. make dist VERSION=0.3.1)
+	$(error VERSION is required, e.g. make dist VERSION=0.3.8)
 endif
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" CASK_OUTPUT="$(CASK_OUTPUT)" bash scripts/dist-macos-arm64.sh
 
@@ -65,7 +65,7 @@ pages-dmg: dist
 
 windows-dist:
 ifndef VERSION
-	$(error VERSION is required, e.g. make windows-dist VERSION=0.3.6)
+	$(error VERSION is required, e.g. make windows-dist VERSION=0.3.8)
 endif
 	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)"
 

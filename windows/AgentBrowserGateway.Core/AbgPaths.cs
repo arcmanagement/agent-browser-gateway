@@ -2,7 +2,7 @@ namespace AgentBrowserGateway.Core;
 
 public static class AbgPaths
 {
-    public const string Version = "0.3.6";
+    public const string Version = "0.3.8";
     public const string WsHost = "127.0.0.1";
     public const int WsPort = 8765;
     public const string CliPipeName = "AgentBrowserGateway.Cli";

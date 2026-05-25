@@ -2,13 +2,15 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-05-25.
 
-Current repo version: **v0.3.7**.
-
-## Unreleased
-
-- Added the approved JavaScript eval escape hatch: disabled by default in extension settings, gated by `abg eval --approve`, shown in a local approval window with the exact script, audited with script source and result summary, and capped by sanitized result size.
+Current repo version: **v0.3.8**.
 
 ## Shipped
+
+### v0.3.8 — Approved JavaScript eval escape hatch (2026-05-25)
+- Added `abg eval` as a disabled-by-default escape hatch for long-tail browser workflows that named primitives do not cover.
+- Kept eval behind extension settings, mandatory `--approve`, and a local approval window that shows the exact script on every call.
+- Added sanitized return serialization, result size caps, and audit entries with script source plus result type/byte summary.
+- Updated README, SECURITY, bundled Claude/Codex skill guidance, Windows docs, and GitHub Pages download metadata for the new boundary.
 
 ### v0.3.7 — Agent-browser / Playwright parity CLI expansion (2026-05-25)
 - Completed Epic #96 by shipping the autonomous-agent CLI parity layer across focused sub-issues.
@@ -127,7 +129,7 @@ These will not happen, regardless of demand:
 
 - Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback.
 - Any telemetry / analytics. Even opt-in.
-- An "execute arbitrary JavaScript" tool exposed to agents.
+- Silent or blanket-approved JavaScript execution. The only general eval path is disabled by default and requires per-call local approval.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.
 
 ## Reproducibility milestones (toward v1.0)
