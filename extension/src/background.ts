@@ -31,6 +31,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "focus_selector",
   "hover_selector",
   "select_option",
+  "set_checked",
   "fill",
   "paste",
   "clear",
@@ -634,6 +635,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Select an option in ${quoteForIntent(selector)}.`,
       run: () => selectOption(tabId, selector, { value, label }),
+    };
+  }
+  if (cmd.method === "set_checked") {
+    const selector = cmd.params?.selector;
+    if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
+    const checked = cmd.params?.checked;
+    if (typeof checked !== "boolean") throw new Error("checked boolean required");
+    return {
+      intent: `${checked ? "Check" : "Uncheck"} the input matching selector ${quoteForIntent(selector)} if needed.`,
+      run: () => setChecked(tabId, selector, checked),
     };
   }
   if (cmd.method === "fill") {
@@ -1448,6 +1459,51 @@ async function selectOption(
       } as const;
     },
     args: [selector, choice.value, choice.label],
+  });
+  return res?.result ?? { ok: false, found: false };
+}
+
+async function setChecked(
+  tabId: number,
+  selector: string,
+  checked: boolean,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  type?: string;
+  before?: boolean;
+  after?: boolean;
+  changed?: boolean;
+  error?: string;
+}> {
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, desired: boolean) => {
+      const input = document.querySelector(sel) as HTMLInputElement | null;
+      if (!input) return { ok: false, found: false } as const;
+      if (!(input instanceof HTMLInputElement)) {
+        return { ok: false, found: true, error: "not_input" } as const;
+      }
+      const type = input.type.toLowerCase();
+      if (type !== "checkbox" && type !== "radio") {
+        return { ok: false, found: true, type, error: "not_checkable" } as const;
+      }
+      const before = input.checked;
+      if (before !== desired) {
+        input.checked = desired;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return {
+        ok: true,
+        found: true,
+        type,
+        before,
+        after: input.checked,
+        changed: before !== input.checked,
+      } as const;
+    },
+    args: [selector, checked],
   });
   return res?.result ?? { ok: false, found: false };
 }
