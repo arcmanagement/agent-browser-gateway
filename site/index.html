@@ -52,7 +52,7 @@
                 default, and every local operation is designed to stay inspectable.
               </p>
               <div class="hero-actions">
-                <a class="button" href="#download">Download for macOS</a>
+                <a class="button" href="#download">Download</a>
                 <a class="button secondary" href="privacy/">Read the privacy policy</a>
               </div>
               <div class="proof-row" aria-label="Product principles">
@@ -76,18 +76,36 @@
         <section class="band surface download-band" id="download" aria-labelledby="download-title">
           <div class="section-inner download-layout">
             <div class="copy">
-              <h2 id="download-title">Download the signed macOS gateway.</h2>
+              <h2 id="download-title">Download Agent Browser Gateway.</h2>
               <p>
-                The current macOS distribution is a notarized DMG for Apple Silicon Macs. It
-                includes the menu bar app, the <code>abg</code> CLI, and the bundled agent skill
-                installer.
+                Choose the notarized macOS DMG or the Windows x64 package. The Windows ZIP includes
+                <code>agent-browser-gateway.exe</code>, <code>abg.exe</code>, and the PowerShell
+                installer script.
               </p>
               <div class="download-actions">
                 <a
                   class="button"
                   href="downloads/agent-browser-gateway-0.3.8-macos-arm64.dmg"
                 >
-                  Download DMG
+                  <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
+                    <g transform="translate(0 624.5254) scale(1 -1)">
+                      <path d="M250.04 297.5742 C249.9609 297.3496 248.7129 293.0371 245.6621 288.584 C243.0283 284.7344 240.292 280.8926 235.9844 280.8145 C231.752 280.7363 230.3906 283.3262 225.5537 283.3262 C220.7119 283.3262 219.1973 280.8926 215.1953 280.7363 C211.0361 280.5801 207.8682 284.9004 205.2129 288.7344 C199.7822 296.5859 195.6387 310.918 201.21 320.5859 C203.9707 325.3926 208.9199 328.4336 214.2871 328.5117 C218.373 328.5898 222.2227 325.7676 224.7217 325.7676 C227.2188 325.7676 231.8984 329.1621 236.8213 328.666 C238.8809 328.5781 244.666 327.834 248.3838 322.3945 C248.0869 322.207 241.4785 318.3613 241.5508 310.3633 C241.6367 300.7949 249.9443 297.6152 250.04 297.5742 Z" />
+                      <path d="M233.5947 333.8535 C235.8086 336.5273 237.293 340.2461 236.8848 343.9453 C233.7051 343.8281 229.8516 341.8281 227.5723 339.1563 C225.5273 336.791 223.7334 333.0059 224.2197 329.3828 C227.7637 329.1074 231.3896 331.1855 233.5947 333.8535 Z" />
+                    </g>
+                  </svg>
+                  <span>macOS DMG</span>
+                </a>
+                <a
+                  class="button secondary"
+                  href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip"
+                >
+                  <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+                    <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
+                    <path d="M12.1 4.1 21 2.8v8.7h-8.9V4.1z" />
+                    <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
+                    <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
+                  </svg>
+                  <span>Windows x64 ZIP</span>
                 </a>
                 <a
                   class="button store-button"
@@ -96,42 +114,62 @@
                   <img class="chrome-icon" src="assets/chrome-logo.svg" alt="" width="20" height="20" />
                   <span class="store-label">Chrome Web Store</span>
                 </a>
-                <a
-                  class="button secondary"
-                  href="downloads/agent-browser-gateway-0.3.8-macos-arm64.dmg.sha256.txt"
-                >
-                  SHA-256
-                </a>
               </div>
             </div>
             <div class="download-panel" aria-label="Download details">
               <div class="download-meta">
                 <span>Version 0.3.8</span>
-                <span>macOS 14+</span>
-                <span>Apple Silicon</span>
+                <span>macOS 14+ Apple Silicon</span>
+                <span>Windows 10/11 x64</span>
               </div>
               <div class="download-items">
                 <div>
-                  <strong>Menu bar app</strong>
+                  <strong>
+                    <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
+                      <g transform="translate(0 624.5254) scale(1 -1)">
+                        <path d="M250.04 297.5742 C249.9609 297.3496 248.7129 293.0371 245.6621 288.584 C243.0283 284.7344 240.292 280.8926 235.9844 280.8145 C231.752 280.7363 230.3906 283.3262 225.5537 283.3262 C220.7119 283.3262 219.1973 280.8926 215.1953 280.7363 C211.0361 280.5801 207.8682 284.9004 205.2129 288.7344 C199.7822 296.5859 195.6387 310.918 201.21 320.5859 C203.9707 325.3926 208.9199 328.4336 214.2871 328.5117 C218.373 328.5898 222.2227 325.7676 224.7217 325.7676 C227.2188 325.7676 231.8984 329.1621 236.8213 328.666 C238.8809 328.5781 244.666 327.834 248.3838 322.3945 C248.0869 322.207 241.4785 318.3613 241.5508 310.3633 C241.6367 300.7949 249.9443 297.6152 250.04 297.5742 Z" />
+                        <path d="M233.5947 333.8535 C235.8086 336.5273 237.293 340.2461 236.8848 343.9453 C233.7051 343.8281 229.8516 341.8281 227.5723 339.1563 C225.5273 336.791 223.7334 333.0059 224.2197 329.3828 C227.7637 329.1074 231.3896 331.1855 233.5947 333.8535 Z" />
+                      </g>
+                    </svg>
+                    <span>macOS DMG</span>
+                  </strong>
                   <span>Installs to <code>/Applications</code> and starts after setup.</span>
                 </div>
                 <div>
-                  <strong>CLI ready</strong>
-                  <span>Installs <code>abg</code> and its resource bundle under <code>/usr/local/bin</code>.</span>
+                  <strong>
+                    <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+                      <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
+                      <path d="M12.1 4.1 21 2.8v8.7h-8.9V4.1z" />
+                      <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
+                      <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
+                    </svg>
+                    <span>Windows ZIP</span>
+                  </strong>
+                  <span>Extract it, then run <code>Install-AgentBrowserGateway.ps1</code>.</span>
                 </div>
                 <div>
-                  <strong>Skills included</strong>
-                  <span>Runs <code>abg install-skill</code> for Claude Code and Codex.</span>
+                  <strong>CLI ready</strong>
+                  <span>Installs <code>abg</code> and refreshes Claude Code and Codex skills.</span>
                 </div>
                 <div>
                   <strong>Chrome extension</strong>
                   <span>Install from the Chrome Web Store to share tabs with the local gateway.</span>
                 </div>
               </div>
-              <p class="checksum">
-                <span>SHA-256</span>
-                <code>ae36464ef12a55e677e48526a1b83e2ebc7ac8182064671bfbcb3d5934bb2a47</code>
-              </p>
+              <div class="checksum-list">
+                <p class="checksum">
+                  <span>macOS SHA-256</span>
+                  <a href="downloads/agent-browser-gateway-0.3.8-macos-arm64.dmg.sha256.txt">
+                    <code>51774f25f84da183060be390b39c163b58fe0719c162b4b615e86300eb6c3452</code>
+                  </a>
+                </p>
+                <p class="checksum">
+                  <span>Windows SHA-256</span>
+                  <a href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip.sha256.txt">
+                    <code>33d21cfaee94e2bae21d05e8017143758e1d267e9c7e387475ea56adae0f91fc</code>
+                  </a>
+                </p>
+              </div>
             </div>
           </div>
         </section>
