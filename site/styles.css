@@ -214,6 +214,13 @@ h1 {
   cursor: pointer;
 }
 
+.platform-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
 .button.secondary {
   background: rgba(255, 255, 255, 0.62);
   color: var(--ink);
@@ -357,9 +364,17 @@ h1 {
 }
 
 .download-items strong {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 5px;
   font-size: 16px;
+}
+
+.download-items strong .platform-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent-dark);
 }
 
 .download-items span {
@@ -372,6 +387,11 @@ h1 {
   margin: 22px 0 0;
   padding-top: 16px;
   border-top: 1px solid var(--line);
+}
+
+.checksum-list {
+  display: grid;
+  gap: 16px;
 }
 
 .checksum span {
@@ -389,6 +409,14 @@ h1 {
   color: #2e3137;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.checksum a {
+  text-decoration: none;
+}
+
+.checksum a:hover code {
+  color: var(--accent-dark);
 }
 
 .section-heading {

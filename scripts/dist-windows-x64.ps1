@@ -1,7 +1,8 @@
 param(
     [string]$Version = "0.3.8",
     [string]$Configuration = "Release",
-    [switch]$SkipWinUiApp
+    [switch]$SkipWinUiApp,
+    [string]$PagesOutputDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +84,18 @@ Compress-Archive -Path (Join-Path $SetupStage "*") -DestinationPath $SetupZipPat
 
 $Hash = Get-FileHash -Algorithm SHA256 $ZipPath
 $SetupHash = Get-FileHash -Algorithm SHA256 $SetupZipPath
+if (-not [string]::IsNullOrWhiteSpace($PagesOutputDir)) {
+    $ResolvedPagesOutputDir = $PagesOutputDir
+    if (-not [System.IO.Path]::IsPathRooted($ResolvedPagesOutputDir)) {
+        $ResolvedPagesOutputDir = Join-Path $Root $ResolvedPagesOutputDir
+    }
+
+    $ZipName = Split-Path -Leaf $ZipPath
+    New-Item -ItemType Directory -Force $ResolvedPagesOutputDir | Out-Null
+    Copy-Item -Force $ZipPath (Join-Path $ResolvedPagesOutputDir $ZipName)
+    Set-Content -Path (Join-Path $ResolvedPagesOutputDir "$ZipName.sha256.txt") `
+        -Value "$($Hash.Hash.ToLowerInvariant())  $ZipName"
+}
 Write-Host "==> done"
 Write-Host "zip:    $ZipPath"
 Write-Host "sha256: $($Hash.Hash.ToLowerInvariant())"

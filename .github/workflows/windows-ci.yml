@@ -32,4 +32,4 @@ jobs:
 
       - name: Package Windows zip
         shell: pwsh
-        run: ./scripts/dist-windows-x64.ps1 -Version 0.3.6
+        run: ./scripts/dist-windows-x64.ps1
