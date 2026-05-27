@@ -477,6 +477,10 @@ pnpm run build                          # outputs to extension/dist/
 
 In Chrome: open `chrome://extensions` → enable Developer mode → **Load unpacked** → pick `extension/dist/`.
 
+For incognito / Secret Window workflows, open
+`chrome://extensions/?id=ojgedfcgebjchckaagjkmlpgonpjggpi` and enable **Allow in incognito**.
+Chrome disables extension access to incognito windows by default; normal tabs do not require this.
+
 ### Share a tab
 
 1. Open the tab you want to share
@@ -524,7 +528,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.8 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.3.9 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 

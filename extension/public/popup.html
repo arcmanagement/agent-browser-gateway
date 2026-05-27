@@ -44,6 +44,37 @@
         background: #ff3b30;
         color: white;
       }
+      button.secondary {
+        border: 1px solid #c7c7cc;
+        background: transparent;
+        color: #555;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+      .notice {
+        margin: 8px 0;
+        padding: 8px;
+        border: 1px solid #ffcc00;
+        border-radius: 6px;
+        background: rgba(255, 204, 0, 0.14);
+        color: #5c4600;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .notice strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 12px;
+      }
+      .notice p {
+        margin: 0 0 8px;
+      }
+      .notice button {
+        padding: 6px;
+        font-size: 12px;
+      }
       .annotation-actions {
         display: grid;
         grid-template-columns: 1fr 74px;
@@ -53,18 +84,9 @@
       .annotation-actions button {
         min-width: 0;
       }
-      .annotation-actions button.secondary {
-        border: 1px solid #c7c7cc;
-        background: transparent;
-        color: #555;
-      }
       .annotation-actions button.annotation-on {
         background: #a444ff;
         color: white;
-      }
-      .annotation-actions button:disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
       }
       .status {
         font-size: 11px;
@@ -140,6 +162,11 @@
   <body>
     <h1>Agent Browser Gateway</h1>
     <div class="tab-info" id="tabInfo">…</div>
+    <div class="notice" id="incognitoNotice" hidden>
+      <strong>Incognito access is off</strong>
+      <p>Chrome blocks ABG in incognito windows until this extension is allowed there.</p>
+      <button id="openExtensionsBtn" class="secondary">Open extension settings</button>
+    </div>
     <button id="actionBtn">…</button>
     <div class="annotation-actions">
       <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>

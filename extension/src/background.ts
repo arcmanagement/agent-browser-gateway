@@ -16,7 +16,7 @@ import type {
 } from "./types.js";
 
 const WS_URL = "ws://127.0.0.1:8765/ws";
-const VERSION = "0.3.8";
+const VERSION = "0.3.9";
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -225,6 +225,14 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
   return settings;
 }
 
+async function isIncognitoAccessAllowed(): Promise<boolean> {
+  try {
+    return await chrome.extension.isAllowedIncognitoAccess();
+  } catch {
+    return false;
+  }
+}
+
 function detectBrowserKind(): string {
   // Lightweight UA sniff. We send this purely as a label for the Gateway UI;
   // it is not used for any security decision.
@@ -339,6 +347,12 @@ function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
 async function permitTab(tabId: number): Promise<void> {
   const tab = await chrome.tabs.get(tabId);
   if (!tab.url) throw new Error("tab has no URL");
+  if (tab.incognito && !(await isIncognitoAccessAllowed())) {
+    throw new GatewayError(
+      "incognito_access_disabled",
+      `Chrome has not allowed Agent Browser Gateway to run in incognito windows. Open chrome://extensions/?id=${chrome.runtime.id} and enable "Allow in incognito".`,
+    );
+  }
   const url = tab.url;
   const origin = new URL(url).origin;
   const title = tab.title ?? "";
@@ -3865,6 +3879,10 @@ chrome.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => 
 
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
   if (msg.type === "get_state") {
+    const [activeTab, incognitoAccessAllowed] = await Promise.all([
+      chrome.tabs.get(msg.tabId).catch(() => undefined),
+      isIncognitoAccessAllowed(),
+    ]);
     const sharedTabs: { tabId: number; title: string; url: string }[] = [];
     for (const [tabId, p] of permittedTabs) {
       sharedTabs.push({ tabId, title: p.title, url: p.url });
@@ -3881,6 +3899,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       type: "state",
       permitted: permittedTabs.has(msg.tabId),
       wsConnected,
+      activeTab: {
+        incognito: activeTab?.incognito === true,
+        incognitoAccessAllowed,
+      },
       sharedTabs,
       settings: await getSettings(),
       annotationState: {

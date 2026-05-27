@@ -1,6 +1,6 @@
 cask "agent-browser-gateway" do
-  version "0.3.8"
-  sha256 "145dcf54c5bef82e7eed48f2b867a32fb2702161e4201612df532c59647fc848"
+  version "0.3.9"
+  sha256 "4a4b4e4ae4b4b019cc4fef34686227e4abc27fa0e9f5108a4ddad437c37edfa9"
 
   url "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"

@@ -9,11 +9,18 @@ const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
+const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivElement;
+const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLButtonElement;
 
 let profileLabelTimer: number | null = null;
 
 async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
   return (await chrome.runtime.sendMessage(msg)) as BackgroundToPopup;
+}
+
+async function openExtensionSettings(): Promise<void> {
+  await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  window.close();
 }
 
 async function refresh(): Promise<void> {
@@ -78,9 +85,28 @@ async function refresh(): Promise<void> {
     }, 350) as unknown as number;
   };
 
-  if (state.permitted) {
+  const incognitoAccessAllowed = state.activeTab.incognitoAccessAllowed;
+  const incognitoBlocked = state.activeTab.incognito && !incognitoAccessAllowed;
+  incognitoNoticeEl.hidden = incognitoAccessAllowed;
+  openExtensionsBtn.onclick = async () => {
+    await openExtensionSettings();
+  };
+
+  if (incognitoBlocked) {
+    actionBtn.textContent = "Enable incognito access first";
+    actionBtn.className = "secondary";
+    actionBtn.disabled = false;
+    actionBtn.onclick = async () => {
+      await openExtensionSettings();
+    };
+    annotationBtn.disabled = true;
+    annotationBtn.textContent = "Annotate this tab";
+    annotationBtn.className = "secondary";
+    clearAnnotationsBtn.disabled = true;
+  } else if (state.permitted) {
     actionBtn.textContent = "Revoke this tab";
     actionBtn.className = "danger";
+    actionBtn.disabled = false;
     actionBtn.onclick = async () => {
       await send({ type: "revoke", tabId });
       await refresh();
@@ -116,6 +142,7 @@ async function refresh(): Promise<void> {
   } else {
     actionBtn.textContent = "Share this tab with agent";
     actionBtn.className = "primary";
+    actionBtn.disabled = false;
     actionBtn.onclick = async () => {
       await send({ type: "permit", tabId });
       await refresh();

@@ -210,6 +210,10 @@ export type BackgroundToPopup =
       type: "state";
       permitted: boolean;
       wsConnected: boolean;
+      activeTab: {
+        incognito: boolean;
+        incognitoAccessAllowed: boolean;
+      };
       sharedTabs: { tabId: number; title: string; url: string }[];
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };

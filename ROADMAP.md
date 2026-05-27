@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-25.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-27.
 
-Current repo version: **v0.3.8**.
+Current repo version: **v0.3.9**.
 
 ## Shipped
+
+### v0.3.9 — Incognito access guidance (2026-05-27)
+- Added Chrome incognito access detection to the extension popup so users can see when Chrome has not allowed ABG in incognito windows.
+- Added a popup settings shortcut and blocked incognito tab sharing with an explicit error when access is disabled.
+- Updated setup and temporary zip install docs to explain Chrome's `Allow in incognito` switch for Secret Window workflows.
 
 ### v0.3.8 — Approved JavaScript eval escape hatch (2026-05-25)
 - Added `abg eval` as a disabled-by-default escape hatch for long-tail browser workflows that named primitives do not cover.

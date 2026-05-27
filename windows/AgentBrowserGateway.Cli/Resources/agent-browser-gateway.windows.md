@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.3.8
+version: 0.3.9
 description: Windows Native ABG skill. Use the local abg.exe CLI to inspect or operate only Chrome tabs explicitly shared through the Agent Browser Gateway extension.
 ---
 
