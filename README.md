@@ -63,11 +63,11 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 └──────────────────────────────┘
 ```
 
-Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero `host_permissions`**.
+Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup.
 
 ---
 
-## Per-tab consent model
+## Tab access modes
 
 The core security model:
 
@@ -79,7 +79,7 @@ The core security model:
    - You close the tab
    - You explicitly revoke (via the popup or `abg revoke`)
 
-There is no "share all tabs" button. There is no `<all_urls>` permission. There is no way for an agent to see a tab you did not explicitly share.
+For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
@@ -358,12 +358,13 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 ## Comparison
 
 ABG is not trying to replace Playwright or browser test runners. Use it when the browser session
-already exists: you are logged in, looking at the real page, and want to hand only that explicitly
-shared tab to an AI agent or CLI workflow.
+already exists: you are logged in, looking at the real page, and want to hand a selected tab, or an
+explicitly isolated all-tabs profile, to an AI agent or CLI workflow.
 
 Use **ABG** for:
 
 - inspecting or operating a tab you are already using in your normal Chrome profile
+- sandbox Chrome profiles where exposing every tab is intentional but Playwright-owned sessions are inconvenient
 - AI-assisted support/debugging where per-tab consent and audit logs matter
 - quick shell-driven reads, screenshots, table extraction, network inspection, and small operations
 - workflows where the agent should not receive a global browser context or a remote-debugging port
@@ -378,21 +379,22 @@ Use **Playwright / browser test tooling** for:
 | Project | Approach | What ABG offers that this doesn't |
 |---|---|---|
 | `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, OSS, per-tab consent |
-| `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab consent (you choose which tabs) |
-| `BrowserMCP` | Extension bridge, Playwright API | Per-tab consent |
+| `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab by default; optional all-tabs only after local opt-in |
+| `BrowserMCP` | Extension bridge, Playwright API | Existing Chrome sessions with per-tab default and optional all-tabs profile mode |
 | `chrome-devtools-mcp` (Google) | CDP, requires `--remote-debugging-port` | Works with your everyday Chrome profile (Chrome 136+ blocks the CDP path) |
 | `vercel-labs/agent-browser` | Spawns Chrome for Testing | Uses the tab you're already looking at, with your logins, in your context |
 | `Playwright MCP` (Microsoft) | Dedicated browser, structured snapshots | Per-tab consent on your everyday browser |
 
 The distinction is practical: Playwright is excellent when you want a repeatable browser that the
-automation owns; ABG is for safely exposing one human-owned tab to an agent, with JSON output,
-local-only transport, and a visible audit trail.
+automation owns; ABG is for safely exposing human-owned browser state to an agent, with per-tab
+sharing by default, an explicit all-tabs profile mode for sandboxes, JSON output, local-only
+transport, and a visible audit trail.
 
 ### Feature parity for autonomous agents
 
 | Capability | ABG | Vercel agent-browser / Playwright | ABG boundary |
 |---|---|---|---|
-| Existing logged-in browser session | Implemented via explicit shared tabs | Usually launched or framework-owned browser contexts | ABG never exposes unshared tabs |
+| Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
 | Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
 | Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` |
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
@@ -402,7 +404,7 @@ local-only transport, and a visible audit trail.
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
 | General JavaScript eval | `eval --approve` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval, exact script display, audit summary, result size cap |
-| Global browser control | Out of scope | Common in automation frameworks | Per-tab consent, origin revoke, local audit log |
+| Global browser visibility | Optional all-tabs profile mode | Common in automation frameworks | Off by default, local opt-in, removable optional permission, audit log |
 
 ABG treats general-purpose JavaScript eval as an explicit escape hatch, not the default automation
 surface. Prefer named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`, or
@@ -416,8 +418,9 @@ readiness predicates and returns only success or timeout state, not arbitrary ex
 Currently shipped:
 
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
-- ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
+- ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
+- ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
 - ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
@@ -528,7 +531,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.9 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.3.10 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
@@ -540,13 +543,13 @@ License is not yet decided. The repository is published as source for the author
 
 ## 日本語サマリ
 
-**「いま開いてるタブだけ、AI に渡す。」**
+**「いま開いてるタブを、明示的に AI に渡す。」**
 
-普段使いの Chrome に入れる軽量拡張と、Mac メニューバーに常駐する小さな .app + `abg` CLI。ユーザーが明示的に「このタブを共有」とした **そのタブだけ** が、Claude Code などの AI コーディングエージェントから見える。
+普段使いの Chrome に入れる軽量拡張と、Mac メニューバーに常駐する小さな .app + `abg` CLI。デフォルトでは、ユーザーが明示的に「このタブを共有」とした **そのタブだけ** が、Claude Code などの AI コーディングエージェントから見える。隔離プロファイルや sandbox マシンでは、popup から all-tabs mode を明示的に ON にできる。
 
 ### コア思想
 
-1. **per-tab 明示許可** — タブ単位の許可。`<all_urls>` なし。`activeTab` のみ
+1. **per-tab 明示許可がデフォルト** — 通常はタブ単位の許可。`host_permissions` は空。隔離プロファイル用 all-tabs mode のみ optional `<all_urls>` を要求
 2. **OSS / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
 3. **CLI + Skill が primary** — MCP より先に CLI。シェルがあれば任意のエージェントから使える
 4. **失効は明示的** — オリジン遷移 / タブクローズ / 明示解除。タイムアウトはオプション

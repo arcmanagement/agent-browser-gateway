@@ -19,7 +19,7 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.3.9") { [weak self] method, params in
+    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.3.10") { [weak self] method, params in
         guard let self else {
             throw PluginTabAPIError.dispatcherUnavailable
         }
@@ -90,21 +90,32 @@ final class GatewayCoordinator: ObservableObject {
             if let kind = browserKind, !kind.isEmpty {
                 extensionBrowsers[extensionId] = kind
             }
-        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt):
+        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode):
             permittedTabs.removeAll { $0.extensionId == extensionId && $0.tabId == tabId }
-            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: Date(), expiresAt: expiresAt))
-            Task { await auditLog.log(action: "permit", extensionId: extensionId, tabId: tabId, url: url) }
+            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: Date(), expiresAt: expiresAt, accessMode: accessMode ?? "manual"))
+            Task {
+                await auditLog.log(
+                    action: "permit",
+                    extensionId: extensionId,
+                    tabId: tabId,
+                    url: url,
+                    details: ["accessMode": AnyCodable(accessMode ?? "manual")]
+                )
+            }
         case .tabRevoked(let tabId, let reason):
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
                 Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": AnyCodable(reason)]) }
             }
-        case .tabUpdated(let tabId, let url, let title, let origin):
+        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 permittedTabs[idx].url = url
                 permittedTabs[idx].title = title
                 permittedTabs[idx].origin = origin
+                if let accessMode {
+                    permittedTabs[idx].accessMode = accessMode
+                }
             }
         case .tabClosed(let tabId):
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
@@ -530,6 +541,7 @@ final class GatewayCoordinator: ObservableObject {
             "title": tab.title,
             "origin": tab.origin,
             "permittedAt": ISO8601DateFormatter().string(from: tab.permittedAt),
+            "accessMode": tab.accessMode,
         ]
         if let label = extensionProfiles[tab.extensionId] { dict["profile"] = label }
         if let kind = extensionBrowsers[tab.extensionId] { dict["browser"] = kind }

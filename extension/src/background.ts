@@ -13,10 +13,12 @@ import type {
   GatewayCommand,
   OperationMethod,
   PopupToBackground,
+  TabAccessMode,
 } from "./types.js";
 
 const WS_URL = "ws://127.0.0.1:8765/ws";
-const VERSION = "0.3.9";
+const VERSION = "0.3.10";
+const ALL_URLS_ORIGINS = ["<all_urls>"];
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -26,6 +28,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   operationsRequireApproval: true,
   evalEnabled: false,
   profileLabel: "",
+  allTabsAccessEnabled: false,
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
@@ -59,6 +62,7 @@ type PermittedTab = {
   origin: string;
   permittedAt: number;
   expiresAt?: number;
+  accessMode: TabAccessMode;
 };
 
 type OperationCommand = GatewayCommand & { method: OperationMethod };
@@ -130,6 +134,7 @@ let reconnectTimer: number | null = null;
   extensionId = await getOrCreateExtensionId();
   await ensureSettingsStored();
   await restoreState();
+  await reconcileAllTabsAccess();
   ensureWS();
 })();
 
@@ -142,6 +147,7 @@ chrome.runtime.onStartup.addListener(async () => {
   extensionId = await getOrCreateExtensionId();
   await ensureSettingsStored();
   await restoreState();
+  await reconcileAllTabsAccess();
   ensureWS();
 });
 
@@ -170,6 +176,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     "operationsRequireApproval",
     "evalEnabled",
     "profileLabel",
+    "allTabsAccessEnabled",
   ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
@@ -179,14 +186,24 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.evalEnabled === "boolean" ? stored.evalEnabled : DEFAULT_SETTINGS.evalEnabled;
   const profileLabel =
     typeof stored.profileLabel === "string" ? stored.profileLabel : DEFAULT_SETTINGS.profileLabel;
+  const allTabsAccessEnabled =
+    typeof stored.allTabsAccessEnabled === "boolean"
+      ? stored.allTabsAccessEnabled
+      : DEFAULT_SETTINGS.allTabsAccessEnabled;
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
-    typeof stored.profileLabel !== "string"
+    typeof stored.profileLabel !== "string" ||
+    typeof stored.allTabsAccessEnabled !== "boolean"
   ) {
-    await chrome.storage.local.set({ operationsRequireApproval, evalEnabled, profileLabel });
+    await chrome.storage.local.set({
+      operationsRequireApproval,
+      evalEnabled,
+      profileLabel,
+      allTabsAccessEnabled,
+    });
   }
-  return { operationsRequireApproval, evalEnabled, profileLabel };
+  return { operationsRequireApproval, evalEnabled, profileLabel, allTabsAccessEnabled };
 }
 
 async function ensureSettingsStored(): Promise<void> {
@@ -225,6 +242,37 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
   return settings;
 }
 
+async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  if (value && !(await hasAllUrlsPermission())) {
+    throw new GatewayError(
+      "all_tabs_permission_required",
+      "Chrome has not granted ABG optional access to all sites in this profile.",
+    );
+  }
+  const settings: ExtensionSettings = { ...current, allTabsAccessEnabled: value };
+  await chrome.storage.local.set(settings);
+  if (value) {
+    await syncAllTabsAccess({ emit: true });
+  } else {
+    await revokeAllTabsEntries("all_tabs_disabled");
+  }
+  return settings;
+}
+
+async function hasAllUrlsPermission(): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: ALL_URLS_ORIGINS });
+  } catch {
+    return false;
+  }
+}
+
+async function isAllTabsAccessActive(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.allTabsAccessEnabled && (await hasAllUrlsPermission());
+}
+
 async function isIncognitoAccessAllowed(): Promise<boolean> {
   try {
     return await chrome.extension.isAllowedIncognitoAccess();
@@ -257,7 +305,7 @@ async function restoreState(): Promise<void> {
   const obj = stored.permittedTabs as Record<string, PermittedTab> | undefined;
   if (!obj) return;
   for (const [k, v] of Object.entries(obj)) {
-    permittedTabs.set(Number(k), v);
+    permittedTabs.set(Number(k), { ...v, accessMode: v.accessMode ?? "manual" });
   }
 }
 
@@ -282,16 +330,10 @@ function ensureWS(): void {
       profileLabel: profileLabel || undefined,
       browserKind: detectBrowserKind(),
     });
+    await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
     for (const [tabId, p] of permittedTabs) {
-      sendWS({
-        type: "tab_permitted",
-        tabId,
-        url: p.url,
-        title: p.title,
-        origin: p.origin,
-        expiresAt: p.expiresAt ? new Date(p.expiresAt).toISOString() : undefined,
-      });
+      sendTabPermitted(tabId, p);
     }
   });
   ws.addEventListener("message", (ev) => {
@@ -344,6 +386,159 @@ function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
 
 // ---------- Tab permission ----------
 
+function sendTabPermitted(tabId: number, tab: PermittedTab): void {
+  sendWS({
+    type: "tab_permitted",
+    tabId,
+    url: tab.url,
+    title: tab.title,
+    origin: tab.origin,
+    expiresAt: tab.expiresAt ? new Date(tab.expiresAt).toISOString() : undefined,
+    accessMode: tab.accessMode,
+  });
+}
+
+function sendTabUpdated(tabId: number, tab: PermittedTab): void {
+  sendWS({
+    type: "tab_updated",
+    tabId,
+    url: tab.url,
+    title: tab.title,
+    origin: tab.origin,
+    accessMode: tab.accessMode,
+  });
+}
+
+function isShareableTabUrl(url: string | undefined): url is string {
+  if (!url) return false;
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "http:" || protocol === "https:" || protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
+function originForUrl(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+}
+
+async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.allTabsAccessEnabled) {
+    await revokeAllTabsEntries("all_tabs_disabled");
+    return;
+  }
+  if (!(await hasAllUrlsPermission())) {
+    await revokeAllTabsEntries("all_tabs_permission_missing");
+    return;
+  }
+  await syncAllTabsAccess(options);
+}
+
+async function syncAllTabsAccess(
+  options: { emit?: boolean } = {},
+): Promise<{ shareableTabCount: number; skippedTabCount: number }> {
+  const emit = options.emit ?? true;
+  const tabs = await chrome.tabs.query({});
+  const shareableTabIds = new Set<number>();
+  let skippedTabCount = 0;
+
+  for (const tab of tabs) {
+    if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) {
+      skippedTabCount += 1;
+      continue;
+    }
+    shareableTabIds.add(tab.id);
+    await upsertAllTabsEntry(tab, emit);
+  }
+
+  const staleAllTabs = Array.from(permittedTabs.entries())
+    .filter(([tabId, tab]) => tab.accessMode === "all_tabs" && !shareableTabIds.has(tabId))
+    .map(([tabId]) => tabId);
+  for (const tabId of staleAllTabs) {
+    await revokeTab(tabId, "all_tabs_not_shareable");
+  }
+
+  await saveState();
+  return { shareableTabCount: shareableTabIds.size, skippedTabCount };
+}
+
+async function allTabsAccessState(): Promise<{
+  permissionGranted: boolean;
+  active: boolean;
+  shareableTabCount: number;
+  skippedTabCount: number;
+}> {
+  const [settings, permissionGranted, tabs] = await Promise.all([
+    getSettings(),
+    hasAllUrlsPermission(),
+    chrome.tabs.query({}).catch(() => [] as chrome.tabs.Tab[]),
+  ]);
+  let shareableTabCount = 0;
+  let skippedTabCount = 0;
+  for (const tab of tabs) {
+    if (typeof tab.id === "number" && isShareableTabUrl(tab.url)) shareableTabCount += 1;
+    else skippedTabCount += 1;
+  }
+  return {
+    permissionGranted,
+    active: settings.allTabsAccessEnabled && permissionGranted,
+    shareableTabCount,
+    skippedTabCount,
+  };
+}
+
+async function upsertAllTabsEntry(tab: chrome.tabs.Tab, emit: boolean): Promise<void> {
+  if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) return;
+  const tabId = tab.id;
+  const url = tab.url;
+  const origin = originForUrl(url);
+  const title = tab.title ?? "";
+  const existing = permittedTabs.get(tabId);
+
+  if (existing?.accessMode === "manual" && existing.origin === origin) {
+    existing.url = url;
+    existing.title = title;
+    permittedTabs.set(tabId, existing);
+    if (emit) sendTabUpdated(tabId, existing);
+    await updateBadge(tabId);
+    return;
+  }
+
+  if (existing?.accessMode === "manual") {
+    sendWS({ type: "tab_revoked", tabId, reason: "manual_origin_changed_during_all_tabs" });
+  }
+
+  const entry: PermittedTab = {
+    url,
+    title,
+    origin,
+    permittedAt: existing?.permittedAt ?? Date.now(),
+    accessMode: "all_tabs",
+  };
+  permittedTabs.set(tabId, entry);
+
+  if (emit) {
+    if (existing?.accessMode === "all_tabs") sendTabUpdated(tabId, entry);
+    else sendTabPermitted(tabId, entry);
+  }
+  await updateBadge(tabId);
+}
+
+async function revokeAllTabsEntries(reason: string): Promise<void> {
+  const tabIds = Array.from(permittedTabs.entries())
+    .filter(([, tab]) => tab.accessMode === "all_tabs")
+    .map(([tabId]) => tabId);
+  for (const tabId of tabIds) {
+    await revokeTab(tabId, reason);
+  }
+}
+
 async function permitTab(tabId: number): Promise<void> {
   const tab = await chrome.tabs.get(tabId);
   if (!tab.url) throw new Error("tab has no URL");
@@ -354,17 +549,18 @@ async function permitTab(tabId: number): Promise<void> {
     );
   }
   const url = tab.url;
-  const origin = new URL(url).origin;
+  const origin = originForUrl(url);
   const title = tab.title ?? "";
   const entry: PermittedTab = {
     url,
     title,
     origin,
     permittedAt: Date.now(),
+    accessMode: "manual",
   };
   permittedTabs.set(tabId, entry);
   await saveState();
-  sendWS({ type: "tab_permitted", tabId, url, title, origin });
+  sendTabPermitted(tabId, entry);
   await attachDebugger(tabId);
   await updateBadge(tabId);
 }
@@ -382,21 +578,45 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
 }
 
 async function updateBadge(tabId: number): Promise<void> {
-  const isPermitted = permittedTabs.has(tabId);
+  const tab = permittedTabs.get(tabId);
   try {
-    await chrome.action.setBadgeText({ tabId, text: isPermitted ? "ON" : "" });
-    if (isPermitted) {
-      await chrome.action.setBadgeBackgroundColor({ tabId, color: "#34c759" });
+    await chrome.action.setBadgeText({
+      tabId,
+      text: tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
+    });
+    if (tab) {
+      await chrome.action.setBadgeBackgroundColor({
+        tabId,
+        color: tab.accessMode === "all_tabs" ? "#0a84ff" : "#34c759",
+      });
     }
   } catch {}
 }
 
 // ---------- Tab lifecycle hooks ----------
 
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if ((await isAllTabsAccessActive()) && isShareableTabUrl(tab.url)) {
+    await upsertAllTabsEntry(tab, true);
+    await saveState();
+  }
+});
+
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  const currentUrl = tab.url ?? changeInfo.url;
+  if ((await isAllTabsAccessActive()) && isShareableTabUrl(currentUrl)) {
+    await upsertAllTabsEntry({ ...tab, id: tabId, url: currentUrl }, true);
+    await saveState();
+    return;
+  }
+
   if (!permittedTabs.has(tabId)) return;
   const old = permittedTabs.get(tabId);
   if (!old) return;
+  if (old.accessMode === "all_tabs") {
+    await revokeTab(tabId, "all_tabs_not_shareable");
+    return;
+  }
   if (changeInfo.url) {
     let newOrigin = "";
     try {
@@ -410,12 +630,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (tab.title) old.title = tab.title;
     permittedTabs.set(tabId, old);
     await saveState();
-    sendWS({ type: "tab_updated", tabId, url: old.url, title: old.title, origin: old.origin });
+    sendTabUpdated(tabId, old);
   } else if (changeInfo.title) {
     old.title = changeInfo.title;
     permittedTabs.set(tabId, old);
     await saveState();
-    sendWS({ type: "tab_updated", tabId, url: old.url, title: old.title, origin: old.origin });
+    sendTabUpdated(tabId, old);
   }
 });
 
@@ -628,6 +848,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, await printPagePDF(tabId));
     } else if (cmd.method === "console") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
       const logs = consoleBuffers.get(tabId) ?? [];
       reply(cmd.id, { logs });
     } else if (cmd.method === "table") {
@@ -3879,13 +4100,16 @@ chrome.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => 
 
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
   if (msg.type === "get_state") {
-    const [activeTab, incognitoAccessAllowed] = await Promise.all([
+    await reconcileAllTabsAccess();
+    const [activeTab, incognitoAccessAllowed, allTabsAccess] = await Promise.all([
       chrome.tabs.get(msg.tabId).catch(() => undefined),
       isIncognitoAccessAllowed(),
+      allTabsAccessState(),
     ]);
-    const sharedTabs: { tabId: number; title: string; url: string }[] = [];
+    const sharedTabs: { tabId: number; title: string; url: string; accessMode: TabAccessMode }[] =
+      [];
     for (const [tabId, p] of permittedTabs) {
-      sharedTabs.push({ tabId, title: p.title, url: p.url });
+      sharedTabs.push({ tabId, title: p.title, url: p.url, accessMode: p.accessMode });
     }
     const annotationState = permittedTabs.has(msg.tabId)
       ? await manageAnnotationMode(msg.tabId, { action: "list" }).catch(() => ({
@@ -3904,6 +4128,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
         incognitoAccessAllowed,
       },
       sharedTabs,
+      allTabsAccess,
       settings: await getSettings(),
       annotationState: {
         enabled: annotationState.enabled,
@@ -3929,6 +4154,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "set_profile_label") {
     await setProfileLabel(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_all_tabs_access") {
+    await setAllTabsAccessEnabled(msg.value);
     return { type: "ok" };
   }
   if (msg.type === "annotation_action") {
@@ -3972,6 +4201,9 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
+    return { type: "set_all_tabs_access", value: rawMsg.value };
   }
   if (
     rawMsg.type === "annotation_action" &&

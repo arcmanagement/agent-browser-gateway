@@ -10,7 +10,8 @@ public sealed record PermittedTab(
     string Title,
     string Origin,
     DateTimeOffset PermittedAt,
-    DateTimeOffset? ExpiresAt = null)
+    DateTimeOffset? ExpiresAt = null,
+    string AccessMode = "manual")
 {
     public bool IsExpired => ExpiresAt is not null && DateTimeOffset.UtcNow >= ExpiresAt.Value;
 }

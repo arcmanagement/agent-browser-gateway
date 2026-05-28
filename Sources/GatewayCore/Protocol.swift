@@ -10,8 +10,9 @@ public struct PermittedTab: Codable, Hashable, Sendable {
     public var origin: String
     public var permittedAt: Date
     public var expiresAt: Date?
+    public var accessMode: String
 
-    public init(extensionId: String, tabId: Int, url: String, title: String, origin: String, permittedAt: Date, expiresAt: Date? = nil) {
+    public init(extensionId: String, tabId: Int, url: String, title: String, origin: String, permittedAt: Date, expiresAt: Date? = nil, accessMode: String = "manual") {
         self.extensionId = extensionId
         self.tabId = tabId
         self.url = url
@@ -19,6 +20,7 @@ public struct PermittedTab: Codable, Hashable, Sendable {
         self.origin = origin
         self.permittedAt = permittedAt
         self.expiresAt = expiresAt
+        self.accessMode = accessMode
     }
 
     public var isExpired: Bool {
@@ -31,14 +33,14 @@ public struct PermittedTab: Codable, Hashable, Sendable {
 
 public enum ExtensionMessage: Codable, Sendable {
     case hello(extensionId: String, version: String, profileLabel: String?, browserKind: String?)
-    case tabPermitted(tabId: Int, url: String, title: String, origin: String, expiresAt: Date?)
+    case tabPermitted(tabId: Int, url: String, title: String, origin: String, expiresAt: Date?, accessMode: String?)
     case tabRevoked(tabId: Int, reason: String)
-    case tabUpdated(tabId: Int, url: String, title: String, origin: String)
+    case tabUpdated(tabId: Int, url: String, title: String, origin: String, accessMode: String?)
     case tabClosed(tabId: Int)
     case runtimeEvent(tabId: Int, event: AnyCodable)
     case response(id: String, result: AnyCodable?, error: ErrorPayload?)
 
-    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, reason, event, id, result, error }
+    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error }
     enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", response }
 
     public init(from decoder: Decoder) throws {
@@ -58,7 +60,8 @@ public enum ExtensionMessage: Codable, Sendable {
                 url: try c.decode(String.self, forKey: .url),
                 title: try c.decode(String.self, forKey: .title),
                 origin: try c.decode(String.self, forKey: .origin),
-                expiresAt: try c.decodeIfPresent(Date.self, forKey: .expiresAt)
+                expiresAt: try c.decodeIfPresent(Date.self, forKey: .expiresAt),
+                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode)
             )
         case .tabRevoked:
             self = .tabRevoked(
@@ -70,7 +73,8 @@ public enum ExtensionMessage: Codable, Sendable {
                 tabId: try c.decode(Int.self, forKey: .tabId),
                 url: try c.decode(String.self, forKey: .url),
                 title: try c.decode(String.self, forKey: .title),
-                origin: try c.decode(String.self, forKey: .origin)
+                origin: try c.decode(String.self, forKey: .origin),
+                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode)
             )
         case .tabClosed:
             self = .tabClosed(tabId: try c.decode(Int.self, forKey: .tabId))
@@ -97,23 +101,25 @@ public enum ExtensionMessage: Codable, Sendable {
             try c.encode(version, forKey: .version)
             try c.encodeIfPresent(profileLabel, forKey: .profileLabel)
             try c.encodeIfPresent(browserKind, forKey: .browserKind)
-        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt):
+        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode):
             try c.encode(MsgType.tabPermitted, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(url, forKey: .url)
             try c.encode(title, forKey: .title)
             try c.encode(origin, forKey: .origin)
             try c.encodeIfPresent(expiresAt, forKey: .expiresAt)
+            try c.encodeIfPresent(accessMode, forKey: .accessMode)
         case .tabRevoked(let tabId, let reason):
             try c.encode(MsgType.tabRevoked, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(reason, forKey: .reason)
-        case .tabUpdated(let tabId, let url, let title, let origin):
+        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
             try c.encode(MsgType.tabUpdated, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(url, forKey: .url)
             try c.encode(title, forKey: .title)
             try c.encode(origin, forKey: .origin)
+            try c.encodeIfPresent(accessMode, forKey: .accessMode)
         case .tabClosed(let tabId):
             try c.encode(MsgType.tabClosed, forKey: .type)
             try c.encode(tabId, forKey: .tabId)

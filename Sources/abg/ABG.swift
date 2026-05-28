@@ -330,12 +330,16 @@ func tabsWithRefs(_ value: Any?) -> [[String: Any]] {
 
 func compactTabs(_ tabs: [[String: Any]]) -> [[String: Any]] {
     tabs.map { tab in
-        [
+        var compact: [String: Any] = [
             "ref": tab["ref"] ?? "",
             "tabId": tab["tabId"] ?? 0,
             "title": tab["title"] ?? "",
             "url": tab["url"] ?? "",
         ]
+        if let accessMode = tab["accessMode"] {
+            compact["accessMode"] = accessMode
+        }
+        return compact
     }
 }
 
@@ -531,7 +535,8 @@ struct Tabs: AsyncParsableCommand {
                 print("Then run: abg tabs --compact")
             } else {
                 for tab in outputTabs {
-                    print("\(tab["ref"] ?? "")\t\(tab["tabId"] ?? "")\t[\(tab["title"] ?? "")]\t\(tab["url"] ?? "")")
+                    let mode = (tab["accessMode"] as? String).map { "\($0)\t" } ?? ""
+                    print("\(tab["ref"] ?? "")\t\(tab["tabId"] ?? "")\t\(mode)[\(tab["title"] ?? "")]\t\(tab["url"] ?? "")")
                 }
             }
         default:
