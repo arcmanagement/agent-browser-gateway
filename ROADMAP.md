@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-27.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-28.
 
-Current repo version: **v0.3.9**.
+Current repo version: **v0.3.10**.
 
 ## Shipped
+
+### v0.3.10 — All-tabs profile mode and public docs (2026-05-28)
+- Added optional all-tabs profile access for isolated Chrome profiles and sandbox machines, with Chrome's optional `<all_urls>` permission requested only after local user opt-in.
+- Plumbed `accessMode` through the extension, Gateway protocol, CLI compact tab lists, audit details, and Windows protocol parity so agents can distinguish `manual` from `all_tabs` context.
+- Added the public Docs page and refreshed README, SECURITY, Chrome Web Store notes, plugin docs, and bundled Claude/Codex skill guidance for the updated trust model.
 
 ### v0.3.9 — Incognito access guidance (2026-05-27)
 - Added Chrome incognito access detection to the extension popup so users can see when Chrome has not allowed ABG in incognito windows.
@@ -36,7 +41,7 @@ Current repo version: **v0.3.9**.
 
 ### v0.1 — read-only baseline (2026-05-01)
 - macOS 14+ menubar app (Swift / SwiftUI `MenuBarExtra`)
-- Chrome MV3 extension (`activeTab` + `scripting` + `debugger` + `tabs` + `storage` + `alarms`, **no `host_permissions`**)
+- Chrome MV3 extension (`activeTab` + `scripting` + `debugger` + `tabs` + `storage` + `alarms`, no default `host_permissions`, optional `<all_urls>` for all-tabs profile mode)
 - Per-tab consent with auto-revoke on origin change / tab close / explicit revoke
 - Read tools: `read` / `screenshot` / `console`
 - `abg` CLI (Swift Argument Parser)

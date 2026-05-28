@@ -17,4 +17,18 @@ public sealed class ProtocolTests
         Assert.Equal("read_tab", request!.Method);
         Assert.Equal(42, request.Params.GetInt("tabId"));
     }
+
+    [Fact]
+    public void PermittedTabDefaultsToManualAccessMode()
+    {
+        var tab = new PermittedTab(
+            "extension-1",
+            42,
+            "https://example.com/",
+            "Example",
+            "https://example.com",
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal("manual", tab.AccessMode);
+    }
 }

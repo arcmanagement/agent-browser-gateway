@@ -102,6 +102,7 @@ public sealed class GatewayHost
                 var url = root.GetString("url") ?? "";
                 var title = root.GetString("title") ?? "";
                 var origin = root.GetString("origin") ?? "";
+                var accessMode = root.GetString("accessMode") ?? "manual";
                 DateTimeOffset? expiresAt = null;
                 var expires = root.GetString("expiresAt");
                 if (!string.IsNullOrWhiteSpace(expires) && DateTimeOffset.TryParse(expires, out var parsed))
@@ -111,9 +112,15 @@ public sealed class GatewayHost
                 lock (_gate)
                 {
                     _permittedTabs.RemoveAll(tab => tab.ExtensionId == connection.ExtensionId && tab.TabId == tabId.Value);
-                    _permittedTabs.Add(new PermittedTab(connection.ExtensionId, tabId.Value, url, title, origin, DateTimeOffset.UtcNow, expiresAt));
+                    _permittedTabs.Add(new PermittedTab(connection.ExtensionId, tabId.Value, url, title, origin, DateTimeOffset.UtcNow, expiresAt, accessMode));
                 }
-                await _auditLog.LogAsync("permit", connection.ExtensionId, tabId, url, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await _auditLog.LogAsync(
+                    "permit",
+                    connection.ExtensionId,
+                    tabId,
+                    url,
+                    details: new Dictionary<string, object?> { ["accessMode"] = accessMode },
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
                 OnStateChanged();
                 break;
             }
@@ -145,11 +152,13 @@ public sealed class GatewayHost
                     if (index >= 0)
                     {
                         var current = _permittedTabs[index];
+                        var accessMode = root.GetString("accessMode") ?? current.AccessMode;
                         _permittedTabs[index] = current with
                         {
                             Url = root.GetString("url") ?? current.Url,
                             Title = root.GetString("title") ?? current.Title,
-                            Origin = root.GetString("origin") ?? current.Origin
+                            Origin = root.GetString("origin") ?? current.Origin,
+                            AccessMode = accessMode
                         };
                     }
                 }
@@ -512,7 +521,8 @@ public sealed class GatewayHost
                     ["url"] = tab.Url,
                     ["title"] = tab.Title,
                     ["origin"] = tab.Origin,
-                    ["permittedAt"] = tab.PermittedAt.ToString("O")
+                    ["permittedAt"] = tab.PermittedAt.ToString("O"),
+                    ["accessMode"] = tab.AccessMode
                 };
                 if (tab.ExpiresAt is not null) dict["expiresAt"] = tab.ExpiresAt.Value.ToString("O");
                 if (!string.IsNullOrWhiteSpace(extension?.Profile)) dict["profile"] = extension.Profile;

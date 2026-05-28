@@ -6,6 +6,8 @@ const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElem
 const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
 const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
 const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
+const allTabsToggleEl = document.getElementById("allTabsToggle") as HTMLInputElement;
+const allTabsNoteEl = document.getElementById("allTabsNote") as HTMLDivElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
@@ -21,6 +23,14 @@ async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
 async function openExtensionSettings(): Promise<void> {
   await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
   window.close();
+}
+
+async function requestAllTabsPermission(): Promise<boolean> {
+  return await chrome.permissions.request({ origins: ["<all_urls>"] });
+}
+
+async function removeAllTabsPermission(): Promise<void> {
+  await chrome.permissions.remove({ origins: ["<all_urls>"] }).catch(() => false);
 }
 
 async function refresh(): Promise<void> {
@@ -70,6 +80,42 @@ async function refresh(): Promise<void> {
     evalToggleEl.disabled = false;
   };
 
+  allTabsToggleEl.checked = state.allTabsAccess.active;
+  allTabsToggleEl.disabled = false;
+  allTabsNoteEl.textContent = state.allTabsAccess.active
+    ? `${state.allTabsAccess.shareableTabCount} tabs are shared. Internal browser pages are skipped.`
+    : state.settings.allTabsAccessEnabled && !state.allTabsAccess.permissionGranted
+      ? "Chrome permission is missing. Toggle this on to re-authorize."
+      : "For sandbox profiles only. Chrome will request optional access to all sites.";
+  allTabsToggleEl.onchange = async () => {
+    const nextValue = allTabsToggleEl.checked;
+    allTabsToggleEl.disabled = true;
+    if (nextValue) {
+      const granted = await requestAllTabsPermission();
+      if (!granted) {
+        allTabsToggleEl.checked = false;
+        allTabsNoteEl.textContent = "All-tabs permission was not granted.";
+        allTabsToggleEl.disabled = false;
+        return;
+      }
+    }
+    const response = await send({
+      type: "set_all_tabs_access",
+      value: nextValue,
+    });
+    if (response.type === "error") {
+      allTabsToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+      if (nextValue) await removeAllTabsPermission();
+      allTabsToggleEl.disabled = false;
+      return;
+    } else if (!nextValue) {
+      await removeAllTabsPermission();
+    }
+    allTabsToggleEl.disabled = false;
+    await refresh();
+  };
+
   // Only seed the profile input once per popup open so the user's typing isn't clobbered.
   if (document.activeElement !== profileLabelEl) {
     profileLabelEl.value = state.settings.profileLabel;
@@ -87,12 +133,59 @@ async function refresh(): Promise<void> {
 
   const incognitoAccessAllowed = state.activeTab.incognitoAccessAllowed;
   const incognitoBlocked = state.activeTab.incognito && !incognitoAccessAllowed;
+  const allTabsActive = state.allTabsAccess.active;
   incognitoNoticeEl.hidden = incognitoAccessAllowed;
   openExtensionsBtn.onclick = async () => {
     await openExtensionSettings();
   };
 
-  if (incognitoBlocked) {
+  if (allTabsActive) {
+    actionBtn.textContent = "Disable all-tabs access";
+    actionBtn.className = "danger";
+    actionBtn.disabled = false;
+    actionBtn.onclick = async () => {
+      actionBtn.disabled = true;
+      allTabsToggleEl.checked = false;
+      const response = await send({ type: "set_all_tabs_access", value: false });
+      if (response.type === "error") {
+        statusEl.textContent = `error: ${response.message}`;
+        actionBtn.disabled = false;
+        return;
+      }
+      await removeAllTabsPermission();
+      await refresh();
+    };
+    annotationBtn.disabled = !state.permitted;
+    annotationBtn.textContent = state.annotationState.enabled
+      ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Done`
+      : state.annotationState.count > 0
+        ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Resume`
+        : "Annotate this tab";
+    annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
+    annotationBtn.onclick = async () => {
+      if (!state.permitted) return;
+      annotationBtn.disabled = true;
+      const response = await send({
+        type: "annotation_action",
+        tabId,
+        action: state.annotationState.enabled ? "stop" : "start",
+      });
+      if (response.type === "error") {
+        statusEl.textContent = `error: ${response.message}`;
+        annotationBtn.disabled = false;
+        return;
+      }
+      window.close();
+      await refresh();
+    };
+    clearAnnotationsBtn.disabled = !state.permitted || state.annotationState.count === 0;
+    clearAnnotationsBtn.onclick = async () => {
+      if (!state.permitted) return;
+      clearAnnotationsBtn.disabled = true;
+      await send({ type: "annotation_action", tabId, action: "clear" });
+      await refresh();
+    };
+  } else if (incognitoBlocked) {
     actionBtn.textContent = "Enable incognito access first";
     actionBtn.className = "secondary";
     actionBtn.disabled = false;
@@ -165,7 +258,9 @@ async function refresh(): Promise<void> {
     const items = state.sharedTabs.map((t) => {
       const item = document.createElement("div");
       item.className = "shared-item";
-      item.textContent = `🔓 [${t.tabId}] ${t.title || t.url}`;
+      item.textContent = `${t.accessMode === "all_tabs" ? "🌐" : "🔓"} [${t.tabId}] ${
+        t.title || t.url
+      }`;
       return item;
     });
     sharedListEl.replaceChildren(heading, ...items);

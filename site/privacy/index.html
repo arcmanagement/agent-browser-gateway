@@ -31,6 +31,7 @@
         </a>
         <nav class="nav-links" aria-label="Site links">
           <a href="../">Home</a>
+          <a href="../docs/">Docs</a>
           <a href="./" aria-current="page">Privacy</a>
         </nav>
       </div>
@@ -45,7 +46,7 @@
             This policy explains how Agent Browser Gateway handles browser data, extension
             permissions, local logs, and user choices.
           </p>
-          <p><strong>Last updated:</strong> May 4, 2026</p>
+          <p><strong>Last updated:</strong> May 28, 2026</p>
         </div>
       </section>
 
@@ -84,7 +85,10 @@
             <ul>
               <li>ABG does not collect analytics, telemetry, advertising identifiers, or crash reports.</li>
               <li>ABG does not sell user data.</li>
-              <li>ABG does not expose all tabs by default. A tab must be explicitly shared by the user.</li>
+              <li>
+                ABG does not expose all tabs by default. A tab must be explicitly shared by the
+                user, unless the user enables optional all-tabs mode for an isolated profile.
+              </li>
               <li>
                 Browser data requested through ABG is handled locally between the extension, the
                 macOS gateway, the CLI, and the agent process you authorize.
@@ -122,8 +126,8 @@
                   </tr>
                   <tr>
                     <td>Shared tab metadata</td>
-                    <td>Tab ID, title, URL, origin, sharing timestamp, optional expiration timestamp</td>
-                    <td>Track which tab has been explicitly shared and revoke access when needed</td>
+                    <td>Tab ID, title, URL, origin, access mode, sharing timestamp, optional expiration timestamp</td>
+                    <td>Track which tabs have been explicitly shared and revoke access when needed</td>
                     <td>Chrome session storage, gateway memory, and local audit log entries</td>
                   </tr>
                   <tr>
@@ -179,7 +183,9 @@
             <h2>4. Chrome extension permissions</h2>
             <p>
               ABG requests only the extension permissions needed for its user-facing local browser
-              sharing features. The extension declares no <code>host_permissions</code>.
+              sharing features. The extension declares no default <code>host_permissions</code>.
+              Optional <code>&lt;all_urls&gt;</code> access is requested only when the user enables
+              all-tabs mode from the extension popup.
             </p>
             <div class="data-table">
               <table>
@@ -217,6 +223,13 @@
                     <td><code>alarms</code></td>
                     <td>Keep the extension service worker connected to the local gateway while Chrome is running.</td>
                   </tr>
+                  <tr>
+                    <td><code>optional_host_permissions: &lt;all_urls&gt;</code></td>
+                    <td>
+                      Requested only when the user enables all-tabs mode for an isolated Chrome
+                      profile. It is removed when all-tabs mode is disabled.
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -246,8 +259,11 @@
             <ul>
               <li>The gateway listens on <code>127.0.0.1</code>, not on a public network interface.</li>
               <li>The gateway accepts WebSocket connections only from browser-extension origins.</li>
-              <li>The Chrome extension declares no <code>host_permissions</code>.</li>
-              <li>Sharing is scoped to explicitly permitted tabs and is revoked on origin change or tab close.</li>
+              <li>The Chrome extension declares no default <code>host_permissions</code>.</li>
+              <li>
+                Manual tab sharing is scoped to explicitly permitted tabs and is revoked on origin
+                change or tab close.
+              </li>
               <li>Operation approval mode is enabled by default for write actions.</li>
               <li>The gateway support and log directories are created as owner-only directories.</li>
               <li>The audit log file is created as an owner-readable and owner-writable file.</li>
@@ -286,7 +302,7 @@
             </p>
             <p>
               ABG uses browser data only to provide or improve its single purpose: user-authorized,
-              local, per-tab browser access for AI agent workflows. ABG does not use browser data for
+              local browser access for AI agent workflows. ABG does not use browser data for
               advertising, credit eligibility, resale, or unrelated profiling.
             </p>
           </section>
@@ -322,6 +338,7 @@
           </span>
           <span>
             <a href="mailto:contact@arcm.co.jp">Contact</a>
+            <a href="../docs/">Docs</a>
             <a href="../">Home</a>
           </span>
         </div>

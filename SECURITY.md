@@ -20,10 +20,10 @@ ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased
 
 ### What ABG defends against
 
-- **Prompt injection that tries to leak un-shared tabs.** The Gateway rejects any operation on a `tabId` that is not in the live permission list. The list is updated only by the extension on real `chrome.tabs.*` events or by explicit user action.
-- **Accidental over-sharing through navigation.** A permitted tab is automatically revoked when its origin changes.
+- **Prompt injection that tries to leak un-shared tabs.** The Gateway rejects any operation on a `tabId` that is not in the live permission list. The list is updated only by the extension on real `chrome.tabs.*` events or by explicit user action. In all-tabs profile mode, the explicit user action is the local popup toggle plus Chrome's optional permission prompt.
+- **Accidental over-sharing through navigation.** A manually permitted tab is automatically revoked when its origin changes. In all-tabs profile mode, navigation is intentionally tracked because the whole isolated profile is the selected boundary.
 - **Silent surveillance by an agent.** Every operation is appended to `~/Library/Logs/AgentBrowserGateway/audit.jsonl`. There is no code path that performs an extension command without an audit-log entry.
-- **Network exfiltration by ABG itself.** Gateway binds only `127.0.0.1`. The extension declares no `host_permissions`. There is no analytics / crash reporter / auto-update phone-home.
+- **Network exfiltration by ABG itself.** Gateway binds only `127.0.0.1`. The extension declares no default `host_permissions`; optional `<all_urls>` is requested only for all-tabs profile mode. There is no analytics / crash reporter / auto-update phone-home.
 - **Malicious websites trying to connect to the local Gateway.** The Gateway WebSocket rejects connections unless the handshake `Origin` is a browser-extension origin (`chrome-extension://`, `moz-extension://`, or `safari-web-extension://`). Normal websites cannot use ABG by opening `ws://127.0.0.1:8765/ws` from page JavaScript.
 
 ### What ABG does not defend against
@@ -41,7 +41,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 
 If a future PR violates any of these, it should be rejected:
 
-1. The Chrome extension's manifest never includes `<all_urls>` in `host_permissions`. `activeTab` is the only host-access path.
+1. The Chrome extension's manifest keeps `host_permissions` empty. `<all_urls>` may appear only in `optional_host_permissions`, and it must be requested from the popup only when the user enables all-tabs profile mode.
 2. The Gateway WebSocket / HTTP listener binds only `127.0.0.1`.
 3. The Gateway WebSocket accepts browser-extension origins only. Do not weaken the `Origin` allowlist to accept arbitrary `http://`, `https://`, `file://`, `null`, or missing origins.
 4. The CLI Unix socket is created with `chmod 0700`.

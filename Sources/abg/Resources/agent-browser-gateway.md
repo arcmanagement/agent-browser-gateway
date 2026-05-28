@@ -1,17 +1,19 @@
 ---
 name: agent-browser-gateway
-version: 0.3.9
-description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
+version: 0.3.10
+description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
 # Agent Browser Gateway
 
 ユーザーは Chrome 拡張アイコンをクリックして「このタブを共有」を**明示的に許可**したタブだけを、`abg` CLI 経由で参照できる。許可されていないタブには触れない (エラーになる)。
 
+例外として、隔離した Chrome プロファイル / sandbox マシンでは、拡張 popup の `Share all tabs in this profile` をユーザーが明示的に ON にできる。この場合のみ Chrome の optional `<all_urls>` 権限を要求し、`abg tabs` に `accessMode: "all_tabs"` のタブが並ぶ。普段使いプロファイルでは per-tab 明示許可を前提にする。
+
 ## 基本フロー
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
-2. `abg tabs --compact` で共有中タブの ref (`t1` など) と URL を確認
+2. `abg tabs --compact` で共有中タブの ref (`t1` など)、URL、`accessMode` を確認
 3. 必要に応じて `abg read <ref>` / `abg screenshot <ref>` / `abg annotate <ref>` / `abg console <ref>` を呼ぶ
 4. タブが共有されていない場合は、ユーザーに「Chrome 拡張のアイコンをクリックして対象タブを共有してください」と案内する
 
@@ -20,7 +22,7 @@ description: 普段使いの Chrome タブを per-tab 明示許可で AI に渡�
 ```bash
 # 観測系
 abg status                              # Gateway 起動状況、接続中拡張、共有タブ数
-abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url)
+abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url/accessMode)
 abg inspect                             # status + tabs をまとめて確認
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --selector "<css>" --editable-value
@@ -221,7 +223,7 @@ abg.registerCommand("clear-and-paste", async function (args, context) {
 ```
 
 Plugin-issued tab actions use the same Gateway dispatch path as normal ABG primitives. Do not shell
-out from plugin JavaScript, bypass per-tab consent, or log raw argument values.
+out from plugin JavaScript, bypass ABG's configured tab access mode, or log raw argument values.
 
 Minimal worked example mirroring the bundled `plugins/info-plugin` `ping` command. See
 `plugins/info-plugin/index.js` and `plugins/info-plugin/plugin.json` in this repo for the first-party

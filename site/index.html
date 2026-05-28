@@ -6,7 +6,7 @@
     <title>Agent Browser Gateway</title>
     <meta
       name="description"
-      content="Agent Browser Gateway lets you share one Chrome tab at a time with local AI coding agents, using explicit consent, local transport, and an audit trail."
+      content="Agent Browser Gateway lets you share Chrome tabs with local AI coding agents using explicit consent, local transport, and an audit trail."
     />
     <meta property="og:title" content="Agent Browser Gateway" />
     <meta
@@ -33,6 +33,7 @@
           <nav class="nav-links" aria-label="Site links">
             <a href="#why">Why</a>
             <a href="#download">Download</a>
+            <a href="docs/">Docs</a>
             <a href="#model">Consent</a>
             <a href="#tokens">Tokens</a>
             <a href="#compare">Compare</a>
@@ -53,7 +54,7 @@
               </p>
               <div class="hero-actions">
                 <a class="button" href="#download">Download</a>
-                <a class="button secondary" href="privacy/">Read the privacy policy</a>
+                <a class="button secondary" href="docs/">Read the docs</a>
               </div>
               <div class="proof-row" aria-label="Product principles">
                 <span class="proof">Per-tab consent</span>
@@ -85,7 +86,7 @@
               <div class="download-actions">
                 <a
                   class="button"
-                  href="downloads/agent-browser-gateway-0.3.9-macos-arm64.dmg"
+                  href="downloads/agent-browser-gateway-0.3.10-macos-arm64.dmg"
                 >
                   <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
                     <g transform="translate(0 624.5254) scale(1 -1)">
@@ -118,7 +119,7 @@
             </div>
             <div class="download-panel" aria-label="Download details">
               <div class="download-meta">
-                <span>macOS 0.3.9 / Windows 0.3.8</span>
+                <span>macOS 0.3.10 / Windows 0.3.8</span>
                 <span>macOS 14+ Apple Silicon</span>
                 <span>Windows 10/11 x64</span>
               </div>
@@ -159,8 +160,8 @@
               <div class="checksum-list">
                 <p class="checksum">
                   <span>macOS SHA-256</span>
-                  <a href="downloads/agent-browser-gateway-0.3.9-macos-arm64.dmg.sha256.txt">
-                    <code>376dfb03b1e55426bcc99519499d67e1f68bab9bc3448cc36e6bcf1208ffad75</code>
+                  <a href="downloads/agent-browser-gateway-0.3.10-macos-arm64.dmg.sha256.txt">
+                    <code>5a195e23f580fcda4fce530cb037ddf132cc7753740662bb2647224f9c5584fc</code>
                   </a>
                 </p>
                 <p class="checksum">
@@ -210,24 +211,24 @@
               <h2 id="model-title">The browser remains human-owned.</h2>
               <p>
                 ABG is built for the moment when you are already looking at the real page and want
-                to hand only that page to a local agent workflow.
+                to hand selected local browser state to an agent workflow.
               </p>
             </div>
             <div class="feature-grid">
               <article class="feature">
                 <div class="feature-mark">1</div>
                 <h3>No access by default</h3>
-                <p>The agent sees no tabs until you explicitly share one from the extension popup.</p>
+                <p>The agent sees no tabs until you explicitly share a tab or enable all-tabs mode for an isolated profile.</p>
               </article>
               <article class="feature">
                 <div class="feature-mark">2</div>
-                <h3>One tab at a time</h3>
-                <p>ABG keeps permission scoped to the selected tab instead of exposing the browser.</p>
+                <h3>Per-tab by default</h3>
+                <p>ABG keeps permission scoped to selected tabs unless you opt into all-tabs access for a sandbox profile.</p>
               </article>
               <article class="feature">
                 <div class="feature-mark">3</div>
                 <h3>Automatic revocation</h3>
-                <p>Access is revoked when the tab closes, navigates to another origin, or you revoke it.</p>
+                <p>Manual tab access is revoked when the tab closes, navigates to another origin, or you revoke it.</p>
               </article>
               <article class="feature">
                 <div class="feature-mark">4</div>
@@ -244,8 +245,9 @@
               <h2 id="trust-title">A small local bridge, not another browser cloud.</h2>
               <p>
                 Agent Browser Gateway combines a Chrome extension, a macOS menu bar gateway, and
-                the <code>abg</code> CLI. The extension has no host permissions, the gateway listens
-                on <code>127.0.0.1</code>, and the product does not include analytics or telemetry.
+                the <code>abg</code> CLI. The extension has no default host permissions, optional
+                all-tabs access is local opt-in, the gateway listens on <code>127.0.0.1</code>, and
+                the product does not include analytics or telemetry.
               </p>
               <div class="steps">
                 <div class="step">
@@ -386,6 +388,7 @@
           </span>
           <span>
             <a href="mailto:contact@arcm.co.jp">Contact</a>
+            <a href="docs/">Docs</a>
             <a href="privacy/">Privacy Policy</a>
           </span>
         </div>

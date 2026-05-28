@@ -110,6 +110,12 @@
         height: 16px;
         margin: 0;
       }
+      .setting-note {
+        margin: 4px 0 0 24px;
+        color: #777;
+        font-size: 11px;
+        line-height: 1.35;
+      }
       .profile-row {
         display: flex;
         flex-direction: column;
@@ -180,6 +186,11 @@
       <input type="checkbox" id="evalToggle" />
       <span>Enable approved JavaScript eval</span>
     </label>
+    <label class="setting-row">
+      <input type="checkbox" id="allTabsToggle" />
+      <span>Share all tabs in this profile</span>
+    </label>
+    <div class="setting-note" id="allTabsNote"></div>
     <div class="profile-row">
       <label for="profileLabel">Profile label (shown in menubar)</label>
       <input type="text" id="profileLabel" placeholder="e.g. personal, work, staging" />

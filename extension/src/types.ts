@@ -1,6 +1,7 @@
 // Shared message types between background, popup, and Gateway.
 
 export type AnnotationAction = "start" | "stop" | "clear" | "list" | "add_region" | "add_selector";
+export type TabAccessMode = "manual" | "all_tabs";
 
 export type ExtToGateway =
   | {
@@ -17,9 +18,17 @@ export type ExtToGateway =
       title: string;
       origin: string;
       expiresAt?: string;
+      accessMode?: TabAccessMode;
     }
   | { type: "tab_revoked"; tabId: number; reason: string }
-  | { type: "tab_updated"; tabId: number; url: string; title: string; origin: string }
+  | {
+      type: "tab_updated";
+      tabId: number;
+      url: string;
+      title: string;
+      origin: string;
+      accessMode?: TabAccessMode;
+    }
   | { type: "tab_closed"; tabId: number }
   | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }
   | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
@@ -177,6 +186,7 @@ export type ExtensionSettings = {
   operationsRequireApproval: boolean;
   evalEnabled: boolean;
   profileLabel: string;
+  allTabsAccessEnabled: boolean;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
@@ -203,6 +213,7 @@ export type PopupToBackground =
   | { type: "set_operations_require_approval"; value: boolean }
   | { type: "set_eval_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
+  | { type: "set_all_tabs_access"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
@@ -214,7 +225,13 @@ export type BackgroundToPopup =
         incognito: boolean;
         incognitoAccessAllowed: boolean;
       };
-      sharedTabs: { tabId: number; title: string; url: string }[];
+      sharedTabs: { tabId: number; title: string; url: string; accessMode: TabAccessMode }[];
+      allTabsAccess: {
+        permissionGranted: boolean;
+        active: boolean;
+        shareableTabCount: number;
+        skippedTabCount: number;
+      };
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };
     }

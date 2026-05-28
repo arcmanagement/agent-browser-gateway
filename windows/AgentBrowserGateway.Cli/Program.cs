@@ -112,9 +112,11 @@ internal static class Program
                 {
                     var refName = tab.GetString("ref") ?? "?";
                     var tabId = tab.GetInt("tabId")?.ToString() ?? "?";
+                    var accessMode = tab.GetString("accessMode");
                     var title = tab.GetString("title") ?? "";
                     var url = tab.GetString("url") ?? "";
-                    Console.WriteLine($"{refName}\t{tabId}\t{title}\t{url}");
+                    var modePrefix = string.IsNullOrWhiteSpace(accessMode) ? "" : $"{accessMode}\t";
+                    Console.WriteLine($"{refName}\t{tabId}\t{modePrefix}{title}\t{url}");
                 }
             }
             return 0;
