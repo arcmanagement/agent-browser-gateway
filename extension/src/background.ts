@@ -96,6 +96,30 @@ type PendingDialog = {
   openedAt: number;
 };
 
+type DownloadStatus = "in_progress" | "complete" | "interrupted";
+
+type DownloadRecord = {
+  id: string;
+  tabId: number;
+  guid?: string;
+  browserDownloadId?: number;
+  url: string;
+  finalUrl?: string;
+  referrer?: string;
+  suggestedFilename?: string;
+  filename?: string;
+  mime?: string;
+  status: DownloadStatus;
+  error?: string;
+  bytesReceived?: number;
+  totalBytes?: number;
+  fileSize?: number;
+  exists?: boolean;
+  startedAt: string;
+  endedAt?: string;
+  updatedAt: number;
+};
+
 type Point = { x: number; y: number };
 
 type ApprovalResolution = {
@@ -128,6 +152,9 @@ const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
 const pendingDialogs = new Map<number, PendingDialog>();
+const downloadsByTab = new Map<number, DownloadRecord[]>();
+const downloadIdToTab = new Map<number, number>();
+const downloadGuidToTab = new Map<string, number>();
 const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
@@ -581,6 +608,13 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
   pendingDialogs.delete(tabId);
+  downloadsByTab.delete(tabId);
+  for (const [downloadId, mappedTabId] of downloadIdToTab) {
+    if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+  }
+  for (const [guid, mappedTabId] of downloadGuidToTab) {
+    if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+  }
   streamingTabs.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
@@ -656,6 +690,13 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
     pendingDialogs.delete(tabId);
+    downloadsByTab.delete(tabId);
+    for (const [downloadId, mappedTabId] of downloadIdToTab) {
+      if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+    }
+    for (const [guid, mappedTabId] of downloadGuidToTab) {
+      if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+    }
     streamingTabs.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
@@ -762,6 +803,64 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       phase: "closed",
       dialog: dialog ? publicDialog(dialog) : undefined,
     });
+  } else if (method === "Page.downloadWillBegin") {
+    const p = params as {
+      guid?: string;
+      url?: string;
+      suggestedFilename?: string;
+    };
+    if (p.guid && p.url) {
+      const record = upsertTabDownload(source.tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId: source.tabId,
+        url: p.url,
+        suggestedFilename: p.suggestedFilename,
+        status: "in_progress",
+        startedAt: new Date().toISOString(),
+        updatedAt: Date.now(),
+      });
+      downloadGuidToTab.set(p.guid, source.tabId);
+      emitStreamEvent(source.tabId, {
+        kind: "download",
+        phase: "started",
+        download: publicDownload(record),
+      });
+    }
+  } else if (method === "Page.downloadProgress") {
+    const p = params as {
+      guid?: string;
+      state?: "inProgress" | "completed" | "canceled";
+      totalBytes?: number;
+      receivedBytes?: number;
+    };
+    const tabId = p.guid ? downloadGuidToTab.get(p.guid) : undefined;
+    if (p.guid && tabId) {
+      const status: DownloadStatus =
+        p.state === "completed"
+          ? "complete"
+          : p.state === "canceled"
+            ? "interrupted"
+            : "in_progress";
+      const record = upsertTabDownload(tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId,
+        url: "",
+        status,
+        bytesReceived: p.receivedBytes,
+        totalBytes: p.totalBytes,
+        startedAt: new Date().toISOString(),
+        endedAt: status === "in_progress" ? undefined : new Date().toISOString(),
+        updatedAt: Date.now(),
+        error: p.state === "canceled" ? "CANCELED" : undefined,
+      });
+      emitStreamEvent(tabId, {
+        kind: "download",
+        phase: status === "in_progress" ? "progress" : status,
+        download: publicDownload(record),
+      });
+    }
   } else if (method === "Network.requestWillBeSent") {
     const p = params as {
       requestId: string;
@@ -849,6 +948,133 @@ chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
 
+chrome.downloads.onCreated.addListener((item) => {
+  void handleDownloadCreated(item);
+});
+
+chrome.downloads.onChanged.addListener((delta) => {
+  void handleDownloadChanged(delta);
+});
+
+function upsertTabDownload(tabId: number, patch: DownloadRecord): DownloadRecord {
+  const records = downloadsByTab.get(tabId) ?? [];
+  const existing = records.find(
+    (record) =>
+      (patch.guid && record.guid === patch.guid) ||
+      (patch.browserDownloadId !== undefined &&
+        record.browserDownloadId === patch.browserDownloadId) ||
+      record.id === patch.id,
+  );
+  const merged: DownloadRecord = existing
+    ? {
+        ...existing,
+        ...patch,
+        url: patch.url || existing.url,
+        startedAt: existing.startedAt || patch.startedAt,
+        updatedAt: Date.now(),
+      }
+    : { ...patch, updatedAt: Date.now() };
+  if (!existing) records.push(merged);
+  else records[records.indexOf(existing)] = merged;
+  records.sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+  while (records.length > 50) records.shift();
+  downloadsByTab.set(tabId, records);
+  if (merged.browserDownloadId !== undefined) downloadIdToTab.set(merged.browserDownloadId, tabId);
+  if (merged.guid) downloadGuidToTab.set(merged.guid, tabId);
+  return merged;
+}
+
+function resolveDownloadTab(item: chrome.downloads.DownloadItem): number | undefined {
+  const mapped = downloadIdToTab.get(item.id);
+  if (mapped !== undefined) return mapped;
+  for (const [tabId, records] of downloadsByTab) {
+    const match = records
+      .slice()
+      .reverse()
+      .find(
+        (record) =>
+          !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+      );
+    if (match) return tabId;
+  }
+  if (item.referrer) {
+    for (const [tabId, tab] of permittedTabs) {
+      if (tab.url === item.referrer || originForUrl(tab.url) === originForUrl(item.referrer)) {
+        return tabId;
+      }
+    }
+  }
+  return undefined;
+}
+
+function recordFromDownloadItem(
+  item: chrome.downloads.DownloadItem,
+  tabId: number,
+  existingId?: string,
+): DownloadRecord {
+  return {
+    id: existingId ?? `download-${item.id}`,
+    tabId,
+    browserDownloadId: item.id,
+    url: item.url,
+    finalUrl: item.finalUrl,
+    referrer: item.referrer,
+    suggestedFilename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
+    filename: item.filename,
+    mime: item.mime,
+    status: item.state,
+    error: item.error,
+    bytesReceived: item.bytesReceived,
+    totalBytes: item.totalBytes,
+    fileSize: item.fileSize,
+    exists: item.exists,
+    startedAt: item.startTime,
+    endedAt: item.endTime,
+    updatedAt: Date.now(),
+  };
+}
+
+async function handleDownloadCreated(item: chrome.downloads.DownloadItem): Promise<void> {
+  const tabId = resolveDownloadTab(item);
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  const existing = (downloadsByTab.get(tabId) ?? [])
+    .slice()
+    .reverse()
+    .find(
+      (record) =>
+        !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+    );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: "created",
+    download: publicDownload(record),
+  });
+}
+
+async function handleDownloadChanged(delta: chrome.downloads.DownloadDelta): Promise<void> {
+  let tabId = downloadIdToTab.get(delta.id);
+  let item: chrome.downloads.DownloadItem | undefined;
+  if (tabId === undefined) {
+    const found = await chrome.downloads.search({ id: delta.id });
+    item = found[0];
+    if (!item) return;
+    tabId = resolveDownloadTab(item);
+  }
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  item = item ?? (await chrome.downloads.search({ id: delta.id }))[0];
+  if (!item) return;
+  const existing = (downloadsByTab.get(tabId) ?? []).find(
+    (record) => record.browserDownloadId === delta.id,
+  );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: record.status === "in_progress" ? "progress" : record.status,
+    download: publicDownload(record),
+  });
+}
+
 function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | undefined {
   const buf = networkBuffers.get(tabId);
   if (!buf) return undefined;
@@ -904,6 +1130,10 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "download_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
@@ -1231,6 +1461,79 @@ function publicDialog(dialog: PendingDialog): Record<string, unknown> {
 function publicDialogState(tabId: number): Record<string, unknown> {
   const dialog = pendingDialogs.get(tabId);
   return dialog ? { pending: true, dialog: publicDialog(dialog) } : { pending: false };
+}
+
+function publicDownload(record: DownloadRecord): Record<string, unknown> {
+  const pathAvailable = record.status === "complete" && !!record.filename;
+  return {
+    id: record.id,
+    browserDownloadId: record.browserDownloadId,
+    guid: record.guid,
+    tabId: record.tabId,
+    url: record.url,
+    finalUrl: record.finalUrl,
+    referrer: record.referrer,
+    suggestedFilename: record.suggestedFilename,
+    filename: record.filename,
+    pathAvailable,
+    unavailableReason: pathAvailable
+      ? undefined
+      : record.status === "complete"
+        ? "chrome_download_path_unavailable"
+        : "download_not_complete",
+    mime: record.mime,
+    status: record.status,
+    error: record.error,
+    bytesReceived: record.bytesReceived,
+    totalBytes: record.totalBytes,
+    fileSize: record.fileSize,
+    exists: record.exists,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+  };
+}
+
+function downloadState(tabId: number): Record<string, unknown> {
+  const downloads = (downloadsByTab.get(tabId) ?? []).map(publicDownload);
+  return {
+    ok: true,
+    count: downloads.length,
+    latest: downloads.at(-1),
+    downloads,
+  };
+}
+
+async function getDownloadState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  if (params.wait !== true) return downloadState(tabId);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const latest = (downloadsByTab.get(tabId) ?? []).at(-1);
+    if (latest && latest.status !== "in_progress") {
+      return {
+        ok: latest.status === "complete",
+        mode: "wait",
+        elapsedMs: Date.now() - started,
+        latest: publicDownload(latest),
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait",
+    timeoutMs,
+    latest: (downloadsByTab.get(tabId) ?? []).at(-1)
+      ? publicDownload((downloadsByTab.get(tabId) ?? []).at(-1) as DownloadRecord)
+      : undefined,
+  };
 }
 
 async function runDialogAction(

@@ -95,6 +95,7 @@ export type GatewayCommand = {
     code?: string;
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
     // wait_for
+    wait?: boolean;
     hidden?: boolean;
     sleepMs?: number;
     timeoutMs?: number;
@@ -129,6 +130,7 @@ export type GatewayMethod =
   | "table"
   | "describe"
   | "network_log"
+  | "download_state"
   | "revoke"
   | "wait_for"
   | "eval_script"

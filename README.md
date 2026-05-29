@@ -125,6 +125,8 @@ abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
+abg download <tab|ref>                           # Latest downloads associated with this tab
+abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
 abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
 abg dialog <tab|ref> --accept                    # Approve and accept a pending dialog
 abg dialog <tab|ref> --dismiss                   # Approve and dismiss a pending dialog
@@ -239,6 +241,10 @@ assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab 
 Use `snapshot --tabs "name:tab:selector,..."` for before/after evidence across multiple already
 shared tabs. Each target reports partial failure independently, so one missing selector does not
 drop successful captures.
+Use `download --wait` after a click or form action that is expected to download a file. ABG reports
+Chrome download metadata such as URL, suggested filename, MIME type, status, final path when
+available, byte counts, and failed/canceled states. It does not open or read downloaded file
+contents; if Chrome cannot expose a final path, the result includes `unavailableReason`.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -416,6 +422,7 @@ transport, and a visible audit trail.
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
+| Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
 | JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
 | General JavaScript eval | `eval --approve` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval, exact script display, audit summary, result size cap |
@@ -441,6 +448,7 @@ Currently shipped:
 - ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
 - ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
+- ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)

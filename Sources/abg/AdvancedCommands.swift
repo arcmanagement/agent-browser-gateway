@@ -91,6 +91,32 @@ struct Dialog: AsyncParsableCommand {
     }
 }
 
+struct Download: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "download",
+        abstract: "Inspect or wait for downloads associated with a shared tab",
+        discussion: """
+        Returns Chrome download metadata and final local paths when Chrome exposes them.
+        ABG does not read downloaded file contents.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Wait until the latest/current download reaches complete or interrupted state") var wait: Bool = false
+    @Option(name: .long, help: "Wait timeout in milliseconds") var timeout: Int = 30_000
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if wait {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        let result = try client.call(method: "download_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",

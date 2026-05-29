@@ -208,6 +208,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "describe")
         case "network_tab":
             return await dispatch(req: req, method: "network_log")
+        case "download_tab":
+            return await dispatch(req: req, method: "download_state")
         case "click_tab":
             // routes to either click_selector or click_at depending on params
             let params = (req.params?.value as? [String: Any]) ?? [:]
@@ -483,6 +485,32 @@ final class GatewayCoordinator: ObservableObject {
                         }
                         if let messageBytes = dialog["messageBytes"] as? Int {
                             values["messageBytes"] = AnyCodable(messageBytes)
+                        }
+                    }
+                    return values.isEmpty ? nil : values
+                }
+                if method == "download_state" {
+                    var values: [String: AnyCodable] = [:]
+                    if let wait = params["wait"] as? Bool {
+                        values["wait"] = AnyCodable(wait)
+                    }
+                    if let timeoutMs = params["timeoutMs"] as? Int {
+                        values["timeoutMs"] = AnyCodable(timeoutMs)
+                    }
+                    if let dict = result?.value as? [String: Any] {
+                        if let count = dict["count"] as? Int {
+                            values["count"] = AnyCodable(count)
+                        }
+                        if let latest = dict["latest"] as? [String: Any] {
+                            if let status = latest["status"] as? String {
+                                values["latestStatus"] = AnyCodable(status)
+                            }
+                            if let pathAvailable = latest["pathAvailable"] as? Bool {
+                                values["pathAvailable"] = AnyCodable(pathAvailable)
+                            }
+                            if let unavailableReason = latest["unavailableReason"] as? String {
+                                values["unavailableReason"] = AnyCodable(unavailableReason)
+                            }
                         }
                     }
                     return values.isEmpty ? nil : values
