@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, Download.self, Dialog.self,
+            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -48,7 +48,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "download", "dialog",
+    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
