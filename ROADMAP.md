@@ -134,16 +134,16 @@ Current repo version: **v0.3.10**.
 
 - iOS Safari Web Extension
 - Android Chrome
-- Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing
+- Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
 
 ## Hard non-goals
 
 These will not happen, regardless of demand:
 
-- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback.
-- Any telemetry / analytics. Even opt-in.
-- Silent or blanket-approved JavaScript execution. The only general eval path is disabled by default and requires per-call local approval.
+- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback; #71 is limited to private Tailnet/LAN pairing controlled by the user.
+- Any telemetry / analytics sent to ABG operators. User/team-owned local metrics in self-hosted deployments are separate from official ABG telemetry.
+- Silent or blanket-approved JavaScript execution. The only general eval path is disabled by default and requires explicit enablement, per-call local approval, and audit.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.
 
 ## Reproducibility milestones (toward v1.0)
