@@ -27,6 +27,163 @@ struct PDF: AsyncParsableCommand {
     }
 }
 
+struct Frames: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "frames",
+        abstract: "List iframe/frame targets for a shared tab with stable @f refs",
+        discussion: """
+        Use --frame @fN on read/get/find/snapshot and selector actions to target a same-origin frame explicitly.
+        Cross-origin frames are listed, but selector access returns frame_not_accessible instead of falling back to the top document.
+        """
+    )
+    @OptionGroup var target: TabTarget
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "frames_tab", params: ["tabId": tabId])
+        printJSON(result)
+    }
+}
+
+struct Dialog: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "dialog",
+        abstract: "Inspect or handle a pending JavaScript alert/confirm/prompt dialog",
+        discussion: """
+        With no action flags, this is read-only and returns whether a JavaScript dialog is pending.
+        Use --accept, --dismiss, or --prompt-value to handle a pending dialog through the normal operation approval path.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Accept the pending dialog") var accept: Bool = false
+    @Flag(name: .long, help: "Dismiss the pending dialog") var dismiss: Bool = false
+    @Option(name: .long, help: "Prompt text to submit; implies --accept") var promptValue: String?
+
+    func run() async throws {
+        let selectedActions = [accept, dismiss, promptValue != nil].filter { $0 }.count
+        if selectedActions > 1 && !(accept && promptValue != nil && !dismiss) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Use at most one dialog action: --accept, --dismiss, or --prompt-value.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        let action: String?
+        if dismiss {
+            action = "dismiss"
+        } else if accept || promptValue != nil {
+            action = "accept"
+        } else {
+            action = nil
+        }
+        if let action { params["action"] = action }
+        if let promptValue { params["promptText"] = promptValue }
+        let result = try client.call(method: "dialog_tab", params: params)
+        if let action {
+            var step: [String: Any] = ["op": "dialog", "tabId": tabId, "action": action]
+            if let promptValue { step["promptTextBytes"] = promptValue.utf8.count }
+            appendRecordedStep(step)
+        }
+        printJSON(result)
+    }
+}
+
+struct Download: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "download",
+        abstract: "Inspect or wait for downloads associated with a shared tab",
+        discussion: """
+        Returns Chrome download metadata and final local paths when Chrome exposes them.
+        ABG does not read downloaded file contents.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Wait until the latest/current download reaches complete or interrupted state") var wait: Bool = false
+    @Option(name: .long, help: "Wait timeout in milliseconds") var timeout: Int = 30_000
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if wait {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        let result = try client.call(method: "download_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct HAR: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "har",
+        abstract: "Export a redacted HAR snapshot for a shared tab",
+        discussion: """
+        Exports a one-shot HAR file from the tab's buffered network metadata.
+        ABG's default HAR redaction omits cookies, authorization headers, request bodies, response bodies, and sensitive headers.
+        The Gateway writes the file to --out or to a local ABG temporary directory and records audit metadata for the export.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Output HAR path. Defaults to an ABG temp directory.") var out: String?
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter (xhr,fetch,document, etc.; comma-separated)") var type: String?
+    @Option(name: .long, help: "Maximum entries to export. Defaults to 200 and caps at 1000.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "limit": limit]
+        if let out {
+            params["outputPath"] = (out as NSString).expandingTildeInPath
+        }
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        let result = try client.call(method: "har_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct State: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "state",
+        abstract: "Inspect read-only cookies and Web Storage for a shared tab",
+        discussion: """
+        Lists cookies, localStorage keys, and sessionStorage keys for the shared tab origin.
+        Values are redacted by default. Use --values only when the workflow explicitly needs secret/session values; the Gateway audit log records that values were requested.
+        This command never writes or deletes cookies or storage.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "State kind: cookies, local-storage, session-storage, or all") var kind: String = "all"
+    @Option(name: .long, help: "Cookie name glob filter") var name: String?
+    @Option(name: .long, help: "Storage key glob filter") var key: String?
+    @Flag(name: .long, help: "Return full cookie/storage values. Values are redacted unless this flag is set.") var values: Bool = false
+    @Option(name: .long, help: "Maximum entries per state category. Defaults to 200 and caps at 500.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit]
+        if let name { params["name"] = name }
+        if let key { params["storageKey"] = key }
+        if values { params["includeValues"] = true }
+        let result = try client.call(method: "state_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",
@@ -36,6 +193,7 @@ struct Get: AsyncParsableCommand {
     @Argument(help: "Getter kind: text/html/value/attr/title/url/count/box/styles") var kind: String
     @Argument(help: "tab ID/ref and optional selector, or selector only when --match-url/title is used") var args: [String] = []
     @Option(name: .long, help: "CSS selector (alternative to positional selector)") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Option(name: .long, help: "Attribute name for `get attr`") var name: String?
     @Option(name: .long, help: "Comma-separated computed style properties for `get styles`") var props: String?
 
@@ -61,6 +219,7 @@ struct Get: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
         var params: [String: Any] = ["tabId": tabId, "kind": normalizedKind]
         if let resolvedSelector { params["selector"] = resolvedSelector }
+        if let frame { params["frame"] = frame }
         if let name { params["name"] = name }
         if let props {
             params["props"] = props.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -80,6 +239,7 @@ struct Find: AsyncParsableCommand {
     @Argument(help: "tab, query pieces, and optional action") var args: [String] = []
     @Option(name: .long, help: "Accessible name for role locators") var name: String?
     @Option(name: .long, help: "Value used by fill/type actions") var value: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Flag(name: .long, help: "Use exact text matching instead of case-insensitive contains") var exact: Bool = false
     @Option(name: .long, help: "Maximum matches to return") var limit: Int = 20
 
@@ -148,6 +308,7 @@ struct Find: AsyncParsableCommand {
         }
         params["action"] = action
         if let value { params["value"] = value }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "find_tab", params: params)
         if action != "inspect" && action != "text" {
             var step: [String: Any] = ["op": "find", "tabId": tabId, "locator": normalizedLocator, "action": action]
@@ -156,6 +317,7 @@ struct Find: AsyncParsableCommand {
             if let indexModifier = params["indexModifier"] { step["indexModifier"] = indexModifier }
             if let index = params["index"] { step["index"] = index }
             if let value { step["value"] = value }
+            if let frame { step["frame"] = frame }
             if exact { step["exact"] = true }
             appendRecordedStep(step)
         }
@@ -170,6 +332,7 @@ struct Snapshot: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Limit snapshot to a CSS selector subtree") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Option(name: .long, help: "Maximum DOM ancestor depth to include in selectors") var depth: Int = 5
     @Flag(name: .long, help: "Only include interactive elements") var interactiveOnly: Bool = false
     @Flag(name: .long, help: "Omit verbose selector/html-adjacent details") var compact: Bool = false
@@ -190,6 +353,7 @@ struct Snapshot: AsyncParsableCommand {
             "compact": compact,
         ]
         if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "snapshot_tab", params: params)
         printJSON(result)
     }
@@ -324,8 +488,9 @@ struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "visible", target: target, selector: selector)
+        try runPredicate(kind: "visible", target: target, selector: selector, frame: frame)
     }
 }
 
@@ -333,8 +498,9 @@ struct IsEnabled: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-enabled", abstract: "Return whether a selector is enabled")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "enabled", target: target, selector: selector)
+        try runPredicate(kind: "enabled", target: target, selector: selector, frame: frame)
     }
 }
 
@@ -342,19 +508,22 @@ struct IsChecked: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-checked", abstract: "Return whether a checkbox is checked")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "checked", target: target, selector: selector)
+        try runPredicate(kind: "checked", target: target, selector: selector, frame: frame)
     }
 }
 
-func runPredicate(kind: String, target: TabTarget, selector: String) throws {
+func runPredicate(kind: String, target: TabTarget, selector: String, frame: String?) throws {
     let client = UDSClient()
     let tabId = try resolveTabId(client: client, target: target)
-    let result = try client.call(method: "predicate_tab", params: [
+    var params: [String: Any] = [
         "tabId": tabId,
         "kind": kind,
         "selector": selector,
-    ])
+    ]
+    if let frame { params["frame"] = frame }
+    let result = try client.call(method: "predicate_tab", params: params)
     printJSON(result)
 }
 
@@ -452,15 +621,20 @@ struct DblClick: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Double-click target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "dblclick_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "dblclick", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "dblclick_tab", params: params)
+        var step: [String: Any] = ["op": "dblclick", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -472,15 +646,20 @@ struct Focus: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Focus target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "focus_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "focus", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "focus_tab", params: params)
+        var step: [String: Any] = ["op": "focus", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -492,15 +671,20 @@ struct Hover: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Hover target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "hover_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "hover", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "hover_tab", params: params)
+        var step: [String: Any] = ["op": "hover", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -514,6 +698,7 @@ struct SelectOption: AsyncParsableCommand {
     @Option(name: .long, help: "Target select element CSS selector") var selector: String
     @Option(name: .long, help: "Option value to select") var value: String?
     @Option(name: .long, help: "Visible option label to select") var label: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         guard (value == nil) != (label == nil) else {
@@ -527,10 +712,12 @@ struct SelectOption: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "selector": selector]
         if let value { params["value"] = value }
         if let label { params["label"] = label }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "select_tab", params: params)
         var step: [String: Any] = ["op": "select", "tabId": tabId, "selector": selector]
         if let value { step["value"] = value }
         if let label { step["label"] = label }
+        if let frame { step["frame"] = frame }
         appendRecordedStep(step)
         printJSON(result)
     }
@@ -543,9 +730,10 @@ struct Check: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        try runCheckedState(commandName: "check", checked: true, target: target, selector: selector)
+        try runCheckedState(commandName: "check", checked: true, target: target, selector: selector, frame: frame)
     }
 }
 
@@ -556,21 +744,26 @@ struct Uncheck: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        try runCheckedState(commandName: "uncheck", checked: false, target: target, selector: selector)
+        try runCheckedState(commandName: "uncheck", checked: false, target: target, selector: selector, frame: frame)
     }
 }
 
-func runCheckedState(commandName: String, checked: Bool, target: TabTarget, selector: String) throws {
+func runCheckedState(commandName: String, checked: Bool, target: TabTarget, selector: String, frame: String?) throws {
     let client = UDSClient()
     let tabId = try resolveTabId(client: client, target: target)
-    let result = try client.call(method: "checked_state_tab", params: [
+    var params: [String: Any] = [
         "tabId": tabId,
         "selector": selector,
         "checked": checked,
-    ])
-    appendRecordedStep(["op": commandName, "tabId": tabId, "selector": selector])
+    ]
+    if let frame { params["frame"] = frame }
+    let result = try client.call(method: "checked_state_tab", params: params)
+    var step: [String: Any] = ["op": commandName, "tabId": tabId, "selector": selector]
+    if let frame { step["frame"] = frame }
+    appendRecordedStep(step)
     printJSON(result)
 }
 
@@ -581,15 +774,20 @@ struct ScrollIntoView: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "scroll_into_view_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "scroll-into-view", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "scroll_into_view_tab", params: params)
+        var step: [String: Any] = ["op": "scroll-into-view", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }

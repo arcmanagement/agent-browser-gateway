@@ -81,7 +81,7 @@ The core security model:
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 
@@ -94,7 +94,9 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg read <tab|ref> --frame @f1 --selector "<css>"
 abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
 abg get editable-value <tab|ref> "<css>"         # Rich-editor visible text + serialized HTML
@@ -105,6 +107,7 @@ abg find text <tab|ref> "Welcome" text
 abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg find first <tab|ref> "button" click
 abg find nth <tab|ref> 2 ".result" text          # zero-based index
+abg find text <tab|ref> "Pay now" click --frame @f1
 abg snapshot <tab|ref> --interactive-only --compact
 abg snapshot --tabs "post:t1:.editor,preview:t2:main,template:t3:.template"
 abg click <tab|ref> --ref @e1                    # ref from the most recent snapshot for that tab
@@ -122,6 +125,17 @@ abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
+abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
+abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
+abg state <tab|ref> --kind cookies --name "sid*"      # Cookie/storage keys, values redacted
+abg state <tab|ref> --kind local-storage --key "user*" --values
+abg download <tab|ref>                           # Latest downloads associated with this tab
+abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
+abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
+abg dialog <tab|ref> --accept                    # Approve and accept a pending dialog
+abg dialog <tab|ref> --dismiss                   # Approve and dismiss a pending dialog
+abg dialog <tab|ref> --prompt-value "ok"         # Approve and submit prompt text
 
 # Tab targeting shortcuts
 abg read --match-url "*kintone*" --format markdown
@@ -216,6 +230,12 @@ cover common Playwright-style locators. Use `inspect` or `text` actions to inspe
 mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
 `find first`, `find last`, and `find nth` apply explicit index modifiers to a CSS selector; `nth`
 uses zero-based indexes so scripts can align with array-style JSON output.
+Use `frames` before targeting iframe content. `frames` returns stable refs such as `@f1`, frame
+URLs, names, titles, nesting, and accessibility flags. Pass `--frame @f1` to `read`, `get`,
+`find`, `snapshot`, predicates, waits, and selector actions so frame targeting is explicit in CLI
+params, approvals, and recorded flows. ABG currently targets same-origin accessible frames only;
+cross-origin frames are listed but selector access returns `frame_not_accessible` instead of
+silently falling back to the top document.
 Use `eval` only as the long-tail escape hatch when named primitives are not enough. It is disabled
 by default in the extension popup, every call must pass `--approve`, and Chrome still opens a local
 approval window containing the exact script. The audit log records the script source plus result
@@ -226,6 +246,22 @@ assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab 
 Use `snapshot --tabs "name:tab:selector,..."` for before/after evidence across multiple already
 shared tabs. Each target reports partial failure independently, so one missing selector does not
 drop successful captures.
+Use `download --wait` after a click or form action that is expected to download a file. ABG reports
+Chrome download metadata such as URL, suggested filename, MIME type, status, final path when
+available, byte counts, and failed/canceled states. It does not open or read downloaded file
+contents; if Chrome cannot expose a final path, the result includes `unavailableReason`.
+Use `network --wait-response` when a workflow needs a specific response before continuing. Match by
+URL glob or regex, method, status range, and resource type. Response body preview is opt-in with
+`--body` and capped by `--max-bytes`; ABG does not store headers and large bodies are truncated.
+Use `har` when support/debugging needs a browser-standard network artifact. HAR export is one-shot,
+local-only, and redacted by default: cookies, authorization headers, request headers, request
+bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
+capped at 1000 entries; the Gateway writes the file to `--out` or an ABG temp directory and records
+the tab, filters, byte size, redaction mode, and output path in the local audit log.
+Use `state` to inspect whether cookies, `localStorage`, or `sessionStorage` contain expected keys
+for the shared tab origin. Values are redacted by default; `--values` must be explicit and the
+Gateway audit log records that full values were requested. `state` is read-only and does not expose
+write/delete operations.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -396,12 +432,18 @@ transport, and a visible audit trail.
 |---|---|---|---|
 | Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
 | Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
+| Frame targeting | `frames`, plus `--frame @fN` on read/get/find/snapshot/predicates/waits/actions | Playwright `frameLocator` / frame targets | Same-origin frames only; cross-origin returns explicit errors |
 | Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` |
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
+| Response waits | `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
+| HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
+| Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
+| Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
+| JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
 | General JavaScript eval | `eval --approve` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval, exact script display, audit summary, result size cap |
 | Global browser visibility | Optional all-tabs profile mode | Common in automation frameworks | Off by default, local opt-in, removable optional permission, audit log |
@@ -421,10 +463,15 @@ Currently shipped:
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
-- ✅ Read and inspection tools: `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
+- ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
 - ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
+- ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
+- ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
+- ✅ Network response wait and bounded body preview: `network --wait-response`, `--body`, and `--max-bytes`
+- ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
+- ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)

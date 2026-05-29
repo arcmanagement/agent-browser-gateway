@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self,
+            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -48,7 +48,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network",
+    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
@@ -574,6 +574,7 @@ struct Read: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象を絞る CSS selector (例: \"main\", \"#content\")") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Flag(name: .long, help: "HTML を Markdown に変換 (token 効率)") var asMarkdown: Bool = false
     @Option(name: .long, help: "出力形式: json / markdown / text / html") var format: String = "json"
     @Flag(name: .long, help: "Markdown 出力で画像 URL を残す") var keepImages: Bool = false
@@ -586,16 +587,19 @@ struct Read: AsyncParsableCommand {
             guard let selector else {
                 try failWithJSON(["error": "selector_required", "message": "--editable-value requires --selector."])
             }
-            let result = try client.call(method: "get_tab", params: [
+            var editableParams: [String: Any] = [
                 "tabId": tabId,
                 "kind": "editable-value",
                 "selector": selector,
-            ])
+            ]
+            if let frame { editableParams["frame"] = frame }
+            let result = try client.call(method: "get_tab", params: editableParams)
             printJSON(result)
             return
         }
         var params: [String: Any] = ["tabId": tabId]
         if let s = selector { params["selector"] = s }
+        if let frame { params["frame"] = frame }
         let wantsMarkdown = asMarkdown || format == "markdown"
         if wantsMarkdown {
             params["asMarkdown"] = true
@@ -604,6 +608,7 @@ struct Read: AsyncParsableCommand {
         let result = try client.call(method: "read_tab", params: params)
         var step: [String: Any] = ["op": "read", "tabId": tabId, "format": format]
         if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
         if asMarkdown { step["asMarkdown"] = true }
         if keepImages { step["keepImages"] = true }
         appendRecordedStep(step)
@@ -881,6 +886,7 @@ struct Table: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "HTML table のヘッダー・行・セルを抽出")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象 table または table を含む CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Option(name: .long, help: "出力形式: json / markdown") var format: String = "json"
 
     func run() async throws {
@@ -888,6 +894,7 @@ struct Table: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId]
         if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "table_tab", params: params)
         if format == "json" {
             printJSON(result)
@@ -906,6 +913,7 @@ struct Describe: AsyncParsableCommand {
     @Option(name: .long, help: "最大件数 (デフォルト 80)") var limit: Int = 80
     @Option(name: .long, help: "kind フィルタ (button/input/link/clickable など)") var kind: String?
     @Option(name: .long, help: "viewport を NxM に分割した座標も出す (例: 10x10)") var grid: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
@@ -913,6 +921,7 @@ struct Describe: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "all": all, "limit": limit]
         if let kind { params["kind"] = kind }
         if let grid { params["grid"] = grid }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "describe_tab", params: params)
         printJSON(result)
     }
@@ -922,23 +931,35 @@ struct Network: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "共有中タブのネットワークリクエストを表示")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "URL glob フィルタ") var url: String?
+    @Option(name: .long, help: "URL regex filter for wait-response workflows") var urlRegex: String?
     @Option(name: .long, help: "HTTP method フィルタ (GET/POST など)") var method: String?
     @Option(name: .long, help: "最小 HTTP status (例: 400)") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
     @Option(name: .long, help: "type フィルタ (xhr,fetch,document など。カンマ区切り可)") var type: String?
     @Option(name: .long, help: "個別 requestId") var requestId: String?
     @Flag(name: .long, help: "requestId のレスポンス body を取得") var body: Bool = false
     @Option(name: .long, help: "最大件数 (デフォルト 100)") var limit: Int = 100
+    @Flag(name: .long, help: "Wait for a matching response instead of listing buffered requests") var waitResponse: Bool = false
+    @Option(name: .long, help: "wait-response timeout in milliseconds") var timeout: Int = 30_000
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "limit": limit]
         if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
         if let method { params["method"] = method }
         if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
         if let type { params["type"] = type }
         if let requestId { params["requestId"] = requestId }
         if body { params["body"] = true }
+        if waitResponse {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        if body { params["maxBytes"] = maxBytes }
         let result = try client.call(method: "network_tab", params: params)
         printJSON(result)
     }
@@ -978,6 +999,7 @@ struct Click: AsyncParsableCommand {
     @Option(name: .long, help: "クリック対象の CSS selector") var selector: String?
     @Option(name: .long, help: "`abg describe` の element id") var id: Int?
     @Option(name: .long, help: "`abg snapshot` の element ref (例: @e1)") var ref: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Required to act on selectors inside a frame.") var frame: String?
     @Flag(name: .long, help: "`abg describe --all` 由来の id を解決") var all: Bool = false
     @Option(name: .long, help: "`abg describe --grid` 由来の id を解決 (例: 10x10)") var grid: String?
     @Option(name: .long, help: "`abg describe --limit` と同じ件数で id を解決") var limit: Int?
@@ -991,6 +1013,7 @@ struct Click: AsyncParsableCommand {
         if let s = selector { params["selector"] = s }
         if let id { params["id"] = id }
         if let ref { params["ref"] = ref }
+        if let frame { params["frame"] = frame }
         if all { params["all"] = true }
         if let grid { params["grid"] = grid }
         if let limit { params["limit"] = limit }
@@ -1007,6 +1030,7 @@ struct Click: AsyncParsableCommand {
         if let selector { step["selector"] = selector }
         if let id { step["id"] = id }
         if let ref { step["ref"] = ref }
+        if let frame { step["frame"] = frame }
         if all { step["all"] = true }
         if let grid { step["grid"] = grid }
         if let limit { step["limit"] = limit }
@@ -1022,14 +1046,19 @@ struct Fill: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の CSS selector") var selector: String
     @Option(name: .long, help: "入力する値") var value: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "対象種別と置換予定サイズだけを返し、DOM は変更しない") var dryRun: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "fill_tab", params: ["tabId": tabId, "selector": selector, "value": value, "dryRun": dryRun])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "value": value, "dryRun": dryRun]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "fill_tab", params: params)
         if !dryRun {
-            appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": value])
+            var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": value]
+            if let frame { step["frame"] = frame }
+            appendRecordedStep(step)
         }
         printJSON(result)
     }
@@ -1044,6 +1073,7 @@ struct ReplaceEditable: AsyncParsableCommand {
     @Option(name: .long, help: "Target editable CSS selector") var selector: String
     @Option(name: .long, help: "Replacement text") var value: String?
     @Option(name: .long, help: "Read replacement text from a file") var textFile: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "Read replacement text from stdin") var stdin: Bool = false
     @Flag(name: .long, help: "Preview target metadata and replacement length without changing the page") var dryRun: Bool = false
 
@@ -1066,15 +1096,19 @@ struct ReplaceEditable: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "fill_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
             "value": text,
             "replaceEditable": true,
             "dryRun": dryRun,
-        ])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "fill_tab", params: params)
         if !dryRun {
-            appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": text])
+            var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": text]
+            if let frame { step["frame"] = frame }
+            appendRecordedStep(step)
         }
         printJSON(result)
     }
@@ -1096,6 +1130,7 @@ struct Paste: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target editable CSS selector") var selector: String
     @Option(name: .long, help: "Text to paste") var value: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "Read text to paste from standard input") var stdin: Bool = false
 
     func run() async throws {
@@ -1114,8 +1149,12 @@ struct Paste: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "paste_tab", params: ["tabId": tabId, "selector": selector, "value": text])
-        appendRecordedStep(["op": "paste", "tabId": tabId, "selector": selector, "value": text])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "value": text]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "paste_tab", params: params)
+        var step: [String: Any] = ["op": "paste", "tabId": tabId, "selector": selector, "value": text]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1133,12 +1172,17 @@ struct Clear: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target editable CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "clear_tab", params: ["tabId": tabId, "selector": selector])
-        appendRecordedStep(["op": "clear", "tabId": tabId, "selector": selector])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "clear_tab", params: params)
+        var step: [String: Any] = ["op": "clear", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1181,6 +1225,7 @@ struct Replace: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "置換対象の CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Option(name: .long, help: "差し替え HTML") var html: String?
     @Option(name: .long, help: "差し替え HTML を読むファイルパス") var htmlFile: String?
 
@@ -1200,17 +1245,21 @@ struct Replace: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "replace_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
             "html": replacementHtml,
-        ])
-        appendRecordedStep([
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "replace_tab", params: params)
+        var step: [String: Any] = [
             "op": "replace",
             "tabId": tabId,
             "selector": selector,
             "html": replacementHtml,
-        ])
+        ]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1310,6 +1359,7 @@ struct Drag: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "ドラッグ元 CSS selector") var fromSelector: String?
     @Option(name: .long, help: "ドロップ先 CSS selector") var toSelector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for selector endpoints only)") var frame: String?
     @Option(name: .long, help: "ドラッグ元 X") var fromX: Double?
     @Option(name: .long, help: "ドラッグ元 Y") var fromY: Double?
     @Option(name: .long, help: "ドロップ先 X") var toX: Double?
@@ -1322,6 +1372,7 @@ struct Drag: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "steps": steps]
         if let fromSelector { params["fromSelector"] = fromSelector }
         if let toSelector { params["toSelector"] = toSelector }
+        if let frame { params["frame"] = frame }
         if let fromX { params["fromX"] = fromX }
         if let fromY { params["fromY"] = fromY }
         if let toX { params["toX"] = toX }
@@ -1338,6 +1389,7 @@ struct Drag: AsyncParsableCommand {
         var step: [String: Any] = ["op": "drag", "tabId": tabId, "steps": steps]
         if let fromSelector { step["fromSelector"] = fromSelector }
         if let toSelector { step["toSelector"] = toSelector }
+        if let frame { step["frame"] = frame }
         if let fromX { step["fromX"] = fromX }
         if let fromY { step["fromY"] = fromY }
         if let toX { step["toX"] = toX }
@@ -1352,6 +1404,7 @@ struct Upload: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の input[type=file] CSS selector") var selector: String
     @Option(name: .long, help: "添付するローカルファイル") var file: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let expanded = (file as NSString).expandingTildeInPath
@@ -1365,8 +1418,12 @@ struct Upload: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "upload_tab", params: ["tabId": tabId, "selector": selector, "file": expanded])
-        appendRecordedStep(["op": "upload", "tabId": tabId, "selector": selector, "file": expanded])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "file": expanded]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "upload_tab", params: params)
+        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "file": expanded]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1388,6 +1445,7 @@ struct Wait: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "待つ CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for selector/text/predicate waits)") var frame: String?
     @Flag(name: .long, help: "selector が消えるのを待つ (デフォルトは現れるのを待つ)") var hidden: Bool = false
     @Option(name: .long, help: "document visible text に含まれるまで待つ") var text: String?
     @Option(name: .long, help: "current URL が glob に一致するまで待つ") var url: String?
@@ -1410,14 +1468,17 @@ struct Wait: AsyncParsableCommand {
         if let s = selector {
             params["selector"] = s
             params["hidden"] = hidden
+            if let frame { params["frame"] = frame }
         } else if let text {
             params["text"] = text
+            if let frame { params["frame"] = frame }
         } else if let url {
             params["urlPattern"] = url
         } else if let load {
             params["loadState"] = load
         } else if let fn {
             params["predicate"] = fn
+            if let frame { params["frame"] = frame }
         } else if let m = ms {
             params["sleepMs"] = m
         }
@@ -1426,12 +1487,19 @@ struct Wait: AsyncParsableCommand {
         if let selector {
             step["selector"] = selector
             if hidden { step["hidden"] = true }
+            if let frame { step["frame"] = frame }
         }
         if let ms { step["ms"] = ms }
-        if let text { step["text"] = text }
+        if let text {
+            step["text"] = text
+            if let frame { step["frame"] = frame }
+        }
         if let url { step["url"] = url }
         if let load { step["load"] = load }
-        if let fn { step["fn"] = fn }
+        if let fn {
+            step["fn"] = fn
+            if let frame { step["frame"] = frame }
+        }
         appendRecordedStep(step)
         printJSON(result)
     }

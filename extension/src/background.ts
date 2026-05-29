@@ -53,6 +53,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "navigate",
   "scroll",
   "scroll_into_view",
+  "dialog_action",
   "drag",
 ]);
 
@@ -87,6 +88,38 @@ type NetworkEntry = {
   errorText?: string;
 };
 
+type PendingDialog = {
+  type: string;
+  message: string;
+  defaultPrompt?: string;
+  url?: string;
+  openedAt: number;
+};
+
+type DownloadStatus = "in_progress" | "complete" | "interrupted";
+
+type DownloadRecord = {
+  id: string;
+  tabId: number;
+  guid?: string;
+  browserDownloadId?: number;
+  url: string;
+  finalUrl?: string;
+  referrer?: string;
+  suggestedFilename?: string;
+  filename?: string;
+  mime?: string;
+  status: DownloadStatus;
+  error?: string;
+  bytesReceived?: number;
+  totalBytes?: number;
+  fileSize?: number;
+  exists?: boolean;
+  startedAt: string;
+  endedAt?: string;
+  updatedAt: number;
+};
+
 type Point = { x: number; y: number };
 
 type ApprovalResolution = {
@@ -118,7 +151,11 @@ const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
-const snapshotRefCache = new Map<number, Map<string, string>>();
+const pendingDialogs = new Map<number, PendingDialog>();
+const downloadsByTab = new Map<number, DownloadRecord[]>();
+const downloadIdToTab = new Map<number, number>();
+const downloadGuidToTab = new Map<string, number>();
+const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
@@ -570,6 +607,14 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   permittedTabs.delete(tabId);
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
+  pendingDialogs.delete(tabId);
+  downloadsByTab.delete(tabId);
+  for (const [downloadId, mappedTabId] of downloadIdToTab) {
+    if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+  }
+  for (const [guid, mappedTabId] of downloadGuidToTab) {
+    if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+  }
   streamingTabs.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
@@ -644,6 +689,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
+    pendingDialogs.delete(tabId);
+    downloadsByTab.delete(tabId);
+    for (const [downloadId, mappedTabId] of downloadIdToTab) {
+      if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+    }
+    for (const [guid, mappedTabId] of downloadGuidToTab) {
+      if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+    }
     streamingTabs.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
@@ -675,6 +728,7 @@ async function attachDebugger(tabId: number): Promise<void> {
     await chrome.debugger.attach({ tabId }, "1.3");
     await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
     await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
     attachedTabs.add(tabId);
   } catch (e) {
     console.warn("[ABG] debugger.attach failed", e);
@@ -721,6 +775,92 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
     emitStreamEvent(source.tabId, { kind: "console", level: "error", text });
+  } else if (method === "Page.javascriptDialogOpening") {
+    const p = params as {
+      url?: string;
+      message?: string;
+      type?: string;
+      defaultPrompt?: string;
+    };
+    const dialog: PendingDialog = {
+      type: p.type ?? "unknown",
+      message: p.message ?? "",
+      defaultPrompt: p.defaultPrompt,
+      url: p.url,
+      openedAt: Date.now(),
+    };
+    pendingDialogs.set(source.tabId, dialog);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "opening",
+      dialog: publicDialogState(source.tabId).dialog,
+    });
+  } else if (method === "Page.javascriptDialogClosed") {
+    const dialog = pendingDialogs.get(source.tabId);
+    pendingDialogs.delete(source.tabId);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "closed",
+      dialog: dialog ? publicDialog(dialog) : undefined,
+    });
+  } else if (method === "Page.downloadWillBegin") {
+    const p = params as {
+      guid?: string;
+      url?: string;
+      suggestedFilename?: string;
+    };
+    if (p.guid && p.url) {
+      const record = upsertTabDownload(source.tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId: source.tabId,
+        url: p.url,
+        suggestedFilename: p.suggestedFilename,
+        status: "in_progress",
+        startedAt: new Date().toISOString(),
+        updatedAt: Date.now(),
+      });
+      downloadGuidToTab.set(p.guid, source.tabId);
+      emitStreamEvent(source.tabId, {
+        kind: "download",
+        phase: "started",
+        download: publicDownload(record),
+      });
+    }
+  } else if (method === "Page.downloadProgress") {
+    const p = params as {
+      guid?: string;
+      state?: "inProgress" | "completed" | "canceled";
+      totalBytes?: number;
+      receivedBytes?: number;
+    };
+    const tabId = p.guid ? downloadGuidToTab.get(p.guid) : undefined;
+    if (p.guid && tabId) {
+      const status: DownloadStatus =
+        p.state === "completed"
+          ? "complete"
+          : p.state === "canceled"
+            ? "interrupted"
+            : "in_progress";
+      const record = upsertTabDownload(tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId,
+        url: "",
+        status,
+        bytesReceived: p.receivedBytes,
+        totalBytes: p.totalBytes,
+        startedAt: new Date().toISOString(),
+        endedAt: status === "in_progress" ? undefined : new Date().toISOString(),
+        updatedAt: Date.now(),
+        error: p.state === "canceled" ? "CANCELED" : undefined,
+      });
+      emitStreamEvent(tabId, {
+        kind: "download",
+        phase: status === "in_progress" ? "progress" : status,
+        download: publicDownload(record),
+      });
+    }
   } else if (method === "Network.requestWillBeSent") {
     const p = params as {
       requestId: string;
@@ -808,6 +948,133 @@ chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
 
+chrome.downloads.onCreated.addListener((item) => {
+  void handleDownloadCreated(item);
+});
+
+chrome.downloads.onChanged.addListener((delta) => {
+  void handleDownloadChanged(delta);
+});
+
+function upsertTabDownload(tabId: number, patch: DownloadRecord): DownloadRecord {
+  const records = downloadsByTab.get(tabId) ?? [];
+  const existing = records.find(
+    (record) =>
+      (patch.guid && record.guid === patch.guid) ||
+      (patch.browserDownloadId !== undefined &&
+        record.browserDownloadId === patch.browserDownloadId) ||
+      record.id === patch.id,
+  );
+  const merged: DownloadRecord = existing
+    ? {
+        ...existing,
+        ...patch,
+        url: patch.url || existing.url,
+        startedAt: existing.startedAt || patch.startedAt,
+        updatedAt: Date.now(),
+      }
+    : { ...patch, updatedAt: Date.now() };
+  if (!existing) records.push(merged);
+  else records[records.indexOf(existing)] = merged;
+  records.sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+  while (records.length > 50) records.shift();
+  downloadsByTab.set(tabId, records);
+  if (merged.browserDownloadId !== undefined) downloadIdToTab.set(merged.browserDownloadId, tabId);
+  if (merged.guid) downloadGuidToTab.set(merged.guid, tabId);
+  return merged;
+}
+
+function resolveDownloadTab(item: chrome.downloads.DownloadItem): number | undefined {
+  const mapped = downloadIdToTab.get(item.id);
+  if (mapped !== undefined) return mapped;
+  for (const [tabId, records] of downloadsByTab) {
+    const match = records
+      .slice()
+      .reverse()
+      .find(
+        (record) =>
+          !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+      );
+    if (match) return tabId;
+  }
+  if (item.referrer) {
+    for (const [tabId, tab] of permittedTabs) {
+      if (tab.url === item.referrer || originForUrl(tab.url) === originForUrl(item.referrer)) {
+        return tabId;
+      }
+    }
+  }
+  return undefined;
+}
+
+function recordFromDownloadItem(
+  item: chrome.downloads.DownloadItem,
+  tabId: number,
+  existingId?: string,
+): DownloadRecord {
+  return {
+    id: existingId ?? `download-${item.id}`,
+    tabId,
+    browserDownloadId: item.id,
+    url: item.url,
+    finalUrl: item.finalUrl,
+    referrer: item.referrer,
+    suggestedFilename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
+    filename: item.filename,
+    mime: item.mime,
+    status: item.state,
+    error: item.error,
+    bytesReceived: item.bytesReceived,
+    totalBytes: item.totalBytes,
+    fileSize: item.fileSize,
+    exists: item.exists,
+    startedAt: item.startTime,
+    endedAt: item.endTime,
+    updatedAt: Date.now(),
+  };
+}
+
+async function handleDownloadCreated(item: chrome.downloads.DownloadItem): Promise<void> {
+  const tabId = resolveDownloadTab(item);
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  const existing = (downloadsByTab.get(tabId) ?? [])
+    .slice()
+    .reverse()
+    .find(
+      (record) =>
+        !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+    );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: "created",
+    download: publicDownload(record),
+  });
+}
+
+async function handleDownloadChanged(delta: chrome.downloads.DownloadDelta): Promise<void> {
+  let tabId = downloadIdToTab.get(delta.id);
+  let item: chrome.downloads.DownloadItem | undefined;
+  if (tabId === undefined) {
+    const found = await chrome.downloads.search({ id: delta.id });
+    item = found[0];
+    if (!item) return;
+    tabId = resolveDownloadTab(item);
+  }
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  item = item ?? (await chrome.downloads.search({ id: delta.id }))[0];
+  if (!item) return;
+  const existing = (downloadsByTab.get(tabId) ?? []).find(
+    (record) => record.browserDownloadId === delta.id,
+  );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: record.status === "in_progress" ? "progress" : record.status,
+    download: publicDownload(record),
+  });
+}
+
 function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | undefined {
   const buf = networkBuffers.get(tabId);
   if (!buf) return undefined;
@@ -823,9 +1090,12 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
   const tabId = cmd.params?.tabId;
   try {
-    if (cmd.method === "read_dom") {
+    if (cmd.method === "frames") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      const result = await readDom(tabId, cmd.params?.selector);
+      reply(cmd.id, await listFrames(tabId));
+    } else if (cmd.method === "read_dom") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      const result = await readDom(tabId, cmd.params?.selector, readFrameParam(cmd.params));
       reply(cmd.id, result);
     } else if (cmd.method === "get_dom") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
@@ -853,13 +1123,23 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, { logs });
     } else if (cmd.method === "table") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await extractTables(tabId, cmd.params?.selector));
+      reply(cmd.id, await extractTables(tabId, cmd.params?.selector, readFrameParam(cmd.params)));
     } else if (cmd.method === "describe") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await describeElements(tabId, cmd.params ?? {}));
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "har_export") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "state_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "download_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
@@ -876,6 +1156,10 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "stream_control") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
+    } else if (cmd.method === "dialog_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, publicDialogState(tabId));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
@@ -906,12 +1190,13 @@ async function runApprovedOperation(cmd: OperationCommand, tabId: number): Promi
 }
 
 function buildOperation(cmd: OperationCommand, tabId: number): OperationDescriptor {
+  const frame = readFrameParam(cmd.params);
   if (cmd.method === "click_selector") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Click the element matching selector ${quoteForIntent(selector)}.`,
-      run: () => clickSelector(tabId, selector),
+      intent: `Click the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => clickSelector(tabId, selector, frame),
     };
   }
   if (cmd.method === "click_at") {
@@ -943,24 +1228,24 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Double-click the element matching selector ${quoteForIntent(selector)}.`,
-      run: () => doubleClickSelector(tabId, selector),
+      intent: `Double-click the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => doubleClickSelector(tabId, selector, frame),
     };
   }
   if (cmd.method === "focus_selector") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Focus the element matching selector ${quoteForIntent(selector)} without clicking it.`,
-      run: () => focusElement(tabId, selector),
+      intent: `Focus the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} without clicking it.`,
+      run: () => focusElement(tabId, selector, frame),
     };
   }
   if (cmd.method === "hover_selector") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Move the mouse over the element matching selector ${quoteForIntent(selector)}.`,
-      run: () => hoverSelector(tabId, selector),
+      intent: `Move the mouse over the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => hoverSelector(tabId, selector, frame),
     };
   }
   if (cmd.method === "select_option") {
@@ -972,8 +1257,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       throw new Error("exactly one of value or label required");
     }
     return {
-      intent: `Select an option in ${quoteForIntent(selector)}.`,
-      run: () => selectOption(tabId, selector, { value, label }),
+      intent: `Select an option in ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => selectOption(tabId, selector, { value, label }, frame),
     };
   }
   if (cmd.method === "set_checked") {
@@ -982,8 +1267,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const checked = cmd.params?.checked;
     if (typeof checked !== "boolean") throw new Error("checked boolean required");
     return {
-      intent: `${checked ? "Check" : "Uncheck"} the input matching selector ${quoteForIntent(selector)} if needed.`,
-      run: () => setChecked(tabId, selector, checked),
+      intent: `${checked ? "Check" : "Uncheck"} the input matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} if needed.`,
+      run: () => setChecked(tabId, selector, checked, frame),
     };
   }
   if (cmd.method === "fill") {
@@ -997,9 +1282,9 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const dryRun = cmd.params?.dryRun === true;
     return {
       intent: dryRun
-        ? `Preview editable replacement for selector ${quoteForIntent(selector)}.`
-        : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}.`,
-      run: () => fillField(tabId, selector, value, dryRun),
+        ? `Preview editable replacement for selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`
+        : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => fillField(tabId, selector, value, dryRun, frame),
     };
   }
   if (cmd.method === "paste") {
@@ -1011,16 +1296,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     }
     const value = rawValue ?? "";
     return {
-      intent: `Paste ${new TextEncoder().encode(value).byteLength} bytes into the editable element matching selector ${quoteForIntent(selector)}.`,
-      run: () => pasteText(tabId, selector, value),
+      intent: `Paste ${new TextEncoder().encode(value).byteLength} bytes into the editable element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => pasteText(tabId, selector, value, frame),
     };
   }
   if (cmd.method === "clear") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Clear the editable element matching selector ${quoteForIntent(selector)}.`,
-      run: () => clearEditable(tabId, selector),
+      intent: `Clear the editable element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => clearEditable(tabId, selector, frame),
     };
   }
   if (cmd.method === "replace_dom") {
@@ -1029,8 +1314,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     if (typeof html !== "string" || html.length === 0) throw new Error("html required");
     return {
-      intent: `Replace the element matching selector ${quoteForIntent(selector)} with provided HTML.`,
-      run: () => replaceDom(tabId, selector, html),
+      intent: `Replace the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} with provided HTML.`,
+      run: () => replaceDom(tabId, selector, html, frame),
     };
   }
   if (cmd.method === "upload_file") {
@@ -1039,8 +1324,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     if (typeof file !== "string" || file.length === 0) throw new Error("file required");
     return {
-      intent: `Attach local file ${quoteForIntent(file)} to file input ${quoteForIntent(selector)}.`,
-      run: () => uploadFile(tabId, selector, file),
+      intent: `Attach local file ${quoteForIntent(file)} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => uploadFile(tabId, selector, file, frame),
     };
   }
   if (cmd.method === "type_text") {
@@ -1104,7 +1389,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const steps =
       typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 12;
     return {
-      intent: `Drag from ${describeDragPoint(from)} to ${describeDragPoint(to)}.`,
+      intent: `Drag from ${describeDragPoint(from)} to ${describeDragPoint(to)}${frameIntentSuffix(frame)}.`,
       run: () => drag(tabId, from, to, steps),
     };
   }
@@ -1112,8 +1397,28 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Scroll the element matching selector ${quoteForIntent(selector)} into view.`,
-      run: () => scrollElementIntoView(tabId, selector),
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} into view.`,
+      run: () => scrollElementIntoView(tabId, selector, frame),
+    };
+  }
+  if (cmd.method === "dialog_action") {
+    const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
+    if (action !== "accept" && action !== "dismiss") {
+      throw new Error("dialog action must be accept or dismiss");
+    }
+    const dialog = pendingDialogs.get(tabId);
+    if (!dialog) {
+      throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+    }
+    const promptText =
+      typeof cmd.params?.promptText === "string" ? cmd.params.promptText : undefined;
+    const promptSuffix =
+      promptText === undefined
+        ? ""
+        : ` with ${new TextEncoder().encode(promptText).byteLength} prompt bytes`;
+    return {
+      intent: `${action === "accept" ? "Accept" : "Dismiss"} ${dialog.type} dialog${promptSuffix}: ${quoteForIntent(dialog.message)}`,
+      run: () => runDialogAction(tabId, cmd.params ?? {}),
     };
   }
   const deltaX = cmd.params?.deltaX ?? 0;
@@ -1135,6 +1440,134 @@ function quoteForIntent(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const shortValue = normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   return `"${shortValue}"`;
+}
+
+function truncateText(value: string | undefined, limit = 500): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+}
+
+function publicDialog(dialog: PendingDialog): Record<string, unknown> {
+  const encoder = new TextEncoder();
+  return {
+    type: dialog.type,
+    message: truncateText(dialog.message),
+    messageBytes: encoder.encode(dialog.message).byteLength,
+    defaultPrompt: truncateText(dialog.defaultPrompt),
+    defaultPromptBytes:
+      dialog.defaultPrompt === undefined
+        ? undefined
+        : encoder.encode(dialog.defaultPrompt).byteLength,
+    url: dialog.url,
+    openedAt: new Date(dialog.openedAt).toISOString(),
+  };
+}
+
+function publicDialogState(tabId: number): Record<string, unknown> {
+  const dialog = pendingDialogs.get(tabId);
+  return dialog ? { pending: true, dialog: publicDialog(dialog) } : { pending: false };
+}
+
+function publicDownload(record: DownloadRecord): Record<string, unknown> {
+  const pathAvailable = record.status === "complete" && !!record.filename;
+  return {
+    id: record.id,
+    browserDownloadId: record.browserDownloadId,
+    guid: record.guid,
+    tabId: record.tabId,
+    url: record.url,
+    finalUrl: record.finalUrl,
+    referrer: record.referrer,
+    suggestedFilename: record.suggestedFilename,
+    filename: record.filename,
+    pathAvailable,
+    unavailableReason: pathAvailable
+      ? undefined
+      : record.status === "complete"
+        ? "chrome_download_path_unavailable"
+        : "download_not_complete",
+    mime: record.mime,
+    status: record.status,
+    error: record.error,
+    bytesReceived: record.bytesReceived,
+    totalBytes: record.totalBytes,
+    fileSize: record.fileSize,
+    exists: record.exists,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+  };
+}
+
+function downloadState(tabId: number): Record<string, unknown> {
+  const downloads = (downloadsByTab.get(tabId) ?? []).map(publicDownload);
+  return {
+    ok: true,
+    count: downloads.length,
+    latest: downloads.at(-1),
+    downloads,
+  };
+}
+
+async function getDownloadState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  if (params.wait !== true) return downloadState(tabId);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const latest = (downloadsByTab.get(tabId) ?? []).at(-1);
+    if (latest && latest.status !== "in_progress") {
+      return {
+        ok: latest.status === "complete",
+        mode: "wait",
+        elapsedMs: Date.now() - started,
+        latest: publicDownload(latest),
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait",
+    timeoutMs,
+    latest: (downloadsByTab.get(tabId) ?? []).at(-1)
+      ? publicDownload((downloadsByTab.get(tabId) ?? []).at(-1) as DownloadRecord)
+      : undefined,
+  };
+}
+
+async function runDialogAction(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const action = typeof params.action === "string" ? params.action : "";
+  if (action !== "accept" && action !== "dismiss") {
+    throw new GatewayError("bad_dialog_action", "dialog action must be accept or dismiss");
+  }
+  const dialog = pendingDialogs.get(tabId);
+  if (!dialog) {
+    throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+  }
+  await attachDebugger(tabId);
+  const promptText = typeof params.promptText === "string" ? params.promptText : undefined;
+  const commandParams: Record<string, unknown> = { accept: action === "accept" };
+  if (action === "accept" && promptText !== undefined) commandParams.promptText = promptText;
+  await chrome.debugger.sendCommand({ tabId }, "Page.handleJavaScriptDialog", commandParams);
+  pendingDialogs.delete(tabId);
+  return {
+    ok: true,
+    action,
+    accepted: action === "accept",
+    promptTextBytes:
+      promptText === undefined ? undefined : new TextEncoder().encode(promptText).byteLength,
+    dialog: publicDialog(dialog),
+  };
 }
 
 function globMatch(pattern: string, text: string): boolean {
@@ -1290,22 +1723,281 @@ type DomReadResult = {
   title: string;
   origin: string;
   selector?: string;
+  frame?: FrameDescriptor;
   text: string;
   html?: string;
   markdown?: string;
   found?: boolean;
 };
 
-async function readDom(tabId: number, selector: string | undefined): Promise<DomReadResult> {
+type FrameDescriptor = {
+  ref: string;
+  parentRef?: string;
+  selector: string;
+  name: string;
+  title: string;
+  url: string;
+  src: string;
+  origin: string;
+  sameOrigin: boolean;
+  accessible: boolean;
+  childCount: number;
+  depth: number;
+  lineage: string[];
+};
+
+type FrameContext = {
+  doc: Document;
+  win: Window;
+  frame?: FrameDescriptor;
+  offsetX: number;
+  offsetY: number;
+};
+
+type FrameScriptError = {
+  __abgFrameError: true;
+  code: string;
+  message: string;
+};
+
+type SnapshotRefTarget = { selector: string; frame?: string };
+
+function readFrameParam(params: GatewayCommand["params"] | undefined): string | undefined {
+  return typeof params?.frame === "string" && params.frame.length > 0 ? params.frame : undefined;
+}
+
+function frameIntentSuffix(frame: string | undefined): string {
+  return frame ? ` inside frame ${quoteForIntent(frame)}` : "";
+}
+
+function createFrameApiSource(): string {
+  return `() => {
+    const fail = (code, message) => {
+      const err = new Error(message);
+      err.code = code;
+      throw err;
+    };
+    const cssEscape = (value) => {
+      const escaper = globalThis.CSS && globalThis.CSS.escape;
+      return escaper ? escaper(value) : String(value).replace(/["\\\\]/g, "\\\\$&");
+    };
+    const normalize = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+    const selectorFor = (el, rootDocument) => {
+      if (el.id) {
+        const idSelector = "#" + cssEscape(el.id);
+        if (rootDocument.querySelectorAll(idSelector).length === 1) return idSelector;
+      }
+      for (const attr of ["data-testid", "data-test", "name", "aria-label", "title", "src"]) {
+        const value = el.getAttribute(attr);
+        if (!value) continue;
+        const selector = el.tagName.toLowerCase() + "[" + attr + "=\\"" + cssEscape(value) + "\\"]";
+        if (rootDocument.querySelectorAll(selector).length === 1) return selector;
+      }
+      const parts = [];
+      let current = el;
+      while (current && parts.length < 5) {
+        const parent = current.parentElement;
+        const tag = current.tagName.toLowerCase();
+        if (!parent) {
+          parts.unshift(tag);
+          break;
+        }
+        const siblings = Array.from(parent.children).filter((child) => child.tagName === current.tagName);
+        const nth = siblings.indexOf(current) + 1;
+        parts.unshift(siblings.length > 1 ? tag + ":nth-of-type(" + nth + ")" : tag);
+        current = parent;
+      }
+      return parts.join(" > ");
+    };
+    const publicFrame = (item) => ({
+      ref: item.ref,
+      parentRef: item.parentRef || undefined,
+      selector: item.selector,
+      name: item.name,
+      title: item.title,
+      url: item.url,
+      src: item.src,
+      origin: item.origin,
+      sameOrigin: item.sameOrigin,
+      accessible: item.accessible,
+      childCount: item.childCount,
+      depth: item.depth,
+      lineage: item.lineage,
+    });
+    const collectFrames = () => {
+      const items = [];
+      const collect = (doc, parentRef, offsetX, offsetY, lineage) => {
+        const frames = Array.from(doc.querySelectorAll("iframe, frame"));
+        for (const element of frames) {
+          const rect = element.getBoundingClientRect();
+          const ref = "@f" + (items.length + 1);
+          const src = element.getAttribute("src") || "";
+          let childDoc = null;
+          let childWin = null;
+          let accessible = false;
+          let sameOrigin = false;
+          let childCount = 0;
+          let url = element.src || src || "about:blank";
+          let title = element.getAttribute("title") || "";
+          let origin = "";
+          try {
+            childWin = element.contentWindow;
+            childDoc = element.contentDocument || (childWin && childWin.document);
+            if (childDoc && childWin) {
+              accessible = true;
+              sameOrigin = true;
+              url = childWin.location.href;
+              title = childDoc.title || title;
+              origin = childWin.location.origin;
+              childCount = childDoc.querySelectorAll("iframe, frame").length;
+            }
+          } catch (_error) {
+            childDoc = null;
+            childWin = null;
+          }
+          const nextLineage = lineage.concat(ref);
+          const item = {
+            ref,
+            parentRef,
+            selector: selectorFor(element, doc),
+            name: element.getAttribute("name") || "",
+            title,
+            url,
+            src,
+            origin,
+            sameOrigin,
+            accessible,
+            childCount,
+            depth: lineage.length,
+            lineage: nextLineage,
+            element,
+            doc: childDoc,
+            win: childWin,
+            offsetX: offsetX + rect.left,
+            offsetY: offsetY + rect.top,
+          };
+          items.push(item);
+          if (accessible && childDoc) collect(childDoc, ref, item.offsetX, item.offsetY, nextLineage);
+        }
+      };
+      collect(document, undefined, 0, 0, []);
+      return items;
+    };
+    return {
+      listFrames: () => collectFrames().map(publicFrame),
+      resolve: (target) => {
+        if (!target) {
+          return { doc: document, win: window, frame: undefined, offsetX: 0, offsetY: 0 };
+        }
+        const frames = collectFrames();
+        let found = null;
+        if (/^@f\\d+$/.test(target)) {
+          found = frames[Number(target.slice(2)) - 1] || null;
+        } else {
+          const topElement = document.querySelector(target);
+          if (topElement) found = frames.find((item) => item.element === topElement) || null;
+        }
+        if (!found) {
+          fail("frame_not_found", "frame not found: " + target);
+        }
+        if (!found.accessible || !found.doc || !found.win) {
+          fail(
+            "frame_not_accessible",
+            "frame is not same-origin or is not accessible for selector targeting: " + target,
+          );
+        }
+        return {
+          doc: found.doc,
+          win: found.win,
+          frame: publicFrame(found),
+          offsetX: found.offsetX,
+          offsetY: found.offsetY,
+        };
+      },
+      normalize,
+    };
+  }`;
+}
+
+async function evaluatePageExpression<T>(tabId: number, expression: string): Promise<T> {
   await attachDebugger(tabId);
-  const pageFn = (sel: string | null) => {
-    const root: Element | null = sel ? document.querySelector(sel) : document.documentElement;
+  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+  })) as {
+    result?: { value?: T | FrameScriptError };
+    exceptionDetails?: { text: string; exception?: { description?: string } };
+  };
+  if (res.exceptionDetails) {
+    throw new Error(
+      `frame script failed: ${res.exceptionDetails.exception?.description ?? res.exceptionDetails.text}`,
+    );
+  }
+  const value = res.result?.value;
+  if (
+    value &&
+    typeof value === "object" &&
+    "__abgFrameError" in value &&
+    (value as FrameScriptError).__abgFrameError
+  ) {
+    const err = value as FrameScriptError;
+    throw new GatewayError(err.code, err.message);
+  }
+  return value as T;
+}
+
+async function runFrameScript<T, Args>(
+  tabId: number,
+  frame: string | undefined,
+  args: Args,
+  pageFn: (ctx: FrameContext, args: Args) => T,
+): Promise<T> {
+  const expression = `(() => {
+    const __abgFrameTarget = ${JSON.stringify(frame ?? null)};
+    const __abgArgs = ${JSON.stringify(args ?? null)};
+    const __abgCreateFrameApi = ${createFrameApiSource()};
+    const __abgPageFn = ${pageFn.toString()};
+    try {
+      const __abgApi = __abgCreateFrameApi();
+      return __abgPageFn(__abgApi.resolve(__abgFrameTarget), __abgArgs);
+    } catch (error) {
+      return {
+        __abgFrameError: true,
+        code: error && error.code ? error.code : "frame_script_failed",
+        message: error && error.message ? error.message : String(error),
+      };
+    }
+  })()`;
+  return evaluatePageExpression<T>(tabId, expression);
+}
+
+async function listFrames(
+  tabId: number,
+): Promise<{ url: string; title: string; count: number; frames: FrameDescriptor[] }> {
+  const expression = `(() => {
+    const __abgCreateFrameApi = ${createFrameApiSource()};
+    const __abgApi = __abgCreateFrameApi();
+    const frames = __abgApi.listFrames();
+    return { url: location.href, title: document.title, count: frames.length, frames };
+  })()`;
+  return evaluatePageExpression(tabId, expression);
+}
+
+async function readDom(
+  tabId: number,
+  selector: string | undefined,
+  frame: string | undefined,
+): Promise<DomReadResult> {
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const sel = opts.selector;
+    const root: Element | null = sel ? ctx.doc.querySelector(sel) : ctx.doc.documentElement;
     if (sel && !root) {
       return {
-        url: location.href,
-        title: document.title,
-        origin: location.origin,
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
+        origin: ctx.win.location.origin,
         selector: sel,
+        frame: ctx.frame,
         found: false,
         text: "",
       } as const;
@@ -1315,30 +2007,16 @@ async function readDom(tabId: number, selector: string | undefined): Promise<Dom
       typeof (el as HTMLElement).innerText === "string";
     const text = isElementWithInnerText(target) ? target.innerText : (target.textContent ?? "");
     return {
-      url: location.href,
-      title: document.title,
-      origin: location.origin,
+      url: ctx.win.location.href,
+      title: ctx.doc.title,
+      origin: ctx.win.location.origin,
       selector: sel ?? undefined,
+      frame: ctx.frame,
       found: sel ? true : undefined,
       text,
       html: (target as Element).outerHTML,
     } as const;
-  };
-
-  const expression = `(${pageFn.toString()})(${JSON.stringify(selector ?? null)})`;
-  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
-    expression,
-    returnByValue: true,
-  })) as {
-    result?: { value?: DomReadResult };
-    exceptionDetails?: { text: string; exception?: { description?: string } };
-  };
-  if (res.exceptionDetails) {
-    throw new Error(
-      `read_dom failed: ${res.exceptionDetails.exception?.description ?? res.exceptionDetails.text}`,
-    );
-  }
-  return res.result?.value ?? { url: "", title: "", origin: "", text: "" };
+  });
 }
 
 async function getDomValue(
@@ -1351,103 +2029,99 @@ async function getDomValue(
   const props = Array.isArray(params.props)
     ? params.props.filter((prop): prop is string => typeof prop === "string")
     : undefined;
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (
-      getter: string,
-      sel: string | undefined,
-      attrName: string | undefined,
-      styleProps: string[] | undefined,
-    ) => {
-      const selected = sel ? Array.from(document.querySelectorAll(sel)) : [];
-      const first = selected[0] as HTMLElement | undefined;
-      const textOf = (el: Element): string =>
-        ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
-      const boxOf = (el: Element) => {
-        const rect = el.getBoundingClientRect();
-        return {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        };
+  const frame = readFrameParam(params);
+  return runFrameScript(tabId, frame, { kind, selector, name, props }, (ctx, opts) => {
+    const getter = opts.kind;
+    const sel = opts.selector;
+    const attrName = opts.name;
+    const styleProps = opts.props;
+    const selected = sel ? Array.from(ctx.doc.querySelectorAll(sel)) : [];
+    const first = selected[0] as HTMLElement | undefined;
+    const textOf = (el: Element): string =>
+      ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
+    const boxOf = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: Math.round(ctx.offsetX + rect.left),
+        y: Math.round(ctx.offsetY + rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
       };
-      const base = {
-        kind: getter,
-        selector: sel,
-        url: location.href,
-        title: document.title,
+    };
+    const base = {
+      kind: getter,
+      selector: sel,
+      frame: ctx.frame,
+      url: ctx.win.location.href,
+      title: ctx.doc.title,
+    };
+    if (getter === "title") return { ...base, value: ctx.doc.title };
+    if (getter === "url") return { ...base, value: ctx.win.location.href };
+    if (!sel) return { ...base, found: false, error: "selector_required" };
+    if (getter === "count") return { ...base, value: selected.length };
+    if (!first) return { ...base, found: false };
+    if (getter === "text") return { ...base, found: true, value: textOf(first) };
+    if (getter === "html") return { ...base, found: true, value: first.outerHTML };
+    if (getter === "value") {
+      let value: string | string[] | boolean | null = null;
+      if (first instanceof HTMLInputElement) {
+        value = first.type === "checkbox" || first.type === "radio" ? first.checked : first.value;
+      } else if (first instanceof HTMLTextAreaElement) {
+        value = first.value;
+      } else if (first instanceof HTMLSelectElement) {
+        value = Array.from(first.selectedOptions).map((option) => option.value);
+      }
+      return { ...base, found: true, value };
+    }
+    if (getter === "editable-value") {
+      let editableText = "";
+      let kind = "unsupported";
+      let source = "none";
+      if (first instanceof HTMLInputElement) {
+        editableText = first.value;
+        kind = "input";
+        source = "value";
+      } else if (first instanceof HTMLTextAreaElement) {
+        editableText = first.value;
+        kind = "textarea";
+        source = "value";
+      } else if (first.isContentEditable) {
+        editableText = first.innerText || first.textContent || "";
+        kind = "contenteditable";
+        source = "innerText";
+      } else if (first.getAttribute("role") === "textbox") {
+        editableText = first.innerText || first.textContent || "";
+        kind = "role-textbox";
+        source = "innerText";
+      } else {
+        return { ...base, found: true, editable: false, kind, error: "not_editable" };
+      }
+      const normalizedHtmlText = textOf(first);
+      return {
+        ...base,
+        found: true,
+        editable: true,
+        kind,
+        source,
+        editableText,
+        html: first.outerHTML,
+        differsFromHtmlText: editableText.replace(/\s+/g, " ").trim() !== normalizedHtmlText,
       };
-      if (getter === "title") return { ...base, value: document.title };
-      if (getter === "url") return { ...base, value: location.href };
-      if (!sel) return { ...base, found: false, error: "selector_required" };
-      if (getter === "count") return { ...base, value: selected.length };
-      if (!first) return { ...base, found: false };
-      if (getter === "text") return { ...base, found: true, value: textOf(first) };
-      if (getter === "html") return { ...base, found: true, value: first.outerHTML };
-      if (getter === "value") {
-        let value: string | string[] | boolean | null = null;
-        if (first instanceof HTMLInputElement) {
-          value = first.type === "checkbox" || first.type === "radio" ? first.checked : first.value;
-        } else if (first instanceof HTMLTextAreaElement) {
-          value = first.value;
-        } else if (first instanceof HTMLSelectElement) {
-          value = Array.from(first.selectedOptions).map((option) => option.value);
-        }
-        return { ...base, found: true, value };
-      }
-      if (getter === "editable-value") {
-        let editableText = "";
-        let kind = "unsupported";
-        let source = "none";
-        if (first instanceof HTMLInputElement) {
-          editableText = first.value;
-          kind = "input";
-          source = "value";
-        } else if (first instanceof HTMLTextAreaElement) {
-          editableText = first.value;
-          kind = "textarea";
-          source = "value";
-        } else if (first.isContentEditable) {
-          editableText = first.innerText || first.textContent || "";
-          kind = "contenteditable";
-          source = "innerText";
-        } else if (first.getAttribute("role") === "textbox") {
-          editableText = first.innerText || first.textContent || "";
-          kind = "role-textbox";
-          source = "innerText";
-        } else {
-          return { ...base, found: true, editable: false, kind, error: "not_editable" };
-        }
-        const normalizedHtmlText = textOf(first);
-        return {
-          ...base,
-          found: true,
-          editable: true,
-          kind,
-          source,
-          editableText,
-          html: first.outerHTML,
-          differsFromHtmlText: editableText.replace(/\s+/g, " ").trim() !== normalizedHtmlText,
-        };
-      }
-      if (getter === "attr") {
-        if (!attrName) return { ...base, found: true, error: "attr_name_required" };
-        return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
-      }
-      if (getter === "box") return { ...base, found: true, value: boxOf(first) };
-      if (getter === "styles") {
-        const computed = getComputedStyle(first);
-        const keys = styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
-        const values: Record<string, string> = {};
-        for (const key of keys) values[key] = computed.getPropertyValue(key);
-        return { ...base, found: true, value: values };
-      }
-      return { ...base, found: false, error: "unknown_getter" };
-    },
-    args: [kind, selector, name, props],
+    }
+    if (getter === "attr") {
+      if (!attrName) return { ...base, found: true, error: "attr_name_required" };
+      return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
+    }
+    if (getter === "box") return { ...base, found: true, value: boxOf(first) };
+    if (getter === "styles") {
+      const computed = getComputedStyle(first);
+      const keys = styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
+      const values: Record<string, string> = {};
+      for (const key of keys) values[key] = computed.getPropertyValue(key);
+      return { ...base, found: true, value: values };
+    }
+    return { ...base, found: false, error: "unknown_getter" };
   });
-  return res?.result ?? { kind, selector, found: false };
 }
 
 async function getPredicate(
@@ -1456,40 +2130,38 @@ async function getPredicate(
 ): Promise<{ kind: string; selector?: string; found: boolean; value: boolean }> {
   const kind = typeof params.kind === "string" ? params.kind : "";
   const selector = typeof params.selector === "string" ? params.selector : undefined;
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (predicate: string, sel: string | undefined) => {
-      const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
-      const base = { kind: predicate, selector: sel, found: !!el };
-      if (!el) return { ...base, value: false };
-      const visible = (target: HTMLElement): boolean => {
-        const rect = target.getBoundingClientRect();
-        const style = getComputedStyle(target);
-        return (
-          rect.width > 0 &&
-          rect.height > 0 &&
-          style.visibility !== "hidden" &&
-          style.display !== "none" &&
-          Number(style.opacity || "1") !== 0
-        );
-      };
-      if (predicate === "visible") return { ...base, value: visible(el) };
-      if (predicate === "enabled") {
-        const disabled =
-          "disabled" in el && Boolean((el as HTMLButtonElement | HTMLInputElement).disabled);
-        const ariaDisabled = el.getAttribute("aria-disabled") === "true";
-        return { ...base, value: !disabled && !ariaDisabled };
-      }
-      if (predicate === "checked") {
-        const value =
-          el instanceof HTMLInputElement ? el.checked : el.getAttribute("aria-checked") === "true";
-        return { ...base, value };
-      }
-      return { ...base, value: false };
-    },
-    args: [kind, selector],
+  const frame = readFrameParam(params);
+  return runFrameScript(tabId, frame, { kind, selector }, (ctx, opts) => {
+    const predicate = opts.kind;
+    const sel = opts.selector;
+    const el = sel ? (ctx.doc.querySelector(sel) as HTMLElement | null) : null;
+    const base = { kind: predicate, selector: sel, frame: ctx.frame, found: !!el };
+    if (!el) return { ...base, value: false };
+    const visible = (target: HTMLElement): boolean => {
+      const rect = target.getBoundingClientRect();
+      const style = getComputedStyle(target);
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        Number(style.opacity || "1") !== 0
+      );
+    };
+    if (predicate === "visible") return { ...base, value: visible(el) };
+    if (predicate === "enabled") {
+      const disabled =
+        "disabled" in el && Boolean((el as HTMLButtonElement | HTMLInputElement).disabled);
+      const ariaDisabled = el.getAttribute("aria-disabled") === "true";
+      return { ...base, value: !disabled && !ariaDisabled };
+    }
+    if (predicate === "checked") {
+      const value =
+        el instanceof HTMLInputElement ? el.checked : el.getAttribute("aria-checked") === "true";
+      return { ...base, value };
+    }
+    return { ...base, value: false };
   });
-  return res?.result ?? { kind, selector, found: false, value: false };
 }
 
 type ValidationIssue = {
@@ -1619,6 +2291,7 @@ async function validateEditable(
 type FindMatch = {
   index: number;
   selector: string;
+  frame?: FrameDescriptor;
   tag: string;
   role: string;
   text: string;
@@ -1638,7 +2311,15 @@ async function runFindCommand(
   const action = typeof params.action === "string" ? params.action : "inspect";
   const exact = params.exact === true;
   const limit = typeof params.limit === "number" ? Math.max(1, Math.min(100, params.limit)) : 20;
-  const allMatches = await findSemanticMatches(tabId, { locator, query, role, exact, limit });
+  const frame = readFrameParam(params);
+  const allMatches = await findSemanticMatches(tabId, {
+    locator,
+    query,
+    role,
+    exact,
+    limit,
+    frame,
+  });
   const matches = applyFindIndexModifier(allMatches, indexModifier, index);
   if (action === "inspect") {
     return {
@@ -1646,6 +2327,7 @@ async function runFindCommand(
       query,
       role,
       exact,
+      frame,
       indexModifier,
       index,
       totalCount: allMatches.length,
@@ -1662,28 +2344,32 @@ async function runFindCommand(
   await requireOperationApproval(
     "find" as OperationMethod,
     tabId,
-    `Run find action ${quoteForIntent(action)} on ${quoteForIntent(first.selector)}.`,
+    `Run find action ${quoteForIntent(action)} on ${quoteForIntent(first.selector)}${frameIntentSuffix(frame)}.`,
   );
 
   if (action === "click")
-    return { action, match: first, result: await clickSelector(tabId, first.selector) };
+    return { action, match: first, result: await clickSelector(tabId, first.selector, frame) };
   if (action === "fill") {
     const value = typeof params.value === "string" ? params.value : "";
-    return { action, match: first, result: await fillField(tabId, first.selector, value, false) };
+    return {
+      action,
+      match: first,
+      result: await fillField(tabId, first.selector, value, false, frame),
+    };
   }
   if (action === "type") {
     const value = typeof params.value === "string" ? params.value : "";
-    await focusElement(tabId, first.selector);
+    await focusElement(tabId, first.selector, frame);
     return { action, match: first, result: await typeText(tabId, value) };
   }
   if (action === "hover")
-    return { action, match: first, result: await hoverSelector(tabId, first.selector) };
+    return { action, match: first, result: await hoverSelector(tabId, first.selector, frame) };
   if (action === "focus")
-    return { action, match: first, result: await focusElement(tabId, first.selector) };
+    return { action, match: first, result: await focusElement(tabId, first.selector, frame) };
   if (action === "check")
-    return { action, match: first, result: await setChecked(tabId, first.selector, true) };
+    return { action, match: first, result: await setChecked(tabId, first.selector, true, frame) };
   if (action === "uncheck")
-    return { action, match: first, result: await setChecked(tabId, first.selector, false) };
+    return { action, match: first, result: await setChecked(tabId, first.selector, false, frame) };
   return {
     ok: false,
     error: "unsupported_find_action",
@@ -1704,20 +2390,33 @@ async function runFindCommand(
 
 async function findSemanticMatches(
   tabId: number,
-  params: { locator: string; query: string; role?: string; exact: boolean; limit: number },
+  params: {
+    locator: string;
+    query: string;
+    role?: string;
+    exact: boolean;
+    limit: number;
+    frame?: string;
+  },
 ): Promise<FindMatch[]> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (opts: {
-      locator: string;
-      query: string;
-      role?: string;
-      exact: boolean;
-      limit: number;
-    }) => {
+  return runFrameScript(
+    tabId,
+    params.frame,
+    params,
+    (
+      ctx,
+      opts: {
+        locator: string;
+        query: string;
+        role?: string;
+        exact: boolean;
+        limit: number;
+      },
+    ) => {
       type LocalMatch = {
         index: number;
         selector: string;
+        frame?: FrameDescriptor;
         tag: string;
         role: string;
         text: string;
@@ -1767,7 +2466,7 @@ async function findSemanticMatches(
         );
       };
       const selectorFor = (el: Element): string => {
-        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of [
@@ -1782,7 +2481,7 @@ async function findSemanticMatches(
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (document.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -1806,17 +2505,18 @@ async function findSemanticMatches(
       const boxOf = (el: Element) => {
         const rect = el.getBoundingClientRect();
         return {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
+          x: Math.round(ctx.offsetX + rect.left),
+          y: Math.round(ctx.offsetY + rect.top),
           width: Math.round(rect.width),
           height: Math.round(rect.height),
         };
       };
       const pushMatch = (matches: LocalMatch[], el: Element): void => {
-        if (matches.some((match) => document.querySelector(match.selector) === el)) return;
+        if (matches.some((match) => ctx.doc.querySelector(match.selector) === el)) return;
         matches.push({
           index: matches.length,
           selector: selectorFor(el),
+          frame: ctx.frame,
           tag: el.tagName.toLowerCase(),
           role: roleOf(el),
           text: textOf(el),
@@ -1827,14 +2527,14 @@ async function findSemanticMatches(
 
       const matches: LocalMatch[] = [];
       if (opts.locator === "css") {
-        for (const el of Array.from(document.querySelectorAll(opts.query))) {
+        for (const el of Array.from(ctx.doc.querySelectorAll(opts.query))) {
           pushMatch(matches, el);
           if (matches.length >= opts.limit) break;
         }
         return matches;
       }
       if (opts.locator === "label") {
-        for (const label of Array.from(document.querySelectorAll("label"))) {
+        for (const label of Array.from(ctx.doc.querySelectorAll("label"))) {
           if (!matchesText(label.textContent ?? "")) continue;
           const control =
             label.control ??
@@ -1846,7 +2546,7 @@ async function findSemanticMatches(
       }
 
       const candidates = Array.from(
-        document.querySelectorAll(
+        ctx.doc.querySelectorAll(
           [
             "a[href]",
             "button",
@@ -1887,9 +2587,7 @@ async function findSemanticMatches(
       }
       return matches;
     },
-    args: [params],
-  });
-  return (res?.result ?? []) as FindMatch[];
+  );
 }
 
 function applyFindIndexModifier(
@@ -1912,23 +2610,30 @@ async function snapshotTab(
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<unknown> {
   const selector = typeof params.selector === "string" ? params.selector : undefined;
+  const frame = readFrameParam(params);
   const depth = typeof params.depth === "number" ? Math.max(1, Math.min(12, params.depth)) : 5;
   const interactiveOnly = params.interactiveOnly === true;
   const compact = params.compact === true;
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (opts: {
-      selector?: string;
-      depth: number;
-      interactiveOnly: boolean;
-      compact: boolean;
-    }) => {
+  const result = await runFrameScript(
+    tabId,
+    frame,
+    { selector, depth, interactiveOnly, compact },
+    (
+      ctx,
+      opts: {
+        selector?: string;
+        depth: number;
+        interactiveOnly: boolean;
+        compact: boolean;
+      },
+    ) => {
       type SnapshotElement = {
         ref: string;
         role: string;
         name: string;
         text: string;
         selector: string;
+        frame?: FrameDescriptor;
         box: { x: number; y: number; width: number; height: number };
         interactive: boolean;
       };
@@ -1958,7 +2663,7 @@ async function snapshotTab(
         return "generic";
       };
       const selectorFor = (el: Element): string => {
-        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of [
@@ -1973,7 +2678,7 @@ async function snapshotTab(
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (document.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -2018,18 +2723,19 @@ async function snapshotTab(
       const boxOf = (el: Element) => {
         const rect = el.getBoundingClientRect();
         return {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
+          x: Math.round(ctx.offsetX + rect.left),
+          y: Math.round(ctx.offsetY + rect.top),
           width: Math.round(rect.width),
           height: Math.round(rect.height),
         };
       };
-      const root = opts.selector ? document.querySelector(opts.selector) : document.body;
+      const root = opts.selector ? ctx.doc.querySelector(opts.selector) : ctx.doc.body;
       if (!root) {
         return {
-          url: location.href,
-          title: document.title,
+          url: ctx.win.location.href,
+          title: ctx.doc.title,
           selector: opts.selector,
+          frame: ctx.frame,
           found: false,
           elements: [],
         };
@@ -2062,15 +2768,17 @@ async function snapshotTab(
           name: nameOf(el),
           text: normalize((el as HTMLElement).innerText || el.textContent),
           selector: selectorFor(el),
+          frame: ctx.frame,
           box: boxOf(el),
           interactive,
         });
         if (elements.length >= 250) break;
       }
       return {
-        url: location.href,
-        title: document.title,
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
         selector: opts.selector,
+        frame: ctx.frame,
         found: true,
         generatedAt: new Date().toISOString(),
         elements: opts.compact
@@ -2081,28 +2789,27 @@ async function snapshotTab(
         refMap: Object.fromEntries(elements.map((element) => [element.ref, element.selector])),
       };
     },
-    args: [{ selector, depth, interactiveOnly, compact }],
-  });
-  const result = res?.result as
-    | { refMap?: Record<string, string>; elements?: unknown[] }
+  );
+  const typedResult = result as
+    | { refMap?: Record<string, string>; frame?: FrameDescriptor; elements?: unknown[] }
     | undefined;
-  const refMap = new Map<string, string>();
-  for (const [ref, resolvedSelector] of Object.entries(result?.refMap ?? {})) {
-    refMap.set(ref, resolvedSelector);
+  const refMap = new Map<string, SnapshotRefTarget>();
+  for (const [ref, resolvedSelector] of Object.entries(typedResult?.refMap ?? {})) {
+    refMap.set(ref, { selector: resolvedSelector, frame });
   }
   snapshotRefCache.set(tabId, refMap);
-  if (result && "refMap" in result) {
-    delete result.refMap;
+  if (typedResult && "refMap" in typedResult) {
+    delete typedResult.refMap;
   }
-  return result ?? { found: false, elements: [] };
+  return typedResult ?? { found: false, elements: [] };
 }
 
 async function clickSnapshotRef(tabId: number, ref: string): Promise<unknown> {
-  const selector = snapshotRefCache.get(tabId)?.get(ref);
-  if (!selector) {
+  const target = snapshotRefCache.get(tabId)?.get(ref);
+  if (!target) {
     throw new GatewayError("snapshot_ref_not_found", `snapshot ref not found or stale: ${ref}`);
   }
-  return clickSelector(tabId, selector);
+  return clickSelector(tabId, target.selector, target.frame);
 }
 
 async function screenshot(
@@ -2190,9 +2897,11 @@ async function installDomMutationStream(tabId: number): Promise<void> {
 async function extractTables(
   tabId: number,
   selector: string | undefined,
+  frame?: string,
 ): Promise<{
   url: string;
   title: string;
+  frame?: FrameDescriptor;
   selector?: string;
   tables: {
     index: number;
@@ -2206,98 +2915,93 @@ async function extractTables(
   userMessage?: string;
   nextCommand?: string;
 }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel?: string) => {
-      const textOf = (el: Element | null): string =>
-        (el?.textContent ?? "").replace(/\s+/g, " ").trim();
-      const cssEscape = (value: string): string => {
-        const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
-          .CSS?.escape;
-        return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
-      };
-      const selectorFor = (el: Element): string => {
-        if (el.id) return `#${cssEscape(el.id)}`;
-        const parts: string[] = [];
-        let current: Element | null = el;
-        while (current && current.nodeType === Node.ELEMENT_NODE && parts.length < 5) {
-          const parent: Element | null = current.parentElement;
-          const currentTag = current.tagName;
-          const tag = currentTag.toLowerCase();
-          if (!parent) {
-            parts.unshift(tag);
-            break;
-          }
-          const siblings = Array.from(parent.children).filter(
-            (child): child is Element => child instanceof Element && child.tagName === currentTag,
-          );
-          const nth = siblings.indexOf(current) + 1;
-          parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
-          current = parent;
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const sel = opts.selector;
+    const textOf = (el: Element | null): string =>
+      (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+    const cssEscape = (value: string): string => {
+      const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
+        .CSS?.escape;
+      return escaper ? escaper(value) : value.replace(/["\\]/g, "\\$&");
+    };
+    const selectorFor = (el: Element): string => {
+      if (el.id) return `#${cssEscape(el.id)}`;
+      const parts: string[] = [];
+      let current: Element | null = el;
+      while (current && current.nodeType === Node.ELEMENT_NODE && parts.length < 5) {
+        const parent: Element | null = current.parentElement;
+        const currentTag = current.tagName;
+        const tag = currentTag.toLowerCase();
+        if (!parent) {
+          parts.unshift(tag);
+          break;
         }
-        return parts.join(" > ");
-      };
-      const root = sel ? document.querySelector(sel) : document;
-      const tableElements =
-        root instanceof HTMLTableElement
-          ? [root]
-          : Array.from((root ?? document).querySelectorAll("table"));
-      const chosen = tableElements
-        .map((table, index) => ({ table, index, score: table.querySelectorAll("tr").length }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, sel ? 20 : 5);
-      const tables = chosen.map(({ table, index }) => {
-        const rows = Array.from(table.querySelectorAll("tr")).map((tr) =>
-          Array.from(tr.children)
-            .filter((cell) => cell instanceof HTMLTableCellElement)
-            .map((cell) => textOf(cell)),
+        const siblings = Array.from(parent.children).filter(
+          (child): child is Element => child instanceof Element && child.tagName === currentTag,
         );
-        const explicitHeaders = Array.from(table.querySelectorAll("thead th")).map((th) =>
-          textOf(th),
-        );
-        const firstHeaderRow = Array.from(table.querySelectorAll("tr")).find((tr) =>
-          tr.querySelector("th"),
-        );
-        const headers =
-          explicitHeaders.length > 0
-            ? explicitHeaders
-            : firstHeaderRow
-              ? Array.from(firstHeaderRow.children)
-                  .filter((cell) => cell instanceof HTMLTableCellElement)
-                  .map((cell) => textOf(cell))
-              : [];
-        const dataRows =
-          headers.length > 0 &&
-          rows.length > 0 &&
-          rows[0]?.join("\u0000") === headers.join("\u0000")
-            ? rows.slice(1)
-            : rows;
-        return {
-          index,
-          selector: selectorFor(table),
-          caption: textOf(table.querySelector("caption")) || undefined,
-          headers,
-          rows: dataRows,
-          rowCount: dataRows.length,
-          columnCount: Math.max(headers.length, ...dataRows.map((row) => row.length), 0),
-        };
-      });
+        const nth = siblings.indexOf(current) + 1;
+        parts.unshift(siblings.length > 1 ? `${tag}:nth-of-type(${nth})` : tag);
+        current = parent;
+      }
+      return parts.join(" > ");
+    };
+    const root = (sel ? ctx.doc.querySelector(sel) : ctx.doc) as Document | Element | null;
+    const tableElements: HTMLTableElement[] =
+      root instanceof HTMLTableElement
+        ? [root]
+        : Array.from((root ?? ctx.doc).querySelectorAll("table"));
+    const chosen = tableElements
+      .map((table, index) => ({ table, index, score: table.querySelectorAll("tr").length }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, sel ? 20 : 5);
+    const tables = chosen.map(({ table, index }) => {
+      const rows = Array.from(table.querySelectorAll("tr")).map((tr) =>
+        Array.from(tr.children)
+          .filter((cell) => cell instanceof HTMLTableCellElement)
+          .map((cell) => textOf(cell)),
+      );
+      const explicitHeaders = Array.from(table.querySelectorAll("thead th")).map((th) =>
+        textOf(th),
+      );
+      const firstHeaderRow = Array.from(table.querySelectorAll("tr")).find((tr) =>
+        tr.querySelector("th"),
+      );
+      const headers =
+        explicitHeaders.length > 0
+          ? explicitHeaders
+          : firstHeaderRow
+            ? Array.from(firstHeaderRow.children)
+                .filter((cell) => cell instanceof HTMLTableCellElement)
+                .map((cell) => textOf(cell))
+            : [];
+      const dataRows =
+        headers.length > 0 && rows.length > 0 && rows[0]?.join("\u0000") === headers.join("\u0000")
+          ? rows.slice(1)
+          : rows;
       return {
-        url: location.href,
-        title: document.title,
-        selector: sel,
-        tables,
-        userMessage:
-          tables.length === 0
-            ? "table が見つかりませんでした。`abg read --selector` または `abg screenshot` で画面構造を確認してください。"
-            : undefined,
-        nextCommand:
-          tables.length === 0 ? 'abg read <tab> --selector "main" --format markdown' : undefined,
+        index,
+        selector: selectorFor(table),
+        caption: textOf(table.querySelector("caption")) || undefined,
+        headers,
+        rows: dataRows,
+        rowCount: dataRows.length,
+        columnCount: Math.max(headers.length, ...dataRows.map((row) => row.length), 0),
       };
-    },
-    args: [selector],
+    });
+    return {
+      url: ctx.win.location.href,
+      title: ctx.doc.title,
+      frame: ctx.frame,
+      selector: sel,
+      tables,
+      userMessage:
+        tables.length === 0
+          ? "table が見つかりませんでした。`abg read --selector` または `abg screenshot` で画面構造を確認してください。"
+          : undefined,
+      nextCommand:
+        tables.length === 0 ? 'abg read <tab> --selector "main" --format markdown' : undefined,
+    };
   });
-  return res?.result ?? { url: "", title: "", selector, tables: [] };
 }
 
 async function describeElements(
@@ -2306,6 +3010,7 @@ async function describeElements(
 ): Promise<{
   url: string;
   title: string;
+  frame?: FrameDescriptor;
   viewport: { width: number; height: number };
   elements: unknown[];
 }> {
@@ -2313,9 +3018,12 @@ async function describeElements(
   const limit = typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 80;
   const kindFilter = typeof params.kind === "string" ? params.kind.toLowerCase() : undefined;
   const grid = typeof params.grid === "string" ? params.grid : undefined;
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (opts: { all: boolean; limit: number; kindFilter?: string; grid?: string }) => {
+  const frame = readFrameParam(params);
+  return runFrameScript(
+    tabId,
+    frame,
+    { all, limit, kindFilter, grid },
+    (ctx, opts: { all: boolean; limit: number; kindFilter?: string; grid?: string }) => {
       const cssEscape = (value: string): string => {
         const escaper = (globalThis as unknown as { CSS?: { escape?: (input: string) => string } })
           .CSS?.escape;
@@ -2323,14 +3031,14 @@ async function describeElements(
       };
       const trimText = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 160);
       const selectorFor = (el: Element): string => {
-        if (el.id && document.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of ["data-testid", "data-test", "name", "aria-label"]) {
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (document.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -2373,9 +3081,12 @@ async function describeElements(
         );
       };
       const inViewport = (rect: DOMRect): boolean =>
-        rect.bottom >= 0 && rect.right >= 0 && rect.top <= innerHeight && rect.left <= innerWidth;
+        rect.bottom >= 0 &&
+        rect.right >= 0 &&
+        rect.top <= ctx.win.innerHeight &&
+        rect.left <= ctx.win.innerWidth;
       const candidates = Array.from(
-        document.querySelectorAll(
+        ctx.doc.querySelectorAll(
           [
             "a[href]",
             "button",
@@ -2411,12 +3122,13 @@ async function describeElements(
           kind,
           text,
           bbox: {
-            x: Math.round(rect.left),
-            y: Math.round(rect.top),
+            x: Math.round(ctx.offsetX + rect.left),
+            y: Math.round(ctx.offsetY + rect.top),
             w: Math.round(rect.width),
             h: Math.round(rect.height),
           },
           selector: selectorFor(el),
+          frame: ctx.frame,
         });
         if (elements.length >= opts.limit) break;
       }
@@ -2424,8 +3136,8 @@ async function describeElements(
       if (match) {
         const cols = Math.max(1, Math.min(50, Number(match[1])));
         const rows = Math.max(1, Math.min(50, Number(match[2])));
-        const cellW = innerWidth / cols;
-        const cellH = innerHeight / rows;
+        const cellW = ctx.win.innerWidth / cols;
+        const cellH = ctx.win.innerHeight / rows;
         for (let row = 0; row < rows; row++) {
           for (let col = 0; col < cols; col++) {
             elements.push({
@@ -2433,25 +3145,25 @@ async function describeElements(
               kind: "grid-cell",
               text: `r${row + 1}c${col + 1}`,
               bbox: {
-                x: Math.round(col * cellW),
-                y: Math.round(row * cellH),
+                x: Math.round(ctx.offsetX + col * cellW),
+                y: Math.round(ctx.offsetY + row * cellH),
                 w: Math.round(cellW),
                 h: Math.round(cellH),
               },
+              frame: ctx.frame,
             });
           }
         }
       }
       return {
-        url: location.href,
-        title: document.title,
-        viewport: { width: innerWidth, height: innerHeight },
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
+        frame: ctx.frame,
+        viewport: { width: ctx.win.innerWidth, height: ctx.win.innerHeight },
         elements,
       };
     },
-    args: [{ all, limit, kindFilter, grid }],
-  });
-  return res?.result ?? { url: "", title: "", viewport: { width: 0, height: 0 }, elements: [] };
+  );
 }
 
 async function getNetworkLog(
@@ -2459,15 +3171,324 @@ async function getNetworkLog(
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<unknown> {
   await attachDebugger(tabId);
-  if (params.body === true && typeof params.requestId === "string") {
-    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
-      requestId: params.requestId,
-    })) as { body: string; base64Encoded: boolean };
-    return { requestId: params.requestId, ...result };
+  if (params.wait === true) {
+    return waitForNetworkResponse(tabId, params);
   }
+  if (params.body === true && typeof params.requestId === "string") {
+    return {
+      requestId: params.requestId,
+      body: await getResponseBodyPreview(tabId, params.requestId, readNetworkBodyMaxBytes(params)),
+    };
+  }
+  const filters = readNetworkFilters(params);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
+  const items = (networkBuffers.get(tabId) ?? [])
+    .filter((entry) => networkEntryMatches(entry, filters))
+    .slice(-limit)
+    .map(publicNetworkEntry);
+  return { requests: items };
+}
+
+async function exportHAR(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const filters = readNetworkFilters(params);
+  const limit = readHARLimit(params);
+  const buffered = networkBuffers.get(tabId) ?? [];
+  const entries = buffered.filter((entry) => networkEntryMatches(entry, filters)).slice(-limit);
+  const tab = permittedTabs.get(tabId);
+  const generatedAt = new Date().toISOString();
+  const pageId = `abg-tab-${tabId}`;
+  const redaction = {
+    mode: "metadata_only",
+    cookies: "omitted",
+    authorizationHeaders: "omitted",
+    requestHeaders: "omitted",
+    requestBodies: "omitted",
+    responseBodies: "omitted",
+    responseHeaders: "content-type only when available",
+  };
+  const har = {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "Agent Browser Gateway",
+        version: VERSION,
+        comment: "ABG exports a metadata-only HAR by default.",
+      },
+      pages: [
+        {
+          startedDateTime: tab ? new Date(tab.permittedAt).toISOString() : generatedAt,
+          id: pageId,
+          title: tab?.title ?? "",
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+          comment: "Shared tab HAR snapshot generated locally by ABG.",
+        },
+      ],
+      entries: entries.map((entry) => networkEntryToHAR(entry, pageId)),
+      _abg: {
+        generatedAt,
+        tabId,
+        sourceUrl: tab?.url ?? "",
+        sourceTitle: tab?.title ?? "",
+        exportMode: "one_shot",
+        entryLimit: limit,
+        totalBuffered: buffered.length,
+        includedEntries: entries.length,
+        filters: publicNetworkFilters(filters),
+        redaction,
+        payloadPolicy: "Request and response bodies are never embedded in this export.",
+        storage:
+          "Caller-chosen local path or ABG temporary directory; no ABG-operated cloud service.",
+      },
+    },
+  };
+  return {
+    ok: true,
+    mode: "one_shot",
+    har,
+    entryCount: entries.length,
+    totalBuffered: buffered.length,
+    limit,
+    redaction: "metadata_only",
+    filters: publicNetworkFilters(filters),
+    outputPath: params.outputPath,
+    byteSizeEstimate: new TextEncoder().encode(JSON.stringify(har)).byteLength,
+    generatedAt,
+  };
+}
+
+async function inspectState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const kind = normalizeStateKind(params.kind);
+  const includeValues = params.includeValues === true;
+  const limit = readStateLimit(params);
+  const tab = permittedTabs.get(tabId);
+  const result: Record<string, unknown> = {
+    tabId,
+    url: tab?.url ?? "",
+    title: tab?.title ?? "",
+    origin: tab?.origin ?? "",
+    kind,
+    includeValues,
+    redaction: includeValues ? "explicit_values" : "values_redacted",
+    writeOperations: "not_supported",
+  };
+  if (kind === "cookies" || kind === "all") {
+    result.cookies = await inspectCookies(tabId, tab?.url, params, includeValues, limit);
+  }
+  if (kind === "local-storage" || kind === "session-storage" || kind === "all") {
+    const storage = await inspectWebStorage(tabId, params, includeValues, limit);
+    if (kind === "local-storage" || kind === "all") {
+      result.localStorage = storage.localStorage;
+    }
+    if (kind === "session-storage" || kind === "all") {
+      result.sessionStorage = storage.sessionStorage;
+    }
+  }
+  return result;
+}
+
+function normalizeStateKind(
+  value: unknown,
+): "cookies" | "local-storage" | "session-storage" | "all" {
+  if (value === "cookie") return "cookies";
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_state_kind",
+    "state kind must be cookies, local-storage, session-storage, or all",
+  );
+}
+
+function readStateLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 200;
+}
+
+async function inspectCookies(
+  tabId: number,
+  rawUrl: string | undefined,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  if (!rawUrl) return { available: false, error: "tab URL unavailable", count: 0, cookies: [] };
+  const namePattern = typeof params.name === "string" ? params.name : undefined;
+  try {
+    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getCookies", {
+      urls: [rawUrl],
+    })) as {
+      cookies?: Array<{
+        name: string;
+        value: string;
+        domain: string;
+        path: string;
+        expires?: number;
+        size?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        session?: boolean;
+        sameSite?: string;
+        priority?: string;
+      }>;
+    };
+    const matched = (result.cookies ?? []).filter(
+      (cookie) => !namePattern || globMatch(namePattern, cookie.name),
+    );
+    const filtered = matched.slice(0, limit);
+    return {
+      available: true,
+      count: filtered.length,
+      totalMatches: matched.length,
+      limited: matched.length > filtered.length,
+      filter: namePattern,
+      cookies: filtered.map((cookie) => publicCookie(cookie, includeValues)),
+    };
+  } catch (error) {
+    return {
+      available: false,
+      count: 0,
+      cookies: [],
+      filter: namePattern,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function publicCookie(
+  cookie: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    size?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    session?: boolean;
+    sameSite?: string;
+    priority?: string;
+  },
+  includeValues: boolean,
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    name: cookie.name,
+    domain: cookie.domain,
+    path: cookie.path,
+    expires: cookie.expires,
+    size: cookie.size,
+    valueBytes: new TextEncoder().encode(cookie.value).byteLength,
+    valueRedacted: !includeValues,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    session: cookie.session,
+    sameSite: cookie.sameSite,
+    priority: cookie.priority,
+  };
+  if (includeValues) item.value = cookie.value;
+  return item;
+}
+
+async function inspectWebStorage(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<{
+  localStorage: Record<string, unknown>;
+  sessionStorage: Record<string, unknown>;
+}> {
+  const keyPattern = typeof params.storageKey === "string" ? params.storageKey : undefined;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { includeValues, limit, keyPattern },
+    (
+      ctx,
+      opts: { includeValues: boolean; limit: number; keyPattern?: string },
+    ): { localStorage: Record<string, unknown>; sessionStorage: Record<string, unknown> } => {
+      const matches = (pattern: string | undefined, value: string): boolean => {
+        if (!pattern) return true;
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".");
+        return new RegExp(`^${escaped}$`, "i").test(value);
+      };
+      const read = (
+        label: "localStorage" | "sessionStorage",
+        storage: Storage,
+      ): Record<string, unknown> => {
+        try {
+          const entries: Record<string, unknown>[] = [];
+          const total = storage.length;
+          let totalMatches = 0;
+          for (let index = 0; index < total; index++) {
+            const key = storage.key(index);
+            if (!key || !matches(opts.keyPattern, key)) continue;
+            totalMatches += 1;
+            if (entries.length >= opts.limit) continue;
+            const value = storage.getItem(key) ?? "";
+            const item: Record<string, unknown> = {
+              key,
+              valueBytes: new TextEncoder().encode(value).byteLength,
+              valueRedacted: !opts.includeValues,
+            };
+            if (opts.includeValues) item.value = value;
+            entries.push(item);
+          }
+          return {
+            available: true,
+            origin: ctx.win.location.origin,
+            count: entries.length,
+            totalKeys: total,
+            totalMatches,
+            limited: totalMatches > entries.length,
+            filter: opts.keyPattern,
+            entries,
+          };
+        } catch (error) {
+          return {
+            available: false,
+            count: 0,
+            entries: [],
+            error: error instanceof Error ? error.message : String(error),
+            kind: label,
+          };
+        }
+      };
+      return {
+        localStorage: read("localStorage", ctx.win.localStorage),
+        sessionStorage: read("sessionStorage", ctx.win.sessionStorage),
+      };
+    },
+  );
+}
+
+type NetworkFilters = {
+  urlPattern?: string;
+  urlRegex?: string;
+  method?: string;
+  statusMin?: number;
+  statusMax?: number;
+  typeSet?: Set<string>;
+};
+
+function readNetworkFilters(params: NonNullable<GatewayCommand["params"]>): NetworkFilters {
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  const urlRegex = typeof params.urlRegex === "string" ? params.urlRegex : undefined;
   const method = typeof params.method === "string" ? params.method.toUpperCase() : undefined;
   const statusMin = typeof params.statusMin === "number" ? params.statusMin : undefined;
+  const statusMax = typeof params.statusMax === "number" ? params.statusMax : undefined;
   const typeSet =
     typeof params.type === "string"
       ? new Set(
@@ -2477,19 +3498,182 @@ async function getNetworkLog(
             .filter(Boolean),
         )
       : undefined;
-  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
-  const items = (networkBuffers.get(tabId) ?? [])
-    .filter((entry) => {
-      if (urlPattern && !globMatch(urlPattern, entry.url)) return false;
-      if (method && entry.method.toUpperCase() !== method) return false;
-      if (statusMin !== undefined && (entry.status ?? 0) < statusMin) return false;
-      if (typeSet && entry.type && !typeSet.has(entry.type)) return false;
-      if (typeSet && !entry.type) return false;
-      return true;
-    })
-    .slice(-limit)
-    .map(({ startTime: _startTime, ...entry }) => entry);
-  return { requests: items };
+  return { urlPattern, urlRegex, method, statusMin, statusMax, typeSet };
+}
+
+function readHARLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(1000, params.limit)) : 200;
+}
+
+function publicNetworkFilters(filters: NetworkFilters): Record<string, unknown> {
+  return {
+    urlPattern: filters.urlPattern,
+    urlRegex: filters.urlRegex,
+    method: filters.method,
+    statusMin: filters.statusMin,
+    statusMax: filters.statusMax,
+    types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+  };
+}
+
+function networkEntryMatches(
+  entry: NetworkEntry,
+  filters: NetworkFilters,
+  requireResponse = false,
+): boolean {
+  if (filters.urlPattern && !globMatch(filters.urlPattern, entry.url)) return false;
+  if (filters.urlRegex && !new RegExp(filters.urlRegex).test(entry.url)) return false;
+  if (filters.method && entry.method.toUpperCase() !== filters.method) return false;
+  if (filters.statusMin !== undefined && (entry.status ?? 0) < filters.statusMin) return false;
+  if (filters.statusMax !== undefined && (entry.status ?? 0) > filters.statusMax) return false;
+  if (filters.typeSet && entry.type && !filters.typeSet.has(entry.type)) return false;
+  if (filters.typeSet && !entry.type) return false;
+  if (requireResponse) return entry.status !== undefined || entry.errorText !== undefined;
+  return true;
+}
+
+function publicNetworkEntry(entry: NetworkEntry): Record<string, unknown> {
+  const { startTime: _startTime, ...publicEntry } = entry;
+  return publicEntry;
+}
+
+function networkEntryToHAR(entry: NetworkEntry, pageId: string): Record<string, unknown> {
+  const time = entry.durationMs ?? 0;
+  const responseSize = entry.encodedDataLength ?? -1;
+  const content: Record<string, unknown> = {
+    size: responseSize,
+    mimeType: entry.mimeType ?? "",
+    comment: "Response body omitted by ABG metadata-only HAR redaction.",
+  };
+  return {
+    pageref: pageId,
+    startedDateTime: entry.ts,
+    time,
+    request: {
+      method: entry.method,
+      url: entry.url,
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: queryStringPairs(entry.url),
+      headersSize: -1,
+      bodySize: 0,
+      comment: "Request headers, cookies, authorization data, and body omitted by ABG redaction.",
+    },
+    response: {
+      status: entry.status ?? 0,
+      statusText: entry.statusText ?? (entry.errorText ? "Failed" : ""),
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: entry.mimeType ? [{ name: "content-type", value: entry.mimeType }] : [],
+      content,
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: responseSize,
+      comment: "Sensitive response headers and body omitted by ABG redaction.",
+    },
+    cache: {},
+    timings: {
+      blocked: -1,
+      dns: -1,
+      connect: -1,
+      send: 0,
+      wait: time,
+      receive: 0,
+      ssl: -1,
+    },
+    comment: entry.errorText
+      ? `Network failed: ${entry.errorText}`
+      : "Metadata-only ABG HAR entry.",
+  };
+}
+
+function queryStringPairs(rawUrl: string): Array<{ name: string; value: string }> {
+  try {
+    const url = new URL(rawUrl);
+    return Array.from(url.searchParams.entries()).map(([name, value]) => ({ name, value }));
+  } catch {
+    return [];
+  }
+}
+
+function readNetworkBodyMaxBytes(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.maxBytes === "number"
+    ? Math.max(0, Math.min(262_144, params.maxBytes))
+    : 16_384;
+}
+
+async function getResponseBodyPreview(
+  tabId: number,
+  requestId: string,
+  maxBytes: number,
+): Promise<Record<string, unknown>> {
+  const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+    requestId,
+  })) as { body: string; base64Encoded: boolean };
+  const bytes = new TextEncoder().encode(result.body);
+  const truncated = bytes.length > maxBytes;
+  const preview = result.base64Encoded
+    ? result.body.slice(0, maxBytes)
+    : new TextDecoder().decode(bytes.slice(0, maxBytes));
+  return {
+    value: preview,
+    base64Encoded: result.base64Encoded,
+    encodedBytes: bytes.length,
+    maxBytes,
+    truncated,
+  };
+}
+
+async function waitForNetworkResponse(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const filters = readNetworkFilters(params);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const body = params.body === true;
+  const maxBytes = readNetworkBodyMaxBytes(params);
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const match = (networkBuffers.get(tabId) ?? [])
+      .slice()
+      .reverse()
+      .find((entry) => networkEntryMatches(entry, filters, true));
+    if (match) {
+      const response: Record<string, unknown> = publicNetworkEntry(match);
+      if (body && match.requestId && match.status !== undefined) {
+        try {
+          response.body = await getResponseBodyPreview(tabId, match.requestId, maxBytes);
+        } catch (error) {
+          response.bodyError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return {
+        ok: true,
+        mode: "wait_for_response",
+        elapsedMs: Date.now() - started,
+        response,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait_for_response",
+    timeoutMs,
+    filters: {
+      urlPattern: filters.urlPattern,
+      urlRegex: filters.urlRegex,
+      method: filters.method,
+      statusMin: filters.statusMin,
+      statusMax: filters.statusMax,
+      types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+    },
+  };
 }
 
 // ---------- Operation tools (v0.1.1) ----------
@@ -2497,18 +3681,14 @@ async function getNetworkLog(
 async function clickSelector(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{ found: boolean; tag?: string }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return { found: false } as const;
-      el.click();
-      return { found: true, tag: el.tagName } as const;
-    },
-    args: [selector],
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return { found: false } as const;
+    el.click();
+    return { found: true, tag: el.tagName, frame: ctx.frame } as const;
   });
-  return res?.result ?? { found: false };
 }
 
 async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true }> {
@@ -2539,9 +3719,10 @@ async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true 
 async function doubleClickSelector(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{ ok: true; selector: string; x: number; y: number }> {
   await attachDebugger(tabId);
-  const point = await resolvePoint(tabId, { kind: "selector", selector });
+  const point = await resolvePoint(tabId, { kind: "selector", selector, frame });
   await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x: point.x,
@@ -2570,9 +3751,10 @@ async function doubleClickSelector(
 async function hoverSelector(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{ ok: true; selector: string; x: number; y: number }> {
   await attachDebugger(tabId);
-  const point = await resolvePoint(tabId, { kind: "selector", selector });
+  const point = await resolvePoint(tabId, { kind: "selector", selector, frame });
   await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x: point.x,
@@ -2586,6 +3768,7 @@ async function selectOption(
   tabId: number,
   selector: string,
   choice: { value?: string; label?: string },
+  frame?: string,
 ): Promise<{
   ok: boolean;
   found: boolean;
@@ -2593,10 +3776,12 @@ async function selectOption(
   selectedLabels?: string[];
   changed?: boolean;
 }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, value: string | undefined, label: string | undefined) => {
-      const select = document.querySelector(sel) as HTMLSelectElement | null;
+  return runFrameScript(
+    tabId,
+    frame,
+    { selector, value: choice.value, label: choice.label },
+    (ctx, opts) => {
+      const select = ctx.doc.querySelector(opts.selector) as HTMLSelectElement | null;
       if (!select) return { ok: false, found: false } as const;
       if (!(select instanceof HTMLSelectElement)) {
         return { ok: false, found: true, error: "not_select" } as const;
@@ -2604,9 +3789,9 @@ async function selectOption(
       const before = Array.from(select.selectedOptions).map((option) => option.value);
       const options = Array.from(select.options);
       const option = options.find((candidate) =>
-        value !== undefined
-          ? candidate.value === value
-          : candidate.textContent?.replace(/\s+/g, " ").trim() === label,
+        opts.value !== undefined
+          ? candidate.value === opts.value
+          : candidate.textContent?.replace(/\s+/g, " ").trim() === opts.label,
       );
       if (!option) {
         return {
@@ -2633,17 +3818,17 @@ async function selectOption(
         selectedLabels: Array.from(select.selectedOptions).map((selected) =>
           (selected.textContent ?? "").replace(/\s+/g, " ").trim(),
         ),
+        frame: ctx.frame,
       } as const;
     },
-    args: [selector, choice.value, choice.label],
-  });
-  return res?.result ?? { ok: false, found: false };
+  );
 }
 
 async function setChecked(
   tabId: number,
   selector: string,
   checked: boolean,
+  frame?: string,
 ): Promise<{
   ok: boolean;
   found: boolean;
@@ -2653,36 +3838,32 @@ async function setChecked(
   changed?: boolean;
   error?: string;
 }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, desired: boolean) => {
-      const input = document.querySelector(sel) as HTMLInputElement | null;
-      if (!input) return { ok: false, found: false } as const;
-      if (!(input instanceof HTMLInputElement)) {
-        return { ok: false, found: true, error: "not_input" } as const;
-      }
-      const type = input.type.toLowerCase();
-      if (type !== "checkbox" && type !== "radio") {
-        return { ok: false, found: true, type, error: "not_checkable" } as const;
-      }
-      const before = input.checked;
-      if (before !== desired) {
-        input.checked = desired;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-      return {
-        ok: true,
-        found: true,
-        type,
-        before,
-        after: input.checked,
-        changed: before !== input.checked,
-      } as const;
-    },
-    args: [selector, checked],
+  return runFrameScript(tabId, frame, { selector, checked }, (ctx, opts) => {
+    const input = ctx.doc.querySelector(opts.selector) as HTMLInputElement | null;
+    if (!input) return { ok: false, found: false } as const;
+    if (!(input instanceof HTMLInputElement)) {
+      return { ok: false, found: true, error: "not_input" } as const;
+    }
+    const type = input.type.toLowerCase();
+    if (type !== "checkbox" && type !== "radio") {
+      return { ok: false, found: true, type, error: "not_checkable" } as const;
+    }
+    const before = input.checked;
+    if (before !== opts.checked) {
+      input.checked = opts.checked;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return {
+      ok: true,
+      found: true,
+      type,
+      before,
+      after: input.checked,
+      changed: before !== input.checked,
+      frame: ctx.frame,
+    } as const;
   });
-  return res?.result ?? { ok: false, found: false };
 }
 
 async function clickDescribedElement(
@@ -2694,6 +3875,7 @@ async function clickDescribedElement(
     tabId,
     all: params.all,
     grid: params.grid,
+    frame: readFrameParam(params),
     limit: typeof params.limit === "number" ? Math.max(params.limit, id + 1) : Math.max(80, id + 1),
   });
   const elements = described.elements as {
@@ -2708,14 +3890,18 @@ async function clickDescribedElement(
   return { ok: true, id, x, y };
 }
 
-type DragPoint = { kind: "selector"; selector: string } | { kind: "coords"; x: number; y: number };
+type DragPoint =
+  | { kind: "selector"; selector: string; frame?: string }
+  | { kind: "coords"; x: number; y: number };
 
 function readDragPoint(
   params: GatewayCommand["params"] | undefined,
   prefix: "from" | "to",
 ): DragPoint {
   const selector = prefix === "from" ? params?.fromSelector : params?.toSelector;
-  if (typeof selector === "string" && selector.length > 0) return { kind: "selector", selector };
+  const frame = readFrameParam(params);
+  if (typeof selector === "string" && selector.length > 0)
+    return { kind: "selector", selector, frame };
   const x = prefix === "from" ? params?.fromX : params?.toX;
   const y = prefix === "from" ? params?.fromY : params?.toY;
   if (typeof x === "number" && typeof y === "number") return { kind: "coords", x, y };
@@ -2730,19 +3916,23 @@ function describeDragPoint(point: DragPoint): string {
 
 async function resolvePoint(tabId: number, point: DragPoint): Promise<Point> {
   if (point.kind === "coords") return { x: point.x, y: point.y };
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (selector: string) => {
-      const el = document.querySelector(selector);
+  const result = await runFrameScript(
+    tabId,
+    point.frame,
+    { selector: point.selector },
+    (ctx, opts) => {
+      const el = ctx.doc.querySelector(opts.selector);
       if (!el) return null;
       const rect = el.getBoundingClientRect();
-      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      return {
+        x: ctx.offsetX + rect.left + rect.width / 2,
+        y: ctx.offsetY + rect.top + rect.height / 2,
+      };
     },
-    args: [point.selector],
-  });
-  if (!res?.result)
+  );
+  if (!result)
     throw new GatewayError("selector_not_found", `selector not found: ${point.selector}`);
-  return res.result;
+  return result;
 }
 
 async function drag(
@@ -2810,121 +4000,89 @@ async function fillField(
   selector: string,
   value: string,
   dryRun: boolean,
+  frame?: string,
 ): Promise<FillResult> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, val: string, previewOnly: boolean) => {
-      type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
-      const el = document.querySelector(sel) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLElement
-        | null;
-      if (!el) return { ok: false, found: false } as const;
+  return runFrameScript(tabId, frame, { selector, value, dryRun }, (ctx, opts) => {
+    const sel = opts.selector;
+    const val = opts.value;
+    const previewOnly = opts.dryRun === true;
+    type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
+    const el = ctx.doc.querySelector(sel) as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLElement
+      | null;
+    if (!el) return { ok: false, found: false } as const;
 
-      const kindOf = (target: Element): LocalKind => {
-        if (target instanceof HTMLInputElement) return "input";
-        if (target instanceof HTMLTextAreaElement) return "textarea";
-        if ((target as HTMLElement).isContentEditable) return "contenteditable";
-        if (target.getAttribute("role") === "textbox") return "role-textbox";
-        return "unsupported";
-      };
-      const currentText = (target: typeof el): string => {
-        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-          return target.value;
-        }
-        return target.textContent ?? "";
-      };
-      const dispatchReplacementEvents = (
-        target: Element,
-        text: string,
-        inputType: string,
-      ): void => {
-        const beforeInput = new InputEvent("beforeinput", {
+    const kindOf = (target: Element): LocalKind => {
+      if (target instanceof HTMLInputElement) return "input";
+      if (target instanceof HTMLTextAreaElement) return "textarea";
+      if ((target as HTMLElement).isContentEditable) return "contenteditable";
+      if (target.getAttribute("role") === "textbox") return "role-textbox";
+      return "unsupported";
+    };
+    const currentText = (target: typeof el): string => {
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        return target.value;
+      }
+      return target.textContent ?? "";
+    };
+    const dispatchReplacementEvents = (target: Element, text: string, inputType: string): void => {
+      const beforeInput = new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType,
+        data: text,
+      });
+      target.dispatchEvent(beforeInput);
+      target.dispatchEvent(
+        new InputEvent("input", {
           bubbles: true,
-          cancelable: true,
           inputType,
           data: text,
-        });
-        target.dispatchEvent(beforeInput);
-        target.dispatchEvent(
-          new InputEvent("input", {
-            bubbles: true,
-            inputType,
-            data: text,
-          }),
-        );
-        target.dispatchEvent(new Event("change", { bubbles: true }));
-      };
-      const selectEditableContents = (target: HTMLElement): void => {
-        target.focus({ preventScroll: true });
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      };
+        }),
+      );
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const selectEditableContents = (target: HTMLElement): void => {
+      target.focus({ preventScroll: true });
+      const range = ctx.doc.createRange();
+      range.selectNodeContents(target);
+      const selection = ctx.win.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
 
-      const kind = kindOf(el);
-      if (kind === "unsupported") {
-        return { ok: false, found: true, kind, replacementLength: val.length } as const;
+    const kind = kindOf(el);
+    if (kind === "unsupported") {
+      return { ok: false, found: true, kind, replacementLength: val.length } as const;
+    }
+
+    const beforeLength = currentText(el).length;
+    if (previewOnly) {
+      return {
+        ok: true,
+        found: true,
+        kind,
+        dryRun: true,
+        beforeLength,
+        replacementLength: val.length,
+        strategy: "preview",
+        frame: ctx.frame,
+      } as const;
+    }
+
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      const proto =
+        el instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+      el.focus({ preventScroll: true });
+      try {
+        el.setSelectionRange(0, el.value.length);
+      } catch {
+        // Some input types do not expose text selection.
       }
-
-      const beforeLength = currentText(el).length;
-      if (previewOnly) {
-        return {
-          ok: true,
-          found: true,
-          kind,
-          dryRun: true,
-          beforeLength,
-          replacementLength: val.length,
-          strategy: "preview",
-        } as const;
-      }
-
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        const proto =
-          el instanceof HTMLTextAreaElement
-            ? HTMLTextAreaElement.prototype
-            : HTMLInputElement.prototype;
-        el.focus({ preventScroll: true });
-        try {
-          el.setSelectionRange(0, el.value.length);
-        } catch {
-          // Some input types do not expose text selection.
-        }
-        el.dispatchEvent(
-          new InputEvent("beforeinput", {
-            bubbles: true,
-            cancelable: true,
-            inputType: "insertReplacementText",
-            data: val,
-          }),
-        );
-        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-        if (setter) setter.call(el, val);
-        else el.value = val;
-        el.dispatchEvent(
-          new InputEvent("input", {
-            bubbles: true,
-            inputType: "insertReplacementText",
-            data: val,
-          }),
-        );
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        return {
-          ok: true,
-          found: true,
-          kind,
-          beforeLength,
-          afterLength: el.value.length,
-          replacementLength: val.length,
-          strategy: "valueSetter",
-        } as const;
-      }
-
-      selectEditableContents(el);
       el.dispatchEvent(
         new InputEvent("beforeinput", {
           bubbles: true,
@@ -2933,20 +4091,9 @@ async function fillField(
           data: val,
         }),
       );
-      const inserted = document.execCommand("insertText", false, val);
-      if (!inserted || currentText(el) !== val) {
-        el.textContent = val;
-        dispatchReplacementEvents(el, val, "insertReplacementText");
-        return {
-          ok: true,
-          found: true,
-          kind,
-          beforeLength,
-          afterLength: currentText(el).length,
-          replacementLength: val.length,
-          strategy: "textContentFallback",
-        } as const;
-      }
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter) setter.call(el, val);
+      else el.value = val;
       el.dispatchEvent(
         new InputEvent("input", {
           bubbles: true,
@@ -2960,14 +4107,56 @@ async function fillField(
         found: true,
         kind,
         beforeLength,
+        afterLength: el.value.length,
+        replacementLength: val.length,
+        strategy: "valueSetter",
+        frame: ctx.frame,
+      } as const;
+    }
+
+    selectEditableContents(el);
+    el.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertReplacementText",
+        data: val,
+      }),
+    );
+    const inserted = document.execCommand("insertText", false, val);
+    if (!inserted || currentText(el) !== val) {
+      el.textContent = val;
+      dispatchReplacementEvents(el, val, "insertReplacementText");
+      return {
+        ok: true,
+        found: true,
+        kind,
+        beforeLength,
         afterLength: currentText(el).length,
         replacementLength: val.length,
-        strategy: "selectionReplacement",
+        strategy: "textContentFallback",
+        frame: ctx.frame,
       } as const;
-    },
-    args: [selector, value, dryRun],
+    }
+    el.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertReplacementText",
+        data: val,
+      }),
+    );
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      ok: true,
+      found: true,
+      kind,
+      beforeLength,
+      afterLength: currentText(el).length,
+      replacementLength: val.length,
+      strategy: "selectionReplacement",
+      frame: ctx.frame,
+    } as const;
   });
-  return res?.result ?? { ok: false, found: false };
 }
 
 type PasteResult = {
@@ -2987,8 +4176,13 @@ type ClearResult = {
   clearStrategy: "execCommand" | "selectionRange" | "syntheticInput" | "keyboardShortcut" | null;
 };
 
-async function pasteText(tabId: number, selector: string, value: string): Promise<PasteResult> {
-  const focusResult = await focusEditableElement(tabId, selector);
+async function pasteText(
+  tabId: number,
+  selector: string,
+  value: string,
+  frame?: string,
+): Promise<PasteResult> {
+  const focusResult = await focusEditableElement(tabId, selector, frame);
   if (!focusResult.found || !focusResult.focused) {
     return {
       ok: false,
@@ -3001,10 +4195,10 @@ async function pasteText(tabId: number, selector: string, value: string): Promis
   }
   const viaClipboardFallback = await writeClipboardText(tabId, value);
   if (viaClipboardFallback) {
-    await focusEditableElement(tabId, selector);
+    await focusEditableElement(tabId, selector, frame);
   }
   await dispatchPasteShortcut(tabId);
-  let pasted = await editableTextIncludes(tabId, selector, value);
+  let pasted = await editableTextIncludes(tabId, selector, value, frame);
   if (pasted) {
     return {
       ok: true,
@@ -3016,8 +4210,8 @@ async function pasteText(tabId: number, selector: string, value: string): Promis
     };
   }
 
-  await insertTextWithExecCommand(tabId, selector, value);
-  pasted = await editableTextIncludes(tabId, selector, value);
+  await insertTextWithExecCommand(tabId, selector, value, frame);
+  pasted = await editableTextIncludes(tabId, selector, value, frame);
   if (pasted) {
     return {
       ok: true,
@@ -3029,8 +4223,8 @@ async function pasteText(tabId: number, selector: string, value: string): Promis
     };
   }
 
-  await dispatchClipboardPasteEvent(tabId, selector, value);
-  pasted = await editableTextIncludes(tabId, selector, value);
+  await dispatchClipboardPasteEvent(tabId, selector, value, frame);
+  pasted = await editableTextIncludes(tabId, selector, value, frame);
   return {
     ok: true,
     found: true,
@@ -3041,8 +4235,12 @@ async function pasteText(tabId: number, selector: string, value: string): Promis
   };
 }
 
-async function clearEditable(tabId: number, selector: string): Promise<ClearResult> {
-  const focusResult = await focusEditableElement(tabId, selector);
+async function clearEditable(
+  tabId: number,
+  selector: string,
+  frame?: string,
+): Promise<ClearResult> {
+  const focusResult = await focusEditableElement(tabId, selector, frame);
   if (!focusResult.found || !focusResult.focused) {
     return {
       ok: false,
@@ -3053,8 +4251,8 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
     };
   }
 
-  await clearWithExecCommand(tabId, selector);
-  if (await editableTextEmpty(tabId, selector)) {
+  await clearWithExecCommand(tabId, selector, frame);
+  if (await editableTextEmpty(tabId, selector, frame)) {
     return {
       ok: true,
       found: true,
@@ -3064,8 +4262,8 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
     };
   }
 
-  await clearWithSelectionRange(tabId, selector);
-  if (await editableTextEmpty(tabId, selector)) {
+  await clearWithSelectionRange(tabId, selector, frame);
+  if (await editableTextEmpty(tabId, selector, frame)) {
     return {
       ok: true,
       found: true,
@@ -3075,8 +4273,8 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
     };
   }
 
-  await clearWithSyntheticInput(tabId, selector);
-  if (await editableTextEmpty(tabId, selector)) {
+  await clearWithSyntheticInput(tabId, selector, frame);
+  if (await editableTextEmpty(tabId, selector, frame)) {
     return {
       ok: true,
       found: true,
@@ -3087,7 +4285,7 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
   }
 
   await dispatchSelectAllBackspaceShortcut(tabId);
-  const cleared = await editableTextEmpty(tabId, selector);
+  const cleared = await editableTextEmpty(tabId, selector, frame);
   return {
     ok: true,
     found: true,
@@ -3100,157 +4298,150 @@ async function clearEditable(tabId: number, selector: string): Promise<ClearResu
 async function focusElement(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{ found: boolean; focused: boolean; tag?: string; activeTag?: string }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return { found: false, focused: false } as const;
-      el.focus({ preventScroll: true });
-      const active = document.activeElement;
-      return {
-        found: true,
-        focused: active === el || el.contains(active),
-        tag: el.tagName.toLowerCase(),
-        activeTag: active?.tagName.toLowerCase(),
-      } as const;
-    },
-    args: [selector],
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return { found: false, focused: false } as const;
+    el.focus({ preventScroll: true });
+    const active = ctx.doc.activeElement;
+    return {
+      found: true,
+      focused: active === el || el.contains(active),
+      tag: el.tagName.toLowerCase(),
+      activeTag: active?.tagName.toLowerCase(),
+      frame: ctx.frame,
+    } as const;
   });
-  return res?.result ?? { found: false, focused: false };
 }
 
 async function focusEditableElement(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{ found: boolean; focused: boolean }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return { found: false, focused: false } as const;
-      const editable =
-        el instanceof HTMLInputElement ||
-        el instanceof HTMLTextAreaElement ||
-        el.isContentEditable ||
-        el.getAttribute("role") === "textbox";
-      if (!editable) return { found: false, focused: false } as const;
-      el.focus({ preventScroll: true });
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        const end = el.value.length;
-        try {
-          el.setSelectionRange(end, end);
-        } catch {
-          // Some input types do not expose text selection.
-        }
-      } else if (el.isContentEditable) {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return { found: false, focused: false } as const;
+    const editable =
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el.isContentEditable ||
+      el.getAttribute("role") === "textbox";
+    if (!editable) return { found: false, focused: false } as const;
+    el.focus({ preventScroll: true });
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      const end = el.value.length;
+      try {
+        el.setSelectionRange(end, end);
+      } catch {
+        // Some input types do not expose text selection.
       }
-      return {
-        found: true,
-        focused: document.activeElement === el || el.contains(document.activeElement),
-      } as const;
-    },
-    args: [selector],
-  });
-  return res?.result ?? { found: false, focused: false };
-}
-
-async function clearWithExecCommand(tabId: number, selector: string): Promise<void> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      document.execCommand("selectAll");
-      document.execCommand("delete");
-    },
-    args: [selector],
+    } else if (el.isContentEditable) {
+      const range = ctx.doc.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = ctx.win.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    return {
+      found: true,
+      focused: ctx.doc.activeElement === el || el.contains(ctx.doc.activeElement),
+    } as const;
   });
 }
 
-async function clearWithSelectionRange(tabId: number, selector: string): Promise<void> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLElement
-        | null;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        try {
-          el.setSelectionRange(0, el.value.length);
-        } catch {
-          // Some input types do not expose text selection.
-        }
-      } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      }
-      document.execCommand("delete");
-    },
-    args: [selector],
+async function clearWithExecCommand(
+  tabId: number,
+  selector: string,
+  frame?: string,
+): Promise<void> {
+  await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    ctx.doc.execCommand("selectAll");
+    ctx.doc.execCommand("delete");
   });
 }
 
-async function clearWithSyntheticInput(tabId: number, selector: string): Promise<void> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLElement
-        | null;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        try {
-          el.setSelectionRange(0, el.value.length);
-        } catch {
-          // Some input types do not expose text selection.
-        }
-      } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
+async function clearWithSelectionRange(
+  tabId: number,
+  selector: string,
+  frame?: string,
+): Promise<void> {
+  await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLElement
+      | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      try {
+        el.setSelectionRange(0, el.value.length);
+      } catch {
+        // Some input types do not expose text selection.
       }
-      const beforeInput = new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "deleteContent",
-        data: null,
-      });
-      const canceled = !el.dispatchEvent(beforeInput);
-      if (!canceled && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
-        const proto =
-          el instanceof HTMLTextAreaElement
-            ? HTMLTextAreaElement.prototype
-            : HTMLInputElement.prototype;
-        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-        if (setter) setter.call(el, "");
-        else el.value = "";
+    } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
+      const range = ctx.doc.createRange();
+      range.selectNodeContents(el);
+      const selection = ctx.win.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    ctx.doc.execCommand("delete");
+  });
+}
+
+async function clearWithSyntheticInput(
+  tabId: number,
+  selector: string,
+  frame?: string,
+): Promise<void> {
+  await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLElement
+      | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      try {
+        el.setSelectionRange(0, el.value.length);
+      } catch {
+        // Some input types do not expose text selection.
       }
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContent" }));
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    },
-    args: [selector],
+    } else if (el.isContentEditable || el.getAttribute("role") === "textbox") {
+      const range = ctx.doc.createRange();
+      range.selectNodeContents(el);
+      const selection = ctx.win.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    const beforeInput = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "deleteContent",
+      data: null,
+    });
+    const canceled = !el.dispatchEvent(beforeInput);
+    if (!canceled && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+      const proto =
+        el instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (setter) setter.call(el, "");
+      else el.value = "";
+    }
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContent" }));
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
   });
 }
 
@@ -3389,31 +4580,28 @@ async function insertTextWithExecCommand(
   tabId: number,
   selector: string,
   value: string,
+  frame?: string,
 ): Promise<void> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, val: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-        const end = el.value.length;
-        try {
-          el.setSelectionRange(end, end);
-        } catch {
-          // Some input types do not expose text selection.
-        }
-      } else if (el.isContentEditable) {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
+  await runFrameScript(tabId, frame, { selector, value }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+      const end = el.value.length;
+      try {
+        el.setSelectionRange(end, end);
+      } catch {
+        // Some input types do not expose text selection.
       }
-      document.execCommand("insertText", false, val);
-    },
-    args: [selector, value],
+    } else if (el.isContentEditable) {
+      const range = ctx.doc.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const selection = ctx.win.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+    ctx.doc.execCommand("insertText", false, opts.value);
   });
 }
 
@@ -3421,23 +4609,20 @@ async function dispatchClipboardPasteEvent(
   tabId: number,
   selector: string,
   value: string,
+  frame?: string,
 ): Promise<void> {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, val: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      const clipboardData = new DataTransfer();
-      clipboardData.setData("text/plain", val);
-      const event = new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData,
-      });
-      el.dispatchEvent(event);
-    },
-    args: [selector, value],
+  await runFrameScript(tabId, frame, { selector, value }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", opts.value);
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    });
+    el.dispatchEvent(event);
   });
 }
 
@@ -3445,70 +4630,78 @@ async function editableTextIncludes(
   tabId: number,
   selector: string,
   value: string,
+  frame?: string,
 ): Promise<boolean> {
   if (value.length === 0) return true;
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const text = await readEditableText(tabId, selector).catch(() => "");
+    const text = await readEditableText(tabId, selector, frame).catch(() => "");
     if (text.includes(value)) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return false;
 }
 
-async function editableTextEmpty(tabId: number, selector: string): Promise<boolean> {
+async function editableTextEmpty(
+  tabId: number,
+  selector: string,
+  frame?: string,
+): Promise<boolean> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const text = await readEditableText(tabId, selector).catch(() => "");
+    const text = await readEditableText(tabId, selector, frame).catch(() => "");
     if (text.trim().length === 0) return true;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return false;
 }
 
-async function readEditableText(tabId: number, selector: string): Promise<string> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLElement
-        | null;
-      if (!el) return "";
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el.value;
-      return el.textContent ?? "";
-    },
-    args: [selector],
+async function readEditableText(tabId: number, selector: string, frame?: string): Promise<string> {
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | HTMLElement
+      | null;
+    if (!el) return "";
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return el.value;
+    return el.textContent ?? "";
   });
-  return res?.result ?? "";
 }
 
 async function replaceDom(
   tabId: number,
   selector: string,
   html: string,
+  frame?: string,
 ): Promise<{ found: boolean; inserted: number; selector: string }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string, markup: string) => {
-      const target = document.querySelector(sel);
-      if (!target) return { found: false, inserted: 0, selector: sel } as const;
-      const template = document.createElement("template");
-      template.innerHTML = markup.trim();
-      const nodes = Array.from(template.content.childNodes);
-      if (nodes.length === 0) return { found: false, inserted: 0, selector: sel } as const;
-      target.replaceWith(...nodes);
-      return { found: true, inserted: nodes.length, selector: sel } as const;
-    },
-    args: [selector, html],
+  return runFrameScript(tabId, frame, { selector, html }, (ctx, opts) => {
+    const target = ctx.doc.querySelector(opts.selector);
+    if (!target) return { found: false, inserted: 0, selector: opts.selector } as const;
+    const template = ctx.doc.createElement("template");
+    template.innerHTML = opts.html.trim();
+    const nodes = Array.from(template.content.childNodes);
+    if (nodes.length === 0) return { found: false, inserted: 0, selector: opts.selector } as const;
+    target.replaceWith(...nodes);
+    return {
+      found: true,
+      inserted: nodes.length,
+      selector: opts.selector,
+      frame: ctx.frame,
+    } as const;
   });
-  return res?.result ?? { found: false, inserted: 0, selector };
 }
 
 async function uploadFile(
   tabId: number,
   selector: string,
   file: string,
+  frame?: string,
 ): Promise<{ ok: true; selector: string; files: number }> {
+  if (frame) {
+    throw new GatewayError(
+      "unsupported_frame_upload",
+      "upload currently supports top-document input[type=file] only; use a top-document selector or file a frame upload follow-up",
+    );
+  }
   await attachDebugger(tabId);
   const documentNode = (await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", {
     depth: -1,
@@ -3683,16 +4876,13 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
     return { ok: true, mode: "sleep", ms: sleepMs };
   }
   const timeoutMs = typeof params.timeoutMs === "number" ? params.timeoutMs : 10_000;
+  const frame = readFrameParam(params);
   const text = typeof params.text === "string" ? params.text : undefined;
   if (text !== undefined) {
     return waitUntil(tabId, "text", timeoutMs, async () => {
-      const [res] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: (needle: string) =>
-          (document.body?.innerText ?? document.documentElement.innerText ?? "").includes(needle),
-        args: [text],
-      });
-      return res?.result === true;
+      return runFrameScript(tabId, frame, { text }, (ctx, opts) =>
+        (ctx.doc.body?.innerText ?? ctx.doc.documentElement.innerText ?? "").includes(opts.text),
+      );
     });
   }
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
@@ -3727,13 +4917,11 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   }
   const predicate = typeof params.predicate === "string" ? params.predicate : undefined;
   if (predicate !== undefined) {
-    await attachDebugger(tabId);
     return waitUntil(tabId, "predicate", timeoutMs, async () => {
-      const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
-        expression: `Boolean(${predicate})`,
-        returnByValue: true,
-      })) as { result?: { value?: boolean }; exceptionDetails?: unknown };
-      return !res.exceptionDetails && res.result?.value === true;
+      return runFrameScript(tabId, frame, { predicate }, (ctx, opts) => {
+        const evaluate = (ctx.win as unknown as { eval: (source: string) => unknown }).eval;
+        return Boolean(evaluate.call(ctx.win, opts.predicate));
+      }).catch(() => false);
     });
   }
   const selector = typeof params.selector === "string" ? params.selector : undefined;
@@ -3742,23 +4930,18 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   const pollMs = 200;
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const [res] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: (sel: string) => {
-        const el = document.querySelector(sel) as HTMLElement | null;
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        const style = getComputedStyle(el);
-        const visible =
-          rect.width > 0 &&
-          rect.height > 0 &&
-          style.visibility !== "hidden" &&
-          style.display !== "none";
-        return visible;
-      },
-      args: [selector],
+    const visible = await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+      const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      const visible =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== "hidden" &&
+        style.display !== "none";
+      return visible;
     });
-    const visible = (res?.result ?? false) as boolean;
     const matches = hidden ? !visible : visible;
     if (matches) {
       return {
@@ -4025,6 +5208,7 @@ async function scrollTab(
 async function scrollElementIntoView(
   tabId: number,
   selector: string,
+  frame?: string,
 ): Promise<{
   ok: boolean;
   found: boolean;
@@ -4032,39 +5216,35 @@ async function scrollElementIntoView(
   box?: { x: number; y: number; width: number; height: number };
   visible?: boolean;
 }> {
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string) => {
-      const el = document.querySelector(sel) as HTMLElement | null;
-      if (!el) return { ok: false, found: false, selector: sel } as const;
-      el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
-      const rect = el.getBoundingClientRect();
-      const style = getComputedStyle(el);
-      const visible =
-        rect.width > 0 &&
-        rect.height > 0 &&
-        style.visibility !== "hidden" &&
-        style.display !== "none" &&
-        rect.bottom >= 0 &&
-        rect.right >= 0 &&
-        rect.top <= innerHeight &&
-        rect.left <= innerWidth;
-      return {
-        ok: true,
-        found: true,
-        selector: sel,
-        box: {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        },
-        visible,
-      } as const;
-    },
-    args: [selector],
+  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) return { ok: false, found: false, selector: opts.selector } as const;
+    el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const visible =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== "hidden" &&
+      style.display !== "none" &&
+      rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= ctx.win.innerHeight &&
+      rect.left <= ctx.win.innerWidth;
+    return {
+      ok: true,
+      found: true,
+      selector: opts.selector,
+      frame: ctx.frame,
+      box: {
+        x: Math.round(ctx.offsetX + rect.left),
+        y: Math.round(ctx.offsetY + rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+      visible,
+    } as const;
   });
-  return res?.result ?? { ok: false, found: false, selector };
 }
 
 // ---------- Popup messaging ----------
