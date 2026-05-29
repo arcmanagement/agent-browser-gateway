@@ -127,6 +127,7 @@ abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewp
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
+abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
 abg download <tab|ref>                           # Latest downloads associated with this tab
 abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
 abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
@@ -250,6 +251,11 @@ contents; if Chrome cannot expose a final path, the result includes `unavailable
 Use `network --wait-response` when a workflow needs a specific response before continuing. Match by
 URL glob or regex, method, status range, and resource type. Response body preview is opt-in with
 `--body` and capped by `--max-bytes`; ABG does not store headers and large bodies are truncated.
+Use `har` when support/debugging needs a browser-standard network artifact. HAR export is one-shot,
+local-only, and redacted by default: cookies, authorization headers, request headers, request
+bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
+capped at 1000 entries; the Gateway writes the file to `--out` or an ABG temp directory and records
+the tab, filters, byte size, redaction mode, and output path in the local audit log.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -426,6 +432,7 @@ transport, and a visible audit trail.
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
 | Response waits | `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
+| HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
@@ -456,6 +463,7 @@ Currently shipped:
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
 - ✅ Network response wait and bounded body preview: `network --wait-response`, `--body`, and `--max-bytes`
+- ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)

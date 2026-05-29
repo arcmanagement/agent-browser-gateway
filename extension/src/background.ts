@@ -1130,6 +1130,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "har_export") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -3183,6 +3186,80 @@ async function getNetworkLog(
   return { requests: items };
 }
 
+async function exportHAR(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const filters = readNetworkFilters(params);
+  const limit = readHARLimit(params);
+  const buffered = networkBuffers.get(tabId) ?? [];
+  const entries = buffered.filter((entry) => networkEntryMatches(entry, filters)).slice(-limit);
+  const tab = permittedTabs.get(tabId);
+  const generatedAt = new Date().toISOString();
+  const pageId = `abg-tab-${tabId}`;
+  const redaction = {
+    mode: "metadata_only",
+    cookies: "omitted",
+    authorizationHeaders: "omitted",
+    requestHeaders: "omitted",
+    requestBodies: "omitted",
+    responseBodies: "omitted",
+    responseHeaders: "content-type only when available",
+  };
+  const har = {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "Agent Browser Gateway",
+        version: VERSION,
+        comment: "ABG exports a metadata-only HAR by default.",
+      },
+      pages: [
+        {
+          startedDateTime: tab ? new Date(tab.permittedAt).toISOString() : generatedAt,
+          id: pageId,
+          title: tab?.title ?? "",
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+          comment: "Shared tab HAR snapshot generated locally by ABG.",
+        },
+      ],
+      entries: entries.map((entry) => networkEntryToHAR(entry, pageId)),
+      _abg: {
+        generatedAt,
+        tabId,
+        sourceUrl: tab?.url ?? "",
+        sourceTitle: tab?.title ?? "",
+        exportMode: "one_shot",
+        entryLimit: limit,
+        totalBuffered: buffered.length,
+        includedEntries: entries.length,
+        filters: publicNetworkFilters(filters),
+        redaction,
+        payloadPolicy: "Request and response bodies are never embedded in this export.",
+        storage:
+          "Caller-chosen local path or ABG temporary directory; no ABG-operated cloud service.",
+      },
+    },
+  };
+  return {
+    ok: true,
+    mode: "one_shot",
+    har,
+    entryCount: entries.length,
+    totalBuffered: buffered.length,
+    limit,
+    redaction: "metadata_only",
+    filters: publicNetworkFilters(filters),
+    outputPath: params.outputPath,
+    byteSizeEstimate: new TextEncoder().encode(JSON.stringify(har)).byteLength,
+    generatedAt,
+  };
+}
+
 type NetworkFilters = {
   urlPattern?: string;
   urlRegex?: string;
@@ -3210,6 +3287,21 @@ function readNetworkFilters(params: NonNullable<GatewayCommand["params"]>): Netw
   return { urlPattern, urlRegex, method, statusMin, statusMax, typeSet };
 }
 
+function readHARLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(1000, params.limit)) : 200;
+}
+
+function publicNetworkFilters(filters: NetworkFilters): Record<string, unknown> {
+  return {
+    urlPattern: filters.urlPattern,
+    urlRegex: filters.urlRegex,
+    method: filters.method,
+    statusMin: filters.statusMin,
+    statusMax: filters.statusMax,
+    types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+  };
+}
+
 function networkEntryMatches(
   entry: NetworkEntry,
   filters: NetworkFilters,
@@ -3229,6 +3321,66 @@ function networkEntryMatches(
 function publicNetworkEntry(entry: NetworkEntry): Record<string, unknown> {
   const { startTime: _startTime, ...publicEntry } = entry;
   return publicEntry;
+}
+
+function networkEntryToHAR(entry: NetworkEntry, pageId: string): Record<string, unknown> {
+  const time = entry.durationMs ?? 0;
+  const responseSize = entry.encodedDataLength ?? -1;
+  const content: Record<string, unknown> = {
+    size: responseSize,
+    mimeType: entry.mimeType ?? "",
+    comment: "Response body omitted by ABG metadata-only HAR redaction.",
+  };
+  return {
+    pageref: pageId,
+    startedDateTime: entry.ts,
+    time,
+    request: {
+      method: entry.method,
+      url: entry.url,
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: queryStringPairs(entry.url),
+      headersSize: -1,
+      bodySize: 0,
+      comment: "Request headers, cookies, authorization data, and body omitted by ABG redaction.",
+    },
+    response: {
+      status: entry.status ?? 0,
+      statusText: entry.statusText ?? (entry.errorText ? "Failed" : ""),
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: entry.mimeType ? [{ name: "content-type", value: entry.mimeType }] : [],
+      content,
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: responseSize,
+      comment: "Sensitive response headers and body omitted by ABG redaction.",
+    },
+    cache: {},
+    timings: {
+      blocked: -1,
+      dns: -1,
+      connect: -1,
+      send: 0,
+      wait: time,
+      receive: 0,
+      ssl: -1,
+    },
+    comment: entry.errorText
+      ? `Network failed: ${entry.errorText}`
+      : "Metadata-only ABG HAR entry.",
+  };
+}
+
+function queryStringPairs(rawUrl: string): Array<{ name: string; value: string }> {
+  try {
+    const url = new URL(rawUrl);
+    return Array.from(url.searchParams.entries()).map(([name, value]) => ({ name, value }));
+  } catch {
+    return [];
+  }
 }
 
 function readNetworkBodyMaxBytes(params: NonNullable<GatewayCommand["params"]>): number {

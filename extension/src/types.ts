@@ -116,6 +116,8 @@ export type GatewayCommand = {
     comment?: string;
     // dialog_action
     promptText?: string;
+    // har_export
+    outputPath?: string;
   };
 };
 
@@ -132,6 +134,7 @@ export type GatewayMethod =
   | "table"
   | "describe"
   | "network_log"
+  | "har_export"
   | "download_state"
   | "revoke"
   | "wait_for"
