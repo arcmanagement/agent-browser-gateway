@@ -208,6 +208,12 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "describe")
         case "network_tab":
             return await dispatch(req: req, method: "network_log")
+        case "har_tab":
+            return await handleHarTab(req: req)
+        case "state_tab":
+            return await handleStateTab(req: req)
+        case "download_tab":
+            return await dispatch(req: req, method: "download_state")
         case "click_tab":
             // routes to either click_selector or click_at depending on params
             let params = (req.params?.value as? [String: Any]) ?? [:]
@@ -454,6 +460,100 @@ final class GatewayCoordinator: ObservableObject {
         }
     }
 
+    private func handleHarTab(req: CLIRequest) async -> CLIResponse {
+        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        do {
+            let rawOutputPath = try (params["outputPath"] as? String) ?? defaultHAROutputPath(tabId: tabId)
+            let outputPath = rawOutputPath as NSString
+            let expandedOutputPath = outputPath.expandingTildeInPath
+            params["outputPath"] = expandedOutputPath
+
+            let result = try await sendCommand(to: tab.extensionId, method: "har_export", params: AnyCodable(params))
+            guard var dict = result?.value as? [String: Any], let har = dict["har"] else {
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_response", message: "extension did not return a HAR object"))
+            }
+            guard JSONSerialization.isValidJSONObject(har) else {
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_response", message: "extension returned a non-JSON HAR object"))
+            }
+            let data = try JSONSerialization.data(withJSONObject: har, options: [.prettyPrinted, .sortedKeys])
+            let url = URL(fileURLWithPath: expandedOutputPath)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
+
+            let entryCount = dict["entryCount"] as? Int ?? 0
+            let redaction = dict["redaction"] as? String ?? "metadata_only"
+            var details: [String: AnyCodable] = [
+                "outputPath": AnyCodable(expandedOutputPath),
+                "bytes": AnyCodable(data.count),
+                "entryCount": AnyCodable(entryCount),
+                "redaction": AnyCodable(redaction),
+            ]
+            if let urlPattern = params["urlPattern"] as? String {
+                details["urlPattern"] = AnyCodable(urlPattern)
+            }
+            if let urlRegex = params["urlRegex"] as? String {
+                details["urlRegex"] = AnyCodable(urlRegex)
+            }
+            if let method = params["method"] as? String {
+                details["method"] = AnyCodable(method)
+            }
+            if let type = params["type"] as? String {
+                details["type"] = AnyCodable(type)
+            }
+            if let limit = params["limit"] as? Int {
+                details["limit"] = AnyCodable(limit)
+            }
+            await auditLog.log(action: "har_export", extensionId: tab.extensionId, tabId: tabId, url: tab.url, details: details)
+
+            dict.removeValue(forKey: "har")
+            dict["path"] = expandedOutputPath
+            dict["bytes"] = data.count
+            dict["ok"] = true
+            return CLIResponse(id: req.id, result: AnyCodable(dict))
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "har_export_failed", message: error.localizedDescription))
+        }
+    }
+
+    private func handleStateTab(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
+            var details: [String: AnyCodable] = [
+                "kind": AnyCodable((params["kind"] as? String) ?? "all"),
+                "includeValues": AnyCodable((params["includeValues"] as? Bool) ?? false),
+            ]
+            if let name = params["name"] as? String { details["nameFilter"] = AnyCodable(name) }
+            if let key = params["storageKey"] as? String { details["keyFilter"] = AnyCodable(key) }
+            if let limit = params["limit"] as? Int { details["limit"] = AnyCodable(limit) }
+            if let dict = result?.value as? [String: Any] {
+                if let cookies = dict["cookies"] as? [String: Any], let count = cookies["count"] as? Int {
+                    details["cookieCount"] = AnyCodable(count)
+                }
+                if let localStorage = dict["localStorage"] as? [String: Any], let count = localStorage["count"] as? Int {
+                    details["localStorageCount"] = AnyCodable(count)
+                }
+                if let sessionStorage = dict["sessionStorage"] as? [String: Any], let count = sessionStorage["count"] as? Int {
+                    details["sessionStorageCount"] = AnyCodable(count)
+                }
+            }
+            await auditLog.log(action: "state_inspect", extensionId: tab.extensionId, tabId: tabId, url: tab.url, details: details)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
+        }
+    }
+
     private func dispatch(req: CLIRequest, method: String) async -> CLIResponse {
         guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
@@ -483,6 +583,32 @@ final class GatewayCoordinator: ObservableObject {
                         }
                         if let messageBytes = dialog["messageBytes"] as? Int {
                             values["messageBytes"] = AnyCodable(messageBytes)
+                        }
+                    }
+                    return values.isEmpty ? nil : values
+                }
+                if method == "download_state" {
+                    var values: [String: AnyCodable] = [:]
+                    if let wait = params["wait"] as? Bool {
+                        values["wait"] = AnyCodable(wait)
+                    }
+                    if let timeoutMs = params["timeoutMs"] as? Int {
+                        values["timeoutMs"] = AnyCodable(timeoutMs)
+                    }
+                    if let dict = result?.value as? [String: Any] {
+                        if let count = dict["count"] as? Int {
+                            values["count"] = AnyCodable(count)
+                        }
+                        if let latest = dict["latest"] as? [String: Any] {
+                            if let status = latest["status"] as? String {
+                                values["latestStatus"] = AnyCodable(status)
+                            }
+                            if let pathAvailable = latest["pathAvailable"] as? Bool {
+                                values["pathAvailable"] = AnyCodable(pathAvailable)
+                            }
+                            if let unavailableReason = latest["unavailableReason"] as? String {
+                                values["unavailableReason"] = AnyCodable(unavailableReason)
+                            }
                         }
                     }
                     return values.isEmpty ? nil : values
@@ -597,6 +723,18 @@ final class GatewayCoordinator: ObservableObject {
             if let version = extensionVersions[id] { dict["version"] = version }
             return dict
         }
+    }
+
+    private func defaultHAROutputPath(tabId: Int) throws -> String {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg", isDirectory: true)
+            .appendingPathComponent("har", isDirectory: true)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let timestamp = formatter.string(from: Date())
+        return base.appendingPathComponent("tab-\(tabId)-\(timestamp).har").path
     }
 
     private func tabUnavailableError(tabId: Int) -> ErrorPayload {
