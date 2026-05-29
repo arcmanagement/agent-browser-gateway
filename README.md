@@ -407,6 +407,23 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 
 ---
 
+## Official non-goals and user-controlled deployments
+
+Official ABG will not operate a cloud relay, collect telemetry, or provide silent general JavaScript
+execution. Those are product boundaries, not missing roadmap items.
+
+User-controlled deployments are different. Private remote pairing over a user's Tailnet or LAN is
+tracked in [#71](https://github.com/arcmanagement/agent-browser-gateway/issues/71) and must remain
+a user-operated connection path, not an ABG-operated relay. Likewise, local or organization-owned
+metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
+configuration. They are not telemetry sent to ABG operators.
+
+The approved eval boundary is unchanged: disabled by default, explicit enablement in the extension,
+`--approve` on every call, a local approval window showing the exact script, and audit logging.
+Silent or blanket-approved eval is an official non-goal.
+
+---
+
 ## Comparison
 
 ABG is not trying to replace Playwright or browser test runners. Use it when the browser session
