@@ -117,6 +117,73 @@ struct Download: AsyncParsableCommand {
     }
 }
 
+struct HAR: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "har",
+        abstract: "Export a redacted HAR snapshot for a shared tab",
+        discussion: """
+        Exports a one-shot HAR file from the tab's buffered network metadata.
+        ABG's default HAR redaction omits cookies, authorization headers, request bodies, response bodies, and sensitive headers.
+        The Gateway writes the file to --out or to a local ABG temporary directory and records audit metadata for the export.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Output HAR path. Defaults to an ABG temp directory.") var out: String?
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter (xhr,fetch,document, etc.; comma-separated)") var type: String?
+    @Option(name: .long, help: "Maximum entries to export. Defaults to 200 and caps at 1000.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "limit": limit]
+        if let out {
+            params["outputPath"] = (out as NSString).expandingTildeInPath
+        }
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        let result = try client.call(method: "har_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct State: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "state",
+        abstract: "Inspect read-only cookies and Web Storage for a shared tab",
+        discussion: """
+        Lists cookies, localStorage keys, and sessionStorage keys for the shared tab origin.
+        Values are redacted by default. Use --values only when the workflow explicitly needs secret/session values; the Gateway audit log records that values were requested.
+        This command never writes or deletes cookies or storage.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "State kind: cookies, local-storage, session-storage, or all") var kind: String = "all"
+    @Option(name: .long, help: "Cookie name glob filter") var name: String?
+    @Option(name: .long, help: "Storage key glob filter") var key: String?
+    @Flag(name: .long, help: "Return full cookie/storage values. Values are redacted unless this flag is set.") var values: Bool = false
+    @Option(name: .long, help: "Maximum entries per state category. Defaults to 200 and caps at 500.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit]
+        if let name { params["name"] = name }
+        if let key { params["storageKey"] = key }
+        if values { params["includeValues"] = true }
+        let result = try client.call(method: "state_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",

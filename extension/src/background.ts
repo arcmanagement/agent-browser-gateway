@@ -1130,6 +1130,12 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "har_export") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "state_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -3165,15 +3171,324 @@ async function getNetworkLog(
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<unknown> {
   await attachDebugger(tabId);
-  if (params.body === true && typeof params.requestId === "string") {
-    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
-      requestId: params.requestId,
-    })) as { body: string; base64Encoded: boolean };
-    return { requestId: params.requestId, ...result };
+  if (params.wait === true) {
+    return waitForNetworkResponse(tabId, params);
   }
+  if (params.body === true && typeof params.requestId === "string") {
+    return {
+      requestId: params.requestId,
+      body: await getResponseBodyPreview(tabId, params.requestId, readNetworkBodyMaxBytes(params)),
+    };
+  }
+  const filters = readNetworkFilters(params);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
+  const items = (networkBuffers.get(tabId) ?? [])
+    .filter((entry) => networkEntryMatches(entry, filters))
+    .slice(-limit)
+    .map(publicNetworkEntry);
+  return { requests: items };
+}
+
+async function exportHAR(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const filters = readNetworkFilters(params);
+  const limit = readHARLimit(params);
+  const buffered = networkBuffers.get(tabId) ?? [];
+  const entries = buffered.filter((entry) => networkEntryMatches(entry, filters)).slice(-limit);
+  const tab = permittedTabs.get(tabId);
+  const generatedAt = new Date().toISOString();
+  const pageId = `abg-tab-${tabId}`;
+  const redaction = {
+    mode: "metadata_only",
+    cookies: "omitted",
+    authorizationHeaders: "omitted",
+    requestHeaders: "omitted",
+    requestBodies: "omitted",
+    responseBodies: "omitted",
+    responseHeaders: "content-type only when available",
+  };
+  const har = {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "Agent Browser Gateway",
+        version: VERSION,
+        comment: "ABG exports a metadata-only HAR by default.",
+      },
+      pages: [
+        {
+          startedDateTime: tab ? new Date(tab.permittedAt).toISOString() : generatedAt,
+          id: pageId,
+          title: tab?.title ?? "",
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+          comment: "Shared tab HAR snapshot generated locally by ABG.",
+        },
+      ],
+      entries: entries.map((entry) => networkEntryToHAR(entry, pageId)),
+      _abg: {
+        generatedAt,
+        tabId,
+        sourceUrl: tab?.url ?? "",
+        sourceTitle: tab?.title ?? "",
+        exportMode: "one_shot",
+        entryLimit: limit,
+        totalBuffered: buffered.length,
+        includedEntries: entries.length,
+        filters: publicNetworkFilters(filters),
+        redaction,
+        payloadPolicy: "Request and response bodies are never embedded in this export.",
+        storage:
+          "Caller-chosen local path or ABG temporary directory; no ABG-operated cloud service.",
+      },
+    },
+  };
+  return {
+    ok: true,
+    mode: "one_shot",
+    har,
+    entryCount: entries.length,
+    totalBuffered: buffered.length,
+    limit,
+    redaction: "metadata_only",
+    filters: publicNetworkFilters(filters),
+    outputPath: params.outputPath,
+    byteSizeEstimate: new TextEncoder().encode(JSON.stringify(har)).byteLength,
+    generatedAt,
+  };
+}
+
+async function inspectState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const kind = normalizeStateKind(params.kind);
+  const includeValues = params.includeValues === true;
+  const limit = readStateLimit(params);
+  const tab = permittedTabs.get(tabId);
+  const result: Record<string, unknown> = {
+    tabId,
+    url: tab?.url ?? "",
+    title: tab?.title ?? "",
+    origin: tab?.origin ?? "",
+    kind,
+    includeValues,
+    redaction: includeValues ? "explicit_values" : "values_redacted",
+    writeOperations: "not_supported",
+  };
+  if (kind === "cookies" || kind === "all") {
+    result.cookies = await inspectCookies(tabId, tab?.url, params, includeValues, limit);
+  }
+  if (kind === "local-storage" || kind === "session-storage" || kind === "all") {
+    const storage = await inspectWebStorage(tabId, params, includeValues, limit);
+    if (kind === "local-storage" || kind === "all") {
+      result.localStorage = storage.localStorage;
+    }
+    if (kind === "session-storage" || kind === "all") {
+      result.sessionStorage = storage.sessionStorage;
+    }
+  }
+  return result;
+}
+
+function normalizeStateKind(
+  value: unknown,
+): "cookies" | "local-storage" | "session-storage" | "all" {
+  if (value === "cookie") return "cookies";
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_state_kind",
+    "state kind must be cookies, local-storage, session-storage, or all",
+  );
+}
+
+function readStateLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 200;
+}
+
+async function inspectCookies(
+  tabId: number,
+  rawUrl: string | undefined,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  if (!rawUrl) return { available: false, error: "tab URL unavailable", count: 0, cookies: [] };
+  const namePattern = typeof params.name === "string" ? params.name : undefined;
+  try {
+    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getCookies", {
+      urls: [rawUrl],
+    })) as {
+      cookies?: Array<{
+        name: string;
+        value: string;
+        domain: string;
+        path: string;
+        expires?: number;
+        size?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        session?: boolean;
+        sameSite?: string;
+        priority?: string;
+      }>;
+    };
+    const matched = (result.cookies ?? []).filter(
+      (cookie) => !namePattern || globMatch(namePattern, cookie.name),
+    );
+    const filtered = matched.slice(0, limit);
+    return {
+      available: true,
+      count: filtered.length,
+      totalMatches: matched.length,
+      limited: matched.length > filtered.length,
+      filter: namePattern,
+      cookies: filtered.map((cookie) => publicCookie(cookie, includeValues)),
+    };
+  } catch (error) {
+    return {
+      available: false,
+      count: 0,
+      cookies: [],
+      filter: namePattern,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function publicCookie(
+  cookie: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    size?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    session?: boolean;
+    sameSite?: string;
+    priority?: string;
+  },
+  includeValues: boolean,
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    name: cookie.name,
+    domain: cookie.domain,
+    path: cookie.path,
+    expires: cookie.expires,
+    size: cookie.size,
+    valueBytes: new TextEncoder().encode(cookie.value).byteLength,
+    valueRedacted: !includeValues,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    session: cookie.session,
+    sameSite: cookie.sameSite,
+    priority: cookie.priority,
+  };
+  if (includeValues) item.value = cookie.value;
+  return item;
+}
+
+async function inspectWebStorage(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<{
+  localStorage: Record<string, unknown>;
+  sessionStorage: Record<string, unknown>;
+}> {
+  const keyPattern = typeof params.storageKey === "string" ? params.storageKey : undefined;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { includeValues, limit, keyPattern },
+    (
+      ctx,
+      opts: { includeValues: boolean; limit: number; keyPattern?: string },
+    ): { localStorage: Record<string, unknown>; sessionStorage: Record<string, unknown> } => {
+      const matches = (pattern: string | undefined, value: string): boolean => {
+        if (!pattern) return true;
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".");
+        return new RegExp(`^${escaped}$`, "i").test(value);
+      };
+      const read = (
+        label: "localStorage" | "sessionStorage",
+        storage: Storage,
+      ): Record<string, unknown> => {
+        try {
+          const entries: Record<string, unknown>[] = [];
+          const total = storage.length;
+          let totalMatches = 0;
+          for (let index = 0; index < total; index++) {
+            const key = storage.key(index);
+            if (!key || !matches(opts.keyPattern, key)) continue;
+            totalMatches += 1;
+            if (entries.length >= opts.limit) continue;
+            const value = storage.getItem(key) ?? "";
+            const item: Record<string, unknown> = {
+              key,
+              valueBytes: new TextEncoder().encode(value).byteLength,
+              valueRedacted: !opts.includeValues,
+            };
+            if (opts.includeValues) item.value = value;
+            entries.push(item);
+          }
+          return {
+            available: true,
+            origin: ctx.win.location.origin,
+            count: entries.length,
+            totalKeys: total,
+            totalMatches,
+            limited: totalMatches > entries.length,
+            filter: opts.keyPattern,
+            entries,
+          };
+        } catch (error) {
+          return {
+            available: false,
+            count: 0,
+            entries: [],
+            error: error instanceof Error ? error.message : String(error),
+            kind: label,
+          };
+        }
+      };
+      return {
+        localStorage: read("localStorage", ctx.win.localStorage),
+        sessionStorage: read("sessionStorage", ctx.win.sessionStorage),
+      };
+    },
+  );
+}
+
+type NetworkFilters = {
+  urlPattern?: string;
+  urlRegex?: string;
+  method?: string;
+  statusMin?: number;
+  statusMax?: number;
+  typeSet?: Set<string>;
+};
+
+function readNetworkFilters(params: NonNullable<GatewayCommand["params"]>): NetworkFilters {
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  const urlRegex = typeof params.urlRegex === "string" ? params.urlRegex : undefined;
   const method = typeof params.method === "string" ? params.method.toUpperCase() : undefined;
   const statusMin = typeof params.statusMin === "number" ? params.statusMin : undefined;
+  const statusMax = typeof params.statusMax === "number" ? params.statusMax : undefined;
   const typeSet =
     typeof params.type === "string"
       ? new Set(
@@ -3183,19 +3498,182 @@ async function getNetworkLog(
             .filter(Boolean),
         )
       : undefined;
-  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
-  const items = (networkBuffers.get(tabId) ?? [])
-    .filter((entry) => {
-      if (urlPattern && !globMatch(urlPattern, entry.url)) return false;
-      if (method && entry.method.toUpperCase() !== method) return false;
-      if (statusMin !== undefined && (entry.status ?? 0) < statusMin) return false;
-      if (typeSet && entry.type && !typeSet.has(entry.type)) return false;
-      if (typeSet && !entry.type) return false;
-      return true;
-    })
-    .slice(-limit)
-    .map(({ startTime: _startTime, ...entry }) => entry);
-  return { requests: items };
+  return { urlPattern, urlRegex, method, statusMin, statusMax, typeSet };
+}
+
+function readHARLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(1000, params.limit)) : 200;
+}
+
+function publicNetworkFilters(filters: NetworkFilters): Record<string, unknown> {
+  return {
+    urlPattern: filters.urlPattern,
+    urlRegex: filters.urlRegex,
+    method: filters.method,
+    statusMin: filters.statusMin,
+    statusMax: filters.statusMax,
+    types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+  };
+}
+
+function networkEntryMatches(
+  entry: NetworkEntry,
+  filters: NetworkFilters,
+  requireResponse = false,
+): boolean {
+  if (filters.urlPattern && !globMatch(filters.urlPattern, entry.url)) return false;
+  if (filters.urlRegex && !new RegExp(filters.urlRegex).test(entry.url)) return false;
+  if (filters.method && entry.method.toUpperCase() !== filters.method) return false;
+  if (filters.statusMin !== undefined && (entry.status ?? 0) < filters.statusMin) return false;
+  if (filters.statusMax !== undefined && (entry.status ?? 0) > filters.statusMax) return false;
+  if (filters.typeSet && entry.type && !filters.typeSet.has(entry.type)) return false;
+  if (filters.typeSet && !entry.type) return false;
+  if (requireResponse) return entry.status !== undefined || entry.errorText !== undefined;
+  return true;
+}
+
+function publicNetworkEntry(entry: NetworkEntry): Record<string, unknown> {
+  const { startTime: _startTime, ...publicEntry } = entry;
+  return publicEntry;
+}
+
+function networkEntryToHAR(entry: NetworkEntry, pageId: string): Record<string, unknown> {
+  const time = entry.durationMs ?? 0;
+  const responseSize = entry.encodedDataLength ?? -1;
+  const content: Record<string, unknown> = {
+    size: responseSize,
+    mimeType: entry.mimeType ?? "",
+    comment: "Response body omitted by ABG metadata-only HAR redaction.",
+  };
+  return {
+    pageref: pageId,
+    startedDateTime: entry.ts,
+    time,
+    request: {
+      method: entry.method,
+      url: entry.url,
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: queryStringPairs(entry.url),
+      headersSize: -1,
+      bodySize: 0,
+      comment: "Request headers, cookies, authorization data, and body omitted by ABG redaction.",
+    },
+    response: {
+      status: entry.status ?? 0,
+      statusText: entry.statusText ?? (entry.errorText ? "Failed" : ""),
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: entry.mimeType ? [{ name: "content-type", value: entry.mimeType }] : [],
+      content,
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: responseSize,
+      comment: "Sensitive response headers and body omitted by ABG redaction.",
+    },
+    cache: {},
+    timings: {
+      blocked: -1,
+      dns: -1,
+      connect: -1,
+      send: 0,
+      wait: time,
+      receive: 0,
+      ssl: -1,
+    },
+    comment: entry.errorText
+      ? `Network failed: ${entry.errorText}`
+      : "Metadata-only ABG HAR entry.",
+  };
+}
+
+function queryStringPairs(rawUrl: string): Array<{ name: string; value: string }> {
+  try {
+    const url = new URL(rawUrl);
+    return Array.from(url.searchParams.entries()).map(([name, value]) => ({ name, value }));
+  } catch {
+    return [];
+  }
+}
+
+function readNetworkBodyMaxBytes(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.maxBytes === "number"
+    ? Math.max(0, Math.min(262_144, params.maxBytes))
+    : 16_384;
+}
+
+async function getResponseBodyPreview(
+  tabId: number,
+  requestId: string,
+  maxBytes: number,
+): Promise<Record<string, unknown>> {
+  const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+    requestId,
+  })) as { body: string; base64Encoded: boolean };
+  const bytes = new TextEncoder().encode(result.body);
+  const truncated = bytes.length > maxBytes;
+  const preview = result.base64Encoded
+    ? result.body.slice(0, maxBytes)
+    : new TextDecoder().decode(bytes.slice(0, maxBytes));
+  return {
+    value: preview,
+    base64Encoded: result.base64Encoded,
+    encodedBytes: bytes.length,
+    maxBytes,
+    truncated,
+  };
+}
+
+async function waitForNetworkResponse(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const filters = readNetworkFilters(params);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const body = params.body === true;
+  const maxBytes = readNetworkBodyMaxBytes(params);
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const match = (networkBuffers.get(tabId) ?? [])
+      .slice()
+      .reverse()
+      .find((entry) => networkEntryMatches(entry, filters, true));
+    if (match) {
+      const response: Record<string, unknown> = publicNetworkEntry(match);
+      if (body && match.requestId && match.status !== undefined) {
+        try {
+          response.body = await getResponseBodyPreview(tabId, match.requestId, maxBytes);
+        } catch (error) {
+          response.bodyError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return {
+        ok: true,
+        mode: "wait_for_response",
+        elapsedMs: Date.now() - started,
+        response,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait_for_response",
+    timeoutMs,
+    filters: {
+      urlPattern: filters.urlPattern,
+      urlRegex: filters.urlRegex,
+      method: filters.method,
+      statusMin: filters.statusMin,
+      statusMax: filters.statusMax,
+      types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+    },
+  };
 }
 
 // ---------- Operation tools (v0.1.1) ----------
