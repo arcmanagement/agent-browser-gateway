@@ -212,6 +212,8 @@ final class GatewayCoordinator: ObservableObject {
             return await handleHarTab(req: req)
         case "state_tab":
             return await handleStateTab(req: req)
+        case "framework_tab":
+            return await dispatch(req: req, method: "framework_inspect")
         case "download_tab":
             return await dispatch(req: req, method: "download_state")
         case "click_tab":

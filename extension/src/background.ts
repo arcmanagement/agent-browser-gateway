@@ -1136,6 +1136,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "state_inspect") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "framework_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectFramework(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -3471,6 +3474,266 @@ async function inspectWebStorage(
         sessionStorage: read("sessionStorage", ctx.win.sessionStorage),
       };
     },
+  );
+}
+
+async function inspectFramework(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const kind = normalizeFrameworkKind(params.kind);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 80;
+  const depth = typeof params.depth === "number" ? Math.max(1, Math.min(10, params.depth)) : 4;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { kind, limit, depth },
+    (
+      ctx,
+      opts: { kind: "react" | "web-vitals" | "spa" | "all"; limit: number; depth: number },
+    ): Record<string, unknown> => {
+      const win = ctx.win as Window & {
+        __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+          renderers?:
+            | Map<number, Record<string, unknown>>
+            | Record<string, Record<string, unknown>>;
+          getFiberRoots?: (rendererId: number) => Set<Record<string, unknown>>;
+        };
+        navigation?: {
+          currentEntry?: Record<string, unknown>;
+          entries?: () => Record<string, unknown>[];
+        };
+      };
+      const toNumber = (value: unknown): number | undefined =>
+        typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
+      const jsonish = (value: unknown): Record<string, unknown> => {
+        if (!value || typeof value !== "object") return {};
+        const dict = value as Record<string, unknown>;
+        return {
+          name: typeof dict.name === "string" ? dict.name : undefined,
+          entryType: typeof dict.entryType === "string" ? dict.entryType : undefined,
+          startTime: toNumber(dict.startTime),
+          duration: toNumber(dict.duration),
+          url: typeof dict.url === "string" ? dict.url : undefined,
+          key: typeof dict.key === "string" ? dict.key : undefined,
+          id: typeof dict.id === "string" ? dict.id : undefined,
+          index: toNumber(dict.index),
+          sameDocument: typeof dict.sameDocument === "boolean" ? dict.sameDocument : undefined,
+        };
+      };
+      const detectReactMarkers = (): Record<string, unknown> => {
+        let fiberMarkers = 0;
+        let propsMarkers = 0;
+        const elements = Array.from(ctx.doc.querySelectorAll("*")).slice(0, 5000);
+        for (const element of elements) {
+          const names = Object.getOwnPropertyNames(element);
+          if (names.some((name) => name.startsWith("__reactFiber$"))) fiberMarkers += 1;
+          if (names.some((name) => name.startsWith("__reactProps$"))) propsMarkers += 1;
+          if (fiberMarkers + propsMarkers >= opts.limit) break;
+        }
+        return { inspectedElements: elements.length, fiberMarkers, propsMarkers };
+      };
+      const typeName = (type: unknown): string => {
+        if (typeof type === "string") return type;
+        if (typeof type === "function") {
+          const fn = type as { displayName?: string; name?: string };
+          return fn.displayName || fn.name || "Anonymous";
+        }
+        if (type && typeof type === "object") {
+          const dict = type as Record<string, unknown>;
+          if (typeof dict.displayName === "string") return dict.displayName;
+          const nested = dict.type as { displayName?: string; name?: string } | undefined;
+          if (nested?.displayName || nested?.name)
+            return nested.displayName || nested.name || "Anonymous";
+          const render = dict.render as { displayName?: string; name?: string } | undefined;
+          if (render?.displayName || render?.name)
+            return render.displayName || render.name || "Anonymous";
+        }
+        return "Unknown";
+      };
+      const reactRendererEntries = (): Array<[number, Record<string, unknown>]> => {
+        const renderers = win.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers;
+        if (!renderers) return [];
+        if (renderers instanceof Map) return Array.from(renderers.entries());
+        return Object.entries(renderers).map(([key, value]) => [Number(key), value]);
+      };
+      const inspectReact = (): Record<string, unknown> => {
+        const hook = win.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+        const markerSummary = detectReactMarkers();
+        if (!hook || typeof hook.getFiberRoots !== "function") {
+          return {
+            available: false,
+            reason: "React DevTools global hook with getFiberRoots is not available",
+            markerSummary,
+            mutationPolicy: "read-only; no component mutation or framework patching",
+          };
+        }
+        const renderers = reactRendererEntries();
+        const roots: Record<string, unknown>[] = [];
+        let nodeCount = 0;
+        const seen = new Set<object>();
+        const fiberName = (fiber: Record<string, unknown>): string =>
+          typeName(fiber.elementType ?? fiber.type);
+        const fiberKind = (fiber: Record<string, unknown>): string =>
+          typeof fiber.type === "string" ? "host" : "component";
+        const propNames = (fiber: Record<string, unknown>): string[] => {
+          const props = fiber.memoizedProps;
+          if (!props || typeof props !== "object") return [];
+          return Object.keys(props as Record<string, unknown>)
+            .filter((name) => name !== "children")
+            .slice(0, 20);
+        };
+        const walk = (
+          fiber: Record<string, unknown> | undefined,
+          currentDepth: number,
+          nodes: Record<string, unknown>[],
+          parentId?: number,
+        ): void => {
+          if (!fiber || nodeCount >= opts.limit || currentDepth > opts.depth) return;
+          if (seen.has(fiber)) return;
+          seen.add(fiber);
+          const id = nodes.length;
+          nodeCount += 1;
+          nodes.push({
+            id,
+            parentId,
+            depth: currentDepth,
+            name: fiberName(fiber),
+            kind: fiberKind(fiber),
+            propNames: propNames(fiber),
+          });
+          walk(fiber.child as Record<string, unknown> | undefined, currentDepth + 1, nodes, id);
+          walk(fiber.sibling as Record<string, unknown> | undefined, currentDepth, nodes, parentId);
+        };
+        for (const [rendererId, renderer] of renderers) {
+          if (roots.length >= 10 || nodeCount >= opts.limit) break;
+          const fiberRoots = Array.from(hook.getFiberRoots(rendererId) ?? []).slice(0, 10);
+          for (const root of fiberRoots) {
+            const current = (root.current ?? root) as Record<string, unknown>;
+            const nodes: Record<string, unknown>[] = [];
+            walk(current, 0, nodes);
+            roots.push({
+              rendererId,
+              rendererPackageName: renderer.rendererPackageName,
+              version: renderer.version,
+              nodeCount: nodes.length,
+              depthLimit: opts.depth,
+              nodes,
+            });
+            if (nodeCount >= opts.limit) break;
+          }
+        }
+        return {
+          available: true,
+          rendererCount: renderers.length,
+          rootCount: roots.length,
+          nodeLimit: opts.limit,
+          markerSummary,
+          roots,
+          mutationPolicy: "read-only; props are represented by names only",
+        };
+      };
+      const inspectWebVitals = (): Record<string, unknown> => {
+        const perf = ctx.win.performance;
+        const observerCtor = (
+          ctx.win as unknown as {
+            PerformanceObserver?: { supportedEntryTypes?: string[] };
+          }
+        ).PerformanceObserver;
+        const supported =
+          (observerCtor as unknown as { supportedEntryTypes?: string[] } | undefined)
+            ?.supportedEntryTypes ?? [];
+        const entries = (type: string): Record<string, unknown>[] => {
+          try {
+            return perf
+              .getEntriesByType(type)
+              .slice(-opts.limit)
+              .map((entry) => jsonish(entry));
+          } catch {
+            return [];
+          }
+        };
+        const layoutShiftEntries = (() => {
+          try {
+            return perf.getEntriesByType("layout-shift") as unknown as Array<
+              Record<string, unknown>
+            >;
+          } catch {
+            return [];
+          }
+        })();
+        const cls = layoutShiftEntries
+          .filter((entry) => entry.hadRecentInput !== true)
+          .reduce((sum, entry) => sum + (typeof entry.value === "number" ? entry.value : 0), 0);
+        const eventEntries = (() => {
+          try {
+            return perf.getEntriesByType("event") as unknown as Array<Record<string, unknown>>;
+          } catch {
+            return [];
+          }
+        })();
+        const inpCandidate = eventEntries.reduce<Record<string, unknown> | undefined>(
+          (best, entry) =>
+            !best || (toNumber(entry.duration) ?? 0) > (toNumber(best.duration) ?? 0)
+              ? entry
+              : best,
+          undefined,
+        );
+        return {
+          available: true,
+          supportedEntryTypes: supported,
+          navigation: entries("navigation"),
+          paint: entries("paint"),
+          largestContentfulPaint: entries("largest-contentful-paint").at(-1),
+          cumulativeLayoutShift: Number(cls.toFixed(4)),
+          interactionToNextPaintCandidate: inpCandidate ? jsonish(inpCandidate) : undefined,
+          metricPolicy:
+            "Snapshot only; no third-party analytics or ABG-operated telemetry endpoint.",
+        };
+      };
+      const inspectSpa = (): Record<string, unknown> => {
+        const nav = win.navigation;
+        const entries =
+          typeof nav?.entries === "function" ? nav.entries().slice(-opts.limit).map(jsonish) : [];
+        return {
+          url: ctx.win.location.href,
+          referrer: ctx.doc.referrer,
+          historyLength: ctx.win.history.length,
+          navigationApiAvailable: !!nav,
+          currentEntry: nav?.currentEntry ? jsonish(nav.currentEntry) : undefined,
+          entries,
+          pushStateEvents:
+            entries.length > 0
+              ? "Reported through the browser Navigation API"
+              : "No Navigation API entries available without pre-page-load instrumentation",
+        };
+      };
+      return {
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
+        kind: opts.kind,
+        constraints: [
+          "Uses browser-exposed runtime hooks only.",
+          "Does not inject framework patches, mutate components, or install telemetry.",
+          "Missing hooks return explicit unavailable results.",
+        ],
+        react: opts.kind === "react" || opts.kind === "all" ? inspectReact() : undefined,
+        webVitals:
+          opts.kind === "web-vitals" || opts.kind === "all" ? inspectWebVitals() : undefined,
+        spa: opts.kind === "spa" || opts.kind === "all" ? inspectSpa() : undefined,
+      };
+    },
+  );
+}
+
+function normalizeFrameworkKind(value: unknown): "react" | "web-vitals" | "spa" | "all" {
+  if (value === "react") return "react";
+  if (value === "web-vitals" || value === "vitals") return "web-vitals";
+  if (value === "spa" || value === "navigation") return "spa";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_framework_kind",
+    "framework kind must be react, web-vitals, spa, or all",
   );
 }
 

@@ -184,6 +184,30 @@ struct State: AsyncParsableCommand {
     }
 }
 
+struct Framework: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "framework",
+        abstract: "Inspect React, Web Vitals, and SPA navigation signals from a shared tab",
+        discussion: """
+        Read-only framework inspection for real browser sessions.
+        React tree data is returned only when the page exposes a compatible React DevTools hook; missing hooks fail gracefully.
+        Web Vitals are reported from browser Performance API snapshots, not ABG telemetry.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Inspection kind: react, web-vitals, spa, or all") var kind: String = "all"
+    @Option(name: .long, help: "Maximum React nodes or Performance entries. Defaults to 80 and caps at 500.") var limit: Int = 80
+    @Option(name: .long, help: "Maximum React tree depth. Defaults to 4 and caps at 10.") var depth: Int = 4
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit, "depth": depth]
+        let result = try client.call(method: "framework_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",

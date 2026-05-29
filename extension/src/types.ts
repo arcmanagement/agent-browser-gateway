@@ -139,6 +139,7 @@ export type GatewayMethod =
   | "network_log"
   | "har_export"
   | "state_inspect"
+  | "framework_inspect"
   | "download_state"
   | "revoke"
   | "wait_for"
