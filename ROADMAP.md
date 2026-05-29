@@ -113,11 +113,15 @@ Current repo version: **v0.3.10**.
 - MCP server as a thin wrapper over the same CLI for ecosystem coverage
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
+- Advanced automation parity follows `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab,
+  sandbox/all-tabs only, self-hosted only, or official non-goal, with explicit approval/audit rules.
 
 ## Later
 
 - Daily/weekly digest of agent activity (local only, opt-in)
 - `wait_for_response` and other DevTools-Protocol-flavored tools (network idle, page load, etc.)
+- Browser-owned automation controls such as storage mutation, network mocking, init scripts,
+  emulation, and tab/window management are sandbox/all-tabs profile work, not normal per-tab work.
 
 ## Phase 3
 

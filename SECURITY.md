@@ -49,3 +49,4 @@ If a future PR violates any of these, it should be rejected:
 6. General JavaScript eval is never available silently: it must be disabled by default, require explicit per-call approval, show the exact script locally, and write an audit entry with script source plus result type/size summary. Prefer curated, structured, named tools whenever possible.
 7. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
 8. The audit log records every read and every operation, with the originating agent identifier where available.
+9. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.

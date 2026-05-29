@@ -434,6 +434,11 @@ automation owns; ABG is for safely exposing human-owned browser state to an agen
 sharing by default, an explicit all-tabs profile mode for sandboxes, JSON output, local-only
 transport, and a visible audit trail.
 
+Advanced parity features are governed by the
+[Advanced Automation Policy](docs/ADVANCED_AUTOMATION_POLICY.md). The policy classifies each
+capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or an official
+`non-goal`, with the required approval and audit behavior for each mode.
+
 ### Feature parity for autonomous agents
 
 | Capability | ABG | Vercel agent-browser / Playwright | ABG boundary |
