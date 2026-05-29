@@ -111,6 +111,8 @@ export type GatewayCommand = {
     // annotation_mode
     action?: AnnotationAction | string;
     comment?: string;
+    // dialog_action
+    promptText?: string;
   };
 };
 
@@ -133,6 +135,8 @@ export type GatewayMethod =
   | "annotation_mode"
   | "validate_editable"
   | "stream_control"
+  | "dialog_state"
+  | "dialog_action"
   | "click_selector"
   | "click_described"
   | "click_at"
@@ -181,6 +185,7 @@ export type OperationMethod = Extract<
   | "navigate"
   | "scroll"
   | "scroll_into_view"
+  | "dialog_action"
   | "drag"
 >;
 

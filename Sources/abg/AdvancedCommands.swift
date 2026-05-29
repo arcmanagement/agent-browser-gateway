@@ -46,6 +46,51 @@ struct Frames: AsyncParsableCommand {
     }
 }
 
+struct Dialog: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "dialog",
+        abstract: "Inspect or handle a pending JavaScript alert/confirm/prompt dialog",
+        discussion: """
+        With no action flags, this is read-only and returns whether a JavaScript dialog is pending.
+        Use --accept, --dismiss, or --prompt-value to handle a pending dialog through the normal operation approval path.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Accept the pending dialog") var accept: Bool = false
+    @Flag(name: .long, help: "Dismiss the pending dialog") var dismiss: Bool = false
+    @Option(name: .long, help: "Prompt text to submit; implies --accept") var promptValue: String?
+
+    func run() async throws {
+        let selectedActions = [accept, dismiss, promptValue != nil].filter { $0 }.count
+        if selectedActions > 1 && !(accept && promptValue != nil && !dismiss) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Use at most one dialog action: --accept, --dismiss, or --prompt-value.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        let action: String?
+        if dismiss {
+            action = "dismiss"
+        } else if accept || promptValue != nil {
+            action = "accept"
+        } else {
+            action = nil
+        }
+        if let action { params["action"] = action }
+        if let promptValue { params["promptText"] = promptValue }
+        let result = try client.call(method: "dialog_tab", params: params)
+        if let action {
+            var step: [String: Any] = ["op": "dialog", "tabId": tabId, "action": action]
+            if let promptValue { step["promptTextBytes"] = promptValue.utf8.count }
+            appendRecordedStep(step)
+        }
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",

@@ -53,6 +53,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "navigate",
   "scroll",
   "scroll_into_view",
+  "dialog_action",
   "drag",
 ]);
 
@@ -87,6 +88,14 @@ type NetworkEntry = {
   errorText?: string;
 };
 
+type PendingDialog = {
+  type: string;
+  message: string;
+  defaultPrompt?: string;
+  url?: string;
+  openedAt: number;
+};
+
 type Point = { x: number; y: number };
 
 type ApprovalResolution = {
@@ -118,6 +127,7 @@ const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
+const pendingDialogs = new Map<number, PendingDialog>();
 const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
@@ -570,6 +580,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   permittedTabs.delete(tabId);
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
+  pendingDialogs.delete(tabId);
   streamingTabs.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
@@ -644,6 +655,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
+    pendingDialogs.delete(tabId);
     streamingTabs.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
@@ -675,6 +687,7 @@ async function attachDebugger(tabId: number): Promise<void> {
     await chrome.debugger.attach({ tabId }, "1.3");
     await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
     await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
     attachedTabs.add(tabId);
   } catch (e) {
     console.warn("[ABG] debugger.attach failed", e);
@@ -721,6 +734,34 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
     emitStreamEvent(source.tabId, { kind: "console", level: "error", text });
+  } else if (method === "Page.javascriptDialogOpening") {
+    const p = params as {
+      url?: string;
+      message?: string;
+      type?: string;
+      defaultPrompt?: string;
+    };
+    const dialog: PendingDialog = {
+      type: p.type ?? "unknown",
+      message: p.message ?? "",
+      defaultPrompt: p.defaultPrompt,
+      url: p.url,
+      openedAt: Date.now(),
+    };
+    pendingDialogs.set(source.tabId, dialog);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "opening",
+      dialog: publicDialogState(source.tabId).dialog,
+    });
+  } else if (method === "Page.javascriptDialogClosed") {
+    const dialog = pendingDialogs.get(source.tabId);
+    pendingDialogs.delete(source.tabId);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "closed",
+      dialog: dialog ? publicDialog(dialog) : undefined,
+    });
   } else if (method === "Network.requestWillBeSent") {
     const p = params as {
       requestId: string;
@@ -879,6 +920,10 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "stream_control") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
+    } else if (cmd.method === "dialog_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, publicDialogState(tabId));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
@@ -1120,6 +1165,26 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => scrollElementIntoView(tabId, selector, frame),
     };
   }
+  if (cmd.method === "dialog_action") {
+    const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
+    if (action !== "accept" && action !== "dismiss") {
+      throw new Error("dialog action must be accept or dismiss");
+    }
+    const dialog = pendingDialogs.get(tabId);
+    if (!dialog) {
+      throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+    }
+    const promptText =
+      typeof cmd.params?.promptText === "string" ? cmd.params.promptText : undefined;
+    const promptSuffix =
+      promptText === undefined
+        ? ""
+        : ` with ${new TextEncoder().encode(promptText).byteLength} prompt bytes`;
+    return {
+      intent: `${action === "accept" ? "Accept" : "Dismiss"} ${dialog.type} dialog${promptSuffix}: ${quoteForIntent(dialog.message)}`,
+      run: () => runDialogAction(tabId, cmd.params ?? {}),
+    };
+  }
   const deltaX = cmd.params?.deltaX ?? 0;
   const deltaY = cmd.params?.deltaY ?? 0;
   if (typeof deltaX !== "number" || typeof deltaY !== "number") {
@@ -1139,6 +1204,61 @@ function quoteForIntent(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const shortValue = normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   return `"${shortValue}"`;
+}
+
+function truncateText(value: string | undefined, limit = 500): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+}
+
+function publicDialog(dialog: PendingDialog): Record<string, unknown> {
+  const encoder = new TextEncoder();
+  return {
+    type: dialog.type,
+    message: truncateText(dialog.message),
+    messageBytes: encoder.encode(dialog.message).byteLength,
+    defaultPrompt: truncateText(dialog.defaultPrompt),
+    defaultPromptBytes:
+      dialog.defaultPrompt === undefined
+        ? undefined
+        : encoder.encode(dialog.defaultPrompt).byteLength,
+    url: dialog.url,
+    openedAt: new Date(dialog.openedAt).toISOString(),
+  };
+}
+
+function publicDialogState(tabId: number): Record<string, unknown> {
+  const dialog = pendingDialogs.get(tabId);
+  return dialog ? { pending: true, dialog: publicDialog(dialog) } : { pending: false };
+}
+
+async function runDialogAction(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const action = typeof params.action === "string" ? params.action : "";
+  if (action !== "accept" && action !== "dismiss") {
+    throw new GatewayError("bad_dialog_action", "dialog action must be accept or dismiss");
+  }
+  const dialog = pendingDialogs.get(tabId);
+  if (!dialog) {
+    throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+  }
+  await attachDebugger(tabId);
+  const promptText = typeof params.promptText === "string" ? params.promptText : undefined;
+  const commandParams: Record<string, unknown> = { accept: action === "accept" };
+  if (action === "accept" && promptText !== undefined) commandParams.promptText = promptText;
+  await chrome.debugger.sendCommand({ tabId }, "Page.handleJavaScriptDialog", commandParams);
+  pendingDialogs.delete(tabId);
+  return {
+    ok: true,
+    action,
+    accepted: action === "accept",
+    promptTextBytes:
+      promptText === undefined ? undefined : new TextEncoder().encode(promptText).byteLength,
+    dialog: publicDialog(dialog),
+  };
 }
 
 function globMatch(pattern: string, text: string): boolean {

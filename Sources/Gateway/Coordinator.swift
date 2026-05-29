@@ -260,6 +260,12 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "scroll_into_view")
         case "drag_tab":
             return await dispatch(req: req, method: "drag")
+        case "dialog_tab":
+            let params = (req.params?.value as? [String: Any]) ?? [:]
+            if params["action"] != nil {
+                return await dispatch(req: req, method: "dialog_action")
+            }
+            return await dispatch(req: req, method: "dialog_state")
         case "wait_tab":
             return await dispatch(req: req, method: "wait_for")
         case "eval_tab":
@@ -459,6 +465,28 @@ final class GatewayCoordinator: ObservableObject {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
             let details: [String: AnyCodable]? = {
+                if method == "dialog_action" {
+                    var values: [String: AnyCodable] = [:]
+                    if let action = params["action"] as? String {
+                        values["action"] = AnyCodable(action)
+                    }
+                    if let promptText = params["promptText"] as? String {
+                        values["promptTextBytes"] = AnyCodable(promptText.utf8.count)
+                    }
+                    if let dict = result?.value as? [String: Any],
+                       let dialog = dict["dialog"] as? [String: Any] {
+                        if let type = dialog["type"] as? String {
+                            values["dialogType"] = AnyCodable(type)
+                        }
+                        if let message = dialog["message"] as? String {
+                            values["messagePreview"] = AnyCodable(message)
+                        }
+                        if let messageBytes = dialog["messageBytes"] as? Int {
+                            values["messageBytes"] = AnyCodable(messageBytes)
+                        }
+                    }
+                    return values.isEmpty ? nil : values
+                }
                 guard method == "paste" || method == "clear" else { return nil }
                 var values: [String: AnyCodable] = [:]
                 if let selector = params["selector"] as? String {

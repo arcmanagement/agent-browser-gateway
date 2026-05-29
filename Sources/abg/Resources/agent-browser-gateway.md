@@ -45,6 +45,10 @@ abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
+abg dialog <tab|ref>                     # pending alert/confirm/prompt を確認
+abg dialog <tab|ref> --accept            # 承認して accept
+abg dialog <tab|ref> --dismiss           # 承認して dismiss
+abg dialog <tab|ref> --prompt-value "ok" # 承認して prompt text を送信
 abg screenshot --latest                 # 最後に保存したスクショパス
 abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
@@ -283,6 +287,7 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
 - `tabId` は Chrome 内部のタブ ID で、ブラウザ再起動で変わる。通常は `abg tabs --compact` の `ref` (`t1` など) か `--match-url` / `--match-title` を使う
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
+- JavaScript dialog は `abg dialog <ref>` で pending 状態を読む。accept / dismiss / prompt-value は write-like action として通常の operation approval と audit log を通る。pending dialog がなければ `no_dialog_pending` で明示的に失敗する
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF、CLI の `--approve`、正確な script を表示する per-call approval の 3 段階が揃わないと実行されない。audit には script source と result type/bytes summary が残る
