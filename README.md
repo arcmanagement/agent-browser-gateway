@@ -132,6 +132,9 @@ abg state <tab|ref> --kind cookies --name "sid*"      # Cookie/storage keys, val
 abg state <tab|ref> --kind local-storage --key "user*" --values
 abg framework <tab|ref> --kind react                  # React tree when hooks are available
 abg framework <tab|ref> --kind web-vitals             # Performance/Web Vitals snapshot
+abg sandbox <tab|ref> viewport --width 390 --height 844 --mobile
+abg sandbox <tab|ref> storage-set --storage local-storage --key feature --value on
+abg sandbox <tab|ref> tab-create --url https://example.test
 abg download <tab|ref>                           # Latest downloads associated with this tab
 abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
 abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
@@ -270,6 +273,11 @@ returns an explicit unavailable result and a bounded DOM marker summary. Web Vit
 from the browser Performance API, and SPA navigation is reported only when the browser Navigation
 API exposes entries. ABG does not install test-runner instrumentation, pre-page-load scripts,
 component patches, or telemetry collectors for this command.
+Use `sandbox` only in isolated all-tabs profile mode. The Gateway rejects sandbox browser-owned
+automation for normal per-tab shares. Supported mutating controls are viewport emulation,
+localStorage/sessionStorage set/delete, and sandbox tab create/close; each action uses the local
+operation approval flow and records audit metadata. Do not enable all-tabs mode in mixed personal
+profiles.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -399,6 +407,23 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 
 ---
 
+## Official non-goals and user-controlled deployments
+
+Official ABG will not operate a cloud relay, collect telemetry, or provide silent general JavaScript
+execution. Those are product boundaries, not missing roadmap items.
+
+User-controlled deployments are different. Private remote pairing over a user's Tailnet or LAN is
+tracked in [#71](https://github.com/arcmanagement/agent-browser-gateway/issues/71) and must remain
+a user-operated connection path, not an ABG-operated relay. Likewise, local or organization-owned
+metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
+configuration. They are not telemetry sent to ABG operators.
+
+The approved eval boundary is unchanged: disabled by default, explicit enablement in the extension,
+`--approve` on every call, a local approval window showing the exact script, and audit logging.
+Silent or blanket-approved eval is an official non-goal.
+
+---
+
 ## Comparison
 
 ABG is not trying to replace Playwright or browser test runners. Use it when the browser session
@@ -454,6 +479,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
+| Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
@@ -487,6 +513,7 @@ Currently shipped:
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
 - ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
+- ✅ Sandbox-only browser-owned automation controls: `sandbox`, rejected outside all-tabs profile mode
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)

@@ -51,6 +51,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "key_up",
   "keyboard_insert_text",
   "navigate",
+  "sandbox_action",
   "scroll",
   "scroll_into_view",
   "dialog_action",
@@ -1385,6 +1386,64 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
         return { ok: true, note: "navigation may revoke permission if origin changes" };
       },
     };
+  }
+  if (cmd.method === "sandbox_action") {
+    const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
+    if (action === "viewport") {
+      const width = cmd.params?.width;
+      const height = cmd.params?.height;
+      if (typeof width !== "number" || typeof height !== "number") {
+        throw new Error("width and height required");
+      }
+      const mobile = cmd.params?.mobile === true;
+      return {
+        intent: `Set sandbox viewport to ${width}x${height}${mobile ? " mobile" : ""}.`,
+        run: () => sandboxSetViewport(tabId, cmd.params ?? {}),
+      };
+    }
+    if (action === "viewport-clear") {
+      return {
+        intent: "Clear sandbox viewport emulation.",
+        run: () => sandboxClearViewport(tabId),
+      };
+    }
+    if (action === "storage-set" || action === "storage-delete") {
+      const storageKind = normalizeSandboxStorageKind(cmd.params?.storageKind);
+      const key = cmd.params?.storageKey;
+      if (typeof key !== "string" || key.length === 0) throw new Error("storage key required");
+      const value = typeof cmd.params?.value === "string" ? cmd.params.value : "";
+      if (action === "storage-set" && typeof cmd.params?.value !== "string") {
+        throw new Error("value required");
+      }
+      return {
+        intent:
+          action === "storage-set"
+            ? `Set ${storageKind} key ${quoteForIntent(key)} to ${new TextEncoder().encode(value).byteLength} bytes in the sandbox profile.`
+            : `Delete ${storageKind} key ${quoteForIntent(key)} from the sandbox profile.`,
+        run: () =>
+          sandboxStorage(tabId, storageKind, key, action === "storage-set" ? value : undefined),
+      };
+    }
+    if (action === "tab-create") {
+      const url = cmd.params?.url;
+      if (typeof url !== "string" || url.length === 0) throw new Error("url required");
+      return {
+        intent: `Create a new sandbox tab for ${quoteForIntent(url)}.`,
+        run: () => sandboxCreateTab(tabId, url),
+      };
+    }
+    if (action === "tab-close") {
+      const targetTabId = cmd.params?.targetTabId ?? tabId;
+      if (typeof targetTabId !== "number") throw new Error("targetTabId must be a number");
+      return {
+        intent: `Close sandbox tab ${targetTabId}.`,
+        run: () => sandboxCloseTab(targetTabId),
+      };
+    }
+    throw new GatewayError(
+      "bad_sandbox_action",
+      "sandbox action must be viewport, viewport-clear, storage-set, storage-delete, tab-create, or tab-close",
+    );
   }
   if (cmd.method === "drag") {
     const from = readDragPoint(cmd.params, "from");
@@ -3940,6 +3999,102 @@ async function waitForNetworkResponse(
 }
 
 // ---------- Operation tools (v0.1.1) ----------
+
+function normalizeSandboxStorageKind(value: unknown): "local-storage" | "session-storage" {
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  throw new GatewayError(
+    "bad_storage_kind",
+    "storage kind must be local-storage or session-storage",
+  );
+}
+
+async function sandboxSetViewport(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const width = typeof params.width === "number" ? Math.max(1, Math.min(4096, params.width)) : 0;
+  const height = typeof params.height === "number" ? Math.max(1, Math.min(4096, params.height)) : 0;
+  if (width <= 0 || height <= 0) {
+    throw new GatewayError("bad_viewport", "width and height must be positive numbers");
+  }
+  const deviceScaleFactor =
+    typeof params.deviceScaleFactor === "number"
+      ? Math.max(0.1, Math.min(5, params.deviceScaleFactor))
+      : 1;
+  const mobile = params.mobile === true;
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor,
+    mobile,
+  });
+  return { ok: true, action: "viewport", width, height, deviceScaleFactor, mobile };
+}
+
+async function sandboxClearViewport(tabId: number): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, "Emulation.clearDeviceMetricsOverride");
+  return { ok: true, action: "viewport-clear" };
+}
+
+async function sandboxStorage(
+  tabId: number,
+  storageKind: "local-storage" | "session-storage",
+  key: string,
+  value: string | undefined,
+): Promise<Record<string, unknown>> {
+  return runFrameScript(
+    tabId,
+    undefined,
+    { storageKind, key, value },
+    (
+      ctx,
+      opts: { storageKind: "local-storage" | "session-storage"; key: string; value?: string },
+    ): Record<string, unknown> => {
+      const storage =
+        opts.storageKind === "local-storage" ? ctx.win.localStorage : ctx.win.sessionStorage;
+      if (opts.value === undefined) {
+        const existed = storage.getItem(opts.key) !== null;
+        storage.removeItem(opts.key);
+        return {
+          ok: true,
+          action: "storage-delete",
+          storageKind: opts.storageKind,
+          key: opts.key,
+          existed,
+        };
+      }
+      storage.setItem(opts.key, opts.value);
+      return {
+        ok: true,
+        action: "storage-set",
+        storageKind: opts.storageKind,
+        key: opts.key,
+        valueBytes: new TextEncoder().encode(opts.value).byteLength,
+      };
+    },
+  );
+}
+
+async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
+  const source = await chrome.tabs.get(tabId);
+  const created = await chrome.tabs.create({ url, windowId: source.windowId, active: true });
+  return { ok: true, action: "tab-create", tabId: created.id, url: created.url ?? url };
+}
+
+async function sandboxCloseTab(targetTabId: number): Promise<Record<string, unknown>> {
+  const target = permittedTabs.get(targetTabId);
+  if (target?.accessMode !== "all_tabs") {
+    throw new GatewayError(
+      "sandbox_tab_required",
+      "tab-close is limited to tabs shared through sandbox all-tabs mode",
+    );
+  }
+  await chrome.tabs.remove(targetTabId);
+  return { ok: true, action: "tab-close", targetTabId };
+}
 
 async function clickSelector(
   tabId: number,

@@ -83,10 +83,10 @@ async function refresh(): Promise<void> {
   allTabsToggleEl.checked = state.allTabsAccess.active;
   allTabsToggleEl.disabled = false;
   allTabsNoteEl.textContent = state.allTabsAccess.active
-    ? `${state.allTabsAccess.shareableTabCount} tabs are shared. Internal browser pages are skipped.`
+    ? `${state.allTabsAccess.shareableTabCount} tabs are shared in sandbox mode. Browser-owned automation controls are enabled for this isolated profile.`
     : state.settings.allTabsAccessEnabled && !state.allTabsAccess.permissionGranted
       ? "Chrome permission is missing. Toggle this on to re-authorize."
-      : "For sandbox profiles only. Chrome will request optional access to all sites.";
+      : "For isolated sandbox profiles only. Do not enable this in mixed personal profiles.";
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
     allTabsToggleEl.disabled = true;

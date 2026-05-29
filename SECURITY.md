@@ -37,6 +37,21 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 - **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When enabled, every call still requires `--approve` plus a local approval window showing the exact script; the audit log records the script source and result summary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.
 
+### User-controlled remote and self-hosted deployments
+
+The official no-cloud/no-telemetry claim applies to services operated by ABG maintainers or
+distributed as default ABG behavior. It does not prohibit a user or organization from operating
+their own private infrastructure, as long as that boundary is explicit and auditable.
+
+- Private remote pairing over Tailnet/LAN with QR code is tracked by #71. It must use user-controlled
+  connectivity, pairing expiry, revocation, and audit entries, not an ABG-operated cloud relay.
+- User/team-owned local metrics in a self-hosted deployment are allowed only when the endpoint and
+  data retention are controlled by that user/team. Sending telemetry to ABG operators remains a
+  non-goal.
+- General JavaScript execution remains disabled by default and per-call approved even in remote or
+  self-hosted deployments unless a separate, explicit local policy changes that behavior for that
+  user-controlled environment.
+
 ## Design invariants
 
 If a future PR violates any of these, it should be rejected:
