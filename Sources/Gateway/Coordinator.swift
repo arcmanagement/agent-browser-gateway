@@ -212,6 +212,10 @@ final class GatewayCoordinator: ObservableObject {
             return await handleHarTab(req: req)
         case "state_tab":
             return await handleStateTab(req: req)
+        case "framework_tab":
+            return await dispatch(req: req, method: "framework_inspect")
+        case "sandbox_tab":
+            return await handleSandboxTab(req: req)
         case "download_tab":
             return await dispatch(req: req, method: "download_state")
         case "click_tab":
@@ -550,6 +554,60 @@ final class GatewayCoordinator: ObservableObject {
             await auditLog.log(action: "state_inspect", extensionId: tab.extensionId, tabId: tabId, url: tab.url, details: details)
             return CLIResponse(id: req.id, result: result)
         } catch {
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
+        }
+    }
+
+    private func handleSandboxTab(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        guard tab.accessMode == "all_tabs" else {
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "sandbox_mode_required",
+                    message: "Sandbox browser-owned automation requires a tab shared through all-tabs profile mode."
+                )
+            )
+        }
+        var auditDetails: [String: AnyCodable] = [
+            "accessMode": AnyCodable(tab.accessMode),
+            "action": AnyCodable((params["action"] as? String) ?? ""),
+        ]
+        if let width = params["width"] as? Int { auditDetails["width"] = AnyCodable(width) }
+        if let height = params["height"] as? Int { auditDetails["height"] = AnyCodable(height) }
+        if let mobile = params["mobile"] as? Bool { auditDetails["mobile"] = AnyCodable(mobile) }
+        if let deviceScaleFactor = params["deviceScaleFactor"] as? Double {
+            auditDetails["deviceScaleFactor"] = AnyCodable(deviceScaleFactor)
+        }
+        if let storageKind = params["storageKind"] as? String {
+            auditDetails["storageKind"] = AnyCodable(storageKind)
+        }
+        if let storageKey = params["storageKey"] as? String {
+            auditDetails["storageKey"] = AnyCodable(storageKey)
+        }
+        if let value = params["value"] as? String {
+            auditDetails["valueBytes"] = AnyCodable(value.utf8.count)
+        }
+        if let url = params["url"] as? String {
+            auditDetails["targetUrl"] = AnyCodable(url)
+        }
+        if let targetTabId = params["targetTabId"] as? Int {
+            auditDetails["targetTabId"] = AnyCodable(targetTabId)
+        }
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "sandbox_action", params: AnyCodable(params))
+            auditDetails["ok"] = AnyCodable(true)
+            await auditLog.log(action: "sandbox_action", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            auditDetails["ok"] = AnyCodable(false)
+            auditDetails["error"] = AnyCodable(error.localizedDescription)
+            await auditLog.log(action: "sandbox_action", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
             return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
         }
     }

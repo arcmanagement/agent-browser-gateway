@@ -51,6 +51,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "key_up",
   "keyboard_insert_text",
   "navigate",
+  "sandbox_action",
   "scroll",
   "scroll_into_view",
   "dialog_action",
@@ -1136,6 +1137,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "state_inspect") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "framework_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectFramework(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -1382,6 +1386,64 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
         return { ok: true, note: "navigation may revoke permission if origin changes" };
       },
     };
+  }
+  if (cmd.method === "sandbox_action") {
+    const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
+    if (action === "viewport") {
+      const width = cmd.params?.width;
+      const height = cmd.params?.height;
+      if (typeof width !== "number" || typeof height !== "number") {
+        throw new Error("width and height required");
+      }
+      const mobile = cmd.params?.mobile === true;
+      return {
+        intent: `Set sandbox viewport to ${width}x${height}${mobile ? " mobile" : ""}.`,
+        run: () => sandboxSetViewport(tabId, cmd.params ?? {}),
+      };
+    }
+    if (action === "viewport-clear") {
+      return {
+        intent: "Clear sandbox viewport emulation.",
+        run: () => sandboxClearViewport(tabId),
+      };
+    }
+    if (action === "storage-set" || action === "storage-delete") {
+      const storageKind = normalizeSandboxStorageKind(cmd.params?.storageKind);
+      const key = cmd.params?.storageKey;
+      if (typeof key !== "string" || key.length === 0) throw new Error("storage key required");
+      const value = typeof cmd.params?.value === "string" ? cmd.params.value : "";
+      if (action === "storage-set" && typeof cmd.params?.value !== "string") {
+        throw new Error("value required");
+      }
+      return {
+        intent:
+          action === "storage-set"
+            ? `Set ${storageKind} key ${quoteForIntent(key)} to ${new TextEncoder().encode(value).byteLength} bytes in the sandbox profile.`
+            : `Delete ${storageKind} key ${quoteForIntent(key)} from the sandbox profile.`,
+        run: () =>
+          sandboxStorage(tabId, storageKind, key, action === "storage-set" ? value : undefined),
+      };
+    }
+    if (action === "tab-create") {
+      const url = cmd.params?.url;
+      if (typeof url !== "string" || url.length === 0) throw new Error("url required");
+      return {
+        intent: `Create a new sandbox tab for ${quoteForIntent(url)}.`,
+        run: () => sandboxCreateTab(tabId, url),
+      };
+    }
+    if (action === "tab-close") {
+      const targetTabId = cmd.params?.targetTabId ?? tabId;
+      if (typeof targetTabId !== "number") throw new Error("targetTabId must be a number");
+      return {
+        intent: `Close sandbox tab ${targetTabId}.`,
+        run: () => sandboxCloseTab(targetTabId),
+      };
+    }
+    throw new GatewayError(
+      "bad_sandbox_action",
+      "sandbox action must be viewport, viewport-clear, storage-set, storage-delete, tab-create, or tab-close",
+    );
   }
   if (cmd.method === "drag") {
     const from = readDragPoint(cmd.params, "from");
@@ -3474,6 +3536,266 @@ async function inspectWebStorage(
   );
 }
 
+async function inspectFramework(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const kind = normalizeFrameworkKind(params.kind);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 80;
+  const depth = typeof params.depth === "number" ? Math.max(1, Math.min(10, params.depth)) : 4;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { kind, limit, depth },
+    (
+      ctx,
+      opts: { kind: "react" | "web-vitals" | "spa" | "all"; limit: number; depth: number },
+    ): Record<string, unknown> => {
+      const win = ctx.win as Window & {
+        __REACT_DEVTOOLS_GLOBAL_HOOK__?: {
+          renderers?:
+            | Map<number, Record<string, unknown>>
+            | Record<string, Record<string, unknown>>;
+          getFiberRoots?: (rendererId: number) => Set<Record<string, unknown>>;
+        };
+        navigation?: {
+          currentEntry?: Record<string, unknown>;
+          entries?: () => Record<string, unknown>[];
+        };
+      };
+      const toNumber = (value: unknown): number | undefined =>
+        typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
+      const jsonish = (value: unknown): Record<string, unknown> => {
+        if (!value || typeof value !== "object") return {};
+        const dict = value as Record<string, unknown>;
+        return {
+          name: typeof dict.name === "string" ? dict.name : undefined,
+          entryType: typeof dict.entryType === "string" ? dict.entryType : undefined,
+          startTime: toNumber(dict.startTime),
+          duration: toNumber(dict.duration),
+          url: typeof dict.url === "string" ? dict.url : undefined,
+          key: typeof dict.key === "string" ? dict.key : undefined,
+          id: typeof dict.id === "string" ? dict.id : undefined,
+          index: toNumber(dict.index),
+          sameDocument: typeof dict.sameDocument === "boolean" ? dict.sameDocument : undefined,
+        };
+      };
+      const detectReactMarkers = (): Record<string, unknown> => {
+        let fiberMarkers = 0;
+        let propsMarkers = 0;
+        const elements = Array.from(ctx.doc.querySelectorAll("*")).slice(0, 5000);
+        for (const element of elements) {
+          const names = Object.getOwnPropertyNames(element);
+          if (names.some((name) => name.startsWith("__reactFiber$"))) fiberMarkers += 1;
+          if (names.some((name) => name.startsWith("__reactProps$"))) propsMarkers += 1;
+          if (fiberMarkers + propsMarkers >= opts.limit) break;
+        }
+        return { inspectedElements: elements.length, fiberMarkers, propsMarkers };
+      };
+      const typeName = (type: unknown): string => {
+        if (typeof type === "string") return type;
+        if (typeof type === "function") {
+          const fn = type as { displayName?: string; name?: string };
+          return fn.displayName || fn.name || "Anonymous";
+        }
+        if (type && typeof type === "object") {
+          const dict = type as Record<string, unknown>;
+          if (typeof dict.displayName === "string") return dict.displayName;
+          const nested = dict.type as { displayName?: string; name?: string } | undefined;
+          if (nested?.displayName || nested?.name)
+            return nested.displayName || nested.name || "Anonymous";
+          const render = dict.render as { displayName?: string; name?: string } | undefined;
+          if (render?.displayName || render?.name)
+            return render.displayName || render.name || "Anonymous";
+        }
+        return "Unknown";
+      };
+      const reactRendererEntries = (): Array<[number, Record<string, unknown>]> => {
+        const renderers = win.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers;
+        if (!renderers) return [];
+        if (renderers instanceof Map) return Array.from(renderers.entries());
+        return Object.entries(renderers).map(([key, value]) => [Number(key), value]);
+      };
+      const inspectReact = (): Record<string, unknown> => {
+        const hook = win.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+        const markerSummary = detectReactMarkers();
+        if (!hook || typeof hook.getFiberRoots !== "function") {
+          return {
+            available: false,
+            reason: "React DevTools global hook with getFiberRoots is not available",
+            markerSummary,
+            mutationPolicy: "read-only; no component mutation or framework patching",
+          };
+        }
+        const renderers = reactRendererEntries();
+        const roots: Record<string, unknown>[] = [];
+        let nodeCount = 0;
+        const seen = new Set<object>();
+        const fiberName = (fiber: Record<string, unknown>): string =>
+          typeName(fiber.elementType ?? fiber.type);
+        const fiberKind = (fiber: Record<string, unknown>): string =>
+          typeof fiber.type === "string" ? "host" : "component";
+        const propNames = (fiber: Record<string, unknown>): string[] => {
+          const props = fiber.memoizedProps;
+          if (!props || typeof props !== "object") return [];
+          return Object.keys(props as Record<string, unknown>)
+            .filter((name) => name !== "children")
+            .slice(0, 20);
+        };
+        const walk = (
+          fiber: Record<string, unknown> | undefined,
+          currentDepth: number,
+          nodes: Record<string, unknown>[],
+          parentId?: number,
+        ): void => {
+          if (!fiber || nodeCount >= opts.limit || currentDepth > opts.depth) return;
+          if (seen.has(fiber)) return;
+          seen.add(fiber);
+          const id = nodes.length;
+          nodeCount += 1;
+          nodes.push({
+            id,
+            parentId,
+            depth: currentDepth,
+            name: fiberName(fiber),
+            kind: fiberKind(fiber),
+            propNames: propNames(fiber),
+          });
+          walk(fiber.child as Record<string, unknown> | undefined, currentDepth + 1, nodes, id);
+          walk(fiber.sibling as Record<string, unknown> | undefined, currentDepth, nodes, parentId);
+        };
+        for (const [rendererId, renderer] of renderers) {
+          if (roots.length >= 10 || nodeCount >= opts.limit) break;
+          const fiberRoots = Array.from(hook.getFiberRoots(rendererId) ?? []).slice(0, 10);
+          for (const root of fiberRoots) {
+            const current = (root.current ?? root) as Record<string, unknown>;
+            const nodes: Record<string, unknown>[] = [];
+            walk(current, 0, nodes);
+            roots.push({
+              rendererId,
+              rendererPackageName: renderer.rendererPackageName,
+              version: renderer.version,
+              nodeCount: nodes.length,
+              depthLimit: opts.depth,
+              nodes,
+            });
+            if (nodeCount >= opts.limit) break;
+          }
+        }
+        return {
+          available: true,
+          rendererCount: renderers.length,
+          rootCount: roots.length,
+          nodeLimit: opts.limit,
+          markerSummary,
+          roots,
+          mutationPolicy: "read-only; props are represented by names only",
+        };
+      };
+      const inspectWebVitals = (): Record<string, unknown> => {
+        const perf = ctx.win.performance;
+        const observerCtor = (
+          ctx.win as unknown as {
+            PerformanceObserver?: { supportedEntryTypes?: string[] };
+          }
+        ).PerformanceObserver;
+        const supported =
+          (observerCtor as unknown as { supportedEntryTypes?: string[] } | undefined)
+            ?.supportedEntryTypes ?? [];
+        const entries = (type: string): Record<string, unknown>[] => {
+          try {
+            return perf
+              .getEntriesByType(type)
+              .slice(-opts.limit)
+              .map((entry) => jsonish(entry));
+          } catch {
+            return [];
+          }
+        };
+        const layoutShiftEntries = (() => {
+          try {
+            return perf.getEntriesByType("layout-shift") as unknown as Array<
+              Record<string, unknown>
+            >;
+          } catch {
+            return [];
+          }
+        })();
+        const cls = layoutShiftEntries
+          .filter((entry) => entry.hadRecentInput !== true)
+          .reduce((sum, entry) => sum + (typeof entry.value === "number" ? entry.value : 0), 0);
+        const eventEntries = (() => {
+          try {
+            return perf.getEntriesByType("event") as unknown as Array<Record<string, unknown>>;
+          } catch {
+            return [];
+          }
+        })();
+        const inpCandidate = eventEntries.reduce<Record<string, unknown> | undefined>(
+          (best, entry) =>
+            !best || (toNumber(entry.duration) ?? 0) > (toNumber(best.duration) ?? 0)
+              ? entry
+              : best,
+          undefined,
+        );
+        return {
+          available: true,
+          supportedEntryTypes: supported,
+          navigation: entries("navigation"),
+          paint: entries("paint"),
+          largestContentfulPaint: entries("largest-contentful-paint").at(-1),
+          cumulativeLayoutShift: Number(cls.toFixed(4)),
+          interactionToNextPaintCandidate: inpCandidate ? jsonish(inpCandidate) : undefined,
+          metricPolicy:
+            "Snapshot only; no third-party analytics or ABG-operated telemetry endpoint.",
+        };
+      };
+      const inspectSpa = (): Record<string, unknown> => {
+        const nav = win.navigation;
+        const entries =
+          typeof nav?.entries === "function" ? nav.entries().slice(-opts.limit).map(jsonish) : [];
+        return {
+          url: ctx.win.location.href,
+          referrer: ctx.doc.referrer,
+          historyLength: ctx.win.history.length,
+          navigationApiAvailable: !!nav,
+          currentEntry: nav?.currentEntry ? jsonish(nav.currentEntry) : undefined,
+          entries,
+          pushStateEvents:
+            entries.length > 0
+              ? "Reported through the browser Navigation API"
+              : "No Navigation API entries available without pre-page-load instrumentation",
+        };
+      };
+      return {
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
+        kind: opts.kind,
+        constraints: [
+          "Uses browser-exposed runtime hooks only.",
+          "Does not inject framework patches, mutate components, or install telemetry.",
+          "Missing hooks return explicit unavailable results.",
+        ],
+        react: opts.kind === "react" || opts.kind === "all" ? inspectReact() : undefined,
+        webVitals:
+          opts.kind === "web-vitals" || opts.kind === "all" ? inspectWebVitals() : undefined,
+        spa: opts.kind === "spa" || opts.kind === "all" ? inspectSpa() : undefined,
+      };
+    },
+  );
+}
+
+function normalizeFrameworkKind(value: unknown): "react" | "web-vitals" | "spa" | "all" {
+  if (value === "react") return "react";
+  if (value === "web-vitals" || value === "vitals") return "web-vitals";
+  if (value === "spa" || value === "navigation") return "spa";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_framework_kind",
+    "framework kind must be react, web-vitals, spa, or all",
+  );
+}
+
 type NetworkFilters = {
   urlPattern?: string;
   urlRegex?: string;
@@ -3677,6 +3999,102 @@ async function waitForNetworkResponse(
 }
 
 // ---------- Operation tools (v0.1.1) ----------
+
+function normalizeSandboxStorageKind(value: unknown): "local-storage" | "session-storage" {
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  throw new GatewayError(
+    "bad_storage_kind",
+    "storage kind must be local-storage or session-storage",
+  );
+}
+
+async function sandboxSetViewport(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const width = typeof params.width === "number" ? Math.max(1, Math.min(4096, params.width)) : 0;
+  const height = typeof params.height === "number" ? Math.max(1, Math.min(4096, params.height)) : 0;
+  if (width <= 0 || height <= 0) {
+    throw new GatewayError("bad_viewport", "width and height must be positive numbers");
+  }
+  const deviceScaleFactor =
+    typeof params.deviceScaleFactor === "number"
+      ? Math.max(0.1, Math.min(5, params.deviceScaleFactor))
+      : 1;
+  const mobile = params.mobile === true;
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor,
+    mobile,
+  });
+  return { ok: true, action: "viewport", width, height, deviceScaleFactor, mobile };
+}
+
+async function sandboxClearViewport(tabId: number): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, "Emulation.clearDeviceMetricsOverride");
+  return { ok: true, action: "viewport-clear" };
+}
+
+async function sandboxStorage(
+  tabId: number,
+  storageKind: "local-storage" | "session-storage",
+  key: string,
+  value: string | undefined,
+): Promise<Record<string, unknown>> {
+  return runFrameScript(
+    tabId,
+    undefined,
+    { storageKind, key, value },
+    (
+      ctx,
+      opts: { storageKind: "local-storage" | "session-storage"; key: string; value?: string },
+    ): Record<string, unknown> => {
+      const storage =
+        opts.storageKind === "local-storage" ? ctx.win.localStorage : ctx.win.sessionStorage;
+      if (opts.value === undefined) {
+        const existed = storage.getItem(opts.key) !== null;
+        storage.removeItem(opts.key);
+        return {
+          ok: true,
+          action: "storage-delete",
+          storageKind: opts.storageKind,
+          key: opts.key,
+          existed,
+        };
+      }
+      storage.setItem(opts.key, opts.value);
+      return {
+        ok: true,
+        action: "storage-set",
+        storageKind: opts.storageKind,
+        key: opts.key,
+        valueBytes: new TextEncoder().encode(opts.value).byteLength,
+      };
+    },
+  );
+}
+
+async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
+  const source = await chrome.tabs.get(tabId);
+  const created = await chrome.tabs.create({ url, windowId: source.windowId, active: true });
+  return { ok: true, action: "tab-create", tabId: created.id, url: created.url ?? url };
+}
+
+async function sandboxCloseTab(targetTabId: number): Promise<Record<string, unknown>> {
+  const target = permittedTabs.get(targetTabId);
+  if (target?.accessMode !== "all_tabs") {
+    throw new GatewayError(
+      "sandbox_tab_required",
+      "tab-close is limited to tabs shared through sandbox all-tabs mode",
+    );
+  }
+  await chrome.tabs.remove(targetTabId);
+  return { ok: true, action: "tab-close", targetTabId };
+}
 
 async function clickSelector(
   tabId: number,

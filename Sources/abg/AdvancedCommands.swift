@@ -184,6 +184,78 @@ struct State: AsyncParsableCommand {
     }
 }
 
+struct Framework: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "framework",
+        abstract: "Inspect React, Web Vitals, and SPA navigation signals from a shared tab",
+        discussion: """
+        Read-only framework inspection for real browser sessions.
+        React tree data is returned only when the page exposes a compatible React DevTools hook; missing hooks fail gracefully.
+        Web Vitals are reported from browser Performance API snapshots, not ABG telemetry.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Inspection kind: react, web-vitals, spa, or all") var kind: String = "all"
+    @Option(name: .long, help: "Maximum React nodes or Performance entries. Defaults to 80 and caps at 500.") var limit: Int = 80
+    @Option(name: .long, help: "Maximum React tree depth. Defaults to 4 and caps at 10.") var depth: Int = 4
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit, "depth": depth]
+        let result = try client.call(method: "framework_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct Sandbox: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "sandbox",
+        abstract: "Run sandbox/all-tabs-only browser-owned automation controls",
+        discussion: """
+        These controls are rejected unless the target tab is shared through all-tabs profile mode.
+        Supported actions: viewport, viewport-clear, storage-set, storage-delete, tab-create, tab-close.
+        Every action goes through operation approval and Gateway audit logging.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Argument(help: "Action: viewport, viewport-clear, storage-set, storage-delete, tab-create, tab-close") var action: String
+    @Option(name: .long, help: "Viewport width") var width: Int?
+    @Option(name: .long, help: "Viewport height") var height: Int?
+    @Option(name: .long, help: "Device scale factor for viewport emulation") var deviceScaleFactor: Double?
+    @Flag(name: .long, help: "Use mobile viewport emulation") var mobile: Bool = false
+    @Option(name: .long, help: "Storage kind: local-storage or session-storage") var storage: String?
+    @Option(name: .long, help: "Storage key for storage-set/storage-delete") var key: String?
+    @Option(name: .long, help: "Storage value for storage-set") var value: String?
+    @Option(name: .long, help: "URL for tab-create") var url: String?
+    @Option(name: .long, help: "Target tab id for tab-close. Defaults to the resolved tab.") var targetTab: Int?
+
+    func run() async throws {
+        let normalizedAction = action.lowercased()
+        let allowed = ["viewport", "viewport-clear", "storage-set", "storage-delete", "tab-create", "tab-close"]
+        guard allowed.contains(normalizedAction) else {
+            try failWithJSON([
+                "error": "bad_sandbox_action",
+                "message": "Action must be one of viewport, viewport-clear, storage-set, storage-delete, tab-create, or tab-close.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "action": normalizedAction]
+        if let width { params["width"] = width }
+        if let height { params["height"] = height }
+        if let deviceScaleFactor { params["deviceScaleFactor"] = deviceScaleFactor }
+        if mobile { params["mobile"] = true }
+        if let storage { params["storageKind"] = storage }
+        if let key { params["storageKey"] = key }
+        if let value { params["value"] = value }
+        if let url { params["url"] = url }
+        if let targetTab { params["targetTabId"] = targetTab }
+        let result = try client.call(method: "sandbox_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",
