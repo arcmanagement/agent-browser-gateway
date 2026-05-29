@@ -40,7 +40,9 @@ personal browser profile.
 - #183 HAR export uses the `per-tab` artifact rule with safe redaction defaults.
 - #184 cookie/storage inspection uses the `per-tab` read-only rule.
 - #185 framework inspection uses the `per-tab` read-only observation rule.
-- #187 sandbox browser-owned automation is limited to the `sandbox/all-tabs only` rows above.
+- #187 sandbox browser-owned automation is limited to the `sandbox/all-tabs only` rows above;
+  the first supported controls are viewport emulation, Web Storage set/delete, and sandbox tab
+  create/close.
 - #188 documents the official non-goals versus user-controlled/self-hosted extensions.
 
 ## Implementation Checklist

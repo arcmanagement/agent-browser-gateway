@@ -54,6 +54,8 @@ export type GatewayCommand = {
     id?: number;
     width?: number;
     height?: number;
+    deviceScaleFactor?: number;
+    mobile?: boolean;
     all?: boolean;
     limit?: number;
     kind?: string;
@@ -121,6 +123,8 @@ export type GatewayCommand = {
     // state_inspect
     includeValues?: boolean;
     storageKey?: string;
+    storageKind?: string;
+    targetTabId?: number;
   };
 };
 
@@ -169,6 +173,7 @@ export type GatewayMethod =
   | "key_up"
   | "keyboard_insert_text"
   | "navigate"
+  | "sandbox_action"
   | "scroll"
   | "scroll_into_view"
   | "drag";
@@ -197,6 +202,7 @@ export type OperationMethod = Extract<
   | "navigate"
   | "scroll"
   | "scroll_into_view"
+  | "sandbox_action"
   | "dialog_action"
   | "drag"
 >;

@@ -52,6 +52,8 @@ abg state <tab|ref> --kind cookies --name "sid*" # cookie/storage keys; values r
 abg state <tab|ref> --kind local-storage --key "user*" --values
 abg framework <tab|ref> --kind react             # React tree when hooks are available
 abg framework <tab|ref> --kind web-vitals        # Performance/Web Vitals snapshot
+abg sandbox <tab|ref> viewport --width 390 --height 844 --mobile
+abg sandbox <tab|ref> storage-set --storage local-storage --key feature --value on
 abg download <tab|ref>                   # tab に紐づく download metadata
 abg download <tab|ref> --wait --timeout 30000
 abg dialog <tab|ref>                     # pending alert/confirm/prompt を確認
@@ -303,6 +305,7 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - Cookie / Web Storage inspection は `abg state <ref>` を使う。shared tab origin の cookies / localStorage / sessionStorage を read-only で列挙し、値は default redacted。`--values` を明示した場合だけ full values を返し、Gateway audit log に values requested と count が残る。write/delete は提供しない
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない
 - Advanced automation parity は `docs/ADVANCED_AUTOMATION_POLICY.md` の mode 境界に従う。normal per-tab / sandbox all-tabs / self-hosted / official non-goal を混同しない。cookie/storage mutation、network mocking、init scripts、emulation、tab/window management は normal personal-profile per-tab には出さない
+- Sandbox browser-owned controls は `abg sandbox <ref> ...` を使う。Gateway は `accessMode: all_tabs` 以外では拒否する。viewport emulation、localStorage/sessionStorage set/delete、sandbox tab create/close は local approval と Gateway audit を通る。mixed personal profile では all-tabs mode を有効にしない
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF、CLI の `--approve`、正確な script を表示する per-call approval の 3 段階が揃わないと実行されない。audit には script source と result type/bytes summary が残る
