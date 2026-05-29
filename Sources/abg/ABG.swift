@@ -931,23 +931,35 @@ struct Network: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "共有中タブのネットワークリクエストを表示")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "URL glob フィルタ") var url: String?
+    @Option(name: .long, help: "URL regex filter for wait-response workflows") var urlRegex: String?
     @Option(name: .long, help: "HTTP method フィルタ (GET/POST など)") var method: String?
     @Option(name: .long, help: "最小 HTTP status (例: 400)") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
     @Option(name: .long, help: "type フィルタ (xhr,fetch,document など。カンマ区切り可)") var type: String?
     @Option(name: .long, help: "個別 requestId") var requestId: String?
     @Flag(name: .long, help: "requestId のレスポンス body を取得") var body: Bool = false
     @Option(name: .long, help: "最大件数 (デフォルト 100)") var limit: Int = 100
+    @Flag(name: .long, help: "Wait for a matching response instead of listing buffered requests") var waitResponse: Bool = false
+    @Option(name: .long, help: "wait-response timeout in milliseconds") var timeout: Int = 30_000
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "limit": limit]
         if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
         if let method { params["method"] = method }
         if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
         if let type { params["type"] = type }
         if let requestId { params["requestId"] = requestId }
         if body { params["body"] = true }
+        if waitResponse {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        if body { params["maxBytes"] = maxBytes }
         let result = try client.call(method: "network_tab", params: params)
         printJSON(result)
     }

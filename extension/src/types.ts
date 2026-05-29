@@ -75,9 +75,11 @@ export type GatewayCommand = {
     urlPattern?: string;
     method?: string;
     statusMin?: number;
+    statusMax?: number;
     type?: string;
     requestId?: string;
     body?: boolean;
+    urlRegex?: string;
     fromSelector?: string;
     toSelector?: string;
     fromX?: number;

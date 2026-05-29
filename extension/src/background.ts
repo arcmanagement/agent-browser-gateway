@@ -3165,15 +3165,39 @@ async function getNetworkLog(
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<unknown> {
   await attachDebugger(tabId);
-  if (params.body === true && typeof params.requestId === "string") {
-    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
-      requestId: params.requestId,
-    })) as { body: string; base64Encoded: boolean };
-    return { requestId: params.requestId, ...result };
+  if (params.wait === true) {
+    return waitForNetworkResponse(tabId, params);
   }
+  if (params.body === true && typeof params.requestId === "string") {
+    return {
+      requestId: params.requestId,
+      body: await getResponseBodyPreview(tabId, params.requestId, readNetworkBodyMaxBytes(params)),
+    };
+  }
+  const filters = readNetworkFilters(params);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
+  const items = (networkBuffers.get(tabId) ?? [])
+    .filter((entry) => networkEntryMatches(entry, filters))
+    .slice(-limit)
+    .map(publicNetworkEntry);
+  return { requests: items };
+}
+
+type NetworkFilters = {
+  urlPattern?: string;
+  urlRegex?: string;
+  method?: string;
+  statusMin?: number;
+  statusMax?: number;
+  typeSet?: Set<string>;
+};
+
+function readNetworkFilters(params: NonNullable<GatewayCommand["params"]>): NetworkFilters {
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  const urlRegex = typeof params.urlRegex === "string" ? params.urlRegex : undefined;
   const method = typeof params.method === "string" ? params.method.toUpperCase() : undefined;
   const statusMin = typeof params.statusMin === "number" ? params.statusMin : undefined;
+  const statusMax = typeof params.statusMax === "number" ? params.statusMax : undefined;
   const typeSet =
     typeof params.type === "string"
       ? new Set(
@@ -3183,19 +3207,107 @@ async function getNetworkLog(
             .filter(Boolean),
         )
       : undefined;
-  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
-  const items = (networkBuffers.get(tabId) ?? [])
-    .filter((entry) => {
-      if (urlPattern && !globMatch(urlPattern, entry.url)) return false;
-      if (method && entry.method.toUpperCase() !== method) return false;
-      if (statusMin !== undefined && (entry.status ?? 0) < statusMin) return false;
-      if (typeSet && entry.type && !typeSet.has(entry.type)) return false;
-      if (typeSet && !entry.type) return false;
-      return true;
-    })
-    .slice(-limit)
-    .map(({ startTime: _startTime, ...entry }) => entry);
-  return { requests: items };
+  return { urlPattern, urlRegex, method, statusMin, statusMax, typeSet };
+}
+
+function networkEntryMatches(
+  entry: NetworkEntry,
+  filters: NetworkFilters,
+  requireResponse = false,
+): boolean {
+  if (filters.urlPattern && !globMatch(filters.urlPattern, entry.url)) return false;
+  if (filters.urlRegex && !new RegExp(filters.urlRegex).test(entry.url)) return false;
+  if (filters.method && entry.method.toUpperCase() !== filters.method) return false;
+  if (filters.statusMin !== undefined && (entry.status ?? 0) < filters.statusMin) return false;
+  if (filters.statusMax !== undefined && (entry.status ?? 0) > filters.statusMax) return false;
+  if (filters.typeSet && entry.type && !filters.typeSet.has(entry.type)) return false;
+  if (filters.typeSet && !entry.type) return false;
+  if (requireResponse) return entry.status !== undefined || entry.errorText !== undefined;
+  return true;
+}
+
+function publicNetworkEntry(entry: NetworkEntry): Record<string, unknown> {
+  const { startTime: _startTime, ...publicEntry } = entry;
+  return publicEntry;
+}
+
+function readNetworkBodyMaxBytes(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.maxBytes === "number"
+    ? Math.max(0, Math.min(262_144, params.maxBytes))
+    : 16_384;
+}
+
+async function getResponseBodyPreview(
+  tabId: number,
+  requestId: string,
+  maxBytes: number,
+): Promise<Record<string, unknown>> {
+  const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+    requestId,
+  })) as { body: string; base64Encoded: boolean };
+  const bytes = new TextEncoder().encode(result.body);
+  const truncated = bytes.length > maxBytes;
+  const preview = result.base64Encoded
+    ? result.body.slice(0, maxBytes)
+    : new TextDecoder().decode(bytes.slice(0, maxBytes));
+  return {
+    value: preview,
+    base64Encoded: result.base64Encoded,
+    encodedBytes: bytes.length,
+    maxBytes,
+    truncated,
+  };
+}
+
+async function waitForNetworkResponse(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const filters = readNetworkFilters(params);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const body = params.body === true;
+  const maxBytes = readNetworkBodyMaxBytes(params);
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const match = (networkBuffers.get(tabId) ?? [])
+      .slice()
+      .reverse()
+      .find((entry) => networkEntryMatches(entry, filters, true));
+    if (match) {
+      const response: Record<string, unknown> = publicNetworkEntry(match);
+      if (body && match.requestId && match.status !== undefined) {
+        try {
+          response.body = await getResponseBodyPreview(tabId, match.requestId, maxBytes);
+        } catch (error) {
+          response.bodyError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return {
+        ok: true,
+        mode: "wait_for_response",
+        elapsedMs: Date.now() - started,
+        response,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait_for_response",
+    timeoutMs,
+    filters: {
+      urlPattern: filters.urlPattern,
+      urlRegex: filters.urlRegex,
+      method: filters.method,
+      statusMin: filters.statusMin,
+      statusMax: filters.statusMax,
+      types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+    },
+  };
 }
 
 // ---------- Operation tools (v0.1.1) ----------
