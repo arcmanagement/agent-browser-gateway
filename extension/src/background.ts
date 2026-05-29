@@ -53,6 +53,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "navigate",
   "scroll",
   "scroll_into_view",
+  "dialog_action",
   "drag",
 ]);
 
@@ -87,6 +88,38 @@ type NetworkEntry = {
   errorText?: string;
 };
 
+type PendingDialog = {
+  type: string;
+  message: string;
+  defaultPrompt?: string;
+  url?: string;
+  openedAt: number;
+};
+
+type DownloadStatus = "in_progress" | "complete" | "interrupted";
+
+type DownloadRecord = {
+  id: string;
+  tabId: number;
+  guid?: string;
+  browserDownloadId?: number;
+  url: string;
+  finalUrl?: string;
+  referrer?: string;
+  suggestedFilename?: string;
+  filename?: string;
+  mime?: string;
+  status: DownloadStatus;
+  error?: string;
+  bytesReceived?: number;
+  totalBytes?: number;
+  fileSize?: number;
+  exists?: boolean;
+  startedAt: string;
+  endedAt?: string;
+  updatedAt: number;
+};
+
 type Point = { x: number; y: number };
 
 type ApprovalResolution = {
@@ -118,6 +151,10 @@ const permittedTabs = new Map<number, PermittedTab>();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
+const pendingDialogs = new Map<number, PendingDialog>();
+const downloadsByTab = new Map<number, DownloadRecord[]>();
+const downloadIdToTab = new Map<number, number>();
+const downloadGuidToTab = new Map<string, number>();
 const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
@@ -570,6 +607,14 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   permittedTabs.delete(tabId);
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
+  pendingDialogs.delete(tabId);
+  downloadsByTab.delete(tabId);
+  for (const [downloadId, mappedTabId] of downloadIdToTab) {
+    if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+  }
+  for (const [guid, mappedTabId] of downloadGuidToTab) {
+    if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+  }
   streamingTabs.delete(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
@@ -644,6 +689,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
+    pendingDialogs.delete(tabId);
+    downloadsByTab.delete(tabId);
+    for (const [downloadId, mappedTabId] of downloadIdToTab) {
+      if (mappedTabId === tabId) downloadIdToTab.delete(downloadId);
+    }
+    for (const [guid, mappedTabId] of downloadGuidToTab) {
+      if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
+    }
     streamingTabs.delete(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
@@ -675,6 +728,7 @@ async function attachDebugger(tabId: number): Promise<void> {
     await chrome.debugger.attach({ tabId }, "1.3");
     await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
     await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
     attachedTabs.add(tabId);
   } catch (e) {
     console.warn("[ABG] debugger.attach failed", e);
@@ -721,6 +775,92 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     while (buf.length > 200) buf.shift();
     consoleBuffers.set(source.tabId, buf);
     emitStreamEvent(source.tabId, { kind: "console", level: "error", text });
+  } else if (method === "Page.javascriptDialogOpening") {
+    const p = params as {
+      url?: string;
+      message?: string;
+      type?: string;
+      defaultPrompt?: string;
+    };
+    const dialog: PendingDialog = {
+      type: p.type ?? "unknown",
+      message: p.message ?? "",
+      defaultPrompt: p.defaultPrompt,
+      url: p.url,
+      openedAt: Date.now(),
+    };
+    pendingDialogs.set(source.tabId, dialog);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "opening",
+      dialog: publicDialogState(source.tabId).dialog,
+    });
+  } else if (method === "Page.javascriptDialogClosed") {
+    const dialog = pendingDialogs.get(source.tabId);
+    pendingDialogs.delete(source.tabId);
+    emitStreamEvent(source.tabId, {
+      kind: "dialog",
+      phase: "closed",
+      dialog: dialog ? publicDialog(dialog) : undefined,
+    });
+  } else if (method === "Page.downloadWillBegin") {
+    const p = params as {
+      guid?: string;
+      url?: string;
+      suggestedFilename?: string;
+    };
+    if (p.guid && p.url) {
+      const record = upsertTabDownload(source.tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId: source.tabId,
+        url: p.url,
+        suggestedFilename: p.suggestedFilename,
+        status: "in_progress",
+        startedAt: new Date().toISOString(),
+        updatedAt: Date.now(),
+      });
+      downloadGuidToTab.set(p.guid, source.tabId);
+      emitStreamEvent(source.tabId, {
+        kind: "download",
+        phase: "started",
+        download: publicDownload(record),
+      });
+    }
+  } else if (method === "Page.downloadProgress") {
+    const p = params as {
+      guid?: string;
+      state?: "inProgress" | "completed" | "canceled";
+      totalBytes?: number;
+      receivedBytes?: number;
+    };
+    const tabId = p.guid ? downloadGuidToTab.get(p.guid) : undefined;
+    if (p.guid && tabId) {
+      const status: DownloadStatus =
+        p.state === "completed"
+          ? "complete"
+          : p.state === "canceled"
+            ? "interrupted"
+            : "in_progress";
+      const record = upsertTabDownload(tabId, {
+        id: p.guid,
+        guid: p.guid,
+        tabId,
+        url: "",
+        status,
+        bytesReceived: p.receivedBytes,
+        totalBytes: p.totalBytes,
+        startedAt: new Date().toISOString(),
+        endedAt: status === "in_progress" ? undefined : new Date().toISOString(),
+        updatedAt: Date.now(),
+        error: p.state === "canceled" ? "CANCELED" : undefined,
+      });
+      emitStreamEvent(tabId, {
+        kind: "download",
+        phase: status === "in_progress" ? "progress" : status,
+        download: publicDownload(record),
+      });
+    }
   } else if (method === "Network.requestWillBeSent") {
     const p = params as {
       requestId: string;
@@ -808,6 +948,133 @@ chrome.debugger.onDetach.addListener((source) => {
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
 
+chrome.downloads.onCreated.addListener((item) => {
+  void handleDownloadCreated(item);
+});
+
+chrome.downloads.onChanged.addListener((delta) => {
+  void handleDownloadChanged(delta);
+});
+
+function upsertTabDownload(tabId: number, patch: DownloadRecord): DownloadRecord {
+  const records = downloadsByTab.get(tabId) ?? [];
+  const existing = records.find(
+    (record) =>
+      (patch.guid && record.guid === patch.guid) ||
+      (patch.browserDownloadId !== undefined &&
+        record.browserDownloadId === patch.browserDownloadId) ||
+      record.id === patch.id,
+  );
+  const merged: DownloadRecord = existing
+    ? {
+        ...existing,
+        ...patch,
+        url: patch.url || existing.url,
+        startedAt: existing.startedAt || patch.startedAt,
+        updatedAt: Date.now(),
+      }
+    : { ...patch, updatedAt: Date.now() };
+  if (!existing) records.push(merged);
+  else records[records.indexOf(existing)] = merged;
+  records.sort((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+  while (records.length > 50) records.shift();
+  downloadsByTab.set(tabId, records);
+  if (merged.browserDownloadId !== undefined) downloadIdToTab.set(merged.browserDownloadId, tabId);
+  if (merged.guid) downloadGuidToTab.set(merged.guid, tabId);
+  return merged;
+}
+
+function resolveDownloadTab(item: chrome.downloads.DownloadItem): number | undefined {
+  const mapped = downloadIdToTab.get(item.id);
+  if (mapped !== undefined) return mapped;
+  for (const [tabId, records] of downloadsByTab) {
+    const match = records
+      .slice()
+      .reverse()
+      .find(
+        (record) =>
+          !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+      );
+    if (match) return tabId;
+  }
+  if (item.referrer) {
+    for (const [tabId, tab] of permittedTabs) {
+      if (tab.url === item.referrer || originForUrl(tab.url) === originForUrl(item.referrer)) {
+        return tabId;
+      }
+    }
+  }
+  return undefined;
+}
+
+function recordFromDownloadItem(
+  item: chrome.downloads.DownloadItem,
+  tabId: number,
+  existingId?: string,
+): DownloadRecord {
+  return {
+    id: existingId ?? `download-${item.id}`,
+    tabId,
+    browserDownloadId: item.id,
+    url: item.url,
+    finalUrl: item.finalUrl,
+    referrer: item.referrer,
+    suggestedFilename: item.filename ? item.filename.split(/[\\/]/).pop() : undefined,
+    filename: item.filename,
+    mime: item.mime,
+    status: item.state,
+    error: item.error,
+    bytesReceived: item.bytesReceived,
+    totalBytes: item.totalBytes,
+    fileSize: item.fileSize,
+    exists: item.exists,
+    startedAt: item.startTime,
+    endedAt: item.endTime,
+    updatedAt: Date.now(),
+  };
+}
+
+async function handleDownloadCreated(item: chrome.downloads.DownloadItem): Promise<void> {
+  const tabId = resolveDownloadTab(item);
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  const existing = (downloadsByTab.get(tabId) ?? [])
+    .slice()
+    .reverse()
+    .find(
+      (record) =>
+        !record.browserDownloadId && (record.url === item.url || record.url === item.finalUrl),
+    );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: "created",
+    download: publicDownload(record),
+  });
+}
+
+async function handleDownloadChanged(delta: chrome.downloads.DownloadDelta): Promise<void> {
+  let tabId = downloadIdToTab.get(delta.id);
+  let item: chrome.downloads.DownloadItem | undefined;
+  if (tabId === undefined) {
+    const found = await chrome.downloads.search({ id: delta.id });
+    item = found[0];
+    if (!item) return;
+    tabId = resolveDownloadTab(item);
+  }
+  if (tabId === undefined || !permittedTabs.has(tabId)) return;
+  item = item ?? (await chrome.downloads.search({ id: delta.id }))[0];
+  if (!item) return;
+  const existing = (downloadsByTab.get(tabId) ?? []).find(
+    (record) => record.browserDownloadId === delta.id,
+  );
+  const record = upsertTabDownload(tabId, recordFromDownloadItem(item, tabId, existing?.id));
+  emitStreamEvent(tabId, {
+    kind: "download",
+    phase: record.status === "in_progress" ? "progress" : record.status,
+    download: publicDownload(record),
+  });
+}
+
 function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | undefined {
   const buf = networkBuffers.get(tabId);
   if (!buf) return undefined;
@@ -863,6 +1130,16 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "har_export") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "state_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "download_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
@@ -879,6 +1156,10 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "stream_control") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
+    } else if (cmd.method === "dialog_state") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      await attachDebugger(tabId);
+      reply(cmd.id, publicDialogState(tabId));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
@@ -1120,6 +1401,26 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => scrollElementIntoView(tabId, selector, frame),
     };
   }
+  if (cmd.method === "dialog_action") {
+    const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
+    if (action !== "accept" && action !== "dismiss") {
+      throw new Error("dialog action must be accept or dismiss");
+    }
+    const dialog = pendingDialogs.get(tabId);
+    if (!dialog) {
+      throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+    }
+    const promptText =
+      typeof cmd.params?.promptText === "string" ? cmd.params.promptText : undefined;
+    const promptSuffix =
+      promptText === undefined
+        ? ""
+        : ` with ${new TextEncoder().encode(promptText).byteLength} prompt bytes`;
+    return {
+      intent: `${action === "accept" ? "Accept" : "Dismiss"} ${dialog.type} dialog${promptSuffix}: ${quoteForIntent(dialog.message)}`,
+      run: () => runDialogAction(tabId, cmd.params ?? {}),
+    };
+  }
   const deltaX = cmd.params?.deltaX ?? 0;
   const deltaY = cmd.params?.deltaY ?? 0;
   if (typeof deltaX !== "number" || typeof deltaY !== "number") {
@@ -1139,6 +1440,134 @@ function quoteForIntent(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const shortValue = normalized.length > 160 ? `${normalized.slice(0, 157)}...` : normalized;
   return `"${shortValue}"`;
+}
+
+function truncateText(value: string | undefined, limit = 500): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
+}
+
+function publicDialog(dialog: PendingDialog): Record<string, unknown> {
+  const encoder = new TextEncoder();
+  return {
+    type: dialog.type,
+    message: truncateText(dialog.message),
+    messageBytes: encoder.encode(dialog.message).byteLength,
+    defaultPrompt: truncateText(dialog.defaultPrompt),
+    defaultPromptBytes:
+      dialog.defaultPrompt === undefined
+        ? undefined
+        : encoder.encode(dialog.defaultPrompt).byteLength,
+    url: dialog.url,
+    openedAt: new Date(dialog.openedAt).toISOString(),
+  };
+}
+
+function publicDialogState(tabId: number): Record<string, unknown> {
+  const dialog = pendingDialogs.get(tabId);
+  return dialog ? { pending: true, dialog: publicDialog(dialog) } : { pending: false };
+}
+
+function publicDownload(record: DownloadRecord): Record<string, unknown> {
+  const pathAvailable = record.status === "complete" && !!record.filename;
+  return {
+    id: record.id,
+    browserDownloadId: record.browserDownloadId,
+    guid: record.guid,
+    tabId: record.tabId,
+    url: record.url,
+    finalUrl: record.finalUrl,
+    referrer: record.referrer,
+    suggestedFilename: record.suggestedFilename,
+    filename: record.filename,
+    pathAvailable,
+    unavailableReason: pathAvailable
+      ? undefined
+      : record.status === "complete"
+        ? "chrome_download_path_unavailable"
+        : "download_not_complete",
+    mime: record.mime,
+    status: record.status,
+    error: record.error,
+    bytesReceived: record.bytesReceived,
+    totalBytes: record.totalBytes,
+    fileSize: record.fileSize,
+    exists: record.exists,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+  };
+}
+
+function downloadState(tabId: number): Record<string, unknown> {
+  const downloads = (downloadsByTab.get(tabId) ?? []).map(publicDownload);
+  return {
+    ok: true,
+    count: downloads.length,
+    latest: downloads.at(-1),
+    downloads,
+  };
+}
+
+async function getDownloadState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  if (params.wait !== true) return downloadState(tabId);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const latest = (downloadsByTab.get(tabId) ?? []).at(-1);
+    if (latest && latest.status !== "in_progress") {
+      return {
+        ok: latest.status === "complete",
+        mode: "wait",
+        elapsedMs: Date.now() - started,
+        latest: publicDownload(latest),
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait",
+    timeoutMs,
+    latest: (downloadsByTab.get(tabId) ?? []).at(-1)
+      ? publicDownload((downloadsByTab.get(tabId) ?? []).at(-1) as DownloadRecord)
+      : undefined,
+  };
+}
+
+async function runDialogAction(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const action = typeof params.action === "string" ? params.action : "";
+  if (action !== "accept" && action !== "dismiss") {
+    throw new GatewayError("bad_dialog_action", "dialog action must be accept or dismiss");
+  }
+  const dialog = pendingDialogs.get(tabId);
+  if (!dialog) {
+    throw new GatewayError("no_dialog_pending", "no JavaScript dialog is pending for this tab");
+  }
+  await attachDebugger(tabId);
+  const promptText = typeof params.promptText === "string" ? params.promptText : undefined;
+  const commandParams: Record<string, unknown> = { accept: action === "accept" };
+  if (action === "accept" && promptText !== undefined) commandParams.promptText = promptText;
+  await chrome.debugger.sendCommand({ tabId }, "Page.handleJavaScriptDialog", commandParams);
+  pendingDialogs.delete(tabId);
+  return {
+    ok: true,
+    action,
+    accepted: action === "accept",
+    promptTextBytes:
+      promptText === undefined ? undefined : new TextEncoder().encode(promptText).byteLength,
+    dialog: publicDialog(dialog),
+  };
 }
 
 function globMatch(pattern: string, text: string): boolean {
@@ -2742,15 +3171,324 @@ async function getNetworkLog(
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<unknown> {
   await attachDebugger(tabId);
-  if (params.body === true && typeof params.requestId === "string") {
-    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
-      requestId: params.requestId,
-    })) as { body: string; base64Encoded: boolean };
-    return { requestId: params.requestId, ...result };
+  if (params.wait === true) {
+    return waitForNetworkResponse(tabId, params);
   }
+  if (params.body === true && typeof params.requestId === "string") {
+    return {
+      requestId: params.requestId,
+      body: await getResponseBodyPreview(tabId, params.requestId, readNetworkBodyMaxBytes(params)),
+    };
+  }
+  const filters = readNetworkFilters(params);
+  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
+  const items = (networkBuffers.get(tabId) ?? [])
+    .filter((entry) => networkEntryMatches(entry, filters))
+    .slice(-limit)
+    .map(publicNetworkEntry);
+  return { requests: items };
+}
+
+async function exportHAR(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const filters = readNetworkFilters(params);
+  const limit = readHARLimit(params);
+  const buffered = networkBuffers.get(tabId) ?? [];
+  const entries = buffered.filter((entry) => networkEntryMatches(entry, filters)).slice(-limit);
+  const tab = permittedTabs.get(tabId);
+  const generatedAt = new Date().toISOString();
+  const pageId = `abg-tab-${tabId}`;
+  const redaction = {
+    mode: "metadata_only",
+    cookies: "omitted",
+    authorizationHeaders: "omitted",
+    requestHeaders: "omitted",
+    requestBodies: "omitted",
+    responseBodies: "omitted",
+    responseHeaders: "content-type only when available",
+  };
+  const har = {
+    log: {
+      version: "1.2",
+      creator: {
+        name: "Agent Browser Gateway",
+        version: VERSION,
+        comment: "ABG exports a metadata-only HAR by default.",
+      },
+      pages: [
+        {
+          startedDateTime: tab ? new Date(tab.permittedAt).toISOString() : generatedAt,
+          id: pageId,
+          title: tab?.title ?? "",
+          pageTimings: {
+            onContentLoad: -1,
+            onLoad: -1,
+          },
+          comment: "Shared tab HAR snapshot generated locally by ABG.",
+        },
+      ],
+      entries: entries.map((entry) => networkEntryToHAR(entry, pageId)),
+      _abg: {
+        generatedAt,
+        tabId,
+        sourceUrl: tab?.url ?? "",
+        sourceTitle: tab?.title ?? "",
+        exportMode: "one_shot",
+        entryLimit: limit,
+        totalBuffered: buffered.length,
+        includedEntries: entries.length,
+        filters: publicNetworkFilters(filters),
+        redaction,
+        payloadPolicy: "Request and response bodies are never embedded in this export.",
+        storage:
+          "Caller-chosen local path or ABG temporary directory; no ABG-operated cloud service.",
+      },
+    },
+  };
+  return {
+    ok: true,
+    mode: "one_shot",
+    har,
+    entryCount: entries.length,
+    totalBuffered: buffered.length,
+    limit,
+    redaction: "metadata_only",
+    filters: publicNetworkFilters(filters),
+    outputPath: params.outputPath,
+    byteSizeEstimate: new TextEncoder().encode(JSON.stringify(har)).byteLength,
+    generatedAt,
+  };
+}
+
+async function inspectState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const kind = normalizeStateKind(params.kind);
+  const includeValues = params.includeValues === true;
+  const limit = readStateLimit(params);
+  const tab = permittedTabs.get(tabId);
+  const result: Record<string, unknown> = {
+    tabId,
+    url: tab?.url ?? "",
+    title: tab?.title ?? "",
+    origin: tab?.origin ?? "",
+    kind,
+    includeValues,
+    redaction: includeValues ? "explicit_values" : "values_redacted",
+    writeOperations: "not_supported",
+  };
+  if (kind === "cookies" || kind === "all") {
+    result.cookies = await inspectCookies(tabId, tab?.url, params, includeValues, limit);
+  }
+  if (kind === "local-storage" || kind === "session-storage" || kind === "all") {
+    const storage = await inspectWebStorage(tabId, params, includeValues, limit);
+    if (kind === "local-storage" || kind === "all") {
+      result.localStorage = storage.localStorage;
+    }
+    if (kind === "session-storage" || kind === "all") {
+      result.sessionStorage = storage.sessionStorage;
+    }
+  }
+  return result;
+}
+
+function normalizeStateKind(
+  value: unknown,
+): "cookies" | "local-storage" | "session-storage" | "all" {
+  if (value === "cookie") return "cookies";
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_state_kind",
+    "state kind must be cookies, local-storage, session-storage, or all",
+  );
+}
+
+function readStateLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 200;
+}
+
+async function inspectCookies(
+  tabId: number,
+  rawUrl: string | undefined,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  if (!rawUrl) return { available: false, error: "tab URL unavailable", count: 0, cookies: [] };
+  const namePattern = typeof params.name === "string" ? params.name : undefined;
+  try {
+    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getCookies", {
+      urls: [rawUrl],
+    })) as {
+      cookies?: Array<{
+        name: string;
+        value: string;
+        domain: string;
+        path: string;
+        expires?: number;
+        size?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        session?: boolean;
+        sameSite?: string;
+        priority?: string;
+      }>;
+    };
+    const matched = (result.cookies ?? []).filter(
+      (cookie) => !namePattern || globMatch(namePattern, cookie.name),
+    );
+    const filtered = matched.slice(0, limit);
+    return {
+      available: true,
+      count: filtered.length,
+      totalMatches: matched.length,
+      limited: matched.length > filtered.length,
+      filter: namePattern,
+      cookies: filtered.map((cookie) => publicCookie(cookie, includeValues)),
+    };
+  } catch (error) {
+    return {
+      available: false,
+      count: 0,
+      cookies: [],
+      filter: namePattern,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function publicCookie(
+  cookie: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    size?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    session?: boolean;
+    sameSite?: string;
+    priority?: string;
+  },
+  includeValues: boolean,
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    name: cookie.name,
+    domain: cookie.domain,
+    path: cookie.path,
+    expires: cookie.expires,
+    size: cookie.size,
+    valueBytes: new TextEncoder().encode(cookie.value).byteLength,
+    valueRedacted: !includeValues,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    session: cookie.session,
+    sameSite: cookie.sameSite,
+    priority: cookie.priority,
+  };
+  if (includeValues) item.value = cookie.value;
+  return item;
+}
+
+async function inspectWebStorage(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<{
+  localStorage: Record<string, unknown>;
+  sessionStorage: Record<string, unknown>;
+}> {
+  const keyPattern = typeof params.storageKey === "string" ? params.storageKey : undefined;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { includeValues, limit, keyPattern },
+    (
+      ctx,
+      opts: { includeValues: boolean; limit: number; keyPattern?: string },
+    ): { localStorage: Record<string, unknown>; sessionStorage: Record<string, unknown> } => {
+      const matches = (pattern: string | undefined, value: string): boolean => {
+        if (!pattern) return true;
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".");
+        return new RegExp(`^${escaped}$`, "i").test(value);
+      };
+      const read = (
+        label: "localStorage" | "sessionStorage",
+        storage: Storage,
+      ): Record<string, unknown> => {
+        try {
+          const entries: Record<string, unknown>[] = [];
+          const total = storage.length;
+          let totalMatches = 0;
+          for (let index = 0; index < total; index++) {
+            const key = storage.key(index);
+            if (!key || !matches(opts.keyPattern, key)) continue;
+            totalMatches += 1;
+            if (entries.length >= opts.limit) continue;
+            const value = storage.getItem(key) ?? "";
+            const item: Record<string, unknown> = {
+              key,
+              valueBytes: new TextEncoder().encode(value).byteLength,
+              valueRedacted: !opts.includeValues,
+            };
+            if (opts.includeValues) item.value = value;
+            entries.push(item);
+          }
+          return {
+            available: true,
+            origin: ctx.win.location.origin,
+            count: entries.length,
+            totalKeys: total,
+            totalMatches,
+            limited: totalMatches > entries.length,
+            filter: opts.keyPattern,
+            entries,
+          };
+        } catch (error) {
+          return {
+            available: false,
+            count: 0,
+            entries: [],
+            error: error instanceof Error ? error.message : String(error),
+            kind: label,
+          };
+        }
+      };
+      return {
+        localStorage: read("localStorage", ctx.win.localStorage),
+        sessionStorage: read("sessionStorage", ctx.win.sessionStorage),
+      };
+    },
+  );
+}
+
+type NetworkFilters = {
+  urlPattern?: string;
+  urlRegex?: string;
+  method?: string;
+  statusMin?: number;
+  statusMax?: number;
+  typeSet?: Set<string>;
+};
+
+function readNetworkFilters(params: NonNullable<GatewayCommand["params"]>): NetworkFilters {
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
+  const urlRegex = typeof params.urlRegex === "string" ? params.urlRegex : undefined;
   const method = typeof params.method === "string" ? params.method.toUpperCase() : undefined;
   const statusMin = typeof params.statusMin === "number" ? params.statusMin : undefined;
+  const statusMax = typeof params.statusMax === "number" ? params.statusMax : undefined;
   const typeSet =
     typeof params.type === "string"
       ? new Set(
@@ -2760,19 +3498,182 @@ async function getNetworkLog(
             .filter(Boolean),
         )
       : undefined;
-  const limit = typeof params.limit === "number" ? Math.max(1, Math.min(200, params.limit)) : 100;
-  const items = (networkBuffers.get(tabId) ?? [])
-    .filter((entry) => {
-      if (urlPattern && !globMatch(urlPattern, entry.url)) return false;
-      if (method && entry.method.toUpperCase() !== method) return false;
-      if (statusMin !== undefined && (entry.status ?? 0) < statusMin) return false;
-      if (typeSet && entry.type && !typeSet.has(entry.type)) return false;
-      if (typeSet && !entry.type) return false;
-      return true;
-    })
-    .slice(-limit)
-    .map(({ startTime: _startTime, ...entry }) => entry);
-  return { requests: items };
+  return { urlPattern, urlRegex, method, statusMin, statusMax, typeSet };
+}
+
+function readHARLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(1000, params.limit)) : 200;
+}
+
+function publicNetworkFilters(filters: NetworkFilters): Record<string, unknown> {
+  return {
+    urlPattern: filters.urlPattern,
+    urlRegex: filters.urlRegex,
+    method: filters.method,
+    statusMin: filters.statusMin,
+    statusMax: filters.statusMax,
+    types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+  };
+}
+
+function networkEntryMatches(
+  entry: NetworkEntry,
+  filters: NetworkFilters,
+  requireResponse = false,
+): boolean {
+  if (filters.urlPattern && !globMatch(filters.urlPattern, entry.url)) return false;
+  if (filters.urlRegex && !new RegExp(filters.urlRegex).test(entry.url)) return false;
+  if (filters.method && entry.method.toUpperCase() !== filters.method) return false;
+  if (filters.statusMin !== undefined && (entry.status ?? 0) < filters.statusMin) return false;
+  if (filters.statusMax !== undefined && (entry.status ?? 0) > filters.statusMax) return false;
+  if (filters.typeSet && entry.type && !filters.typeSet.has(entry.type)) return false;
+  if (filters.typeSet && !entry.type) return false;
+  if (requireResponse) return entry.status !== undefined || entry.errorText !== undefined;
+  return true;
+}
+
+function publicNetworkEntry(entry: NetworkEntry): Record<string, unknown> {
+  const { startTime: _startTime, ...publicEntry } = entry;
+  return publicEntry;
+}
+
+function networkEntryToHAR(entry: NetworkEntry, pageId: string): Record<string, unknown> {
+  const time = entry.durationMs ?? 0;
+  const responseSize = entry.encodedDataLength ?? -1;
+  const content: Record<string, unknown> = {
+    size: responseSize,
+    mimeType: entry.mimeType ?? "",
+    comment: "Response body omitted by ABG metadata-only HAR redaction.",
+  };
+  return {
+    pageref: pageId,
+    startedDateTime: entry.ts,
+    time,
+    request: {
+      method: entry.method,
+      url: entry.url,
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: [],
+      queryString: queryStringPairs(entry.url),
+      headersSize: -1,
+      bodySize: 0,
+      comment: "Request headers, cookies, authorization data, and body omitted by ABG redaction.",
+    },
+    response: {
+      status: entry.status ?? 0,
+      statusText: entry.statusText ?? (entry.errorText ? "Failed" : ""),
+      httpVersion: "HTTP/1.1",
+      cookies: [],
+      headers: entry.mimeType ? [{ name: "content-type", value: entry.mimeType }] : [],
+      content,
+      redirectURL: "",
+      headersSize: -1,
+      bodySize: responseSize,
+      comment: "Sensitive response headers and body omitted by ABG redaction.",
+    },
+    cache: {},
+    timings: {
+      blocked: -1,
+      dns: -1,
+      connect: -1,
+      send: 0,
+      wait: time,
+      receive: 0,
+      ssl: -1,
+    },
+    comment: entry.errorText
+      ? `Network failed: ${entry.errorText}`
+      : "Metadata-only ABG HAR entry.",
+  };
+}
+
+function queryStringPairs(rawUrl: string): Array<{ name: string; value: string }> {
+  try {
+    const url = new URL(rawUrl);
+    return Array.from(url.searchParams.entries()).map(([name, value]) => ({ name, value }));
+  } catch {
+    return [];
+  }
+}
+
+function readNetworkBodyMaxBytes(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.maxBytes === "number"
+    ? Math.max(0, Math.min(262_144, params.maxBytes))
+    : 16_384;
+}
+
+async function getResponseBodyPreview(
+  tabId: number,
+  requestId: string,
+  maxBytes: number,
+): Promise<Record<string, unknown>> {
+  const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+    requestId,
+  })) as { body: string; base64Encoded: boolean };
+  const bytes = new TextEncoder().encode(result.body);
+  const truncated = bytes.length > maxBytes;
+  const preview = result.base64Encoded
+    ? result.body.slice(0, maxBytes)
+    : new TextDecoder().decode(bytes.slice(0, maxBytes));
+  return {
+    value: preview,
+    base64Encoded: result.base64Encoded,
+    encodedBytes: bytes.length,
+    maxBytes,
+    truncated,
+  };
+}
+
+async function waitForNetworkResponse(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  const filters = readNetworkFilters(params);
+  const timeoutMs =
+    typeof params.timeoutMs === "number"
+      ? Math.max(1, Math.min(300_000, params.timeoutMs))
+      : 30_000;
+  const body = params.body === true;
+  const maxBytes = readNetworkBodyMaxBytes(params);
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const match = (networkBuffers.get(tabId) ?? [])
+      .slice()
+      .reverse()
+      .find((entry) => networkEntryMatches(entry, filters, true));
+    if (match) {
+      const response: Record<string, unknown> = publicNetworkEntry(match);
+      if (body && match.requestId && match.status !== undefined) {
+        try {
+          response.body = await getResponseBodyPreview(tabId, match.requestId, maxBytes);
+        } catch (error) {
+          response.bodyError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return {
+        ok: true,
+        mode: "wait_for_response",
+        elapsedMs: Date.now() - started,
+        response,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return {
+    ok: false,
+    error: "timeout",
+    mode: "wait_for_response",
+    timeoutMs,
+    filters: {
+      urlPattern: filters.urlPattern,
+      urlRegex: filters.urlRegex,
+      method: filters.method,
+      statusMin: filters.statusMin,
+      statusMax: filters.statusMax,
+      types: filters.typeSet ? Array.from(filters.typeSet) : undefined,
+    },
+  };
 }
 
 // ---------- Operation tools (v0.1.1) ----------

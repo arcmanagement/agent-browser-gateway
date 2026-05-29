@@ -75,9 +75,11 @@ export type GatewayCommand = {
     urlPattern?: string;
     method?: string;
     statusMin?: number;
+    statusMax?: number;
     type?: string;
     requestId?: string;
     body?: boolean;
+    urlRegex?: string;
     fromSelector?: string;
     toSelector?: string;
     fromX?: number;
@@ -95,6 +97,7 @@ export type GatewayCommand = {
     code?: string;
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
     // wait_for
+    wait?: boolean;
     hidden?: boolean;
     sleepMs?: number;
     timeoutMs?: number;
@@ -111,6 +114,13 @@ export type GatewayCommand = {
     // annotation_mode
     action?: AnnotationAction | string;
     comment?: string;
+    // dialog_action
+    promptText?: string;
+    // har_export
+    outputPath?: string;
+    // state_inspect
+    includeValues?: boolean;
+    storageKey?: string;
   };
 };
 
@@ -127,12 +137,17 @@ export type GatewayMethod =
   | "table"
   | "describe"
   | "network_log"
+  | "har_export"
+  | "state_inspect"
+  | "download_state"
   | "revoke"
   | "wait_for"
   | "eval_script"
   | "annotation_mode"
   | "validate_editable"
   | "stream_control"
+  | "dialog_state"
+  | "dialog_action"
   | "click_selector"
   | "click_described"
   | "click_at"
@@ -181,6 +196,7 @@ export type OperationMethod = Extract<
   | "navigate"
   | "scroll"
   | "scroll_into_view"
+  | "dialog_action"
   | "drag"
 >;
 

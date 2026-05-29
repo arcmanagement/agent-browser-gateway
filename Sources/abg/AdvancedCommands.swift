@@ -46,6 +46,144 @@ struct Frames: AsyncParsableCommand {
     }
 }
 
+struct Dialog: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "dialog",
+        abstract: "Inspect or handle a pending JavaScript alert/confirm/prompt dialog",
+        discussion: """
+        With no action flags, this is read-only and returns whether a JavaScript dialog is pending.
+        Use --accept, --dismiss, or --prompt-value to handle a pending dialog through the normal operation approval path.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Accept the pending dialog") var accept: Bool = false
+    @Flag(name: .long, help: "Dismiss the pending dialog") var dismiss: Bool = false
+    @Option(name: .long, help: "Prompt text to submit; implies --accept") var promptValue: String?
+
+    func run() async throws {
+        let selectedActions = [accept, dismiss, promptValue != nil].filter { $0 }.count
+        if selectedActions > 1 && !(accept && promptValue != nil && !dismiss) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Use at most one dialog action: --accept, --dismiss, or --prompt-value.",
+            ])
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        let action: String?
+        if dismiss {
+            action = "dismiss"
+        } else if accept || promptValue != nil {
+            action = "accept"
+        } else {
+            action = nil
+        }
+        if let action { params["action"] = action }
+        if let promptValue { params["promptText"] = promptValue }
+        let result = try client.call(method: "dialog_tab", params: params)
+        if let action {
+            var step: [String: Any] = ["op": "dialog", "tabId": tabId, "action": action]
+            if let promptValue { step["promptTextBytes"] = promptValue.utf8.count }
+            appendRecordedStep(step)
+        }
+        printJSON(result)
+    }
+}
+
+struct Download: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "download",
+        abstract: "Inspect or wait for downloads associated with a shared tab",
+        discussion: """
+        Returns Chrome download metadata and final local paths when Chrome exposes them.
+        ABG does not read downloaded file contents.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "Wait until the latest/current download reaches complete or interrupted state") var wait: Bool = false
+    @Option(name: .long, help: "Wait timeout in milliseconds") var timeout: Int = 30_000
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if wait {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        let result = try client.call(method: "download_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct HAR: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "har",
+        abstract: "Export a redacted HAR snapshot for a shared tab",
+        discussion: """
+        Exports a one-shot HAR file from the tab's buffered network metadata.
+        ABG's default HAR redaction omits cookies, authorization headers, request bodies, response bodies, and sensitive headers.
+        The Gateway writes the file to --out or to a local ABG temporary directory and records audit metadata for the export.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Output HAR path. Defaults to an ABG temp directory.") var out: String?
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter (xhr,fetch,document, etc.; comma-separated)") var type: String?
+    @Option(name: .long, help: "Maximum entries to export. Defaults to 200 and caps at 1000.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "limit": limit]
+        if let out {
+            params["outputPath"] = (out as NSString).expandingTildeInPath
+        }
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        let result = try client.call(method: "har_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct State: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "state",
+        abstract: "Inspect read-only cookies and Web Storage for a shared tab",
+        discussion: """
+        Lists cookies, localStorage keys, and sessionStorage keys for the shared tab origin.
+        Values are redacted by default. Use --values only when the workflow explicitly needs secret/session values; the Gateway audit log records that values were requested.
+        This command never writes or deletes cookies or storage.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "State kind: cookies, local-storage, session-storage, or all") var kind: String = "all"
+    @Option(name: .long, help: "Cookie name glob filter") var name: String?
+    @Option(name: .long, help: "Storage key glob filter") var key: String?
+    @Flag(name: .long, help: "Return full cookie/storage values. Values are redacted unless this flag is set.") var values: Bool = false
+    @Option(name: .long, help: "Maximum entries per state category. Defaults to 200 and caps at 500.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit]
+        if let name { params["name"] = name }
+        if let key { params["storageKey"] = key }
+        if values { params["includeValues"] = true }
+        let result = try client.call(method: "state_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",
