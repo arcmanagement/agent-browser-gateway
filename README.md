@@ -128,6 +128,8 @@ abg network <tab|ref> [--url "*api*"] [--status-min 400]
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
+abg state <tab|ref> --kind cookies --name "sid*"      # Cookie/storage keys, values redacted
+abg state <tab|ref> --kind local-storage --key "user*" --values
 abg download <tab|ref>                           # Latest downloads associated with this tab
 abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
 abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
@@ -256,6 +258,10 @@ local-only, and redacted by default: cookies, authorization headers, request hea
 bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
 capped at 1000 entries; the Gateway writes the file to `--out` or an ABG temp directory and records
 the tab, filters, byte size, redaction mode, and output path in the local audit log.
+Use `state` to inspect whether cookies, `localStorage`, or `sessionStorage` contain expected keys
+for the shared tab origin. Values are redacted by default; `--values` must be explicit and the
+Gateway audit log records that full values were requested. `state` is read-only and does not expose
+write/delete operations.
 Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
 network, and console events. The stream endpoint is loopback-only and scoped to the currently
 enabled shared tab; unsharing the tab stops further events.
@@ -433,6 +439,7 @@ transport, and a visible audit trail.
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
 | Response waits | `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
+| Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
@@ -464,6 +471,7 @@ Currently shipped:
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
 - ✅ Network response wait and bounded body preview: `network --wait-response`, `--body`, and `--max-bytes`
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
+- ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)

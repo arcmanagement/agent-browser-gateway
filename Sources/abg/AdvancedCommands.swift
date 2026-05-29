@@ -155,6 +155,35 @@ struct HAR: AsyncParsableCommand {
     }
 }
 
+struct State: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "state",
+        abstract: "Inspect read-only cookies and Web Storage for a shared tab",
+        discussion: """
+        Lists cookies, localStorage keys, and sessionStorage keys for the shared tab origin.
+        Values are redacted by default. Use --values only when the workflow explicitly needs secret/session values; the Gateway audit log records that values were requested.
+        This command never writes or deletes cookies or storage.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "State kind: cookies, local-storage, session-storage, or all") var kind: String = "all"
+    @Option(name: .long, help: "Cookie name glob filter") var name: String?
+    @Option(name: .long, help: "Storage key glob filter") var key: String?
+    @Flag(name: .long, help: "Return full cookie/storage values. Values are redacted unless this flag is set.") var values: Bool = false
+    @Option(name: .long, help: "Maximum entries per state category. Defaults to 200 and caps at 500.") var limit: Int = 200
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "kind": kind, "limit": limit]
+        if let name { params["name"] = name }
+        if let key { params["storageKey"] = key }
+        if values { params["includeValues"] = true }
+        let result = try client.call(method: "state_tab", params: params)
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",

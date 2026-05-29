@@ -1133,6 +1133,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "har_export") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "state_inspect") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
@@ -3258,6 +3261,217 @@ async function exportHAR(
     byteSizeEstimate: new TextEncoder().encode(JSON.stringify(har)).byteLength,
     generatedAt,
   };
+}
+
+async function inspectState(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<Record<string, unknown>> {
+  await attachDebugger(tabId);
+  const kind = normalizeStateKind(params.kind);
+  const includeValues = params.includeValues === true;
+  const limit = readStateLimit(params);
+  const tab = permittedTabs.get(tabId);
+  const result: Record<string, unknown> = {
+    tabId,
+    url: tab?.url ?? "",
+    title: tab?.title ?? "",
+    origin: tab?.origin ?? "",
+    kind,
+    includeValues,
+    redaction: includeValues ? "explicit_values" : "values_redacted",
+    writeOperations: "not_supported",
+  };
+  if (kind === "cookies" || kind === "all") {
+    result.cookies = await inspectCookies(tabId, tab?.url, params, includeValues, limit);
+  }
+  if (kind === "local-storage" || kind === "session-storage" || kind === "all") {
+    const storage = await inspectWebStorage(tabId, params, includeValues, limit);
+    if (kind === "local-storage" || kind === "all") {
+      result.localStorage = storage.localStorage;
+    }
+    if (kind === "session-storage" || kind === "all") {
+      result.sessionStorage = storage.sessionStorage;
+    }
+  }
+  return result;
+}
+
+function normalizeStateKind(
+  value: unknown,
+): "cookies" | "local-storage" | "session-storage" | "all" {
+  if (value === "cookie") return "cookies";
+  if (value === "localStorage" || value === "local-storage") return "local-storage";
+  if (value === "sessionStorage" || value === "session-storage") return "session-storage";
+  if (value === "all" || value === undefined || value === null || value === "") return "all";
+  throw new GatewayError(
+    "bad_state_kind",
+    "state kind must be cookies, local-storage, session-storage, or all",
+  );
+}
+
+function readStateLimit(params: NonNullable<GatewayCommand["params"]>): number {
+  return typeof params.limit === "number" ? Math.max(1, Math.min(500, params.limit)) : 200;
+}
+
+async function inspectCookies(
+  tabId: number,
+  rawUrl: string | undefined,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<Record<string, unknown>> {
+  if (!rawUrl) return { available: false, error: "tab URL unavailable", count: 0, cookies: [] };
+  const namePattern = typeof params.name === "string" ? params.name : undefined;
+  try {
+    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getCookies", {
+      urls: [rawUrl],
+    })) as {
+      cookies?: Array<{
+        name: string;
+        value: string;
+        domain: string;
+        path: string;
+        expires?: number;
+        size?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        session?: boolean;
+        sameSite?: string;
+        priority?: string;
+      }>;
+    };
+    const matched = (result.cookies ?? []).filter(
+      (cookie) => !namePattern || globMatch(namePattern, cookie.name),
+    );
+    const filtered = matched.slice(0, limit);
+    return {
+      available: true,
+      count: filtered.length,
+      totalMatches: matched.length,
+      limited: matched.length > filtered.length,
+      filter: namePattern,
+      cookies: filtered.map((cookie) => publicCookie(cookie, includeValues)),
+    };
+  } catch (error) {
+    return {
+      available: false,
+      count: 0,
+      cookies: [],
+      filter: namePattern,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function publicCookie(
+  cookie: {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    size?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    session?: boolean;
+    sameSite?: string;
+    priority?: string;
+  },
+  includeValues: boolean,
+): Record<string, unknown> {
+  const item: Record<string, unknown> = {
+    name: cookie.name,
+    domain: cookie.domain,
+    path: cookie.path,
+    expires: cookie.expires,
+    size: cookie.size,
+    valueBytes: new TextEncoder().encode(cookie.value).byteLength,
+    valueRedacted: !includeValues,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    session: cookie.session,
+    sameSite: cookie.sameSite,
+    priority: cookie.priority,
+  };
+  if (includeValues) item.value = cookie.value;
+  return item;
+}
+
+async function inspectWebStorage(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+  includeValues: boolean,
+  limit: number,
+): Promise<{
+  localStorage: Record<string, unknown>;
+  sessionStorage: Record<string, unknown>;
+}> {
+  const keyPattern = typeof params.storageKey === "string" ? params.storageKey : undefined;
+  return runFrameScript(
+    tabId,
+    undefined,
+    { includeValues, limit, keyPattern },
+    (
+      ctx,
+      opts: { includeValues: boolean; limit: number; keyPattern?: string },
+    ): { localStorage: Record<string, unknown>; sessionStorage: Record<string, unknown> } => {
+      const matches = (pattern: string | undefined, value: string): boolean => {
+        if (!pattern) return true;
+        const escaped = pattern
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".");
+        return new RegExp(`^${escaped}$`, "i").test(value);
+      };
+      const read = (
+        label: "localStorage" | "sessionStorage",
+        storage: Storage,
+      ): Record<string, unknown> => {
+        try {
+          const entries: Record<string, unknown>[] = [];
+          const total = storage.length;
+          let totalMatches = 0;
+          for (let index = 0; index < total; index++) {
+            const key = storage.key(index);
+            if (!key || !matches(opts.keyPattern, key)) continue;
+            totalMatches += 1;
+            if (entries.length >= opts.limit) continue;
+            const value = storage.getItem(key) ?? "";
+            const item: Record<string, unknown> = {
+              key,
+              valueBytes: new TextEncoder().encode(value).byteLength,
+              valueRedacted: !opts.includeValues,
+            };
+            if (opts.includeValues) item.value = value;
+            entries.push(item);
+          }
+          return {
+            available: true,
+            origin: ctx.win.location.origin,
+            count: entries.length,
+            totalKeys: total,
+            totalMatches,
+            limited: totalMatches > entries.length,
+            filter: opts.keyPattern,
+            entries,
+          };
+        } catch (error) {
+          return {
+            available: false,
+            count: 0,
+            entries: [],
+            error: error instanceof Error ? error.message : String(error),
+            kind: label,
+          };
+        }
+      };
+      return {
+        localStorage: read("localStorage", ctx.win.localStorage),
+        sessionStorage: read("sessionStorage", ctx.win.sessionStorage),
+      };
+    },
+  );
 }
 
 type NetworkFilters = {

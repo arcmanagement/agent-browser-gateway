@@ -210,6 +210,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "network_log")
         case "har_tab":
             return await handleHarTab(req: req)
+        case "state_tab":
+            return await handleStateTab(req: req)
         case "download_tab":
             return await dispatch(req: req, method: "download_state")
         case "click_tab":
@@ -515,6 +517,40 @@ final class GatewayCoordinator: ObservableObject {
             return CLIResponse(id: req.id, result: AnyCodable(dict))
         } catch {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "har_export_failed", message: error.localizedDescription))
+        }
+    }
+
+    private func handleStateTab(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
+            var details: [String: AnyCodable] = [
+                "kind": AnyCodable((params["kind"] as? String) ?? "all"),
+                "includeValues": AnyCodable((params["includeValues"] as? Bool) ?? false),
+            ]
+            if let name = params["name"] as? String { details["nameFilter"] = AnyCodable(name) }
+            if let key = params["storageKey"] as? String { details["keyFilter"] = AnyCodable(key) }
+            if let limit = params["limit"] as? Int { details["limit"] = AnyCodable(limit) }
+            if let dict = result?.value as? [String: Any] {
+                if let cookies = dict["cookies"] as? [String: Any], let count = cookies["count"] as? Int {
+                    details["cookieCount"] = AnyCodable(count)
+                }
+                if let localStorage = dict["localStorage"] as? [String: Any], let count = localStorage["count"] as? Int {
+                    details["localStorageCount"] = AnyCodable(count)
+                }
+                if let sessionStorage = dict["sessionStorage"] as? [String: Any], let count = sessionStorage["count"] as? Int {
+                    details["sessionStorageCount"] = AnyCodable(count)
+                }
+            }
+            await auditLog.log(action: "state_inspect", extensionId: tab.extensionId, tabId: tabId, url: tab.url, details: details)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
         }
     }
 
