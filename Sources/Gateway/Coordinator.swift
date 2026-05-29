@@ -184,6 +184,8 @@ final class GatewayCoordinator: ObservableObject {
                 "permittedTabCount": permittedTabs.count,
                 "tabs": tabSummaries(),
             ]))
+        case "frames_tab":
+            return await dispatch(req: req, method: "frames")
         case "read_tab":
             return await handleReadTab(req: req)
         case "get_tab":

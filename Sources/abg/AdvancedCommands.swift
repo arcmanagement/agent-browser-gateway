@@ -27,6 +27,25 @@ struct PDF: AsyncParsableCommand {
     }
 }
 
+struct Frames: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "frames",
+        abstract: "List iframe/frame targets for a shared tab with stable @f refs",
+        discussion: """
+        Use --frame @fN on read/get/find/snapshot and selector actions to target a same-origin frame explicitly.
+        Cross-origin frames are listed, but selector access returns frame_not_accessible instead of falling back to the top document.
+        """
+    )
+    @OptionGroup var target: TabTarget
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "frames_tab", params: ["tabId": tabId])
+        printJSON(result)
+    }
+}
+
 struct Get: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "get",
@@ -36,6 +55,7 @@ struct Get: AsyncParsableCommand {
     @Argument(help: "Getter kind: text/html/value/attr/title/url/count/box/styles") var kind: String
     @Argument(help: "tab ID/ref and optional selector, or selector only when --match-url/title is used") var args: [String] = []
     @Option(name: .long, help: "CSS selector (alternative to positional selector)") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Option(name: .long, help: "Attribute name for `get attr`") var name: String?
     @Option(name: .long, help: "Comma-separated computed style properties for `get styles`") var props: String?
 
@@ -61,6 +81,7 @@ struct Get: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, tabToken: tabToken, match: match)
         var params: [String: Any] = ["tabId": tabId, "kind": normalizedKind]
         if let resolvedSelector { params["selector"] = resolvedSelector }
+        if let frame { params["frame"] = frame }
         if let name { params["name"] = name }
         if let props {
             params["props"] = props.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -80,6 +101,7 @@ struct Find: AsyncParsableCommand {
     @Argument(help: "tab, query pieces, and optional action") var args: [String] = []
     @Option(name: .long, help: "Accessible name for role locators") var name: String?
     @Option(name: .long, help: "Value used by fill/type actions") var value: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Flag(name: .long, help: "Use exact text matching instead of case-insensitive contains") var exact: Bool = false
     @Option(name: .long, help: "Maximum matches to return") var limit: Int = 20
 
@@ -148,6 +170,7 @@ struct Find: AsyncParsableCommand {
         }
         params["action"] = action
         if let value { params["value"] = value }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "find_tab", params: params)
         if action != "inspect" && action != "text" {
             var step: [String: Any] = ["op": "find", "tabId": tabId, "locator": normalizedLocator, "action": action]
@@ -156,6 +179,7 @@ struct Find: AsyncParsableCommand {
             if let indexModifier = params["indexModifier"] { step["indexModifier"] = indexModifier }
             if let index = params["index"] { step["index"] = index }
             if let value { step["value"] = value }
+            if let frame { step["frame"] = frame }
             if exact { step["exact"] = true }
             appendRecordedStep(step)
         }
@@ -170,6 +194,7 @@ struct Snapshot: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Limit snapshot to a CSS selector subtree") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Option(name: .long, help: "Maximum DOM ancestor depth to include in selectors") var depth: Int = 5
     @Flag(name: .long, help: "Only include interactive elements") var interactiveOnly: Bool = false
     @Flag(name: .long, help: "Omit verbose selector/html-adjacent details") var compact: Bool = false
@@ -190,6 +215,7 @@ struct Snapshot: AsyncParsableCommand {
             "compact": compact,
         ]
         if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "snapshot_tab", params: params)
         printJSON(result)
     }
@@ -324,8 +350,9 @@ struct IsVisible: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-visible", abstract: "Return whether a selector is visible")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "visible", target: target, selector: selector)
+        try runPredicate(kind: "visible", target: target, selector: selector, frame: frame)
     }
 }
 
@@ -333,8 +360,9 @@ struct IsEnabled: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-enabled", abstract: "Return whether a selector is enabled")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "enabled", target: target, selector: selector)
+        try runPredicate(kind: "enabled", target: target, selector: selector, frame: frame)
     }
 }
 
@@ -342,19 +370,22 @@ struct IsChecked: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "is-checked", abstract: "Return whether a checkbox is checked")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     func run() async throws {
-        try runPredicate(kind: "checked", target: target, selector: selector)
+        try runPredicate(kind: "checked", target: target, selector: selector, frame: frame)
     }
 }
 
-func runPredicate(kind: String, target: TabTarget, selector: String) throws {
+func runPredicate(kind: String, target: TabTarget, selector: String, frame: String?) throws {
     let client = UDSClient()
     let tabId = try resolveTabId(client: client, target: target)
-    let result = try client.call(method: "predicate_tab", params: [
+    var params: [String: Any] = [
         "tabId": tabId,
         "kind": kind,
         "selector": selector,
-    ])
+    ]
+    if let frame { params["frame"] = frame }
+    let result = try client.call(method: "predicate_tab", params: params)
     printJSON(result)
 }
 
@@ -452,15 +483,20 @@ struct DblClick: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Double-click target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "dblclick_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "dblclick", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "dblclick_tab", params: params)
+        var step: [String: Any] = ["op": "dblclick", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -472,15 +508,20 @@ struct Focus: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Focus target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "focus_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "focus", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "focus_tab", params: params)
+        var step: [String: Any] = ["op": "focus", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -492,15 +533,20 @@ struct Hover: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Hover target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "hover_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "hover", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "hover_tab", params: params)
+        var step: [String: Any] = ["op": "hover", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -514,6 +560,7 @@ struct SelectOption: AsyncParsableCommand {
     @Option(name: .long, help: "Target select element CSS selector") var selector: String
     @Option(name: .long, help: "Option value to select") var value: String?
     @Option(name: .long, help: "Visible option label to select") var label: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         guard (value == nil) != (label == nil) else {
@@ -527,10 +574,12 @@ struct SelectOption: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "selector": selector]
         if let value { params["value"] = value }
         if let label { params["label"] = label }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "select_tab", params: params)
         var step: [String: Any] = ["op": "select", "tabId": tabId, "selector": selector]
         if let value { step["value"] = value }
         if let label { step["label"] = label }
+        if let frame { step["frame"] = frame }
         appendRecordedStep(step)
         printJSON(result)
     }
@@ -543,9 +592,10 @@ struct Check: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        try runCheckedState(commandName: "check", checked: true, target: target, selector: selector)
+        try runCheckedState(commandName: "check", checked: true, target: target, selector: selector, frame: frame)
     }
 }
 
@@ -556,21 +606,26 @@ struct Uncheck: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target checkbox CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        try runCheckedState(commandName: "uncheck", checked: false, target: target, selector: selector)
+        try runCheckedState(commandName: "uncheck", checked: false, target: target, selector: selector, frame: frame)
     }
 }
 
-func runCheckedState(commandName: String, checked: Bool, target: TabTarget, selector: String) throws {
+func runCheckedState(commandName: String, checked: Bool, target: TabTarget, selector: String, frame: String?) throws {
     let client = UDSClient()
     let tabId = try resolveTabId(client: client, target: target)
-    let result = try client.call(method: "checked_state_tab", params: [
+    var params: [String: Any] = [
         "tabId": tabId,
         "selector": selector,
         "checked": checked,
-    ])
-    appendRecordedStep(["op": commandName, "tabId": tabId, "selector": selector])
+    ]
+    if let frame { params["frame"] = frame }
+    let result = try client.call(method: "checked_state_tab", params: params)
+    var step: [String: Any] = ["op": commandName, "tabId": tabId, "selector": selector]
+    if let frame { step["frame"] = frame }
+    appendRecordedStep(step)
     printJSON(result)
 }
 
@@ -581,15 +636,20 @@ struct ScrollIntoView: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "scroll_into_view_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
-        ])
-        appendRecordedStep(["op": "scroll-into-view", "tabId": tabId, "selector": selector])
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "scroll_into_view_tab", params: params)
+        var step: [String: Any] = ["op": "scroll-into-view", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }

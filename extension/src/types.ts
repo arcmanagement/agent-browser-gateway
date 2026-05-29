@@ -39,6 +39,7 @@ export type GatewayCommand = {
   params?: {
     tabId?: number;
     selector?: string;
+    frame?: string;
     html?: string;
     value?: string;
     label?: string;
@@ -114,6 +115,7 @@ export type GatewayCommand = {
 };
 
 export type GatewayMethod =
+  | "frames"
   | "read_dom"
   | "get_dom"
   | "predicate"

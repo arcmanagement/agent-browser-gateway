@@ -94,7 +94,9 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg read <tab|ref> --frame @f1 --selector "<css>"
 abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
 abg get editable-value <tab|ref> "<css>"         # Rich-editor visible text + serialized HTML
@@ -105,6 +107,7 @@ abg find text <tab|ref> "Welcome" text
 abg find label <tab|ref> "Email" fill --value "me@example.com"
 abg find first <tab|ref> "button" click
 abg find nth <tab|ref> 2 ".result" text          # zero-based index
+abg find text <tab|ref> "Pay now" click --frame @f1
 abg snapshot <tab|ref> --interactive-only --compact
 abg snapshot --tabs "post:t1:.editor,preview:t2:main,template:t3:.template"
 abg click <tab|ref> --ref @e1                    # ref from the most recent snapshot for that tab
@@ -216,6 +219,12 @@ cover common Playwright-style locators. Use `inspect` or `text` actions to inspe
 mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
 `find first`, `find last`, and `find nth` apply explicit index modifiers to a CSS selector; `nth`
 uses zero-based indexes so scripts can align with array-style JSON output.
+Use `frames` before targeting iframe content. `frames` returns stable refs such as `@f1`, frame
+URLs, names, titles, nesting, and accessibility flags. Pass `--frame @f1` to `read`, `get`,
+`find`, `snapshot`, predicates, waits, and selector actions so frame targeting is explicit in CLI
+params, approvals, and recorded flows. ABG currently targets same-origin accessible frames only;
+cross-origin frames are listed but selector access returns `frame_not_accessible` instead of
+silently falling back to the top document.
 Use `eval` only as the long-tail escape hatch when named primitives are not enough. It is disabled
 by default in the extension popup, every call must pass `--approve`, and Chrome still opens a local
 approval window containing the exact script. The audit log records the script source plus result
@@ -396,6 +405,7 @@ transport, and a visible audit trail.
 |---|---|---|---|
 | Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
 | Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
+| Frame targeting | `frames`, plus `--frame @fN` on read/get/find/snapshot/predicates/waits/actions | Playwright `frameLocator` / frame targets | Same-origin frames only; cross-origin returns explicit errors |
 | Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` |
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
@@ -421,7 +431,7 @@ Currently shipped:
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
-- ✅ Read and inspection tools: `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
+- ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
 - ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`

@@ -30,6 +30,8 @@ abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/b
 abg get editable-value <tab|ref> "<css>"
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
+abg frames <tab|ref>                         # iframe/frame refs (@f1, @f2, ...)
+abg read <tab|ref> --frame @f1 --selector "<css>"
 abg find role <tab|ref> button click --name "Submit"
 abg find text <tab|ref> "Welcome" text
 abg find label <tab|ref> "Email" fill --value "me@example.com"
@@ -280,6 +282,7 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - `abg` の出力は基本 JSON。値を取り出すときは `jq` 等でパースする
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
 - `tabId` は Chrome 内部のタブ ID で、ブラウザ再起動で変わる。通常は `abg tabs --compact` の `ref` (`t1` など) か `--match-url` / `--match-title` を使う
+- iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF、CLI の `--approve`、正確な script を表示する per-call approval の 3 段階が揃わないと実行されない。audit には script source と result type/bytes summary が残る
