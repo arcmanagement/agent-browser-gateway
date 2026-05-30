@@ -17,7 +17,7 @@ import type {
 } from "./types.js";
 
 const WS_URL = "ws://127.0.0.1:8765/ws";
-const VERSION = "0.3.10";
+const VERSION = "0.3.11";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;

@@ -6,7 +6,7 @@
     <title>Docs | Agent Browser Gateway</title>
     <meta
       name="description"
-      content="Agent Browser Gateway documentation: install the local gateway, share Chrome tabs, use the abg CLI, and choose between per-tab and all-tabs profile access."
+      content="Agent Browser Gateway documentation: install the local gateway, share Chrome tabs, use the abg CLI, and choose between per-tab, sandbox all-tabs, and user-controlled access boundaries."
     />
     <meta property="og:title" content="Docs | Agent Browser Gateway" />
     <meta
@@ -196,12 +196,44 @@
                     <td><code>abg screenshot t1 --out page.png</code></td>
                   </tr>
                   <tr>
+                    <td>Target an iframe</td>
+                    <td><code>abg frames t1</code>, then <code>abg read t1 --frame @f1</code></td>
+                  </tr>
+                  <tr>
                     <td>Find and click a button</td>
                     <td><code>abg find role t1 button click --name "Save"</code></td>
                   </tr>
                   <tr>
                     <td>Type or paste into an editor</td>
                     <td><code>abg fill t1 --selector "textarea" --value "Draft"</code></td>
+                  </tr>
+                  <tr>
+                    <td>Handle a dialog</td>
+                    <td><code>abg dialog t1</code>, then <code>abg dialog t1 --accept</code></td>
+                  </tr>
+                  <tr>
+                    <td>Inspect downloads</td>
+                    <td><code>abg download t1 --wait --timeout 30000</code></td>
+                  </tr>
+                  <tr>
+                    <td>Wait for a response</td>
+                    <td><code>abg network t1 --wait-response --url "*api/save*" --body</code></td>
+                  </tr>
+                  <tr>
+                    <td>Export a redacted HAR</td>
+                    <td><code>abg har t1 --out /tmp/session.har</code></td>
+                  </tr>
+                  <tr>
+                    <td>Inspect cookies or storage</td>
+                    <td><code>abg state t1 --kind cookies --name "sid*"</code></td>
+                  </tr>
+                  <tr>
+                    <td>Inspect framework signals</td>
+                    <td><code>abg framework t1 --kind web-vitals</code></td>
+                  </tr>
+                  <tr>
+                    <td>Use sandbox-only controls</td>
+                    <td><code>abg sandbox t1 viewport --width 390 --height 844 --mobile</code></td>
                   </tr>
                   <tr>
                     <td>Review local activity</td>
@@ -221,10 +253,13 @@
               <li>Write operations can require a local Chrome approval window.</li>
               <li>Every read and operation is recorded in a local audit log.</li>
               <li>ABG does not include analytics, advertising identifiers, or product telemetry.</li>
+              <li>Advanced capabilities are classified as per-tab, sandbox/all-tabs only, self-hosted only, or official non-goals.</li>
+              <li>ABG-operated cloud relay, operator telemetry, and silent blanket JavaScript execution are official non-goals.</li>
             </ul>
             <p>
               For details on data handling and Chrome permissions, read the
-              <a href="../privacy/">Privacy Policy</a>.
+              <a href="../privacy/">Privacy Policy</a>. For advanced automation boundaries, see
+              <a href="https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/ADVANCED_AUTOMATION_POLICY.md">ADVANCED_AUTOMATION_POLICY.md</a>.
             </p>
           </section>
 

@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-28.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-30.
 
-Current repo version: **v0.3.10**.
+Current repo version: **v0.3.11**.
 
 ## Shipped
+
+### v0.3.11 — Advanced browser parity under consent boundaries (2026-05-30)
+- Added iframe frame targeting, JavaScript dialog handling, download lifecycle inspection, response waits/body previews, and redacted HAR export for shared tabs.
+- Added read-only cookie/Web Storage inspection, framework/Web Vitals diagnostics, and sandbox/all-tabs browser-owned controls with approval and audit requirements.
+- Documented the advanced automation policy, official non-goals, user-controlled deployment boundary, GitHub Pages docs, and bundled Claude/Codex skill guidance for the updated command surface.
 
 ### v0.3.10 — All-tabs profile mode and public docs (2026-05-28)
 - Added optional all-tabs profile access for isolated Chrome profiles and sandbox machines, with Chrome's optional `<all_urls>` permission requested only after local user opt-in.
@@ -113,8 +118,8 @@ Current repo version: **v0.3.10**.
 - MCP server as a thin wrapper over the same CLI for ecosystem coverage
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
-- Advanced automation parity follows `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab,
-  sandbox/all-tabs only, self-hosted only, or official non-goal, with explicit approval/audit rules.
+- Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
+  explicit-permission track, separate from normal per-tab sharing.
 
 ## Later
 

@@ -4,7 +4,7 @@ This is the native Windows implementation of ABG. It is separate from the Swift/
 
 ## Normal GUI install
 
-For regular Windows use, extract `agent-browser-gateway-0.3.10-windows-x64-setup.zip` and double-click:
+For regular Windows use, extract `agent-browser-gateway-0.3.11-windows-x64-setup.zip` and double-click:
 
 ```text
 AgentBrowserGatewaySetup.exe
@@ -20,8 +20,8 @@ After extracting the Windows source zip, run this from the extracted repository 
 .\windows-build-install.cmd
 ```
 
-This restores packages, runs tests, builds `dist\agent-browser-gateway-0.3.10-windows-x64.zip`,
-builds `dist\agent-browser-gateway-0.3.10-windows-x64-setup.zip`, extracts the non-GUI payload,
+This restores packages, runs tests, builds `dist\agent-browser-gateway-0.3.11-windows-x64.zip`,
+builds `dist\agent-browser-gateway-0.3.11-windows-x64-setup.zip`, extracts the non-GUI payload,
 installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
 the user `PATH`, and starts the tray Gateway.
 
@@ -33,7 +33,7 @@ To skip tests during an emergency handoff:
 
 ## Manual install
 
-1. Extract `agent-browser-gateway-0.3.10-windows-x64.zip`.
+1. Extract `agent-browser-gateway-0.3.11-windows-x64.zip`.
 2. In PowerShell, run:
 
    ```powershell

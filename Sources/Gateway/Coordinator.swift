@@ -19,7 +19,7 @@ final class GatewayCoordinator: ObservableObject {
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.3.10") { [weak self] method, params in
+    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.3.11") { [weak self] method, params in
         guard let self else {
             throw PluginTabAPIError.dispatcherUnavailable
         }
