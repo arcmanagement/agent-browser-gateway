@@ -83,6 +83,8 @@ For isolated Chrome profiles, test machines, or sandbox browsers, the popup also
 
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
+Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
+
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 
 ---
@@ -185,7 +187,7 @@ abg wait <tab|ref> --load networkidle            # networkidle / load / domconte
 abg wait <tab|ref> --fn "window.ready === true"
 
 # Escape hatch
-abg eval <tab|ref> --script "document.title" --approve  # disabled by default + local approval
+abg eval <tab|ref> --script "document.title" --approve  # --approve required unless AutoMode is enabled
 
 # Runtime stream
 abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
@@ -242,9 +244,10 @@ params, approvals, and recorded flows. ABG currently targets same-origin accessi
 cross-origin frames are listed but selector access returns `frame_not_accessible` instead of
 silently falling back to the top document.
 Use `eval` only as the long-tail escape hatch when named primitives are not enough. It is disabled
-by default in the extension popup, every call must pass `--approve`, and Chrome still opens a local
-approval window containing the exact script. The audit log records the script source plus result
-type/size summary; sanitized return values are capped by `--max-bytes`.
+by default in the extension popup. When Trusted automation / AutoMode is off, every call must pass
+`--approve` and Chrome opens a local approval window containing the exact script. When AutoMode is on,
+eval on already-shared tabs skips that popup. The audit log records the script source, approval mode,
+and result type/size summary; sanitized return values are capped by `--max-bytes`.
 Use `snapshot` when an agent needs an inspectable list of visible accessible elements. Each snapshot
 assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab and can be used with
 `abg click <tab> --ref @e1`.
@@ -418,9 +421,11 @@ a user-operated connection path, not an ABG-operated relay. Likewise, local or o
 metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
 configuration. They are not telemetry sent to ABG operators.
 
-The approved eval boundary is unchanged: disabled by default, explicit enablement in the extension,
-`--approve` on every call, a local approval window showing the exact script, and audit logging.
-Silent or blanket-approved eval is an official non-goal.
+The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
+extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
+and a local approval window are required on every call. With AutoMode on, the user has opted into
+skipping that popup for trusted sessions, and audit logging still records script source and approval
+mode. Hidden eval without either per-call approval or explicit AutoMode is an official non-goal.
 
 ---
 
@@ -485,7 +490,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
 | JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
-| General JavaScript eval | `eval --approve` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval, exact script display, audit summary, result size cap |
+| General JavaScript eval | `eval` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval unless Trusted automation / AutoMode is enabled, exact script audit, result size cap |
 | Global browser visibility | Optional all-tabs profile mode | Common in automation frameworks | Off by default, local opt-in, removable optional permission, audit log |
 
 ABG treats general-purpose JavaScript eval as an explicit escape hatch, not the default automation
@@ -614,7 +619,7 @@ Threat model and the explicit non-goals are in [SECURITY.md](SECURITY.md). To re
 In short:
 - We **defend against** prompt injection that tries to leak un-shared tabs, accidental over-sharing, and silent audit-log tampering.
 - We **do not defend against** other malicious extensions in the same Chrome profile (Chrome's responsibility), root attackers on your machine, or operations the user explicitly authorizes.
-- We expose JavaScript eval only as a disabled-by-default, per-call-approved escape hatch. The normal CLI surface is curated and named.
+- We expose JavaScript eval only as a disabled-by-default escape hatch for already-shared tabs. Per-call approval is the default; explicit Trusted automation / AutoMode can skip the popup while preserving audit logs. The normal CLI surface is curated and named.
 
 ---
 

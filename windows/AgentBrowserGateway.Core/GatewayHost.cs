@@ -342,8 +342,7 @@ public sealed class GatewayHost
         {
             ["script"] = script,
             ["scriptBytes"] = Encoding.UTF8.GetByteCount(script),
-            ["approvalMode"] = "per-call",
-            ["approver"] = "local_extension_user",
+            ["approvalRequested"] = request.Params.GetBool("approve") ?? false,
             ["tabTitle"] = tab.Title
         };
         if (request.Params.GetInt("maxBytes") is int maxBytes) details["maxBytes"] = maxBytes;
@@ -356,7 +355,15 @@ public sealed class GatewayHost
             {
                 if (result.Value.TryGetProperty("ok", out var ok)) details["ok"] = JsonUtil.ToObject(ok);
                 if (result.Value.TryGetProperty("resultSummary", out var summary)) details["resultSummary"] = JsonUtil.ToObject(summary);
-                if (result.Value.TryGetProperty("approval", out var approval)) details["approval"] = JsonUtil.ToObject(approval);
+                if (result.Value.TryGetProperty("approval", out var approval))
+                {
+                    details["approval"] = JsonUtil.ToObject(approval);
+                    if (approval.ValueKind == JsonValueKind.Object)
+                    {
+                        if (approval.TryGetProperty("mode", out var mode)) details["approvalMode"] = JsonUtil.ToObject(mode);
+                        if (approval.TryGetProperty("approver", out var approver)) details["approver"] = JsonUtil.ToObject(approver);
+                    }
+                }
                 if (result.Value.TryGetProperty("error", out var error)) details["error"] = JsonUtil.ToObject(error);
             }
             await _auditLog.LogAsync("eval_script", tab.ExtensionId, tab.TabId, tab.Url, "cli", details, cancellationToken).ConfigureAwait(false);

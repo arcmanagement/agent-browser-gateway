@@ -6,6 +6,10 @@ const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElem
 const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
 const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
 const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
+const trustedAutomationToggleEl = document.getElementById(
+  "trustedAutomationToggle",
+) as HTMLInputElement;
+const trustedAutomationNoteEl = document.getElementById("trustedAutomationNote") as HTMLDivElement;
 const allTabsToggleEl = document.getElementById("allTabsToggle") as HTMLInputElement;
 const allTabsNoteEl = document.getElementById("allTabsNote") as HTMLDivElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
@@ -78,6 +82,28 @@ async function refresh(): Promise<void> {
       statusEl.textContent = `error: ${response.message}`;
     }
     evalToggleEl.disabled = false;
+  };
+
+  trustedAutomationToggleEl.checked = state.settings.trustedAutomationEnabled;
+  trustedAutomationToggleEl.disabled = false;
+  trustedAutomationNoteEl.textContent = state.settings.trustedAutomationEnabled
+    ? state.settings.evalEnabled
+      ? "AutoMode is active: eval skips local approval popups for shared tabs and is still audited."
+      : "AutoMode is active but eval is disabled until the eval switch is enabled."
+    : "When enabled, eval on shared tabs can skip the local approval popup. Scripts are still audited.";
+  trustedAutomationToggleEl.onchange = async () => {
+    const nextValue = trustedAutomationToggleEl.checked;
+    trustedAutomationToggleEl.disabled = true;
+    const response = await send({
+      type: "set_trusted_automation_enabled",
+      value: nextValue,
+    });
+    if (response.type === "error") {
+      trustedAutomationToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+    }
+    trustedAutomationToggleEl.disabled = false;
+    await refresh();
   };
 
   allTabsToggleEl.checked = state.allTabsAccess.active;

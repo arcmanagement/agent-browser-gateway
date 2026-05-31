@@ -27,6 +27,7 @@ const EVAL_HARD_MAX_BYTES = 256 * 1024;
 const DEFAULT_SETTINGS: ExtensionSettings = {
   operationsRequireApproval: true,
   evalEnabled: false,
+  trustedAutomationEnabled: false,
   profileLabel: "",
   allTabsAccessEnabled: false,
 };
@@ -213,6 +214,7 @@ async function getSettings(): Promise<ExtensionSettings> {
   const stored = await chrome.storage.local.get([
     "operationsRequireApproval",
     "evalEnabled",
+    "trustedAutomationEnabled",
     "profileLabel",
     "allTabsAccessEnabled",
   ]);
@@ -222,6 +224,10 @@ async function getSettings(): Promise<ExtensionSettings> {
       : DEFAULT_SETTINGS.operationsRequireApproval;
   const evalEnabled =
     typeof stored.evalEnabled === "boolean" ? stored.evalEnabled : DEFAULT_SETTINGS.evalEnabled;
+  const trustedAutomationEnabled =
+    typeof stored.trustedAutomationEnabled === "boolean"
+      ? stored.trustedAutomationEnabled
+      : DEFAULT_SETTINGS.trustedAutomationEnabled;
   const profileLabel =
     typeof stored.profileLabel === "string" ? stored.profileLabel : DEFAULT_SETTINGS.profileLabel;
   const allTabsAccessEnabled =
@@ -231,17 +237,25 @@ async function getSettings(): Promise<ExtensionSettings> {
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
+    typeof stored.trustedAutomationEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string" ||
     typeof stored.allTabsAccessEnabled !== "boolean"
   ) {
     await chrome.storage.local.set({
       operationsRequireApproval,
       evalEnabled,
+      trustedAutomationEnabled,
       profileLabel,
       allTabsAccessEnabled,
     });
   }
-  return { operationsRequireApproval, evalEnabled, profileLabel, allTabsAccessEnabled };
+  return {
+    operationsRequireApproval,
+    evalEnabled,
+    trustedAutomationEnabled,
+    profileLabel,
+    allTabsAccessEnabled,
+  };
 }
 
 async function ensureSettingsStored(): Promise<void> {
@@ -258,6 +272,13 @@ async function setOperationsRequireApproval(value: boolean): Promise<ExtensionSe
 async function setEvalEnabled(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, evalEnabled: value };
+  await chrome.storage.local.set(settings);
+  return settings;
+}
+
+async function setTrustedAutomationEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  const settings: ExtensionSettings = { ...current, trustedAutomationEnabled: value };
   await chrome.storage.local.set(settings);
   return settings;
 }
@@ -5416,9 +5437,10 @@ type EvalResult = {
     truncated: boolean;
   };
   approval: {
-    mode: "per-call";
+    mode: "per-call" | "trusted-automation";
     approver: "local_extension_user";
     approvedAt: string;
+    popup: "shown" | "skipped";
   };
 };
 
@@ -5433,9 +5455,6 @@ async function runApprovedEval(
       "Approved JavaScript eval is disabled. Enable it in the ABG extension popup before running abg eval.",
     );
   }
-  if (params.approve !== true) {
-    throw new GatewayError("approval_required", "abg eval requires --approve on every call.");
-  }
   const script = typeof params.script === "string" ? params.script : "";
   if (script.trim().length === 0) throw new Error("script required");
   const maxBytes =
@@ -5443,14 +5462,24 @@ async function runApprovedEval(
       ? Math.max(1, Math.min(EVAL_HARD_MAX_BYTES, Math.floor(params.maxBytes)))
       : EVAL_DEFAULT_MAX_BYTES;
 
-  const approval = await requestOperationApproval(
-    "eval_script",
-    tabId,
-    `Run approved JavaScript eval (${new TextEncoder().encode(script).byteLength} bytes).`,
-    script,
-  );
-  if (approval.decision !== "allow") {
-    throw new GatewayError("user_denied", approval.message);
+  const approvalMode = settings.trustedAutomationEnabled ? "trusted-automation" : "per-call";
+  const approvalPopup = settings.trustedAutomationEnabled ? "skipped" : "shown";
+  if (!settings.trustedAutomationEnabled) {
+    if (params.approve !== true) {
+      throw new GatewayError(
+        "approval_required",
+        "abg eval requires --approve unless Trusted automation / AutoMode is enabled in the ABG extension popup.",
+      );
+    }
+    const approval = await requestOperationApproval(
+      "eval_script",
+      tabId,
+      `Run approved JavaScript eval (${new TextEncoder().encode(script).byteLength} bytes).`,
+      script,
+    );
+    if (approval.decision !== "allow") {
+      throw new GatewayError("user_denied", approval.message);
+    }
   }
 
   await attachDebugger(tabId);
@@ -5480,9 +5509,10 @@ async function runApprovedEval(
     url: tab.url ?? "",
     title: tab.title ?? "",
     approval: {
-      mode: "per-call",
+      mode: approvalMode,
       approver: "local_extension_user",
       approvedAt: new Date().toISOString(),
+      popup: approvalPopup,
     },
   };
 }
@@ -5750,6 +5780,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     await setEvalEnabled(msg.value);
     return { type: "ok" };
   }
+  if (msg.type === "set_trusted_automation_enabled") {
+    await setTrustedAutomationEnabled(msg.value);
+    return { type: "ok" };
+  }
   if (msg.type === "set_profile_label") {
     await setProfileLabel(msg.value);
     return { type: "ok" };
@@ -5796,6 +5830,9 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_eval_enabled" && typeof rawMsg.value === "boolean") {
     return { type: "set_eval_enabled", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_trusted_automation_enabled" && typeof rawMsg.value === "boolean") {
+    return { type: "set_trusted_automation_enabled", value: rawMsg.value };
   }
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };

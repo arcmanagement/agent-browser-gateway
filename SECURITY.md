@@ -34,7 +34,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 - **Root or same-user attackers on the host machine.** If something on your Mac can read `~/Library/Application Support/AgentBrowserGateway/gateway.sock`, it can talk to the Gateway. Same for the audit log.
 - **User-installed plugins.** Plugins under `~/.abg/plugins` are local code loaded by the Gateway. ABG does not auto-download plugins; install only plugins you trust.
 - **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, or `navigate`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary.
-- **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When enabled, every call still requires `--approve` plus a local approval window showing the exact script; the audit log records the script source and result summary.
+- **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When Trusted automation / AutoMode is off, every call requires `--approve` plus a local approval window showing the exact script. When AutoMode is on, the local user has explicitly opted into skipping that popup for already-shared tabs; the audit log still records the script source, approval mode, and result summary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.
 
 ### User-controlled remote and self-hosted deployments
@@ -48,9 +48,9 @@ their own private infrastructure, as long as that boundary is explicit and audit
 - User/team-owned local metrics in a self-hosted deployment are allowed only when the endpoint and
   data retention are controlled by that user/team. Sending telemetry to ABG operators remains a
   non-goal.
-- General JavaScript execution remains disabled by default and per-call approved even in remote or
-  self-hosted deployments unless a separate, explicit local policy changes that behavior for that
-  user-controlled environment.
+- General JavaScript execution remains disabled by default. Per-call approval is the default even in
+  remote or self-hosted deployments unless a separate, explicit local policy such as Trusted
+  automation / AutoMode changes that behavior for that user-controlled environment.
 
 ## Design invariants
 
@@ -61,7 +61,7 @@ If a future PR violates any of these, it should be rejected:
 3. The Gateway WebSocket accepts browser-extension origins only. Do not weaken the `Origin` allowlist to accept arbitrary `http://`, `https://`, `file://`, `null`, or missing origins.
 4. The CLI Unix socket is created with `chmod 0700`.
 5. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
-6. General JavaScript eval is never available silently: it must be disabled by default, require explicit per-call approval, show the exact script locally, and write an audit entry with script source plus result type/size summary. Prefer curated, structured, named tools whenever possible.
+6. General JavaScript eval is never hidden: it must be disabled by default, require either explicit per-call approval or explicit Trusted automation / AutoMode, and write an audit entry with script source, approval mode, and result type/size summary. Prefer curated, structured, named tools whenever possible.
 7. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
 8. The audit log records every read and every operation, with the originating agent identifier where available.
 9. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.

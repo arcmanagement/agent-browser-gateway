@@ -32,8 +32,8 @@ personal browser profile.
 | User/team-owned local metrics | `self-hosted only` | User/org admin opt-in required | Log configuration changes locally | Metrics must remain under the user's control. |
 | ABG-operated cloud relay | `non-goal` | Not applicable | Not applicable | Official ABG must remain runnable with networking blocked except loopback. |
 | Telemetry sent to ABG operators | `non-goal` | Not applicable | Not applicable | No analytics or crash reporting endpoint. |
-| General JavaScript eval escape hatch | `per-tab` only when enabled | Extension setting enabled, CLI `--approve`, and per-call local approval window | Log exact script source and result type/size summary | Prefer named structured tools. |
-| Silent or blanket-approved general JavaScript execution | `non-goal` | Not applicable | Not applicable | No hidden eval path. |
+| General JavaScript eval escape hatch | `per-tab` only when enabled | Extension eval setting enabled. With Trusted automation / AutoMode off, CLI `--approve` and per-call local approval window. With AutoMode on, popup can be skipped for already-shared tabs. | Log exact script source, approval mode, and result type/size summary | Prefer named structured tools. |
+| Hidden general JavaScript execution without explicit user policy | `non-goal` | Not applicable | Not applicable | Eval must require either per-call approval or explicit Trusted automation / AutoMode. |
 
 ## Related Roadmap Issues
 

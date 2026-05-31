@@ -210,6 +210,7 @@ export type OperationMethod = Extract<
 export type ExtensionSettings = {
   operationsRequireApproval: boolean;
   evalEnabled: boolean;
+  trustedAutomationEnabled: boolean;
   profileLabel: string;
   allTabsAccessEnabled: boolean;
 };
@@ -237,6 +238,7 @@ export type PopupToBackground =
   | { type: "revoke"; tabId: number }
   | { type: "set_operations_require_approval"; value: boolean }
   | { type: "set_eval_enabled"; value: boolean }
+  | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
   | { type: "set_all_tabs_access"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };

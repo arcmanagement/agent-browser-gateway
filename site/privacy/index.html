@@ -267,7 +267,11 @@
               <li>Operation approval mode is enabled by default for write actions.</li>
               <li>The gateway support and log directories are created as owner-only directories.</li>
               <li>The audit log file is created as an owner-readable and owner-writable file.</li>
-              <li>ABG does not provide an agent command for arbitrary user-supplied JavaScript execution.</li>
+              <li>
+                General JavaScript eval is disabled by default and limited to explicitly shared tabs
+                after local user enablement. Per-call approval is the default; Trusted automation /
+                AutoMode can skip the popup while preserving audit logging.
+              </li>
             </ul>
           </section>
 
