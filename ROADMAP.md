@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-30.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-31.
 
-Current repo version: **v0.3.11**.
+Current repo version: **v0.3.12**.
 
 ## Shipped
+
+### v0.3.12 — Trusted eval automation and release freshness guardrails (2026-05-31)
+- Added Trusted automation / AutoMode for eval-heavy trusted sessions, allowing already-shared tabs to skip the per-call eval approval popup only after the user opts in.
+- Kept eval disabled by default, preserved the `--approve` + local approval default path when AutoMode is off, and recorded approval mode plus result summaries in audit entries.
+- Required release bumps to verify docs, GitHub Pages content, and bundled Claude/Codex skill guidance before packaging so release artifacts and user guidance stay aligned.
 
 ### v0.3.11 — Advanced browser parity under consent boundaries (2026-05-30)
 - Added iframe frame targeting, JavaScript dialog handling, download lifecycle inspection, response waits/body previews, and redacted HAR export for shared tabs.

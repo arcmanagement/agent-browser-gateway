@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.3.10",
+    [string]$Version = "0.3.12",
     [string]$Configuration = "Release",
     [switch]$SkipWinUiApp,
     [string]$PagesOutputDir = ""
