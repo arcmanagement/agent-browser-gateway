@@ -74,7 +74,7 @@ Right-click the tray icon for:
 - Audit log: `%LOCALAPPDATA%\AgentBrowserGateway\Logs\audit.jsonl`
 - Screenshots: `%TEMP%\abg\screenshots\`
 - User plugins/config: `%USERPROFILE%\.abg\`
-- Approved eval: `abg eval t1 --script "document.title" --approve`, disabled by default in extension settings and approval-window gated per call.
+- Approved eval: `abg eval t1 --script "document.title" --approve`, disabled by default in extension settings. `--approve` and the approval window are required unless Trusted automation / AutoMode is enabled in the extension popup.
 
 ## MVP limitations
 

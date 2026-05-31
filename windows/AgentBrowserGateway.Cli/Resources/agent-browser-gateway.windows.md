@@ -39,7 +39,7 @@ abg upload t1 --selector "input[type=file]" --file "C:\path\file.zip"
 abg key t1 Enter
 abg navigate t1 "https://example.com"
 abg scroll t1 --dy 800
-abg eval t1 --script "document.title" --approve
+abg eval t1 --script "document.title" [--approve]
 abg revoke t1
 abg audit --lines 50
 ```
@@ -53,6 +53,6 @@ abg audit --lines 50
 - CLI transport: Windows named pipe `AgentBrowserGateway.Cli`
 - Audit log: `%LOCALAPPDATA%\AgentBrowserGateway\Logs\audit.jsonl`
 - Screenshots: `%TEMP%\abg\screenshots\`
-- `abg eval` is disabled by default in the shared extension settings and still requires `--approve` plus the local approval window for every call.
+- `abg eval` is disabled by default in the shared extension settings. It requires `--approve` plus the local approval window unless Trusted automation / AutoMode is enabled in the extension popup. AutoMode applies only to already-shared tabs and is still audited.
 
 `record`, `replay`, and dynamic plugin commands are not supported by the Windows MVP yet.

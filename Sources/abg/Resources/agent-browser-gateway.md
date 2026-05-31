@@ -110,7 +110,7 @@ abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
-abg eval <tab|ref> --script "return window.__STATE__" --approve  # extension popup でも eval 有効化が必要
+abg eval <tab|ref> --script "return window.__STATE__" --approve  # AutoMode OFF では --approve + popup 承認が必要
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
 abg stream status
 abg stream disable
@@ -306,10 +306,10 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない
 - Advanced automation parity は `docs/ADVANCED_AUTOMATION_POLICY.md` の mode 境界に従う。normal per-tab / sandbox all-tabs / self-hosted / official non-goal を混同しない。cookie/storage mutation、network mocking、init scripts、emulation、tab/window management は normal personal-profile per-tab には出さない
 - Sandbox browser-owned controls は `abg sandbox <ref> ...` を使う。Gateway は `accessMode: all_tabs` 以外では拒否する。viewport emulation、localStorage/sessionStorage set/delete、sandbox tab create/close は local approval と Gateway audit を通る。mixed personal profile では all-tabs mode を有効にしない
-- Official ABG non-goals: ABG-operated cloud relay、ABG operators への telemetry、silent / blanket-approved general JS execution。#71 の remote pairing は user-controlled Tailnet/LAN path であり ABG-operated relay ではない。self-hosted metrics は user/team-owned endpoint に限定する
+- Official ABG non-goals: ABG-operated cloud relay、ABG operators への telemetry、明示的な per-call approval または Trusted automation / AutoMode なしの hidden general JS execution。#71 の remote pairing は user-controlled Tailnet/LAN path であり ABG-operated relay ではない。self-hosted metrics は user/team-owned endpoint に限定する
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
-- `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF、CLI の `--approve`、正確な script を表示する per-call approval の 3 段階が揃わないと実行されない。audit には script source と result type/bytes summary が残る
+- `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF。Trusted automation / AutoMode OFF では CLI の `--approve` と正確な script を表示する per-call approval が必要。AutoMode ON では共有済み tab に限って approval popup を省略できる。audit には script source、approval mode、result type/bytes summary が残る
 - **Annotation mode**:
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
   - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る

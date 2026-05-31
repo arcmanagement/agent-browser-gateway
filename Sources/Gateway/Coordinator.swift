@@ -701,8 +701,7 @@ final class GatewayCoordinator: ObservableObject {
         var auditDetails: [String: AnyCodable] = [
             "script": AnyCodable(script),
             "scriptBytes": AnyCodable(script.utf8.count),
-            "approvalMode": AnyCodable("per-call"),
-            "approver": AnyCodable("local_extension_user"),
+            "approvalRequested": AnyCodable((params["approve"] as? Bool) ?? false),
             "tabTitle": AnyCodable(tab.title),
         ]
         if let maxBytes = params["maxBytes"] as? Int {
@@ -720,6 +719,12 @@ final class GatewayCoordinator: ObservableObject {
                 }
                 if let approval = dict["approval"] as? [String: Any] {
                     auditDetails["approval"] = AnyCodable(approval)
+                    if let approvalMode = approval["mode"] as? String {
+                        auditDetails["approvalMode"] = AnyCodable(approvalMode)
+                    }
+                    if let approver = approval["approver"] as? String {
+                        auditDetails["approver"] = AnyCodable(approver)
+                    }
                 }
                 if let error = dict["error"] as? String {
                     auditDetails["error"] = AnyCodable(error)

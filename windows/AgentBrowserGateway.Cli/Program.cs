@@ -237,7 +237,6 @@ internal static class Program
                           (parsed.Options.ContainsKey("script-file") ? 1 : 0) +
                           (parsed.Flags.Contains("stdin") ? 1 : 0);
         if (sourceCount != 1) throw new CliUsageException("Pass exactly one script source: --script, --script-file, or --stdin.");
-        if (!parsed.Flags.Contains("approve")) throw new CliUsageException("abg eval requires --approve on every call.");
 
         string script;
         if (parsed.Options.TryGetValue("script", out var inlineScript))
@@ -257,7 +256,7 @@ internal static class Program
         var tabId = await ResolveTabIdAsync(parsed).ConfigureAwait(false);
         var parameters = BaseTabParams(tabId, parsed);
         parameters["script"] = script;
-        parameters["approve"] = true;
+        parameters["approve"] = parsed.Flags.Contains("approve");
         parameters["maxBytes"] = parsed.Options.TryGetValue("max-bytes", out var maxBytes) ? ToInt(maxBytes) : 65_536;
         var response = await Client.CallAsync("eval_tab", parameters).ConfigureAwait(false);
         if (!EnsureSuccess(response, out var result)) return 1;
@@ -501,7 +500,7 @@ internal static class Program
           abg read <tab|ref> [--selector <css>] [--format markdown|text|html|json]
           abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]
           abg console <tab|ref>
-          abg eval <tab|ref> --script "document.title" --approve
+          abg eval <tab|ref> --script "document.title" [--approve]
           abg table <tab|ref> [--selector table]
           abg describe <tab|ref>
           abg network <tab|ref> [--url *api*] [--status-min 400]

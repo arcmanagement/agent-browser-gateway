@@ -23,7 +23,7 @@ Current repo version: **v0.3.11**.
 
 ### v0.3.8 — Approved JavaScript eval escape hatch (2026-05-25)
 - Added `abg eval` as a disabled-by-default escape hatch for long-tail browser workflows that named primitives do not cover.
-- Kept eval behind extension settings, mandatory `--approve`, and a local approval window that shows the exact script on every call.
+- Kept eval behind extension settings, with `--approve` and a local approval window by default; explicit Trusted automation / AutoMode can skip the popup for already-shared tabs while preserving audit.
 - Added sanitized return serialization, result size caps, and audit entries with script source plus result type/byte summary.
 - Updated README, SECURITY, bundled Claude/Codex skill guidance, Windows docs, and GitHub Pages download metadata for the new boundary.
 
@@ -148,7 +148,7 @@ These will not happen, regardless of demand:
 
 - Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback; #71 is limited to private Tailnet/LAN pairing controlled by the user.
 - Any telemetry / analytics sent to ABG operators. User/team-owned local metrics in self-hosted deployments are separate from official ABG telemetry.
-- Silent or blanket-approved JavaScript execution. The only general eval path is disabled by default and requires explicit enablement, per-call local approval, and audit.
+- Hidden JavaScript execution without explicit user policy. The only general eval path is disabled by default and requires explicit enablement plus either per-call local approval or explicit Trusted automation / AutoMode, with audit.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.
 
 ## Reproducibility milestones (toward v1.0)

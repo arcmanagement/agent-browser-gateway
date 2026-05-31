@@ -281,5 +281,5 @@ node examples/benchmark-notion-plugin.mjs
 
 - Do not add telemetry or network calls.
 - Do not bypass the configured tab access mode. Plugins must use the Gateway tab APIs and must not invent a separate browser access path.
-- Do not bypass the approved-eval boundary or expose unapproved arbitrary JavaScript execution to agents.
+- Do not bypass the approved-eval / Trusted automation boundary or expose unapproved arbitrary JavaScript execution to agents.
 - Prefer deterministic transforms that are easy to audit.

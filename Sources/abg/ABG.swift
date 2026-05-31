@@ -830,9 +830,9 @@ struct Console: AsyncParsableCommand {
 
 struct Eval: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Run an explicitly approved JavaScript eval on a shared tab",
+        abstract: "Run a gated JavaScript eval on a shared tab",
         discussion: """
-        Eval is an escape hatch. It is disabled by default in the extension popup and every call must pass --approve, which opens a local approval window with the exact script.
+        Eval is an escape hatch. It is disabled by default in the extension popup. When Trusted automation / AutoMode is off, pass --approve to open a local approval window with the exact script. When AutoMode is on, the extension may skip the popup for already-shared tabs while still auditing the script.
         Prefer named primitives such as read/get/find/wait when they cover the workflow.
         """
     )
@@ -840,23 +840,17 @@ struct Eval: AsyncParsableCommand {
     @Option(name: .long, help: "JavaScript source to evaluate") var script: String?
     @Option(name: .long, help: "Read JavaScript source from a local file") var scriptFile: String?
     @Flag(name: .long, help: "Read JavaScript source from stdin") var stdin: Bool = false
-    @Flag(name: .long, help: "Required on every eval call; the extension still asks the user to approve") var approve: Bool = false
+    @Flag(name: .long, help: "Required unless Trusted automation / AutoMode is enabled in the extension popup") var approve: Bool = false
     @Option(name: .long, help: "Maximum sanitized result JSON bytes (default 65536, hard cap 262144)") var maxBytes: Int = 65_536
 
     func run() async throws {
         let script = try readScriptSource()
-        guard approve else {
-            try failWithJSON([
-                "error": "approval_required",
-                "message": "abg eval requires --approve on every call. The extension will still show a local approval window.",
-            ])
-        }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         let result = try client.call(method: "eval_tab", params: [
             "tabId": tabId,
             "script": script,
-            "approve": true,
+            "approve": approve,
             "maxBytes": maxBytes,
         ])
         printJSON(result)
