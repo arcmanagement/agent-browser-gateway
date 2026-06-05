@@ -296,6 +296,35 @@ final class PluginHostTests: XCTestCase {
         XCTAssertNil(host.domainTransform(url: "https://example.com/page", kind: "markdown", input: "page"))
     }
 
+    func testManifestDomainHelpersExposePluginCommandBindingPatterns() throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "gemini-plugin",
+            manifest: """
+            {
+              "name": "gemini-plugin",
+              "domains": ["https://gemini.google.com/*"],
+              "commands": ["summarize"]
+            }
+            """,
+            source: """
+            abg.registerCommand("summarize", function () {
+              return { ok: true };
+            });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [root])
+
+        XCTAssertEqual(host.domainPatterns(for: "gemini-plugin"), ["https://gemini.google.com/*"])
+        XCTAssertTrue(host.matchesManifestDomain(plugin: "gemini-plugin", url: "https://gemini.google.com/app"))
+        XCTAssertFalse(host.matchesManifestDomain(plugin: "gemini-plugin", url: "https://example.com/app"))
+        XCTAssertNil(host.domainPatterns(for: "missing-plugin"))
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)

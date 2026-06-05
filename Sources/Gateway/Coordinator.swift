@@ -333,20 +333,25 @@ final class GatewayCoordinator: ObservableObject {
         }
         let args = params["args"] as? [String: Any] ?? [:]
         let tabId = params["tabId"] as? Int
+        var resolvedTabId: Int?
+        if let error = resolvePluginCommandTabId(pluginName: pluginName, commandName: commandName, explicitTabId: tabId, out: &resolvedTabId) {
+            return CLIResponse(id: req.id, error: error)
+        }
         do {
             let argsData = try? JSONSerialization.data(withJSONObject: args, options: [])
             await auditLog.log(
                 action: "plugin_command_run",
-                tabId: tabId,
+                tabId: resolvedTabId,
                 agent: "cli",
                 details: [
                     "plugin": AnyCodable(pluginName),
                     "command": AnyCodable(commandName),
                     "argsKeys": AnyCodable(args.keys.sorted()),
                     "argsBytes": AnyCodable(argsData?.count ?? 0),
+                    "tabBinding": AnyCodable(tabId == nil && resolvedTabId != nil ? "domain" : (tabId == nil ? "none" : "explicit")),
                 ]
             )
-            let result = try await pluginHost.runCommand(plugin: pluginName, command: commandName, args: args, tabId: tabId)
+            let result = try await pluginHost.runCommand(plugin: pluginName, command: commandName, args: args, tabId: resolvedTabId)
             return CLIResponse(id: req.id, result: result)
         } catch let error as PluginCommandError {
             return CLIResponse(
@@ -369,6 +374,64 @@ final class GatewayCoordinator: ObservableObject {
                 )
             )
         }
+    }
+
+    private func resolvePluginCommandTabId(
+        pluginName: String,
+        commandName: String,
+        explicitTabId: Int?,
+        out resolvedTabId: inout Int?
+    ) -> ErrorPayload? {
+        if let explicitTabId {
+            resolvedTabId = explicitTabId
+            return nil
+        }
+        guard pluginHost.hasPlugin(named: pluginName),
+              let domains = pluginHost.domainPatterns(for: pluginName),
+              !domains.isEmpty
+        else {
+            resolvedTabId = nil
+            return nil
+        }
+
+        let matches = permittedTabs.enumerated().compactMap { index, tab -> ErrorPayload.TabCandidate? in
+            guard !tab.isExpired, pluginHost.matchesManifestDomain(plugin: pluginName, url: tab.url) else {
+                return nil
+            }
+            return ErrorPayload.TabCandidate(
+                ref: "t\(index + 1)",
+                tabId: tab.tabId,
+                title: tab.title,
+                url: tab.url,
+                accessMode: tab.accessMode
+            )
+        }
+
+        if matches.count == 1 {
+            resolvedTabId = matches[0].tabId
+            return nil
+        }
+        if matches.isEmpty {
+            return ErrorPayload(
+                code: "no_matching_tab",
+                message: "No shared tab matches plugin \(pluginName)'s domain list.",
+                userMessage: "plugin の domain に一致する共有済みタブがありません。対象タブを共有してから再実行するか、必要なら --tab-id で明示してください。",
+                nextCommand: "abg tabs --compact",
+                plugin: pluginName,
+                command: commandName,
+                expectedDomains: domains
+            )
+        }
+        return ErrorPayload(
+            code: "ambiguous_tab",
+            message: "\(matches.count) shared tabs match plugin \(pluginName)'s domain list. Pass --tab-id to disambiguate.",
+            userMessage: "plugin の domain に一致する共有済みタブが複数あります。`abg tabs --compact` で確認して --tab-id を指定してください。",
+            nextCommand: "abg tabs --compact",
+            plugin: pluginName,
+            command: commandName,
+            expectedDomains: domains,
+            candidates: matches
+        )
     }
 
     private func dispatchPluginTabCommand(method: String, params: [String: Any]) async throws -> AnyCodable {

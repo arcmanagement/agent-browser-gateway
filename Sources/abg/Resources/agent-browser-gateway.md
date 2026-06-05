@@ -200,8 +200,9 @@ abg.registerCommand("greet", async function (args, context) {
 - `abg.registerCommand(name, handler)` registers a dynamic CLI command. The handler
   signature is `(args, context) => result | Promise<result>`.
 - `context.plugin.name` is always present. `context.plugin.version` is present when the manifest has
-  `version`. `context.tabId` is present only when the caller passes `--tab-id`; do not assume a shared
-  tab exists otherwise.
+  `version`. `context.tabId` is present when the caller passes `--tab-id` / `--tab` / `--match-url`,
+  or when the Gateway can auto-bind exactly one shared tab matching the plugin manifest `domains`.
+  Zero matches returns `no_matching_tab`; multiple matches returns `ambiguous_tab` with candidates.
 - `context.tab.<action>(options)` exposes Promise-based tab primitives when `context.tabId` exists:
   `paste`, `clear`, `fill`, `click`, `key`, `read`, `describe`, `wait`, and `screenshot`.
   See `docs/PLUGINS.md` for the full Tab API surface and examples.
@@ -210,6 +211,8 @@ Invoke commands as dynamic ABG subcommands:
 
 ```bash
 abg hello greet --name "world"
+abg hello greet --tab t1
+abg hello greet --match-url "*example.com*"
 abg hello greet --json '{"name":"world","loud":true}'
 printf '{"name":"world"}' | abg hello greet --stdin
 abg hello --help
@@ -222,11 +225,10 @@ abg plugin list
 prefers the running Gateway view and shows registered commands per plugin; use `--local-only` only
 when you need filesystem metadata without the daemon.
 
-Audit logs for plugin commands record `argsKeys` and `argsBytes` only. Argument values are never
+Audit logs for plugin commands record `argsKeys`, `argsBytes`, and tab binding mode only. Argument values are never
 recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.
 
-Plugins can drive a shared tab directly through `context.tab` when the command is invoked with
-`--tab-id`:
+Plugins can drive a shared tab directly through `context.tab` when the command has a tab context:
 
 ```js
 abg.registerCommand("clear-and-paste", async function (args, context) {

@@ -176,6 +176,22 @@ public struct CLIResponse: Codable, Sendable {
 }
 
 public struct ErrorPayload: Codable, Sendable {
+    public struct TabCandidate: Codable, Sendable {
+        public let ref: String?
+        public let tabId: Int
+        public let title: String?
+        public let url: String
+        public let accessMode: String?
+
+        public init(ref: String? = nil, tabId: Int, title: String? = nil, url: String, accessMode: String? = nil) {
+            self.ref = ref
+            self.tabId = tabId
+            self.title = title
+            self.url = url
+            self.accessMode = accessMode
+        }
+    }
+
     public let code: String
     public let message: String
     public let userMessage: String?
@@ -184,6 +200,8 @@ public struct ErrorPayload: Codable, Sendable {
     public let tabId: Int?
     public let plugin: String?
     public let command: String?
+    public let expectedDomains: [String]?
+    public let candidates: [TabCandidate]?
 
     public init(
         code: String,
@@ -193,7 +211,9 @@ public struct ErrorPayload: Codable, Sendable {
         hint: String? = nil,
         tabId: Int? = nil,
         plugin: String? = nil,
-        command: String? = nil
+        command: String? = nil,
+        expectedDomains: [String]? = nil,
+        candidates: [TabCandidate]? = nil
     ) {
         self.code = code
         self.message = message
@@ -203,6 +223,8 @@ public struct ErrorPayload: Codable, Sendable {
         self.tabId = tabId
         self.plugin = plugin
         self.command = command
+        self.expectedDomains = expectedDomains
+        self.candidates = candidates
     }
 }
 
