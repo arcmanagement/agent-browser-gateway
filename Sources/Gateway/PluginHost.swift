@@ -640,8 +640,7 @@ final class PluginHost {
         if let res = Bundle.main.resourceURL {
             paths.append(res.appendingPathComponent("plugins"))
         }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        paths.append(home.appendingPathComponent(".abg/plugins"))
+        paths.append(ABGConstants.userPluginsDir)
         return paths
     }
 }

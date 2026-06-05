@@ -42,7 +42,7 @@ struct UDSClient {
                 "error": "gateway_not_running",
                 "message": message,
                 "userMessage": "Gateway が起動していません。Agent Browser Gateway.app を起動してから、もう一度コマンドを実行してください。",
-                "nextCommand": "open \"Agent Browser Gateway.app\" && abg status",
+                "nextCommand": gatewayStartCommand(),
             ])
             throw ExitCode.failure
         }
@@ -112,6 +112,29 @@ struct UDSClient {
         }
         return out
     }
+}
+
+private func gatewayStartCommand() -> String {
+    let environment = ProcessInfo.processInfo.environment
+    let envKeys = ["ABG_PORT", "ABG_PROFILE", "ABG_STATE_DIR", "ABG_LOGS_DIR", "ABG_USER_DIR"]
+    let envAssignments = envKeys.compactMap { key -> String? in
+        guard let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return "\(key)=\(shellQuoted(value))"
+    }
+    guard !envAssignments.isEmpty else {
+        return "open \"Agent Browser Gateway.app\" && abg status"
+    }
+    return "\(envAssignments.joined(separator: " ")) swift run Gateway"
+}
+
+private func shellQuoted(_ value: String) -> String {
+    guard value.rangeOfCharacter(from: CharacterSet(charactersIn: " \t\n'\"\\$`")) != nil else {
+        return value
+    }
+    return "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
 }
 
 // Pretty-print helpers

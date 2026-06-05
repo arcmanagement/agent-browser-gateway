@@ -357,6 +357,9 @@ abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 
+By default user plugins live under `~/.abg/plugins/`; `ABG_PORT=8766` dev runs use
+`~/.abg-dev/plugins/` so local experiments do not mutate production plugin state.
+
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 
 Planned (community / future): more workflow-specific plugins built from these local examples.
@@ -561,6 +564,10 @@ mise install
 ./build-app.sh                          # produces Agent Browser Gateway.app and .build/release/abg
 open "Agent Browser Gateway.app"        # menubar shield icon appears
 ln -sf $(pwd)/.build/release/abg /usr/local/bin/abg
+
+CONFIG=debug APP_VARIANT=dev ./build-app.sh  # produces Agent Browser Gateway Dev.app on port 8766
+open "Agent Browser Gateway Dev.app"         # separate menubar app/profile from production
+ABG_PORT=8766 .build/debug/abg status        # point CLI at the dev app
 ```
 
 ### Install the Chrome extension
@@ -605,10 +612,14 @@ Claude Code or Codex will now invoke `abg` automatically when the conversation r
 ```bash
 swift build                             # debug build
 swift test                              # Swift unit tests
-swift run Gateway                       # menubar app without bundling (dev)
+swift run Gateway                       # single debug process without app-bundle separation
+CONFIG=debug APP_VARIANT=dev ./build-app.sh  # separate dev menubar app: 8766 + AgentBrowserGateway-dev/.abg-dev
+open "Agent Browser Gateway Dev.app"
+ABG_PORT=8766 .build/debug/abg status   # point CLI at the dev app
 
 cd extension
 pnpm run watch                          # rebuild on save
+ABG_PORT=8766 pnpm run build             # local unpacked extension named Agent Browser Gateway Dev
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit

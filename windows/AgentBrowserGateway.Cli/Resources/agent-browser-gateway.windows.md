@@ -49,7 +49,7 @@ abg audit --lines 50
 - Tray Gateway: `agent-browser-gateway.exe`
 - WinUI app: `AgentBrowserGateway.Windows.exe`
 - CLI: `abg.exe`
-- Extension WebSocket: `127.0.0.1:8765/ws`
+- Extension WebSocket: `127.0.0.1:8765/ws` by default (`ABG_PORT=8766` for a dev Gateway/profile)
 - CLI transport: Windows named pipe `AgentBrowserGateway.Cli`
 - Audit log: `%LOCALAPPDATA%\AgentBrowserGateway\Logs\audit.jsonl`
 - Screenshots: `%TEMP%\abg\screenshots\`

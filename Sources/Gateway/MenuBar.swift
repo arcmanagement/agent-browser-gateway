@@ -97,7 +97,7 @@ struct MenuBarView: View {
 
         Divider()
 
-        Text("ABG v\(appVersion()) — \(buildShortId())")
+        Text("ABG v\(appVersion()) — \(buildShortId()) — \(ABGConstants.runtimeProfileLabel)")
             .font(.caption2)
             .foregroundColor(.secondary)
 

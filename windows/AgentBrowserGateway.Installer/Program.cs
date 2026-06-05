@@ -308,7 +308,7 @@ internal sealed class SetupForm : Form
             Thread.Sleep(250);
         }
 
-        throw new InvalidOperationException("Port 127.0.0.1:8765 is still in use. Stop the existing Gateway, then retry.");
+        throw new InvalidOperationException($"Port {AbgPaths.WsHost}:{AbgPaths.WsPort} is still in use. Stop the existing Gateway, then retry.");
     }
 
     private static bool GatewayPortOpen()
@@ -316,7 +316,7 @@ internal sealed class SetupForm : Form
         using var client = new TcpClient();
         try
         {
-            var connect = client.BeginConnect("127.0.0.1", AbgPaths.WsPort, null, null);
+            var connect = client.BeginConnect(AbgPaths.WsHost, AbgPaths.WsPort, null, null);
             if (!connect.AsyncWaitHandle.WaitOne(150)) return false;
             client.EndConnect(connect);
             return true;

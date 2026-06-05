@@ -130,14 +130,14 @@ internal sealed class GatewayTrayApplication : ApplicationContext
     private static string TooltipText(GatewaySnapshot snapshot)
     {
         var state = snapshot.Running ? "running" : "stopped";
-        return $"ABG {state}: {snapshot.Extensions.Count} ext, {snapshot.Tabs.Count} tabs";
+        return $"ABG {state} ({AbgPaths.RuntimeProfile}): {snapshot.Extensions.Count} ext, {snapshot.Tabs.Count} tabs";
     }
 
     private void ShowStatus()
     {
         var snapshot = _host.Snapshot();
         var message = snapshot.Running
-            ? $"Version: {AbgPaths.Version}\nRunning on {AbgPaths.WsHost}:{AbgPaths.WsPort}\nExtensions: {snapshot.Extensions.Count}\nShared tabs: {snapshot.Tabs.Count}\nProcess: {Environment.ProcessPath}\nAudit log: {AbgPaths.AuditLogPath}"
+            ? $"Version: {AbgPaths.Version}\nProfile: {AbgPaths.RuntimeProfile}\nRunning on {AbgPaths.WsHost}:{AbgPaths.WsPort}\nExtensions: {snapshot.Extensions.Count}\nShared tabs: {snapshot.Tabs.Count}\nProcess: {Environment.ProcessPath}\nState: {AbgPaths.AppDataDir}\nUser dir: {AbgPaths.AbgUserDir}\nAudit log: {AbgPaths.AuditLogPath}"
             : "Stopped";
 
         MessageBox.Show(

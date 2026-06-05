@@ -9,6 +9,13 @@ $ErrorActionPreference = "Stop"
 
 $SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InstallDir = [Environment]::ExpandEnvironmentVariables($InstallDir)
+$GatewayPort = 8765
+if (-not [string]::IsNullOrWhiteSpace($env:ABG_PORT)) {
+    $ParsedPort = 0
+    if ([int]::TryParse($env:ABG_PORT, [ref]$ParsedPort) -and $ParsedPort -ge 1 -and $ParsedPort -le 65535) {
+        $GatewayPort = $ParsedPort
+    }
+}
 
 Write-Host "Installing Agent Browser Gateway for Windows..."
 Write-Host "Source: $SourceDir"
@@ -26,7 +33,7 @@ function Get-GatewayProcesses {
 function Test-GatewayPortOpen {
     $Client = New-Object System.Net.Sockets.TcpClient
     try {
-        $Connect = $Client.BeginConnect("127.0.0.1", 8765, $null, $null)
+        $Connect = $Client.BeginConnect("127.0.0.1", $GatewayPort, $null, $null)
         if (-not $Connect.AsyncWaitHandle.WaitOne(150)) {
             return $false
         }
@@ -70,7 +77,7 @@ function Wait-GatewayPortFree {
         }
         Start-Sleep -Milliseconds 250
     }
-    throw "Port 127.0.0.1:8765 is still in use. Stop the existing Gateway from the tray menu or Task Manager, then run the installer again."
+    throw "Port 127.0.0.1:$GatewayPort is still in use. Stop the existing Gateway from the tray menu or Task Manager, then run the installer again."
 }
 
 function Wait-GatewayReady {
