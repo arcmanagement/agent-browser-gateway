@@ -309,6 +309,8 @@ transform.
 - `plugins/gmail-plugin`, `plugins/slack-plugin`, and `plugins/linear-plugin` are first-party
   per-domain Markdown examples for authenticated app pages. They run locally in the Gateway plugin
   host, use deterministic transforms, and do not make network calls.
+- `plugins/slack-plugin` also provides `catch-up` and `pending` workflow commands that wait for the
+  Slack message DOM to match the active channel before returning.
 - `plugins/redaction-plugin` provides opt-in local Markdown redaction.
 - `plugins/workflow-plugin` demonstrates command abstraction with `context.tab.clear`,
   `context.tab.paste`, `context.tab.wait`, `context.tab.read`, and `context.tab.click`.

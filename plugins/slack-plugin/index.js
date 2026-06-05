@@ -14,6 +14,80 @@ function slackToMarkdown(html) {
   );
 }
 
+abg.registerCommand("catch-up", async function (args, context) {
+  var missing = requireTab(context, "catch-up");
+  if (missing) return missing;
+  return await readSettledMessages(args, context, false);
+});
+
+abg.registerCommand("pending", async function (args, context) {
+  var missing = requireTab(context, "pending");
+  if (missing) return missing;
+  return await readSettledMessages(args, context, true);
+});
+
+function requireTab(context, command) {
+  if (context.tabId == null) {
+    return {
+      ok: false,
+      error: "no_tab_context",
+      message: "abg slack " + command + " requires a shared Slack tab. Use domain auto-bind or pass --tab/--tab-id.",
+    };
+  }
+  return null;
+}
+
+async function readSettledMessages(args, context, pendingOnly) {
+  var limit = Number(args.limit || 20);
+  var timeoutMs = Number(args.timeoutMs || 3000);
+  var started = Date.now();
+  var last = null;
+
+  while (Date.now() - started <= timeoutMs) {
+    var page = await context.tab.read({});
+    var parsed = parseSlackUrl(String(page.url || ""));
+    var messages = extractSlackMessages(String(page.html || ""), limit, parsed.channel);
+    last = { page: page, parsed: parsed, messages: messages };
+
+    var stale = parsed.channel && messages.length > 0 && messages.some(function (m) {
+      return m.channelId && m.channelId !== parsed.channel;
+    });
+    if (!stale) {
+      if (pendingOnly) {
+        messages = messages.filter(function (m) {
+          return /(?:\bunread\b|\bpending\b|mention|needs reply|未読|要返信)/i.test(m.raw);
+        });
+      }
+      return {
+        ok: true,
+        channel_id: parsed.channel || null,
+        url: page.url || null,
+        count: messages.length,
+        messages: messages.map(messageRecord),
+        markdown: messages.map(formatSlackMessage).join("\n\n").trim(),
+      };
+    }
+    await context.tab.wait({ ms: 150 });
+  }
+
+  return {
+    ok: false,
+    error: "stale_channel_dom",
+    message: "Slack DOM did not settle to the active channel before timeout.",
+    expected_channel_id: last && last.parsed ? last.parsed.channel : null,
+    observed_channel_ids: unique((last && last.messages ? last.messages : []).map(function (m) { return m.channelId; }).filter(Boolean)),
+  };
+}
+
+function parseSlackUrl(url) {
+  var match = String(url || "").match(/^(https:\/\/[^/]+)\/client\/([^/?#]+)\/([^/?#]+)/);
+  return {
+    origin: match ? match[1] : "",
+    team: match ? match[2] : "",
+    channel: match ? match[3] : "",
+  };
+}
+
 function extractSlackMessages(html, limit, expectedChannelId) {
   var s = stripNoise(html);
   var re = /<a[^>]*href=["']([^"']*\/archives\/([A-Z0-9]+)\/p\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -73,6 +147,27 @@ function dedupeMessages(messages) {
   return out;
 }
 
+function messageRecord(message) {
+  return {
+    channel_id: message.channelId || null,
+    permalink: message.permalink || null,
+    time: message.time || null,
+    text: message.text,
+    stale: message.stale,
+  };
+}
+
+function unique(values) {
+  var seen = {};
+  var out = [];
+  for (var i = 0; i < values.length; i++) {
+    if (seen[values[i]]) continue;
+    seen[values[i]] = true;
+    out.push(values[i]);
+  }
+  return out;
+}
+
 function stripNoise(input) {
   return String(input || "")
     .replace(/<!--[\s\S]*?-->/g, "")
@@ -96,4 +191,4 @@ function cleanText(input) {
 }
 
 abg.registerTransform("slack-to-markdown", slackToMarkdown);
-abg.log("registered slack-to-markdown transformer");
+abg.log("registered slack-to-markdown transformer and catch-up commands");

@@ -10,5 +10,22 @@
   "transforms": [
     "slack-to-markdown"
   ],
-  "commands": []
+  "commands": [
+    {
+      "name": "catch-up",
+      "description": "Read recent messages from the active Slack channel after the DOM settles.",
+      "args": [
+        { "name": "limit", "type": "number", "required": false, "default": 20 },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    },
+    {
+      "name": "pending",
+      "description": "Read pending-looking messages from the active Slack channel.",
+      "args": [
+        { "name": "limit", "type": "number", "required": false, "default": 20 },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    }
+  ]
 }
