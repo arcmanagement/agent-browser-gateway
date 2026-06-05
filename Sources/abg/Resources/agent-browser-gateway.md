@@ -319,6 +319,74 @@ abg hello greet --name "world"
 
 For deeper details, examples, and installation/update commands, see `docs/PLUGINS.md`.
 
+## ABG learnings を GitHub Discussions に残す
+
+ユーザーに「このABGの学びを残して」「再利用できる形で共有して」と頼まれたら、コード変更が必要な
+Issueではなく GitHub Discussions が適切な場合がある。特に、共有済みタブの使い方、同一originでの
+API replay、cookieをexportしない調査手順、auditしやすいagent workflowのような再利用レシピは
+`arcmanagement/agent-browser-gateway` の Discussions に短く残す。
+
+カテゴリは実際のrepo設定を確認して選ぶ。動く例、再利用レシピ、調査から得た実践知は
+`Show and tell` を優先する。仕様提案や未決の設計相談は `Ideas` / `General` 等の近いカテゴリを選び、
+質問回答の保存なら `Q&A` 系カテゴリを使う。
+
+投稿前のpublic hygiene checklist:
+
+- local absolute paths、local usernames、machine names、private branch names を削る
+- credentials、tokens、cookies、authorization headers、API keys、session IDs を載せない
+- customer names、private URLs、internal project names、非公開Slack/Backlog/Chatwork本文を載せない
+- raw request bodies / raw response bodies / screenshots that expose private data を貼らない
+- コマンド例は必要なら `<repo>`, `<tab-ref>`, `<origin>`, `<redacted>` のように置換する
+- ABG固有の学びは「ユーザーが明示共有したtab」「same-origin operation」「local audit log」
+  「cookie exportを避ける」の境界で説明する
+
+`gh discussion` が使えない環境では GitHub GraphQL API を使う。まずrepo IDとcategory IDを取得する:
+
+```bash
+gh repo view arcmanagement/agent-browser-gateway --json id,nameWithOwner
+
+gh api graphql \
+  -f owner=arcmanagement \
+  -f name=agent-browser-gateway \
+  -f query='
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    discussionCategories(first: 25) {
+      nodes { id name slug }
+    }
+  }
+}'
+```
+
+本文をscrub済みのMarkdownとして保存してから投稿する:
+
+```bash
+REPO_ID="$(gh repo view arcmanagement/agent-browser-gateway --json id -q .id)"
+CATEGORY_ID="<Show and tell category id>"
+
+gh api graphql \
+  -f repositoryId="$REPO_ID" \
+  -f categoryId="$CATEGORY_ID" \
+  -f title="Reusable ABG recipe: replay same-origin API shape from a shared tab" \
+  -f body="$(cat discussion.md)" \
+  -f query='
+mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+  createDiscussion(input: {
+    repositoryId: $repositoryId,
+    categoryId: $categoryId,
+    title: $title,
+    body: $body
+  }) {
+    discussion { url }
+  }
+}'
+```
+
+投稿本文は、何が再利用可能なのか、前提となるABG access mode、使ったCLI primitives、避けた危険な
+近道(cookie export、hidden browser state dump、raw payload sharingなど)、最小の再現手順を含める。
+既存例として Discussion #208 のように、共有済みtabのoriginを使ってアプリ自身のAPI request shapeを
+再現するレシピは `Show and tell` 向け。
+
 ## 注意点
 
 - `abg` の出力は基本 JSON。値を取り出すときは `jq` 等でパースする
