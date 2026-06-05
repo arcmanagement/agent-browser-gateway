@@ -262,6 +262,7 @@ final class PluginHost {
             ("describe", "describe_tab"),
             ("wait", "wait_tab"),
             ("screenshot", "screenshot_tab"),
+            ("navigate", "navigate_tab"),
         ]
         for method in methods {
             let fn: @convention(block) (JSValue?) -> JSValue = { [weak self] options in

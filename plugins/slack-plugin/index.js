@@ -26,6 +26,39 @@ abg.registerCommand("pending", async function (args, context) {
   return await readSettledMessages(args, context, true);
 });
 
+abg.registerCommand("open-channel", async function (args, context) {
+  var missing = requireTab(context, "open-channel");
+  if (missing) return missing;
+
+  var initial = await context.tab.read({});
+  var currentUrl = String(initial.url || "");
+  var current = parseSlackUrl(currentUrl);
+  if (!current.team) {
+    return { ok: false, error: "not_slack_client", message: "The active tab is not a Slack client URL.", url: currentUrl };
+  }
+
+  var channelId = args["channel-id"] || args.channelId || "";
+  var channelName = args.name || "";
+  if (!channelId && channelName) {
+    channelId = findChannelIdByName(String(initial.html || ""), current.team, channelName);
+  }
+  if (!channelId) {
+    return { ok: false, error: "channel_not_found", message: "Could not resolve Slack channel.", channel_name: channelName || null };
+  }
+
+  var targetUrl = current.origin + "/client/" + current.team + "/" + channelId;
+  await context.tab.navigate({ url: targetUrl });
+  var settled = await waitForChannelUrl(context, channelId, Number(args.timeoutMs || 3000));
+  return {
+    ok: true,
+    channel_id: channelId,
+    channel_name: channelName || null,
+    before: current.channel || null,
+    after: settled.channel || channelId,
+    url: settled.url || targetUrl,
+  };
+});
+
 function requireTab(context, command) {
   if (context.tabId == null) {
     return {
@@ -79,6 +112,19 @@ async function readSettledMessages(args, context, pendingOnly) {
   };
 }
 
+async function waitForChannelUrl(context, channelId, timeoutMs) {
+  var started = Date.now();
+  var last = {};
+  while (Date.now() - started <= timeoutMs) {
+    var page = await context.tab.read({});
+    last = parseSlackUrl(String(page.url || ""));
+    last.url = page.url || "";
+    if (last.channel === channelId) return last;
+    await context.tab.wait({ ms: 150 });
+  }
+  return last;
+}
+
 function parseSlackUrl(url) {
   var match = String(url || "").match(/^(https:\/\/[^/]+)\/client\/([^/?#]+)\/([^/?#]+)/);
   return {
@@ -86,6 +132,25 @@ function parseSlackUrl(url) {
     team: match ? match[2] : "",
     channel: match ? match[3] : "",
   };
+}
+
+function findChannelIdByName(html, teamId, name) {
+  var wanted = normalizeChannelName(name);
+  var re = new RegExp("<a[^>]*href=[\"']([^\"']*/client/" + escapeRegExp(teamId) + "/([^\"'/#?]+)[^\"']*)[\"'][^>]*>([\\s\\S]*?)<\\/a>", "gi");
+  var match;
+  while ((match = re.exec(html)) !== null) {
+    var label = normalizeChannelName(cleanText(match[3]));
+    if (label === wanted) return match[2];
+  }
+  return "";
+}
+
+function normalizeChannelName(name) {
+  return String(name || "").replace(/^#/, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function extractSlackMessages(html, limit, expectedChannelId) {
@@ -191,4 +256,4 @@ function cleanText(input) {
 }
 
 abg.registerTransform("slack-to-markdown", slackToMarkdown);
-abg.log("registered slack-to-markdown transformer and catch-up commands");
+abg.log("registered slack-to-markdown transformer and Slack commands");

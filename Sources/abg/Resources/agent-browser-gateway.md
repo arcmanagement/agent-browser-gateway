@@ -205,7 +205,7 @@ abg.registerCommand("greet", async function (args, context) {
   or when the Gateway can auto-bind exactly one shared tab matching the plugin manifest `domains`.
   Zero matches returns `no_matching_tab`; multiple matches returns `ambiguous_tab` with candidates.
 - `context.tab.<action>(options)` exposes Promise-based tab primitives when `context.tabId` exists:
-  `paste`, `clear`, `fill`, `click`, `key`, `read`, `describe`, `wait`, and `screenshot`.
+  `paste`, `clear`, `fill`, `click`, `key`, `read`, `describe`, `wait`, `screenshot`, and `navigate`.
   See `docs/PLUGINS.md` for the full Tab API surface and examples.
 
 Invoke commands as dynamic ABG subcommands:

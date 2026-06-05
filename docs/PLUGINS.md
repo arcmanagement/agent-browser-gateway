@@ -181,6 +181,7 @@ Available methods:
 - `context.tab.wait({ selector, hidden, ms })` mirrors `abg wait`.
 - `context.tab.screenshot({ selector, x, y, width, height })` mirrors `abg screenshot`; clipping uses
   `x`, `y`, `width`, and `height`.
+- `context.tab.navigate({ url })` mirrors `abg navigate`.
 
 Plugin-issued tab actions route through the same Gateway dispatch path as CLI calls, so per-tab
 consent, operation approval, debug bar behavior, and audit logging apply uniformly. Do not shell out
@@ -309,8 +310,8 @@ transform.
 - `plugins/gmail-plugin`, `plugins/slack-plugin`, and `plugins/linear-plugin` are first-party
   per-domain Markdown examples for authenticated app pages. They run locally in the Gateway plugin
   host, use deterministic transforms, and do not make network calls.
-- `plugins/slack-plugin` also provides `catch-up` and `pending` workflow commands that wait for the
-  Slack message DOM to match the active channel before returning.
+- `plugins/slack-plugin` also provides `catch-up`, `pending`, and `open-channel` workflow commands
+  for reading settled channel messages and jumping to a channel by name or id.
 - `plugins/redaction-plugin` provides opt-in local Markdown redaction.
 - `plugins/workflow-plugin` demonstrates command abstraction with `context.tab.clear`,
   `context.tab.paste`, `context.tab.wait`, `context.tab.read`, and `context.tab.click`.
