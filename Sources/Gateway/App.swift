@@ -8,6 +8,7 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
     private let coordinator = GatewayCoordinator.shared
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private var dashboardWindowController: NSWindowController?
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -19,6 +20,11 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDashboardWindow()
+        return true
     }
 
     private func configureStatusItem() {
@@ -39,7 +45,12 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
 
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 390, height: 640)
-        popover.contentViewController = NSHostingController(rootView: MenuBarView(coordinator: coordinator))
+        popover.contentViewController = NSHostingController(
+            rootView: MenuBarView(coordinator: coordinator) { [weak self] in
+                self?.popover.performClose(nil)
+                self?.showDashboardWindow()
+            }
+        )
     }
 
     private func observeCoordinator() {
@@ -64,6 +75,33 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func showDashboardWindow() {
+        if dashboardWindowController == nil {
+            dashboardWindowController = makeDashboardWindowController()
+        }
+
+        guard let window = dashboardWindowController?.window else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func makeDashboardWindowController() -> NSWindowController {
+        let window = NSWindow(
+            contentViewController: NSHostingController(
+                rootView: GatewayWindowView(coordinator: coordinator)
+            )
+        )
+        window.title = windowTitle
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unifiedCompact
+        window.setContentSize(NSSize(width: 1040, height: 700))
+        window.minSize = NSSize(width: 820, height: 560)
+        window.isReleasedWhenClosed = false
+        window.center()
+        return NSWindowController(window: window)
+    }
+
     private func statusImage() -> NSImage? {
         let name = coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled"
         let image = NSImage(systemSymbolName: name, accessibilityDescription: menuBarTitle)
@@ -86,6 +124,10 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemAutosaveName: NSStatusItem.AutosaveName {
         let profile = ABGConstants.runtimeProfile ?? "prod"
         return "co.arcm.AgentBrowserGateway.\(profile).statusItem.v2"
+    }
+
+    private var windowTitle: String {
+        ABGConstants.runtimeProfile.map { "Agent Browser Gateway \($0)" } ?? "Agent Browser Gateway"
     }
 
     private func menuTabLabel(_ tab: PermittedTab) -> String {

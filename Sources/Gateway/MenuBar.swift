@@ -4,6 +4,7 @@ import GatewayCore
 
 struct MenuBarView: View {
     @ObservedObject var coordinator: GatewayCoordinator
+    var openWindow: () -> Void = {}
 
     private let panelWidth: CGFloat = 390
 
@@ -45,7 +46,7 @@ struct MenuBarView: View {
                         profileBadge
                     }
 
-                    Text(statusText)
+                    Text(verbatim: statusText)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -88,7 +89,7 @@ struct MenuBarView: View {
             )
             CompactMetric(
                 title: "Port",
-                value: "\(ABGConstants.wsPort)",
+                value: portText,
                 symbol: "network",
                 color: ABGConstants.runtimeProfile == nil ? .secondary : .orange
             )
@@ -128,7 +129,7 @@ struct MenuBarView: View {
     private func tabRow(_ tab: PermittedTab) -> some View {
         HStack(spacing: 10) {
             VStack(spacing: 2) {
-                Text("\(tab.tabId)")
+                Text(verbatim: String(tab.tabId))
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.blue)
                     .lineLimit(1)
@@ -242,10 +243,16 @@ struct MenuBarView: View {
     private var toolsCard: some View {
         GlassCard {
             HStack(spacing: 8) {
+                ToolButton(title: "Plugins", symbol: "puzzlepiece.extension") {
+                    openWindow()
+                }
+
                 ToolButton(title: "Audit", symbol: "doc.text.magnifyingglass") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: ABGConstants.auditLogPath))
                 }
+            }
 
+            HStack(spacing: 8) {
                 ToolButton(title: "Logs", symbol: "folder") {
                     NSWorkspace.shared.open(ABGConstants.logsDir)
                 }
@@ -272,7 +279,7 @@ struct MenuBarView: View {
             Text("v\(appVersion())")
             Text("multi-profile")
             Spacer(minLength: 0)
-            Text("\(ABGConstants.wsHost):\(ABGConstants.wsPort)")
+            Text(verbatim: endpointText)
         }
         .font(.system(size: 10, weight: .medium, design: .monospaced))
         .foregroundStyle(.secondary)
@@ -301,7 +308,15 @@ struct MenuBarView: View {
     }
 
     private var statusText: String {
-        "Local only - \(ABGConstants.wsHost):\(ABGConstants.wsPort)"
+        "Local only - \(endpointText)"
+    }
+
+    private var portText: String {
+        String(ABGConstants.wsPort)
+    }
+
+    private var endpointText: String {
+        "\(ABGConstants.wsHost):\(portText)"
     }
 
     private func revokeAll() {
@@ -459,7 +474,7 @@ private struct CompactMetric: View {
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(value)
+                Text(verbatim: value)
                     .font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
