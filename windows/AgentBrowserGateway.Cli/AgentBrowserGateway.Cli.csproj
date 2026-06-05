@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentBrowserGateway.Core\AgentBrowserGateway.Core.csproj" />
     <EmbeddedResource Include="Resources\agent-browser-gateway.windows.md" />
+    <EmbeddedResource Include="Resources\abg-plugin-creator.windows.md" />
   </ItemGroup>
 </Project>
