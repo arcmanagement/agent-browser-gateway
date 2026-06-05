@@ -36,7 +36,7 @@ final class GatewayCoordinator: ObservableObject {
 
     func start() {
         pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
-        pluginSummaries = pluginHost.loadedPluginSummaryModels()
+        refreshPluginSummaries()
 
         let ws = WSServer(coordinator: self)
         wsServer = ws
@@ -331,6 +331,10 @@ final class GatewayCoordinator: ObservableObject {
             return await handlePluginCommandRun(req: req)
         case "plugin_reload":
             return await handlePluginReload(req: req)
+        case "plugin_enable":
+            return await handlePluginEnablement(req: req, enabled: true)
+        case "plugin_disable":
+            return await handlePluginEnablement(req: req, enabled: false)
         default:
             return CLIResponse(id: req.id, error: ErrorPayload(code: "unknown_method", message: req.method))
         }
@@ -450,7 +454,7 @@ final class GatewayCoordinator: ObservableObject {
         let params = (req.params?.value as? [String: Any]) ?? [:]
         let pluginName = params["pluginName"] as? String
         let result = pluginHost.reload(plugin: pluginName)
-        pluginSummaries = pluginHost.loadedPluginSummaryModels()
+        refreshPluginSummaries()
         Task {
             await auditLog.log(
                 action: "plugin_reload",
@@ -462,6 +466,49 @@ final class GatewayCoordinator: ObservableObject {
             )
         }
         return CLIResponse(id: req.id, result: AnyCodable(result))
+    }
+
+    private func handlePluginEnablement(req: CLIRequest, enabled: Bool) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let pluginName = params["pluginName"] as? String,
+              !pluginName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "pluginName is required"))
+        }
+
+        do {
+            let result = if enabled {
+                try ABGPluginStateStore.enable(name: pluginName)
+            } else {
+                try ABGPluginStateStore.disable(name: pluginName)
+            }
+            var payload = result.dictionary
+            if enabled {
+                payload["reload"] = pluginHost.reload(plugin: result.name)
+            } else {
+                payload["unloaded"] = pluginHost.unload(at: URL(fileURLWithPath: result.path))
+            }
+            refreshPluginSummaries()
+            Task {
+                await auditLog.log(
+                    action: enabled ? "plugin_enable" : "plugin_disable",
+                    agent: "cli",
+                    details: [
+                        "plugin": AnyCodable(result.name),
+                        "path": AnyCodable(result.path),
+                    ]
+                )
+            }
+            return CLIResponse(id: req.id, result: AnyCodable(payload))
+        } catch let error as ABGPluginManagementError {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: error.code, message: error.localizedDescription))
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "plugin_state_failed", message: error.localizedDescription))
+        }
+    }
+
+    func refreshPluginSummaries() {
+        pluginSummaries = pluginHost.loadedPluginSummaryModels()
     }
 
     private func dispatchPluginTabCommand(method: String, params: [String: Any]) async throws -> AnyCodable {

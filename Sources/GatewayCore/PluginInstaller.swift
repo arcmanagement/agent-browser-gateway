@@ -361,6 +361,10 @@ public enum ABGPluginInstaller {
             throw ABGPluginManagementError.pluginNotFound(name: name, root: pluginsDirectory.path)
         }
         try FileManager.default.removeItem(at: target)
+        try? ABGPluginStateStore.forget(
+            installName: name,
+            userDirectory: pluginsDirectory.deletingLastPathComponent()
+        )
         return ABGPluginUninstallResult(name: name, path: target.path)
     }
 

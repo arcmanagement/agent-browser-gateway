@@ -24,6 +24,8 @@ abg plugin install ./my-plugin --name my-plugin --yes
 
 abg plugin update                         # git pull all user plugins
 abg plugin update my-plugin
+abg plugin disable my-plugin              # keep files, stop loading commands/transforms
+abg plugin enable my-plugin               # re-enable and reload when the Gateway is running
 abg plugin reload my-plugin               # reload in the running Gateway without re-sharing tabs
 abg plugin reload                         # reload all plugins on the Gateway search paths
 abg plugin uninstall my-plugin
@@ -31,7 +33,7 @@ abg plugin uninstall my-plugin
 
 The macOS plugin browser exposes the same install path through the `+` button. Paste `user/repo`,
 an HTTPS GitHub URL, an SSH Git URL, or another `git clone` URL. User-installed plugins also show
-Update and Uninstall actions in the detail view.
+Update, Enable/Disable, and Uninstall actions in the detail view.
 
 `install` requires `--yes` in the CLI because plugin code is arbitrary JavaScript loaded by the
 local Gateway. Repository installs use the local `git` command, so private repositories use the
@@ -41,6 +43,12 @@ not ask for or store GitHub tokens, and HTTPS URLs with embedded credentials are
 Update runs `git pull --ff-only` for git-backed user plugins. Uninstall only removes directories
 under the active user plugin root. Built-in plugins come from the app bundle, and Local Dev plugins
 are external working copies, so the browser does not uninstall them.
+
+Disable keeps the plugin directory in place but stops ABG from loading that user plugin's commands
+and transforms. Enable removes the disabled marker and reloads the plugin when the Gateway is
+running. This state is stored as profile-local filesystem state in `plugin-state.json` under the
+active ABG user directory (`~/.abg/` for production or `~/.abg-dev/` for dev), not in an app
+database.
 
 ## Directory Layout
 

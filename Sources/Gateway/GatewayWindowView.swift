@@ -64,7 +64,7 @@ struct GatewayWindowView: View {
             VStack(alignment: .leading, spacing: 6) {
                 SidebarItem(
                     title: "Plugins",
-                    subtitle: "\(coordinator.pluginSummaries.count) loaded",
+                    subtitle: "\(loadedPluginCount) loaded",
                     symbol: "puzzlepiece.extension",
                     isSelected: true
                 )
@@ -285,6 +285,9 @@ struct GatewayWindowView: View {
                         .font(.system(size: 28, weight: .semibold))
                         .lineLimit(1)
                     SourceBadge(source: source(for: plugin))
+                    if !plugin.isEnabled {
+                        PluginStatusBadge(text: "OFF", color: .secondary)
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -318,6 +321,7 @@ struct GatewayWindowView: View {
             PluginStat(title: "Transforms", value: "\(plugin.transforms.count)", symbol: "wand.and.stars")
             PluginStat(title: "Domains", value: "\(plugin.domains.count)", symbol: "globe")
             PluginStat(title: "Source", value: source(for: plugin).title, symbol: source(for: plugin).symbol)
+            PluginStat(title: "Status", value: plugin.isEnabled ? "Enabled" : "Disabled", symbol: plugin.isLoaded ? "checkmark.circle" : "pause.circle")
         }
     }
 
@@ -327,6 +331,26 @@ struct GatewayWindowView: View {
             PluginSection(title: "Manage", symbol: "gearshape") {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
+                        if plugin.isEnabled {
+                            Button {
+                                Task { await disableUserPlugin(plugin) }
+                            } label: {
+                                Label("Disable", systemImage: "pause.circle")
+                            }
+                            .buttonStyle(PluginSecondaryButtonStyle())
+                            .disabled(isOperating(on: plugin))
+                            .help("Disable this user plugin without deleting it")
+                        } else {
+                            Button {
+                                Task { await enableUserPlugin(plugin) }
+                            } label: {
+                                Label("Enable", systemImage: "play.circle")
+                            }
+                            .buttonStyle(PluginPrimaryButtonStyle())
+                            .disabled(isOperating(on: plugin))
+                            .help("Enable and reload this user plugin")
+                        }
+
                         Button {
                             Task { await updateUserPlugin(plugin) }
                         } label: {
@@ -362,7 +386,7 @@ struct GatewayWindowView: View {
                             .foregroundStyle(.green)
                     }
 
-                    Text("Managed plugins live in the active ABG user plugin directory. Updates use local git authentication; no tokens are stored by ABG.")
+                    Text("Managed plugins live in the active ABG user plugin directory. Disabled state is profile-local filesystem state; updates use local git authentication and ABG stores no tokens.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -505,6 +529,10 @@ struct GatewayWindowView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    private var loadedPluginCount: Int {
+        coordinator.pluginSummaries.filter { $0.isLoaded }.count
+    }
+
     private var selectedPlugin: PluginHost.PluginSummary? {
         if let selectedPluginID,
            let plugin = filteredPlugins.first(where: { $0.id == selectedPluginID }) {
@@ -551,7 +579,7 @@ struct GatewayWindowView: View {
 
     private func reloadPlugins() {
         let _ = coordinator.pluginHost.reload()
-        coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+        coordinator.refreshPluginSummaries()
     }
 
     @MainActor
@@ -567,7 +595,7 @@ struct GatewayWindowView: View {
         if !didReload, result.installName != result.name {
             _ = coordinator.pluginHost.reload(plugin: result.installName)
         }
-        coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+        coordinator.refreshPluginSummaries()
         selectedFilter = .all
         selectedPluginID = result.path
     }
@@ -587,10 +615,54 @@ struct GatewayWindowView: View {
             pluginManagementAlert = .error(message)
             return
         }
-        reloadLoadedPlugin(plugin)
-        coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+        if plugin.isEnabled {
+            reloadLoadedPlugin(plugin)
+        }
+        coordinator.refreshPluginSummaries()
         selectedPluginID = plugin.id
-        pluginManagementMessage = result.output?.isEmpty == false ? result.output : "Plugin is up to date."
+        if !plugin.isEnabled {
+            pluginManagementMessage = "Plugin updated while disabled."
+        } else {
+            pluginManagementMessage = result.output?.isEmpty == false ? result.output : "Plugin is up to date."
+        }
+    }
+
+    @MainActor
+    private func enableUserPlugin(_ plugin: PluginHost.PluginSummary) async {
+        guard source(for: plugin) == .user else { return }
+        pluginOperation = .enabling(plugin.id)
+        pluginManagementMessage = nil
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try ABGPluginStateStore.enable(at: URL(fileURLWithPath: plugin.path))
+            }.value
+            reloadLoadedPlugin(plugin)
+            coordinator.refreshPluginSummaries()
+            selectedPluginID = plugin.id
+            pluginManagementMessage = "Plugin enabled."
+        } catch {
+            pluginManagementAlert = .error(error.localizedDescription)
+        }
+        pluginOperation = nil
+    }
+
+    @MainActor
+    private func disableUserPlugin(_ plugin: PluginHost.PluginSummary) async {
+        guard source(for: plugin) == .user else { return }
+        pluginOperation = .disabling(plugin.id)
+        pluginManagementMessage = nil
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try ABGPluginStateStore.disable(at: URL(fileURLWithPath: plugin.path))
+            }.value
+            _ = coordinator.pluginHost.unload(at: URL(fileURLWithPath: plugin.path))
+            coordinator.refreshPluginSummaries()
+            selectedPluginID = plugin.id
+            pluginManagementMessage = "Plugin disabled."
+        } catch {
+            pluginManagementAlert = .error(error.localizedDescription)
+        }
+        pluginOperation = nil
     }
 
     @MainActor
@@ -603,7 +675,7 @@ struct GatewayWindowView: View {
                 try ABGPluginInstaller.uninstall(at: URL(fileURLWithPath: plugin.path))
             }.value
             _ = coordinator.pluginHost.unload(plugin: plugin.name)
-            coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+            coordinator.refreshPluginSummaries()
             selectedPluginID = nil
             selectedFilter = .all
         } catch {
@@ -658,11 +730,13 @@ struct GatewayWindowView: View {
 
 private enum PluginManagementOperation: Equatable {
     case updating(String)
+    case enabling(String)
+    case disabling(String)
     case uninstalling(String)
 
     var pluginID: String {
         switch self {
-        case .updating(let pluginID), .uninstalling(let pluginID):
+        case .updating(let pluginID), .enabling(let pluginID), .disabling(let pluginID), .uninstalling(let pluginID):
             return pluginID
         }
     }
@@ -671,6 +745,10 @@ private enum PluginManagementOperation: Equatable {
         switch self {
         case .updating:
             return "Updating plugin..."
+        case .enabling:
+            return "Enabling plugin..."
+        case .disabling:
+            return "Disabling plugin..."
         case .uninstalling:
             return "Uninstalling plugin..."
         }
@@ -886,6 +964,14 @@ private enum PluginSource {
         }
     }
 
+    var badgeTitle: String {
+        switch self {
+        case .bundled: return "Built-in"
+        case .user: return "User"
+        case .local: return "Local Dev"
+        }
+    }
+
     var symbol: String {
         switch self {
         case .bundled: return "shippingbox"
@@ -950,6 +1036,9 @@ private struct PluginListRow: View {
                             .font(.system(size: 14, weight: .semibold))
                             .lineLimit(1)
                         SourceBadge(source: source)
+                        if !plugin.isEnabled {
+                            PluginStatusBadge(text: "OFF", color: .secondary)
+                        }
                     }
 
                     Text(plugin.description ?? "No description")
@@ -962,6 +1051,7 @@ private struct PluginListRow: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .opacity(plugin.isEnabled ? 1 : 0.62)
         }
         .buttonStyle(PluginListButtonStyle(isSelected: isSelected))
     }
@@ -1017,7 +1107,7 @@ private struct SourceBadge: View {
     let source: PluginSource
 
     var body: some View {
-        Text(source.title.uppercased())
+        Text(source.badgeTitle.uppercased())
             .font(.system(size: 10, weight: .bold))
             .foregroundStyle(source.color)
             .padding(.horizontal, 6)
@@ -1025,6 +1115,23 @@ private struct SourceBadge: View {
             .background(
                 Capsule(style: .continuous)
                     .fill(source.color.opacity(0.12))
+            )
+    }
+}
+
+private struct PluginStatusBadge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(color.opacity(0.12))
             )
     }
 }
@@ -1177,6 +1284,20 @@ private struct PluginPrimaryButtonStyle: ButtonStyle {
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(configuration.isPressed ? Color.blue.opacity(0.20) : Color.blue.opacity(0.12))
+            )
+    }
+}
+
+private struct PluginSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(configuration.isPressed ? Color.primary.opacity(0.14) : Color.primary.opacity(0.08))
             )
     }
 }

@@ -190,6 +190,54 @@ final class PluginInstallerTests: XCTestCase {
         }
     }
 
+    func testDisableAndEnablePersistProfileState() throws {
+        let userDir = try makeTempDirectory("abg-user-dir")
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        let plugin = pluginsRoot.appendingPathComponent("toggle-me", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(at: plugin)
+
+        let disabled = try ABGPluginStateStore.disable(
+            name: "toggle-me",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        XCTAssertEqual(disabled.name, "toggle-me")
+        XCTAssertFalse(disabled.enabled)
+        XCTAssertEqual(
+            ABGPluginStateStore.disabledPluginNames(userDirectory: userDir),
+            Set(["toggle-me"])
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ABGPluginStateStore.stateFile(userDirectory: userDir).path))
+
+        let enabled = try ABGPluginStateStore.enable(
+            name: "toggle-me",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        XCTAssertTrue(enabled.enabled)
+        XCTAssertTrue(ABGPluginStateStore.disabledPluginNames(userDirectory: userDir).isEmpty)
+    }
+
+    func testUninstallClearsDisabledProfileState() throws {
+        let userDir = try makeTempDirectory("abg-user-dir")
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        let plugin = pluginsRoot.appendingPathComponent("remove-disabled", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(at: plugin)
+        _ = try ABGPluginStateStore.disable(
+            name: "remove-disabled",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        _ = try ABGPluginInstaller.uninstall(name: "remove-disabled", pluginsDirectory: pluginsRoot)
+
+        XCTAssertTrue(ABGPluginStateStore.disabledPluginNames(userDirectory: userDir).isEmpty)
+    }
+
     private func makeTempDirectory(_ prefix: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)

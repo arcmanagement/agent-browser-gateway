@@ -355,6 +355,8 @@ abg plugin install user/repo --yes
 abg plugin install https://github.com/user/repo.git --yes
 abg plugin install git@github.com:user/private-plugin.git --yes
 abg plugin update                         # git pull user plugins
+abg plugin disable my-plugin              # keep files, stop loading commands/transforms
+abg plugin enable my-plugin               # re-enable and reload when the Gateway is running
 abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
@@ -368,6 +370,9 @@ By default user plugins live under `~/.abg/plugins/`; `ABG_PORT=8766` dev runs u
 The macOS plugin browser can update or uninstall only these user plugins. Built-in plugins are
 bundled with the app, and Local Dev plugins are external working copies, so the browser never
 removes them.
+User plugins can also be disabled without deleting their directory. ABG persists that toggle in
+the active profile's filesystem state (`plugin-state.json` under `~/.abg/` or `~/.abg-dev/`);
+there is no app database for plugin enablement.
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 

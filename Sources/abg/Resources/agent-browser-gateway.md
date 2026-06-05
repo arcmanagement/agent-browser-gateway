@@ -143,6 +143,9 @@ git credential helpers, or GitHub CLI-backed credentials; ABG does not store Git
 The plugin browser can update or uninstall only user plugins under that directory. Built-in plugins
 come from the app bundle, and Local Dev plugins are external working copies, so the browser never
 removes them.
+User plugins can also be disabled without deleting their directories. Disabled state is stored as
+profile-local filesystem state in `plugin-state.json` under `~/.abg/` or `~/.abg-dev/`; ABG does not
+use an app database for plugin enablement.
 
 Recommended layout:
 
