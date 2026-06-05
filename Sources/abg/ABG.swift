@@ -2197,9 +2197,19 @@ struct InstallSkill: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
-        let bundledVersion = SkillBundle.version
         for base in dirs {
-            try installOne(into: base, version: bundledVersion)
+            try installOne(
+                into: base,
+                skillName: "agent-browser-gateway",
+                markdown: SkillBundle.markdown,
+                version: SkillBundle.version
+            )
+            try installOne(
+                into: base,
+                skillName: "abg-plugin-creator",
+                markdown: SkillBundle.pluginCreatorMarkdown,
+                version: SkillBundle.pluginCreatorVersion
+            )
         }
 
         // Migrate away from the legacy single-file install path.
@@ -2210,14 +2220,14 @@ struct InstallSkill: AsyncParsableCommand {
         }
     }
 
-    private func installOne(into base: URL, version: String) throws {
-        let skillDir = base.appendingPathComponent("agent-browser-gateway", isDirectory: true)
+    private func installOne(into base: URL, skillName: String, markdown: String, version: String) throws {
+        let skillDir = base.appendingPathComponent(skillName, isDirectory: true)
         try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
         let dest = skillDir.appendingPathComponent("SKILL.md")
         let installedVersion = readInstalledVersion(at: dest)
         let installedMarkdown = (try? String(contentsOf: dest, encoding: .utf8))
 
-        if let installed = installedVersion, installed == version, installedMarkdown == SkillBundle.markdown {
+        if let installed = installedVersion, installed == version, installedMarkdown == markdown {
             print("up-to-date: \(dest.path) (v\(version))")
             return
         }
@@ -2227,7 +2237,7 @@ struct InstallSkill: AsyncParsableCommand {
             return
         }
 
-        try SkillBundle.markdown.write(to: dest, atomically: true, encoding: .utf8)
+        try markdown.write(to: dest, atomically: true, encoding: .utf8)
         if let installed = installedVersion {
             if installed == version {
                 print("updated: content changed at \(dest.path) (v\(version))")

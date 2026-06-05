@@ -34,11 +34,14 @@ internal static class SkillInstaller
             _ => throw new ArgumentException("--target must be claude, codex, or both")
         };
 
-        var markdown = ReadBundledSkill();
+        var markdown = ReadBundledSkill("agent-browser-gateway.windows.md");
         var bundledVersion = ReadVersion(markdown) ?? AbgPaths.Version;
+        var pluginCreatorMarkdown = ReadBundledSkill("abg-plugin-creator.windows.md");
+        var pluginCreatorVersion = ReadVersion(pluginCreatorMarkdown) ?? AbgPaths.Version;
         foreach (var baseDir in bases)
         {
-            InstallOne(baseDir, markdown, bundledVersion, noUpgrade);
+            InstallOne(baseDir, "agent-browser-gateway", markdown, bundledVersion, noUpgrade);
+            InstallOne(baseDir, "abg-plugin-creator", pluginCreatorMarkdown, pluginCreatorVersion, noUpgrade);
         }
 
         var legacy = Path.Combine(AbgPaths.ClaudeSkillsDir, "agent-browser-gateway.md");
@@ -50,9 +53,9 @@ internal static class SkillInstaller
         return 0;
     }
 
-    private static void InstallOne(string baseDir, string markdown, string bundledVersion, bool noUpgrade)
+    private static void InstallOne(string baseDir, string skillName, string markdown, string bundledVersion, bool noUpgrade)
     {
-        var skillDir = Path.Combine(baseDir, "agent-browser-gateway");
+        var skillDir = Path.Combine(baseDir, skillName);
         Directory.CreateDirectory(skillDir);
         var dest = Path.Combine(skillDir, "SKILL.md");
         var installedMarkdown = File.Exists(dest) ? File.ReadAllText(dest) : null;
@@ -84,13 +87,13 @@ internal static class SkillInstaller
         }
     }
 
-    private static string ReadBundledSkill()
+    private static string ReadBundledSkill(string suffix)
     {
         var assembly = Assembly.GetExecutingAssembly();
         var resource = assembly.GetManifestResourceNames()
-            .FirstOrDefault(name => name.EndsWith("agent-browser-gateway.windows.md", StringComparison.Ordinal));
-        if (resource is null) throw new InvalidOperationException("Bundled Windows skill resource was not found.");
-        using var stream = assembly.GetManifestResourceStream(resource) ?? throw new InvalidOperationException("Bundled Windows skill resource could not be opened.");
+            .FirstOrDefault(name => name.EndsWith(suffix, StringComparison.Ordinal));
+        if (resource is null) throw new InvalidOperationException($"Bundled Windows skill resource was not found: {suffix}");
+        using var stream = assembly.GetManifestResourceStream(resource) ?? throw new InvalidOperationException($"Bundled Windows skill resource could not be opened: {suffix}");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }

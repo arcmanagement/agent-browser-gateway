@@ -221,6 +221,9 @@ abg plugin list
 abg plugin reload hello
 ```
 
+`abg install-skill` installs or updates both bundled skills: `agent-browser-gateway` for ABG usage and
+`abg-plugin-creator` for scaffolding ABG plugins.
+
 `--key value` becomes a string/number/boolean value in `args`, `--flag` becomes `true`, JSON
 `--stdin` and `--json` merge object values into `args`, and non-JSON stdin is passed as
 `args.stdin`. `abg <plugin> --help` shows manifest-driven command and arg specs. `abg plugin list`

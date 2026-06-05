@@ -318,7 +318,7 @@ The agent talks to ABG by running `abg` from the shell. This is not the only des
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
-- **Skill ergonomics** — Claude Code and Codex skills (`~/.claude/skills/agent-browser-gateway/` and `~/.codex/skills/agent-browser-gateway/`, installed by `abg install-skill`) teach the agent the CLI in context
+- **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
 
 A thin MCP wrapper around the same CLI is on the future roadmap for ecosystem coverage. The CLI remains the source of truth.
 
