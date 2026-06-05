@@ -7,6 +7,7 @@ struct GatewayWindowView: View {
     @State private var searchText = ""
     @State private var selectedFilter: PluginFilter = .all
     @State private var selectedPluginID: String?
+    @AppStorage("pluginBrowserAppearance") private var appearanceRawValue = PluginBrowserAppearance.system.rawValue
 
     var body: some View {
         HStack(spacing: 0) {
@@ -25,7 +26,7 @@ struct GatewayWindowView: View {
         }
         .frame(minWidth: 820, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(selectedAppearance.colorScheme)
     }
 
     private var sidebar: some View {
@@ -71,6 +72,22 @@ struct GatewayWindowView: View {
                     }
                     .buttonStyle(PluginSidebarButtonStyle(isSelected: selectedFilter == filter))
                 }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Appearance")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Appearance", selection: appearanceBinding) {
+                    ForEach(PluginBrowserAppearance.allCases) { appearance in
+                        Text(appearance.title).tag(appearance)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
 
             Spacer(minLength: 0)
@@ -410,8 +427,9 @@ struct GatewayWindowView: View {
     }
 
     private func source(for plugin: PluginHost.PluginSummary) -> PluginSource {
-        let path = plugin.path
-        if path.contains("/.abg/") || path.contains("/.abg-dev/") {
+        let path = URL(fileURLWithPath: plugin.path).standardizedFileURL.path
+        let userPluginsPath = ABGConstants.userPluginsDir.standardizedFileURL.path
+        if path == userPluginsPath || path.hasPrefix(userPluginsPath + "/") {
             return .user
         }
         if path.contains("/Contents/Resources/plugins/") || path.contains("/agent-browser-gateway/plugins/") {
@@ -452,6 +470,41 @@ struct GatewayWindowView: View {
     private var runtimeProfileColor: Color {
         ABGConstants.runtimeProfile == nil ? .secondary : .orange
     }
+
+    private var selectedAppearance: PluginBrowserAppearance {
+        PluginBrowserAppearance(rawValue: appearanceRawValue) ?? .system
+    }
+
+    private var appearanceBinding: Binding<PluginBrowserAppearance> {
+        Binding(
+            get: { selectedAppearance },
+            set: { appearanceRawValue = $0.rawValue }
+        )
+    }
+}
+
+private enum PluginBrowserAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 private enum PluginFilter: String, CaseIterable, Identifiable {
@@ -465,9 +518,9 @@ private enum PluginFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return "All"
-        case .bundled: return "Bundled"
-        case .user: return "User"
-        case .local: return "Local"
+        case .bundled: return "Built-in"
+        case .user: return "User Plugins"
+        case .local: return "Local Dev"
         }
     }
 
@@ -497,9 +550,9 @@ private enum PluginSource {
 
     var title: String {
         switch self {
-        case .bundled: return "Bundled"
-        case .user: return "User"
-        case .local: return "Local"
+        case .bundled: return "Built-in"
+        case .user: return "User Plugins"
+        case .local: return "Local Dev"
         }
     }
 
