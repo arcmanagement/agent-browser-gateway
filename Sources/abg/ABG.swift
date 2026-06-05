@@ -1943,39 +1943,20 @@ struct PluginInstall: AsyncParsableCommand {
         }
 
         let userDir = try userPluginsDirectory()
-        let installName = sanitizePluginName(name ?? inferredPluginName(from: source))
-        let destination = userDir.appendingPathComponent(installName, isDirectory: true)
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destination.path) {
-            guard force else {
-                try failWithJSON([
-                    "error": "plugin_exists",
-                    "message": "\(installName) is already installed. Use --force to replace it.",
-                ])
-            }
-            try fm.removeItem(at: destination)
-        }
-
-        if localPluginSourceExists(source) {
-            try fm.copyItem(at: URL(fileURLWithPath: (source as NSString).expandingTildeInPath), to: destination)
-        } else {
-            let cloneSource = normalizedGitSource(source)
-            try runProcess("/usr/bin/env", ["git", "clone", "--depth", "1", cloneSource, destination.path])
-        }
-
-        guard fm.fileExists(atPath: destination.appendingPathComponent("index.js").path) else {
-            try? fm.removeItem(at: destination)
+        do {
+            let result = try ABGPluginInstaller.install(
+                source: source,
+                name: name,
+                force: force,
+                pluginsDirectory: userDir
+            )
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginInstallError {
             try failWithJSON([
-                "error": "invalid_plugin",
-                "message": "Installed source does not contain index.js at plugin root.",
+                "error": error.code,
+                "message": error.localizedDescription,
             ])
         }
-
-        printJSON(pluginInfo(at: destination, source: "user") ?? [
-            "name": installName,
-            "path": destination.path,
-            "source": "user",
-        ])
     }
 }
 
@@ -2133,28 +2114,19 @@ func readPluginManifest(at dir: URL) -> PluginManifest? {
 }
 
 func localPluginSourceExists(_ source: String) -> Bool {
-    var isDir: ObjCBool = false
-    return FileManager.default.fileExists(
-        atPath: (source as NSString).expandingTildeInPath,
-        isDirectory: &isDir
-    ) && isDir.boolValue
+    ABGPluginInstaller.localPluginSourceExists(source)
 }
 
 func normalizedGitSource(_ source: String) -> String {
-    if source.contains("://") || source.hasPrefix("git@") { return source }
-    if source.split(separator: "/").count == 2 { return "https://github.com/\(source).git" }
-    return source
+    ABGPluginInstaller.normalizedGitSource(source)
 }
 
 func inferredPluginName(from source: String) -> String {
-    let trimmed = source.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    let last = trimmed.split(separator: "/").last.map(String.init) ?? "plugin"
-    return last.hasSuffix(".git") ? String(last.dropLast(4)) : last
+    ABGPluginInstaller.inferredPluginName(from: source)
 }
 
 func sanitizePluginName(_ name: String) -> String {
-    let sanitized = name.replacingOccurrences(of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression)
-    return sanitized.isEmpty ? "plugin" : sanitized
+    ABGPluginInstaller.sanitizePluginName(name)
 }
 
 @discardableResult
