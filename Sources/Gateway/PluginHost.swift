@@ -72,6 +72,8 @@ final class PluginHost {
         let transforms: [String]
         let registeredCommands: [String]
         let commands: [CommandSummary]
+        let isEnabled: Bool
+        let isLoaded: Bool
     }
 
     private struct LoadResult {
@@ -86,21 +88,28 @@ final class PluginHost {
     private var transformOwners: [String: String] = [:]
     private var commands: [String: [String: JSValue]] = [:]
     private var searchPaths: [URL] = []
+    private let userPluginsDirectory: URL
+    private let userDirectory: URL
     private let abgVersion: String
     private let tabDispatcher: @MainActor (String, [String: Any]) async throws -> AnyCodable
 
     init(
         abgVersion: String,
+        userPluginsDirectory: URL = ABGConstants.userPluginsDir,
+        userDirectory: URL = ABGConstants.abgUserDir,
         tabDispatcher: @escaping @MainActor (String, [String: Any]) async throws -> AnyCodable = { _, _ in
             throw PluginTabAPIError.dispatcherUnavailable
         }
     ) {
         self.abgVersion = abgVersion
+        self.userPluginsDirectory = userPluginsDirectory.standardizedFileURL
+        self.userDirectory = userDirectory.standardizedFileURL
         self.tabDispatcher = tabDispatcher
     }
 
     func loadAll(from searchPaths: [URL]) {
         self.searchPaths = searchPaths
+        unloadDisabledUserPlugins()
         for dir in searchPaths {
             loadPluginsInDir(dir)
         }
@@ -202,6 +211,7 @@ final class PluginHost {
     }
 
     func reload(plugin pluginName: String? = nil) -> [[String: Any]] {
+        unloadDisabledUserPlugins()
         let dirs = pluginName.map { findPluginDirectories(named: $0) } ?? pluginDirectories(in: searchPaths)
         guard !dirs.isEmpty else {
             return [[
@@ -255,6 +265,18 @@ final class PluginHost {
             return false
         }
         removePluginState(name: pluginName)
+        return true
+    }
+
+    @discardableResult
+    func unload(at pluginDirectory: URL) -> Bool {
+        let directoryPath = pluginDirectory.standardizedFileURL.path
+        guard let plugin = plugins.first(where: {
+            $0.sourceURL.deletingLastPathComponent().standardizedFileURL.path == directoryPath
+        }) else {
+            return false
+        }
+        removePluginState(name: plugin.name)
         return true
     }
 
@@ -398,6 +420,7 @@ final class PluginHost {
             var entryIsDir: ObjCBool = false
             guard fm.fileExists(atPath: entry.path, isDirectory: &entryIsDir), entryIsDir.boolValue
             else { continue }
+            guard !isDisabledUserPluginDirectory(entry) else { continue }
             let indexJs = entry.appendingPathComponent("index.js")
             guard fm.fileExists(atPath: indexJs.path) else { continue }
             let manifest = readManifest(from: entry)
@@ -511,7 +534,7 @@ final class PluginHost {
     }
 
     func loadedPluginSummaries() -> [[String: Any]] {
-        plugins.map { plugin in
+        var rows = plugins.map { plugin in
             var dict: [String: Any] = [
                 "name": plugin.name,
                 "path": plugin.sourceURL.deletingLastPathComponent().path,
@@ -521,6 +544,8 @@ final class PluginHost {
             if let description = plugin.manifest?.description { dict["description"] = description }
             if let domains = plugin.manifest?.domains { dict["domains"] = domains }
             if let transforms = plugin.manifest?.transforms { dict["transforms"] = transforms }
+            dict["enabled"] = true
+            dict["loaded"] = true
             let registeredCommands = (commands[plugin.name] ?? [:]).keys.sorted()
             if !registeredCommands.isEmpty { dict["registeredCommands"] = registeredCommands }
             if let commands = plugin.manifest?.commands {
@@ -528,31 +553,99 @@ final class PluginHost {
             }
             return dict
         }
+        let loadedPaths = Set(rows.compactMap { $0["path"] as? String })
+        rows.append(contentsOf: disabledUserPluginSummaryDictionaries(excluding: loadedPaths))
+        return rows
+    }
+
+    private func disabledUserPluginSummaryDictionaries(excluding loadedPaths: Set<String>) -> [[String: Any]] {
+        let disabledNames = ABGPluginStateStore.disabledPluginNames(userDirectory: userDirectory)
+        guard !disabledNames.isEmpty else { return [] }
+        return pluginDirectories(in: [userPluginsDirectory], includeDisabled: true)
+            .filter { disabledNames.contains($0.lastPathComponent) }
+            .filter { !loadedPaths.contains($0.path) }
+            .map { dir in
+                let manifest = readManifest(from: dir)
+                var dict: [String: Any] = [
+                    "name": manifest?.name ?? dir.lastPathComponent,
+                    "source": "user",
+                    "path": dir.path,
+                    "enabled": false,
+                    "loaded": false,
+                ]
+                if let version = manifest?.version { dict["version"] = version }
+                if let author = manifest?.author { dict["author"] = author }
+                if let description = manifest?.description { dict["description"] = description }
+                if let domains = manifest?.domains { dict["domains"] = domains }
+                if let transforms = manifest?.transforms { dict["transforms"] = transforms }
+                if let commands = manifest?.commands { dict["commands"] = commands.map { commandSpecDictionary($0) } }
+                return dict
+            }
     }
 
     func loadedPluginSummaryModels() -> [PluginSummary] {
-        plugins.map { plugin in
-            let registeredCommands = (commands[plugin.name] ?? [:]).keys.sorted()
-            return PluginSummary(
-                id: plugin.sourceURL.deletingLastPathComponent().path,
-                name: plugin.name,
-                version: plugin.manifest?.version,
-                author: plugin.manifest?.author,
-                description: plugin.manifest?.description,
-                path: plugin.sourceURL.deletingLastPathComponent().path,
-                domains: plugin.manifest?.domains ?? [],
-                transforms: plugin.manifest?.transforms ?? [],
-                registeredCommands: registeredCommands,
-                commands: (plugin.manifest?.commands ?? []).map { spec in
-                    CommandSummary(
-                        id: "\(plugin.name).\(spec.name)",
-                        name: spec.name,
-                        description: spec.description,
-                        args: (spec.args ?? []).map { $0.name }
-                    )
-                }
-            )
-        }
+        var summaries = plugins.map { loadedPluginSummaryModel($0) }
+        let loadedPaths = Set(summaries.map(\.path))
+        summaries.append(contentsOf: disabledUserPluginSummaryModels(excluding: loadedPaths))
+        return summaries
+    }
+
+    private func loadedPluginSummaryModel(_ plugin: LoadedPlugin) -> PluginSummary {
+        let registeredCommands = (commands[plugin.name] ?? [:]).keys.sorted()
+        return PluginSummary(
+            id: plugin.sourceURL.deletingLastPathComponent().path,
+            name: plugin.name,
+            version: plugin.manifest?.version,
+            author: plugin.manifest?.author,
+            description: plugin.manifest?.description,
+            path: plugin.sourceURL.deletingLastPathComponent().path,
+            domains: plugin.manifest?.domains ?? [],
+            transforms: plugin.manifest?.transforms ?? [],
+            registeredCommands: registeredCommands,
+            commands: (plugin.manifest?.commands ?? []).map { spec in
+                CommandSummary(
+                    id: "\(plugin.name).\(spec.name)",
+                    name: spec.name,
+                    description: spec.description,
+                    args: (spec.args ?? []).map { $0.name }
+                )
+            },
+            isEnabled: true,
+            isLoaded: true
+        )
+    }
+
+    private func disabledUserPluginSummaryModels(excluding loadedPaths: Set<String>) -> [PluginSummary] {
+        let disabledNames = ABGPluginStateStore.disabledPluginNames(userDirectory: userDirectory)
+        guard !disabledNames.isEmpty else { return [] }
+        return pluginDirectories(in: [userPluginsDirectory], includeDisabled: true)
+            .filter { disabledNames.contains($0.lastPathComponent) }
+            .filter { !loadedPaths.contains($0.path) }
+            .map { dir in
+                let manifest = readManifest(from: dir)
+                let name = manifest?.name ?? dir.lastPathComponent
+                return PluginSummary(
+                    id: dir.path,
+                    name: name,
+                    version: manifest?.version,
+                    author: manifest?.author,
+                    description: manifest?.description,
+                    path: dir.path,
+                    domains: manifest?.domains ?? [],
+                    transforms: manifest?.transforms ?? [],
+                    registeredCommands: [],
+                    commands: (manifest?.commands ?? []).map { spec in
+                        CommandSummary(
+                            id: "\(name).\(spec.name)",
+                            name: spec.name,
+                            description: spec.description,
+                            args: (spec.args ?? []).map { $0.name }
+                        )
+                    },
+                    isEnabled: false,
+                    isLoaded: false
+                )
+            }
     }
 
     private func readManifest(from dir: URL) -> Manifest? {
@@ -567,6 +660,10 @@ final class PluginHost {
     }
 
     private func pluginDirectories(in roots: [URL]) -> [URL] {
+        pluginDirectories(in: roots, includeDisabled: false)
+    }
+
+    private func pluginDirectories(in roots: [URL], includeDisabled: Bool) -> [URL] {
         var seen = Set<String>()
         var dirs: [URL] = []
         for root in roots {
@@ -579,7 +676,8 @@ final class PluginHost {
                 guard FileManager.default.fileExists(atPath: entry.path, isDirectory: &isDir),
                       isDir.boolValue,
                       FileManager.default.fileExists(atPath: entry.appendingPathComponent("index.js").path),
-                      !seen.contains(entry.path)
+                      !seen.contains(entry.path),
+                      includeDisabled || !isDisabledUserPluginDirectory(entry)
                 else { continue }
                 seen.insert(entry.path)
                 dirs.append(entry)
@@ -593,6 +691,23 @@ final class PluginHost {
             let manifest = readManifest(from: dir)
             return manifest?.name == name || dir.lastPathComponent == name
         }
+    }
+
+    private func unloadDisabledUserPlugins() {
+        for plugin in plugins {
+            let directory = plugin.sourceURL.deletingLastPathComponent()
+            if isDisabledUserPluginDirectory(directory) {
+                removePluginState(name: plugin.name)
+            }
+        }
+    }
+
+    private func isDisabledUserPluginDirectory(_ directory: URL) -> Bool {
+        let dir = directory.standardizedFileURL
+        guard dir.deletingLastPathComponent().standardizedFileURL.path == userPluginsDirectory.path else {
+            return false
+        }
+        return ABGPluginStateStore.isDisabled(installName: dir.lastPathComponent, userDirectory: userDirectory)
     }
 
     private func registerCommand(plugin: String, commandName: String, fn: JSValue) {

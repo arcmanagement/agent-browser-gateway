@@ -26,7 +26,7 @@ struct UDSClient {
         self.path = path
     }
 
-    func call(method: String, params: [String: Any]? = nil) throws -> Any? {
+    func call(method: String, params: [String: Any]? = nil, suppressErrors: Bool = false) throws -> Any? {
         let id = UUID().uuidString
         let req: [String: Any] = {
             var d: [String: Any] = ["id": id, "method": method]
@@ -38,6 +38,9 @@ struct UDSClient {
         do {
             respData = try sendAndReceive(reqData)
         } catch CLIError.gatewayNotRunning(let message) {
+            guard !suppressErrors else {
+                throw CLIError.gatewayNotRunning(message)
+            }
             printErrorJSON([
                 "error": "gateway_not_running",
                 "message": message,
@@ -50,6 +53,11 @@ struct UDSClient {
             throw CLIError.decodeError("invalid JSON")
         }
         if let errObj = json["error"] as? [String: Any] {
+            guard !suppressErrors else {
+                let code = errObj["code"] as? String ?? errObj["error"] as? String ?? "gateway_error"
+                let message = errObj["message"] as? String ?? code
+                throw CLIError.responseError(message)
+            }
             printErrorJSON(normalizedErrorObject(errObj))
             throw ExitCode.failure
         }

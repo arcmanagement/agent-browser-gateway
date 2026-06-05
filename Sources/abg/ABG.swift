@@ -1862,6 +1862,8 @@ struct Plugin: AsyncParsableCommand {
             PluginInstall.self,
             PluginUninstall.self,
             PluginUpdate.self,
+            PluginEnable.self,
+            PluginDisable.self,
             PluginReload.self,
         ]
     )
@@ -1989,6 +1991,60 @@ struct PluginUpdate: AsyncParsableCommand {
     }
 }
 
+struct PluginEnable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "enable", abstract: "disabled user plugin を有効化")
+    @Argument(help: "plugin install name") var name: String
+
+    func run() async throws {
+        if shouldUseRunningGatewayForPluginState(),
+           let result = try? UDSClient().call(
+            method: "plugin_enable",
+            params: ["pluginName": name],
+            suppressErrors: true
+           ) {
+            printJSON(result)
+            return
+        }
+        let root = try userPluginsDirectory()
+        do {
+            let result = try ABGPluginStateStore.enable(name: name, pluginsDirectory: root, userDirectory: ABGConstants.abgUserDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
+        }
+    }
+}
+
+struct PluginDisable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "disable", abstract: "user plugin を削除せず無効化")
+    @Argument(help: "plugin install name") var name: String
+
+    func run() async throws {
+        if shouldUseRunningGatewayForPluginState(),
+           let result = try? UDSClient().call(
+            method: "plugin_disable",
+            params: ["pluginName": name],
+            suppressErrors: true
+           ) {
+            printJSON(result)
+            return
+        }
+        let root = try userPluginsDirectory()
+        do {
+            let result = try ABGPluginStateStore.disable(name: name, pluginsDirectory: root, userDirectory: ABGConstants.abgUserDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
+        }
+    }
+}
+
 struct PluginReload: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "reload", abstract: "起動中 Gateway の plugin を再読み込み")
     @Argument(help: "plugin name (省略時は全 plugin)") var name: String?
@@ -2005,6 +2061,11 @@ func userPluginsDirectory() throws -> URL {
     let url = ABGConstants.userPluginsDir
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+}
+
+func shouldUseRunningGatewayForPluginState(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+    let override = environment["ABG_USER_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return override?.isEmpty ?? true
 }
 
 func bundledPluginDirectories() -> [URL] {
@@ -2064,6 +2125,14 @@ func pluginInfo(at dir: URL, source: String) -> [String: Any]? {
         "source": source,
         "path": dir.path,
     ]
+    if source == "user" {
+        dict["enabled"] = !ABGPluginStateStore.isDisabled(
+            installName: dir.lastPathComponent,
+            userDirectory: dir.deletingLastPathComponent().deletingLastPathComponent()
+        )
+    } else {
+        dict["enabled"] = true
+    }
     if let version = manifest?.version { dict["version"] = version }
     if let author = manifest?.author { dict["author"] = author }
     if let description = manifest?.description { dict["description"] = description }

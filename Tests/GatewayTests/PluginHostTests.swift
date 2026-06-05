@@ -80,6 +80,82 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(result?["plugin"] as? String, "command-plugin")
     }
 
+    func testDisabledUserPluginIsSkippedButVisibleInSummary() throws {
+        let userDir = try makeTempPluginRoot()
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(
+            root: pluginsRoot,
+            name: "disabled-plugin",
+            manifest: """
+            {
+              "name": "disabled-plugin",
+              "version": "0.1.0",
+              "commands": [{"name": "ping", "description": "Ping."}],
+              "transforms": ["disabled-transform"]
+            }
+            """,
+            source: """
+            abg.registerTransform("disabled-transform", function (input) {
+              return "loaded:" + input;
+            });
+            abg.registerCommand("ping", function () {
+              return { ok: true };
+            });
+            """
+        )
+        _ = try ABGPluginStateStore.disable(
+            name: "disabled-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        let host = PluginHost(abgVersion: "test", userPluginsDirectory: pluginsRoot, userDirectory: userDir)
+        host.loadAll(from: [pluginsRoot])
+
+        XCTAssertTrue(host.plugins.isEmpty)
+        XCTAssertNil(host.transform(name: "disabled-transform", input: "abg"))
+        let summary = try XCTUnwrap(host.loadedPluginSummaryModels().first)
+        XCTAssertEqual(summary.name, "disabled-plugin")
+        XCTAssertFalse(summary.isEnabled)
+        XCTAssertFalse(summary.isLoaded)
+        XCTAssertEqual(summary.commands.map(\.name), ["ping"])
+    }
+
+    func testEnabledUserPluginReloadsAfterBeingDisabled() throws {
+        let userDir = try makeTempPluginRoot()
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(
+            root: pluginsRoot,
+            name: "toggle-plugin",
+            source: """
+            abg.registerTransform("toggle-transform", function (input) {
+              return input.toUpperCase();
+            });
+            """
+        )
+        _ = try ABGPluginStateStore.disable(
+            name: "toggle-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        let host = PluginHost(abgVersion: "test", userPluginsDirectory: pluginsRoot, userDirectory: userDir)
+        host.loadAll(from: [pluginsRoot])
+        XCTAssertNil(host.transform(name: "toggle-transform", input: "abg"))
+
+        _ = try ABGPluginStateStore.enable(
+            name: "toggle-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+        let reload = host.reload(plugin: "toggle-plugin")
+
+        XCTAssertEqual(reload.first?["status"] as? String, "reloaded")
+        XCTAssertEqual(host.transform(name: "toggle-transform", input: "abg"), "ABG")
+    }
+
     func testCommandContextTabPasteDispatchesAndResolves() async throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }
