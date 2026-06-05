@@ -23,6 +23,8 @@ abg plugin install ./my-plugin --name my-plugin --yes
 
 abg plugin update                         # git pull all user plugins
 abg plugin update my-plugin
+abg plugin reload my-plugin               # reload in the running Gateway without re-sharing tabs
+abg plugin reload                         # reload all plugins on the Gateway search paths
 abg plugin uninstall my-plugin
 ```
 
@@ -227,6 +229,10 @@ After installing or bundling the plugin and restarting the Gateway:
 ```bash
 abg hello-plugin greet --name "Ada"
 ```
+
+During plugin development, use `abg plugin reload hello-plugin` to reload `index.js` and
+`plugin.json` without quitting ABG.app. Existing tab shares are preserved. If a reload fails, the
+previous loaded version remains active.
 
 Expected output:
 

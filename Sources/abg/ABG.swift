@@ -1854,6 +1854,7 @@ struct Plugin: AsyncParsableCommand {
             PluginInstall.self,
             PluginUninstall.self,
             PluginUpdate.self,
+            PluginReload.self,
         ]
     )
 }
@@ -2014,6 +2015,18 @@ struct PluginUpdate: AsyncParsableCommand {
             }
         }
         printJSON(results)
+    }
+}
+
+struct PluginReload: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "reload", abstract: "起動中 Gateway の plugin を再読み込み")
+    @Argument(help: "plugin name (省略時は全 plugin)") var name: String?
+
+    func run() async throws {
+        var params: [String: Any] = [:]
+        if let name { params["pluginName"] = name }
+        let result = try UDSClient().call(method: "plugin_reload", params: params)
+        printJSON(result)
     }
 }
 

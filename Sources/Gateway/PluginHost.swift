@@ -54,9 +54,18 @@ final class PluginHost {
         let manifest: Manifest?
     }
 
+    private struct LoadResult {
+        let plugin: LoadedPlugin
+        let transforms: [String: JSValue]
+        let commands: [String: JSValue]
+        let errorMessage: String?
+    }
+
     private(set) var plugins: [LoadedPlugin] = []
     private var transforms: [String: JSValue] = [:]
+    private var transformOwners: [String: String] = [:]
     private var commands: [String: [String: JSValue]] = [:]
+    private var searchPaths: [URL] = []
     private let abgVersion: String
     private let tabDispatcher: @MainActor (String, [String: Any]) async throws -> AnyCodable
 
@@ -71,6 +80,7 @@ final class PluginHost {
     }
 
     func loadAll(from searchPaths: [URL]) {
+        self.searchPaths = searchPaths
         for dir in searchPaths {
             loadPluginsInDir(dir)
         }
@@ -141,6 +151,54 @@ final class PluginHost {
             return false
         }
         return manifestMatches(url: url, manifest: manifest)
+    }
+
+    func reload(plugin pluginName: String? = nil) -> [[String: Any]] {
+        let dirs = pluginName.map { findPluginDirectories(named: $0) } ?? pluginDirectories(in: searchPaths)
+        guard !dirs.isEmpty else {
+            return [[
+                "name": pluginName ?? "all",
+                "status": "failed",
+                "error": "plugin_not_found",
+            ]]
+        }
+
+        return dirs.map { dir in
+            let manifest = readManifest(from: dir)
+            let name = manifest?.name ?? dir.lastPathComponent
+            let indexJs = dir.appendingPathComponent("index.js")
+            guard FileManager.default.fileExists(atPath: indexJs.path) else {
+                return [
+                    "name": name,
+                    "status": "failed",
+                    "error": "index.js not found",
+                    "path": dir.path,
+                ]
+            }
+            guard let result = loadPluginCandidate(at: indexJs, name: name, manifest: manifest) else {
+                return [
+                    "name": name,
+                    "status": "failed",
+                    "error": "plugin load failed",
+                    "path": dir.path,
+                ]
+            }
+            guard result.errorMessage == nil else {
+                return [
+                    "name": name,
+                    "status": "failed",
+                    "error": result.errorMessage ?? "plugin load failed",
+                    "previousVersionKept": true,
+                    "path": dir.path,
+                ]
+            }
+            applyLoadedPlugin(result, replacingExisting: true)
+            return [
+                "name": name,
+                "status": "reloaded",
+                "path": dir.path,
+            ]
+        }
     }
 
     func runCommand(plugin pluginName: String, command commandName: String, args: [String: Any], tabId: Int?) async throws -> AnyCodable {
@@ -285,17 +343,26 @@ final class PluginHost {
             let indexJs = entry.appendingPathComponent("index.js")
             guard fm.fileExists(atPath: indexJs.path) else { continue }
             let manifest = readManifest(from: entry)
-            loadPlugin(at: indexJs, name: manifest?.name ?? entry.lastPathComponent, manifest: manifest)
+            guard let result = loadPluginCandidate(
+                at: indexJs,
+                name: manifest?.name ?? entry.lastPathComponent,
+                manifest: manifest
+            ) else { continue }
+            applyLoadedPlugin(result, replacingExisting: false)
         }
     }
 
-    private func loadPlugin(at url: URL, name: String, manifest: Manifest?) {
+    private func loadPluginCandidate(at url: URL, name: String, manifest: Manifest?) -> LoadResult? {
         guard let context = JSContext() else {
             stderr("JSContext init failed for \(name)")
-            return
+            return nil
         }
+        var errorMessage: String?
+        var pluginTransforms: [String: JSValue] = [:]
+        var pluginCommands: [String: JSValue] = [:]
         context.exceptionHandler = { _, exception in
             let msg = exception?.toString() ?? "unknown"
+            errorMessage = msg
             FileHandle.standardError.write(Data("[abg-plugin:\(name)] error: \(msg)\n".utf8))
         }
 
@@ -306,12 +373,27 @@ final class PluginHost {
             // JSContext invokes blocks on the thread that owns the context (main, since
             // PluginHost is @MainActor and the context was created there).
             MainActor.assumeIsolated {
-                self?.transforms[transformName] = fn
+                guard self != nil else { return }
+                pluginTransforms[transformName] = fn
             }
         }
         let registerCommandFn: @convention(block) (String, JSValue) -> Void = { [weak self] commandName, fn in
             MainActor.assumeIsolated {
-                self?.registerCommand(plugin: name, commandName: commandName, fn: fn)
+                guard self != nil else { return }
+                let normalized = commandName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else {
+                    self?.stderr("\(name) ignored command with empty name")
+                    return
+                }
+                guard fn.isObject else {
+                    self?.stderr("\(name) ignored command \(normalized): handler must be a function")
+                    return
+                }
+                if pluginCommands[normalized] != nil {
+                    self?.stderr("\(name) ignored duplicate command \(normalized)")
+                    return
+                }
+                pluginCommands[normalized] = fn
             }
         }
         let abg = JSValue(newObjectIn: context)!
@@ -332,11 +414,37 @@ final class PluginHost {
             source = try String(contentsOf: url, encoding: .utf8)
         } catch {
             stderr("read failed for \(name): \(error.localizedDescription)")
-            return
+            return nil
         }
         context.evaluateScript(source, withSourceURL: url)
-        plugins.append(LoadedPlugin(name: name, context: context, sourceURL: url, manifest: manifest))
-        warnForUnregisteredManifestCommands(plugin: name, manifest: manifest)
+        return LoadResult(
+            plugin: LoadedPlugin(name: name, context: context, sourceURL: url, manifest: manifest),
+            transforms: pluginTransforms,
+            commands: pluginCommands,
+            errorMessage: errorMessage
+        )
+    }
+
+    private func applyLoadedPlugin(_ result: LoadResult, replacingExisting: Bool) {
+        let name = result.plugin.name
+        if replacingExisting {
+            plugins.removeAll { $0.name == name }
+            commands.removeValue(forKey: name)
+            let ownedTransforms = transformOwners.compactMap { transformName, owner in
+                owner == name ? transformName : nil
+            }
+            for transformName in ownedTransforms {
+                transforms.removeValue(forKey: transformName)
+                transformOwners.removeValue(forKey: transformName)
+            }
+        }
+        for (transformName, fn) in result.transforms {
+            transforms[transformName] = fn
+            transformOwners[transformName] = name
+        }
+        commands[name] = result.commands
+        plugins.append(result.plugin)
+        warnForUnregisteredManifestCommands(plugin: name, manifest: result.plugin.manifest)
         stderr("loaded plugin \(name)")
     }
 
@@ -368,6 +476,35 @@ final class PluginHost {
         } catch {
             stderr("manifest decode failed for \(dir.lastPathComponent): \(error.localizedDescription)")
             return nil
+        }
+    }
+
+    private func pluginDirectories(in roots: [URL]) -> [URL] {
+        var seen = Set<String>()
+        var dirs: [URL] = []
+        for root in roots {
+            let entries = (try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            )) ?? []
+            for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                var isDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: entry.path, isDirectory: &isDir),
+                      isDir.boolValue,
+                      FileManager.default.fileExists(atPath: entry.appendingPathComponent("index.js").path),
+                      !seen.contains(entry.path)
+                else { continue }
+                seen.insert(entry.path)
+                dirs.append(entry)
+            }
+        }
+        return dirs
+    }
+
+    private func findPluginDirectories(named name: String) -> [URL] {
+        pluginDirectories(in: searchPaths).filter { dir in
+            let manifest = readManifest(from: dir)
+            return manifest?.name == name || dir.lastPathComponent == name
         }
     }
 
