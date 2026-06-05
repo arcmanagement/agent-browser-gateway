@@ -342,6 +342,7 @@ Currently bundled:
 - **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
 - **`notion-plugin`** — Per-domain Markdown diet for `notion.so` / `notion.site`: strips app chrome, scripts, styles, popovers, and bookkeeping before the agent sees the page.
 - **`gmail-plugin` / `slack-plugin` / `linear-plugin`** — First-party per-domain Markdown examples for authenticated app pages.
+- **`slack-plugin` commands** — `abg slack catch-up` and `abg slack pending` read settled channel messages.
 - **`redaction-plugin`** — Opt-in local Markdown masking via `abg read --format markdown --redact`.
 - **`workflow-plugin`** — Command-abstraction examples using `context.tab.*`.
 - **`info-plugin`** — Smoke test: prints a startup line.

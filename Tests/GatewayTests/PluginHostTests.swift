@@ -424,6 +424,42 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(calls.last?.params["value"] as? String, "Ship it")
     }
 
+    func testBundledSlackCatchUpWaitsForSettledChannelDom() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let fixture = try readFixture("slack-channel.html")
+        let staleFixture = fixture.replacingOccurrences(of: "/archives/C123/", with: "/archives/C999/")
+        var readCount = 0
+        var calls: [String] = []
+        let host = PluginHost(abgVersion: "test") { method, _ in
+            calls.append(method)
+            if method == "read_tab" {
+                readCount += 1
+                return AnyCodable([
+                    "url": "https://app.slack.com/client/T123/C123",
+                    "title": "Slack",
+                    "html": readCount == 1 ? staleFixture : fixture,
+                    "text": "Slack fixture",
+                ])
+            }
+            return AnyCodable(["ok": true])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "slack",
+            command: "catch-up",
+            args: ["limit": 5, "timeoutMs": 1000],
+            tabId: 1
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(result?["channel_id"] as? String, "C123")
+        XCTAssertEqual(result?["count"] as? Int, 2)
+        XCTAssertTrue((result?["markdown"] as? String)?.contains("open-channel helper") == true)
+        XCTAssertEqual(calls, ["read_tab", "wait_tab", "read_tab"])
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)
