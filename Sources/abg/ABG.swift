@@ -163,6 +163,10 @@ private func pluginCommands(pluginName: String) throws -> [[String: Any]] {
 private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [String: Any], tabId: Int?) {
     var args: [String: Any] = [:]
     var tabId: Int?
+    var tabToken: String?
+    var matchUrl: String?
+    var matchTitle: String?
+    var first = false
     var index = 0
     while index < rawArgs.count {
         let token = rawArgs[index]
@@ -198,6 +202,26 @@ private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [Strin
                 try failWithJSON(["error": "missing_value", "message": "--tab-id requires an integer value."])
             }
             tabId = parsed
+        case "tab":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--tab requires a tab ID/ref value."])
+            }
+            tabToken = rawArgs[index]
+        case "match-url":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--match-url requires a URL glob value."])
+            }
+            matchUrl = rawArgs[index]
+        case "match-title":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--match-title requires a title glob value."])
+            }
+            matchTitle = rawArgs[index]
+        case "first":
+            first = true
         default:
             if rawArgs.indices.contains(index + 1), !rawArgs[index + 1].hasPrefix("--") {
                 index += 1
@@ -207,6 +231,15 @@ private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [Strin
             }
         }
         index += 1
+    }
+    if tabId == nil, tabToken != nil || matchUrl != nil || matchTitle != nil {
+        tabId = try resolveTabId(
+            client: UDSClient(),
+            tabToken: tabToken,
+            matchUrl: matchUrl,
+            matchTitle: matchTitle,
+            first: first
+        )
     }
     return (args, tabId)
 }

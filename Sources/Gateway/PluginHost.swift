@@ -132,6 +132,17 @@ final class PluginHost {
         plugins.contains { $0.name == pluginName }
     }
 
+    func domainPatterns(for pluginName: String) -> [String]? {
+        plugins.first { $0.name == pluginName }?.manifest?.domains
+    }
+
+    func matchesManifestDomain(plugin pluginName: String, url: String) -> Bool {
+        guard let manifest = plugins.first(where: { $0.name == pluginName })?.manifest else {
+            return false
+        }
+        return manifestMatches(url: url, manifest: manifest)
+    }
+
     func runCommand(plugin pluginName: String, command commandName: String, args: [String: Any], tabId: Int?) async throws -> AnyCodable {
         guard let plugin = plugins.first(where: { $0.name == pluginName }) else {
             throw PluginCommandError.pluginNotFound(pluginName)

@@ -141,7 +141,7 @@ private func normalizedErrorObject(_ errObj: [String: Any]) -> [String: Any] {
         "error": errObj["code"] as? String ?? "unknown_error",
         "message": errObj["message"] as? String ?? "Unknown error",
     ]
-    for key in ["userMessage", "nextCommand", "hint", "tabId", "plugin", "command"] {
+    for key in ["userMessage", "nextCommand", "hint", "tabId", "plugin", "command", "expectedDomains", "candidates"] {
         if let value = errObj[key] {
             out[key] = value
         }

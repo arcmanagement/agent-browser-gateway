@@ -126,6 +126,8 @@ Invoke plugin commands as dynamic ABG subcommands:
 
 ```bash
 abg hello-plugin greet --name "Ada" --loud
+abg hello-plugin greet --tab t1
+abg hello-plugin greet --match-url "*example.com*"
 abg hello-plugin greet --json '{"name":"Ada","loud":true}'
 printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 ```
@@ -133,9 +135,17 @@ printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 `--key value` becomes `{ "key": value }`; `--flag` becomes `{ "flag": true }`. Scalar values are
 parsed as booleans or numbers when possible, otherwise they remain strings. `--json` and JSON
 `--stdin` merge object values into `args`; non-JSON stdin is passed as `args.stdin`.
+`--tab`, `--tab-id`, `--match-url`, `--match-title`, and `--first` are reserved by the dynamic
+command runner for tab binding and are not passed through as plugin args.
 
 The command result is serialized as JSON to stdout. Handler failures are returned as structured JSON
 errors containing `error`, `message`, `plugin`, and `command`.
+
+If the command is invoked without an explicit tab and the plugin manifest declares `domains`, the
+Gateway tries to bind the command to a shared tab whose URL matches those domain globs. Exactly one
+match becomes `context.tabId`; zero matches returns `no_matching_tab` with `expectedDomains`; multiple
+matches returns `ambiguous_tab` with compact `candidates`. `--tab-id`, `--tab`, or `--match-url`
+remain explicit overrides.
 
 Audit logs record command invocations with `action: "plugin_command_run"`, the plugin name, command
 name, argument key list, and serialized argument byte length. Argument values are never written to
