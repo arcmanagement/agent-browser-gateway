@@ -28,13 +28,32 @@ struct GatewayApp: App {
                 Image(systemName: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled")
             }
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 
     private var menuBarTitle: String {
-        if let profile = ABGConstants.runtimeProfile {
-            return "ABG \(profile)"
+        let base = ABGConstants.runtimeProfile.map { "ABG \($0)" } ?? "ABG"
+        if coordinator.permittedTabs.count == 1,
+           let tab = coordinator.permittedTabs.first {
+            return "\(base) \(menuTabLabel(tab))"
         }
-        return "ABG"
+        if coordinator.permittedTabs.count > 1 {
+            return "\(base) \(coordinator.permittedTabs.count)"
+        }
+        return base
+    }
+
+    private func menuTabLabel(_ tab: PermittedTab) -> String {
+        let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: String
+        if !title.isEmpty {
+            value = title
+        } else if let host = URL(string: tab.url)?.host, !host.isEmpty {
+            value = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        } else {
+            value = tab.url
+        }
+        guard value.count > 18 else { return value }
+        return "\(value.prefix(17))..."
     }
 }
