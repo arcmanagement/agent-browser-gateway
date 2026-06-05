@@ -93,7 +93,11 @@ struct GatewayWindowView: View {
             Spacer(minLength: 0)
 
             VStack(alignment: .leading, spacing: 7) {
-                Label("\(ABGConstants.wsHost):\(ABGConstants.wsPort)", systemImage: "network")
+                Label {
+                    Text(verbatim: gatewayEndpointText)
+                } icon: {
+                    Image(systemName: "network")
+                }
                 Label(ABGConstants.runtimeProfileLabel, systemImage: "shippingbox")
             }
             .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -471,6 +475,10 @@ struct GatewayWindowView: View {
         ABGConstants.runtimeProfile == nil ? .secondary : .orange
     }
 
+    private var gatewayEndpointText: String {
+        "\(ABGConstants.wsHost):\(String(ABGConstants.wsPort))"
+    }
+
     private var selectedAppearance: PluginBrowserAppearance {
         PluginBrowserAppearance(rawValue: appearanceRawValue) ?? .system
     }
@@ -711,7 +719,7 @@ private struct PluginStat: View {
                 .foregroundStyle(.blue)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
-                Text(value)
+                Text(verbatim: value)
                     .font(.system(size: 16, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                 Text(title)
