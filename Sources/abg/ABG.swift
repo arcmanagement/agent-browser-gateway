@@ -1966,12 +1966,15 @@ struct PluginUninstall: AsyncParsableCommand {
 
     func run() async throws {
         let pluginsDir = try userPluginsDirectory()
-        let destination = pluginsDir.appendingPathComponent(sanitizePluginName(name), isDirectory: true)
-        guard FileManager.default.fileExists(atPath: destination.path) else {
-            try failWithJSON(["error": "plugin_not_found", "message": "\(name) is not installed in \(pluginsDir.path)"])
+        do {
+            let result = try ABGPluginInstaller.uninstall(name: name, pluginsDirectory: pluginsDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
         }
-        try FileManager.default.removeItem(at: destination)
-        printJSON(["ok": true, "removed": destination.path])
     }
 }
 
@@ -1981,30 +1984,8 @@ struct PluginUpdate: AsyncParsableCommand {
 
     func run() async throws {
         let root = try userPluginsDirectory()
-        let targets: [URL]
-        if let name {
-            targets = [root.appendingPathComponent(sanitizePluginName(name), isDirectory: true)]
-        } else {
-            targets = (try? FileManager.default.contentsOfDirectory(
-                at: root,
-                includingPropertiesForKeys: [.isDirectoryKey]
-            )) ?? []
-        }
-
-        var results: [[String: Any]] = []
-        for target in targets.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard FileManager.default.fileExists(atPath: target.appendingPathComponent(".git").path) else {
-                results.append(["name": target.lastPathComponent, "status": "skipped", "reason": "not a git checkout"])
-                continue
-            }
-            do {
-                let output = try runProcess("/usr/bin/env", ["git", "-C", target.path, "pull", "--ff-only"])
-                results.append(["name": target.lastPathComponent, "status": "updated", "output": output])
-            } catch {
-                results.append(["name": target.lastPathComponent, "status": "failed", "error": "\(error)"])
-            }
-        }
-        printJSON(results)
+        let results = try ABGPluginInstaller.updatePlugins(name: name, pluginsDirectory: root)
+        printJSON(results.map(\.dictionary))
     }
 }
 

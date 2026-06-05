@@ -354,7 +354,7 @@ abg plugin list
 abg plugin install user/repo --yes
 abg plugin install https://github.com/user/repo.git --yes
 abg plugin install git@github.com:user/private-plugin.git --yes
-abg plugin update
+abg plugin update                         # git pull user plugins
 abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
@@ -365,6 +365,9 @@ store GitHub tokens.
 
 By default user plugins live under `~/.abg/plugins/`; `ABG_PORT=8766` dev runs use
 `~/.abg-dev/plugins/` so local experiments do not mutate production plugin state.
+The macOS plugin browser can update or uninstall only these user plugins. Built-in plugins are
+bundled with the app, and Local Dev plugins are external working copies, so the browser never
+removes them.
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 

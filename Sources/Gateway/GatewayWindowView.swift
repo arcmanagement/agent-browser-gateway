@@ -8,6 +8,9 @@ struct GatewayWindowView: View {
     @State private var selectedFilter: PluginFilter = .all
     @State private var selectedPluginID: String?
     @State private var isInstallSheetPresented = false
+    @State private var pluginOperation: PluginManagementOperation?
+    @State private var pluginManagementMessage: String?
+    @State private var pluginManagementAlert: PluginManagementAlert?
     @AppStorage("pluginBrowserAppearance") private var appearanceRawValue = PluginBrowserAppearance.system.rawValue
 
     var body: some View {
@@ -31,6 +34,25 @@ struct GatewayWindowView: View {
         .sheet(isPresented: $isInstallSheetPresented) {
             PluginInstallSheet { source, name, force in
                 try await installPlugin(source: source, name: name, force: force)
+            }
+        }
+        .alert(item: $pluginManagementAlert) { alert in
+            switch alert {
+            case .confirmUninstall(let plugin):
+                Alert(
+                    title: Text("Uninstall Plugin"),
+                    message: Text("Remove \(plugin.name) from the active ABG user plugin directory? This cannot remove built-in or external local plugins."),
+                    primaryButton: .destructive(Text("Uninstall")) {
+                        Task { await uninstallUserPlugin(plugin) }
+                    },
+                    secondaryButton: .cancel()
+                )
+            case .error(let message):
+                Alert(
+                    title: Text("Plugin Management Failed"),
+                    message: Text(message),
+                    dismissButton: .default(Text("OK"))
+                )
             }
         }
     }
@@ -232,6 +254,7 @@ struct GatewayWindowView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     detailHeader(plugin)
                     summaryGrid(plugin)
+                    managementSection(plugin)
                     descriptionSection(plugin)
                     commandsSection(plugin)
                     domainsSection(plugin)
@@ -295,6 +318,56 @@ struct GatewayWindowView: View {
             PluginStat(title: "Transforms", value: "\(plugin.transforms.count)", symbol: "wand.and.stars")
             PluginStat(title: "Domains", value: "\(plugin.domains.count)", symbol: "globe")
             PluginStat(title: "Source", value: source(for: plugin).title, symbol: source(for: plugin).symbol)
+        }
+    }
+
+    @ViewBuilder
+    private func managementSection(_ plugin: PluginHost.PluginSummary) -> some View {
+        if source(for: plugin) == .user {
+            PluginSection(title: "Manage", symbol: "gearshape") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await updateUserPlugin(plugin) }
+                        } label: {
+                            Label("Update", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(PluginPrimaryButtonStyle())
+                        .disabled(!isGitBacked(plugin) || isOperating(on: plugin))
+                        .help(isGitBacked(plugin) ? "Update with local git credentials" : "Only git-backed user plugins can be updated")
+
+                        Button(role: .destructive) {
+                            pluginManagementAlert = .confirmUninstall(plugin)
+                        } label: {
+                            Label("Uninstall", systemImage: "trash")
+                        }
+                        .buttonStyle(PluginDestructiveButtonStyle())
+                        .disabled(isOperating(on: plugin))
+                        .help("Remove this user plugin from the active ABG profile")
+
+                        Spacer(minLength: 0)
+                    }
+
+                    if let pluginOperation, pluginOperation.pluginID == plugin.id {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(pluginOperation.title)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let pluginManagementMessage, selectedPlugin?.id == plugin.id {
+                        Label(pluginManagementMessage, systemImage: "checkmark.circle")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.green)
+                    }
+
+                    Text("Managed plugins live in the active ABG user plugin directory. Updates use local git authentication; no tokens are stored by ABG.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -445,9 +518,10 @@ struct GatewayWindowView: View {
     }
 
     private func source(for plugin: PluginHost.PluginSummary) -> PluginSource {
-        let path = URL(fileURLWithPath: plugin.path).standardizedFileURL.path
+        let pluginURL = URL(fileURLWithPath: plugin.path).standardizedFileURL
+        let path = pluginURL.path
         let userPluginsPath = ABGConstants.userPluginsDir.standardizedFileURL.path
-        if path == userPluginsPath || path.hasPrefix(userPluginsPath + "/") {
+        if pluginURL.deletingLastPathComponent().standardizedFileURL.path == userPluginsPath {
             return .user
         }
         if path.contains("/Contents/Resources/plugins/") || path.contains("/agent-browser-gateway/plugins/") {
@@ -498,6 +572,65 @@ struct GatewayWindowView: View {
         selectedPluginID = result.path
     }
 
+    @MainActor
+    private func updateUserPlugin(_ plugin: PluginHost.PluginSummary) async {
+        guard source(for: plugin) == .user else { return }
+        pluginOperation = .updating(plugin.id)
+        pluginManagementMessage = nil
+        let result = await Task.detached(priority: .userInitiated) {
+            ABGPluginInstaller.updatePlugin(at: URL(fileURLWithPath: plugin.path))
+        }.value
+
+        pluginOperation = nil
+        guard result.status == "updated" else {
+            let message = result.error ?? result.reason ?? "Plugin update failed."
+            pluginManagementAlert = .error(message)
+            return
+        }
+        reloadLoadedPlugin(plugin)
+        coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+        selectedPluginID = plugin.id
+        pluginManagementMessage = result.output?.isEmpty == false ? result.output : "Plugin is up to date."
+    }
+
+    @MainActor
+    private func uninstallUserPlugin(_ plugin: PluginHost.PluginSummary) async {
+        guard source(for: plugin) == .user else { return }
+        pluginOperation = .uninstalling(plugin.id)
+        pluginManagementMessage = nil
+        do {
+            _ = try await Task.detached(priority: .userInitiated) {
+                try ABGPluginInstaller.uninstall(at: URL(fileURLWithPath: plugin.path))
+            }.value
+            _ = coordinator.pluginHost.unload(plugin: plugin.name)
+            coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+            selectedPluginID = nil
+            selectedFilter = .all
+        } catch {
+            pluginManagementAlert = .error(error.localizedDescription)
+        }
+        pluginOperation = nil
+    }
+
+    private func reloadLoadedPlugin(_ plugin: PluginHost.PluginSummary) {
+        let installName = URL(fileURLWithPath: plugin.path).lastPathComponent
+        let reloadResult = coordinator.pluginHost.reload(plugin: plugin.name)
+        let didReload = reloadResult.contains { row in
+            (row["status"] as? String) == "reloaded"
+        }
+        if !didReload, installName != plugin.name {
+            _ = coordinator.pluginHost.reload(plugin: installName)
+        }
+    }
+
+    private func isGitBacked(_ plugin: PluginHost.PluginSummary) -> Bool {
+        FileManager.default.fileExists(atPath: URL(fileURLWithPath: plugin.path).appendingPathComponent(".git").path)
+    }
+
+    private func isOperating(on plugin: PluginHost.PluginSummary) -> Bool {
+        pluginOperation?.pluginID == plugin.id
+    }
+
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
@@ -520,6 +653,41 @@ struct GatewayWindowView: View {
             get: { selectedAppearance },
             set: { appearanceRawValue = $0.rawValue }
         )
+    }
+}
+
+private enum PluginManagementOperation: Equatable {
+    case updating(String)
+    case uninstalling(String)
+
+    var pluginID: String {
+        switch self {
+        case .updating(let pluginID), .uninstalling(let pluginID):
+            return pluginID
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .updating:
+            return "Updating plugin..."
+        case .uninstalling:
+            return "Uninstalling plugin..."
+        }
+    }
+}
+
+private enum PluginManagementAlert: Identifiable {
+    case confirmUninstall(PluginHost.PluginSummary)
+    case error(String)
+
+    var id: String {
+        switch self {
+        case .confirmUninstall(let plugin):
+            return "uninstall-\(plugin.id)"
+        case .error(let message):
+            return "error-\(message)"
+        }
     }
 }
 
@@ -1009,6 +1177,20 @@ private struct PluginPrimaryButtonStyle: ButtonStyle {
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(configuration.isPressed ? Color.blue.opacity(0.20) : Color.blue.opacity(0.12))
+            )
+    }
+}
+
+private struct PluginDestructiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.red)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(configuration.isPressed ? Color.red.opacity(0.20) : Color.red.opacity(0.11))
             )
     }
 }
