@@ -12,13 +12,15 @@ The Chrome extension is shipped as a separate release asset and must be loaded s
 Unsigned local smoke build:
 
 ```bash
-make dist VERSION=0.3.12
+export VERSION=0.3.12
+make dist VERSION="$VERSION"
 ```
 
 Developer ID signed and notarized build:
 
 ```bash
-make dist VERSION=0.3.12 \
+export VERSION=0.3.12
+make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
 ```
@@ -72,9 +74,10 @@ dist/agent-browser-gateway.rb
 For a same-repository tap, generate directly into `Casks/` after the GitHub Release asset exists:
 
 ```bash
-make dist VERSION=0.3.12 CASK_OUTPUT=Casks/agent-browser-gateway.rb
+export VERSION=0.3.12
+make dist VERSION="$VERSION" CASK_OUTPUT=Casks/agent-browser-gateway.rb
 git add Casks/agent-browser-gateway.rb
-git commit -m "Update Homebrew cask for v0.3.12"
+git commit -m "Update Homebrew cask for v$VERSION"
 git push
 ```
 
