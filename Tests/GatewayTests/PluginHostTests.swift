@@ -460,6 +460,49 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(calls, ["read_tab", "wait_tab", "read_tab"])
     }
 
+    func testBundledSlackOpenChannelNavigatesByName() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let sidebar = """
+        <html><body>
+          <a href="https://app.slack.com/client/T123/C123">#general</a>
+        </body></html>
+        """
+        var calls: [(method: String, params: [String: Any])] = []
+        var navigatedURL: String?
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            if method == "navigate_tab" {
+                navigatedURL = params["url"] as? String
+                return AnyCodable(["ok": true])
+            }
+            if method == "read_tab" {
+                return AnyCodable([
+                    "url": navigatedURL ?? "https://app.slack.com/client/T123/C111",
+                    "title": "Slack",
+                    "html": sidebar,
+                    "text": "Slack sidebar",
+                ])
+            }
+            return AnyCodable(["ok": true])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "slack",
+            command: "open-channel",
+            args: ["name": "general", "timeoutMs": 1000],
+            tabId: 1
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(result?["channel_id"] as? String, "C123")
+        XCTAssertEqual(result?["before"] as? String, "C111")
+        XCTAssertEqual(result?["after"] as? String, "C123")
+        XCTAssertEqual(navigatedURL, "https://app.slack.com/client/T123/C123")
+        XCTAssertEqual(calls.map(\.method), ["read_tab", "navigate_tab", "read_tab"])
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)

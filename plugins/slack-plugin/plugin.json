@@ -26,6 +26,15 @@
         { "name": "limit", "type": "number", "required": false, "default": 20 },
         { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
       ]
+    },
+    {
+      "name": "open-channel",
+      "description": "Open a Slack channel by name or channel id and wait for the URL to settle.",
+      "args": [
+        { "name": "name", "type": "string", "required": false },
+        { "name": "channel-id", "type": "string", "required": false },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
     }
   ]
 }
