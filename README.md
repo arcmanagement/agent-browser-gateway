@@ -341,6 +341,7 @@ Currently bundled:
 
 - **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
 - **`notion-plugin`** — Per-domain Markdown diet for `notion.so` / `notion.site`: strips app chrome, scripts, styles, popovers, and bookkeeping before the agent sees the page.
+- **`redaction-plugin`** — Opt-in local Markdown masking via `abg read --format markdown --redact`.
 - **`info-plugin`** — Smoke test: prints a startup line.
 
 User plugins can be managed from the CLI:
@@ -355,7 +356,7 @@ abg plugin uninstall my-plugin
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 
-Planned (community / future): more per-domain plugins (`gmail-plugin`, `slack-plugin`, `linear-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
+Planned (community / future): more per-domain plugins (`gmail-plugin`, `slack-plugin`, `linear-plugin`), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
 
 ### Why this matters: token economy
 

@@ -611,6 +611,8 @@ struct Read: AsyncParsableCommand {
     @Flag(name: .long, help: "HTML を Markdown に変換 (token 効率)") var asMarkdown: Bool = false
     @Option(name: .long, help: "出力形式: json / markdown / text / html") var format: String = "json"
     @Flag(name: .long, help: "Markdown 出力で画像 URL を残す") var keepImages: Bool = false
+    @Flag(name: .long, help: "Markdown 出力を local redaction plugin でマスク") var redact: Bool = false
+    @Option(name: .customLong("redact-regex"), help: "追加でマスクする regex。複数回指定可") var redactRegexes: [String] = []
     @Flag(name: .long, help: "selector の editable value を input/textarea/contenteditable aware に返す") var editableValue: Bool = false
 
     func run() async throws {
@@ -637,6 +639,8 @@ struct Read: AsyncParsableCommand {
         if wantsMarkdown {
             params["asMarkdown"] = true
             params["keepImages"] = keepImages
+            if redact { params["redact"] = true }
+            if !redactRegexes.isEmpty { params["redactRegexes"] = redactRegexes }
         }
         let result = try client.call(method: "read_tab", params: params)
         var step: [String: Any] = ["op": "read", "tabId": tabId, "format": format]
@@ -644,6 +648,8 @@ struct Read: AsyncParsableCommand {
         if let frame { step["frame"] = frame }
         if asMarkdown { step["asMarkdown"] = true }
         if keepImages { step["keepImages"] = true }
+        if redact { step["redact"] = true }
+        if !redactRegexes.isEmpty { step["redactRegexes"] = redactRegexes }
         appendRecordedStep(step)
         guard let dict = result as? [String: Any] else {
             printJSON(result)
@@ -1703,6 +1709,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             params["asMarkdown"] = true
         }
         if boolValue(step, "keepImages") == true { params["keepImages"] = true }
+        if boolValue(step, "redact") == true { params["redact"] = true }
+        if let redactRegexes = step["redactRegexes"] as? [String], !redactRegexes.isEmpty {
+            params["redactRegexes"] = redactRegexes
+        }
         return try client.call(method: "read_tab", params: params)
     case "screenshot":
         if let clip = step["clip"] as? [String: Any] { params["clip"] = clip }

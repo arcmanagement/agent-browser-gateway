@@ -517,8 +517,12 @@ final class GatewayCoordinator: ObservableObject {
         }
         let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
         let keepImages = (params["keepImages"] as? Bool) ?? false
+        let redact = (params["redact"] as? Bool) ?? false
+        let redactRegexes = params["redactRegexes"] as? [String] ?? []
         params.removeValue(forKey: "asMarkdown")
         params.removeValue(forKey: "keepImages")
+        params.removeValue(forKey: "redact")
+        params.removeValue(forKey: "redactRegexes")
         do {
             let result = try await sendCommand(to: tab.extensionId, method: "read_dom", params: AnyCodable(params))
             await auditLog.log(action: "read_dom", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
@@ -529,7 +533,23 @@ final class GatewayCoordinator: ObservableObject {
                 return CLIResponse(id: req.id, result: result)
             }
             if !keepImages, let domainResult = pluginHost.domainTransform(url: tab.url, kind: "markdown", input: html) {
-                dict["markdown"] = domainResult.output
+                var markdown = domainResult.output
+                if redact, let redaction = pluginHost.redact(kind: "markdown", input: markdown, customRegexes: redactRegexes) {
+                    markdown = redaction.output
+                    dict["redactionTransforms"] = redaction.names
+                    await auditLog.log(
+                        action: "redaction_transform",
+                        extensionId: tab.extensionId,
+                        tabId: tabId,
+                        url: tab.url,
+                        details: [
+                            "kind": AnyCodable("markdown"),
+                            "transforms": AnyCodable(redaction.names),
+                            "customRegexCount": AnyCodable(redactRegexes.count),
+                        ]
+                    )
+                }
+                dict["markdown"] = markdown
                 dict["markdownTransform"] = domainResult.name
                 dict.removeValue(forKey: "html")
                 return CLIResponse(id: req.id, result: AnyCodable(dict))
@@ -537,7 +557,23 @@ final class GatewayCoordinator: ObservableObject {
             guard let markdown = pluginHost.transform(name: keepImages ? "html-to-markdown-keep-images" : "html-to-markdown", input: html) else {
                 return CLIResponse(id: req.id, result: result)
             }
-            dict["markdown"] = markdown
+            var outputMarkdown = markdown
+            if redact, let redaction = pluginHost.redact(kind: "markdown", input: outputMarkdown, customRegexes: redactRegexes) {
+                outputMarkdown = redaction.output
+                dict["redactionTransforms"] = redaction.names
+                await auditLog.log(
+                    action: "redaction_transform",
+                    extensionId: tab.extensionId,
+                    tabId: tabId,
+                    url: tab.url,
+                    details: [
+                        "kind": AnyCodable("markdown"),
+                        "transforms": AnyCodable(redaction.names),
+                        "customRegexCount": AnyCodable(redactRegexes.count),
+                    ]
+                )
+            }
+            dict["markdown"] = outputMarkdown
             dict["markdownTransform"] = keepImages ? "html-to-markdown-keep-images" : "html-to-markdown"
             dict.removeValue(forKey: "html")
             return CLIResponse(id: req.id, result: AnyCodable(dict))

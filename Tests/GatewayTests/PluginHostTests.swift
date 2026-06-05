@@ -382,6 +382,24 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v2")
     }
 
+    func testBundledRedactionPluginMasksSensitivePatternsAndCustomRegexes() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let input = "Email ada@example.com, phone +1 (415) 555-0123, card 4242 4242 4242 4242, ticket ACME-123."
+        let redaction = try XCTUnwrap(host.redact(kind: "markdown", input: input, customRegexes: ["ACME-[0-9]+"]))
+
+        XCTAssertEqual(redaction.names, ["local-redact-markdown", "custom-regex-1"])
+        XCTAssertTrue(redaction.output.contains("[redacted:email]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:phone]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:card]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:custom-1]"))
+        XCTAssertFalse(redaction.output.contains("ada@example.com"))
+        XCTAssertFalse(redaction.output.contains("ACME-123"))
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)
