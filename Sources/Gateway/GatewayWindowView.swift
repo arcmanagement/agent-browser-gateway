@@ -7,6 +7,7 @@ struct GatewayWindowView: View {
     @State private var searchText = ""
     @State private var selectedFilter: PluginFilter = .all
     @State private var selectedPluginID: String?
+    @State private var isInstallSheetPresented = false
     @AppStorage("pluginBrowserAppearance") private var appearanceRawValue = PluginBrowserAppearance.system.rawValue
 
     var body: some View {
@@ -27,6 +28,11 @@ struct GatewayWindowView: View {
         .frame(minWidth: 820, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(selectedAppearance.colorScheme)
+        .sheet(isPresented: $isInstallSheetPresented) {
+            PluginInstallSheet { source, name, force in
+                try await installPlugin(source: source, name: name, force: force)
+            }
+        }
     }
 
     private var sidebar: some View {
@@ -138,6 +144,14 @@ struct GatewayWindowView: View {
                 Text("Plugins")
                     .font(.system(size: 22, weight: .semibold))
                 Spacer(minLength: 0)
+                Button {
+                    isInstallSheetPresented = true
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Install plugin")
                 Button {
                     reloadPlugins()
                 } label: {
@@ -466,6 +480,24 @@ struct GatewayWindowView: View {
         coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
     }
 
+    @MainActor
+    private func installPlugin(source: String, name: String?, force: Bool) async throws {
+        let result = try await Task.detached(priority: .userInitiated) {
+            try ABGPluginInstaller.install(source: source, name: name, force: force)
+        }.value
+
+        let reloadResult = coordinator.pluginHost.reload(plugin: result.name)
+        let didReload = reloadResult.contains { row in
+            (row["status"] as? String) == "reloaded"
+        }
+        if !didReload, result.installName != result.name {
+            _ = coordinator.pluginHost.reload(plugin: result.installName)
+        }
+        coordinator.pluginSummaries = coordinator.pluginHost.loadedPluginSummaryModels()
+        selectedFilter = .all
+        selectedPluginID = result.path
+    }
+
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
@@ -488,6 +520,128 @@ struct GatewayWindowView: View {
             get: { selectedAppearance },
             set: { appearanceRawValue = $0.rawValue }
         )
+    }
+}
+
+private struct PluginInstallSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var sourceText = ""
+    @State private var installName = ""
+    @State private var replaceExisting = false
+    @State private var trustSource = false
+    @State private var isInstalling = false
+    @State private var errorMessage: String?
+
+    let onInstall: (String, String?, Bool) async throws -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.blue.opacity(0.13))
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Install Plugin")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text("Private repositories use your local git credentials.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Repository")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                TextField("user/repo or https://github.com/user/repo.git", text: $sourceText)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isInstalling)
+                    .onSubmit(startInstall)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Install Name")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                TextField("Inferred from repository", text: $installName)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isInstalling)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Replace existing plugin", isOn: $replaceExisting)
+                    .disabled(isInstalling)
+                Toggle("I trust this plugin source", isOn: $trustSource)
+                    .disabled(isInstalling)
+            }
+            .toggleStyle(.checkbox)
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                Button("Cancel") {
+                    dismiss()
+                }
+                .disabled(isInstalling)
+
+                Button {
+                    startInstall()
+                } label: {
+                    if isInstalling {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Install", systemImage: "square.and.arrow.down")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canInstall)
+            }
+        }
+        .padding(22)
+        .frame(width: 460)
+    }
+
+    private var canInstall: Bool {
+        !trimmedSource.isEmpty && trustSource && !isInstalling
+    }
+
+    private var trimmedSource: String {
+        sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedName: String? {
+        let value = installName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private func startInstall() {
+        guard canInstall else { return }
+        isInstalling = true
+        errorMessage = nil
+        Task {
+            do {
+                try await onInstall(trimmedSource, trimmedName, replaceExisting)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isInstalling = false
+        }
     }
 }
 

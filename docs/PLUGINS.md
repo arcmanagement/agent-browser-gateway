@@ -19,6 +19,7 @@ abg plugin list --loaded                  # requires a running Gateway
 
 abg plugin install user/repo --yes
 abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
 abg plugin install ./my-plugin --name my-plugin --yes
 
 abg plugin update                         # git pull all user plugins
@@ -28,7 +29,13 @@ abg plugin reload                         # reload all plugins on the Gateway se
 abg plugin uninstall my-plugin
 ```
 
-`install` requires `--yes` because plugin code is arbitrary JavaScript loaded by the local Gateway.
+The macOS plugin browser exposes the same install path through the `+` button. Paste `user/repo`,
+an HTTPS GitHub URL, an SSH Git URL, or another `git clone` URL.
+
+`install` requires `--yes` in the CLI because plugin code is arbitrary JavaScript loaded by the
+local Gateway. Repository installs use the local `git` command, so private repositories use the
+user's existing SSH keys, git credential helper, or GitHub CLI-backed git authentication. ABG does
+not ask for or store GitHub tokens, and HTTPS URLs with embedded credentials are rejected.
 
 ## Directory Layout
 

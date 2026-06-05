@@ -347,15 +347,21 @@ Currently bundled:
 - **`workflow-plugin`** — Command-abstraction examples using `context.tab.*`.
 - **`info-plugin`** — Smoke test: prints a startup line.
 
-User plugins can be managed from the CLI:
+User plugins can be installed from the macOS plugin browser or managed from the CLI:
 
 ```bash
 abg plugin list
 abg plugin install user/repo --yes
+abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
 abg plugin update
 abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
+
+Repository installs use the local `git` command. Private repositories rely on the user's existing
+SSH keys, git credential helper, or GitHub CLI-backed git authentication; ABG does not ask for or
+store GitHub tokens.
 
 By default user plugins live under `~/.abg/plugins/`; `ABG_PORT=8766` dev runs use
 `~/.abg-dev/plugins/` so local experiments do not mutate production plugin state.

@@ -126,7 +126,7 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
 abg plugin list                         # plugin 一覧
-abg plugin install user/repo --yes      # user plugin を default ~/.abg/plugins に追加
+abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
 abg plugin reload [name]                # Gateway 再起動なしで plugin を再読み込み
 abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 ```
@@ -137,6 +137,9 @@ Use a user plugin when a repeated ABG workflow needs a stable local command or a
 User plugins live under `~/.abg/plugins/<name>/` by default (`~/.abg-dev/plugins/<name>/`
 for `ABG_PORT=8766` dev runs). First-party bundled plugins live under
 `Agent Browser Gateway.app/Contents/Resources/plugins/` and, in this repo, under `plugins/`.
+The macOS plugin browser and `abg plugin install` both accept `user/repo`, HTTPS GitHub URLs, SSH
+Git URLs, or local directories. Private repositories use local git authentication such as SSH keys,
+git credential helpers, or GitHub CLI-backed credentials; ABG does not store GitHub tokens.
 
 Recommended layout:
 
