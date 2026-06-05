@@ -1,0 +1,14 @@
+{
+  "name": "slack",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Cleans Slack pages into compact Markdown for shared Slack tabs.",
+  "domains": [
+    "https://app.slack.com/*",
+    "https://*.slack.com/*"
+  ],
+  "transforms": [
+    "slack-to-markdown"
+  ],
+  "commands": []
+}

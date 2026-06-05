@@ -440,11 +440,42 @@ final class PluginHostTests: XCTestCase {
         )
     }
 
+    func testBundledGmailSlackLinearPluginsStripAppChrome() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let gmail = try XCTUnwrap(host.transform(name: "gmail-to-markdown", input: readFixture("gmail-thread.html")))
+        XCTAssertTrue(gmail.contains("Plugin launch notes"))
+        XCTAssertTrue(gmail.contains("Please review the ABG plugin plan."))
+        XCTAssertFalse(gmail.contains("Inbox Starred"))
+        XCTAssertFalse(gmail.contains("Search mail"))
+
+        let slack = try XCTUnwrap(host.transform(name: "slack-to-markdown", input: readFixture("slack-channel.html")))
+        XCTAssertTrue(slack.contains("Ship the plugin auto-bind fix."))
+        XCTAssertTrue(slack.contains("Add the open-channel helper."))
+        XCTAssertFalse(slack.contains("channels random general"))
+
+        let linear = try XCTUnwrap(host.transform(name: "linear-to-markdown", input: readFixture("linear-issue.html")))
+        XCTAssertTrue(linear.contains("# Plugin commands should auto-bind tabs"))
+        XCTAssertTrue(linear.contains("Issue: ABG-42"))
+        XCTAssertTrue(linear.contains("Status: In Progress"))
+        XCTAssertFalse(linear.contains("Workspace Projects Views"))
+    }
+
     private func makeTempPluginRoot() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("abg-plugin-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func readFixture(_ name: String) throws -> String {
+        let url = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("examples/fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     private func writePlugin(root: URL, name: String, manifest: String? = nil, source: String) throws {

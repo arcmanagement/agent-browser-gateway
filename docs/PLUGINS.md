@@ -301,6 +301,9 @@ transform.
 - `plugins/notion-plugin` is a per-domain plugin for `notion.so` and `notion.site` pages. It strips
   Notion app chrome, scripts, styles, sidebars, popovers, and bookkeeping attributes before
   returning compact Markdown.
+- `plugins/gmail-plugin`, `plugins/slack-plugin`, and `plugins/linear-plugin` are first-party
+  per-domain Markdown examples for authenticated app pages. They run locally in the Gateway plugin
+  host, use deterministic transforms, and do not make network calls.
 - `plugins/redaction-plugin` provides opt-in local Markdown redaction.
 - `plugins/info-plugin` is a loader smoke test.
 
