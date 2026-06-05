@@ -243,6 +243,22 @@ Expected output:
 }
 ```
 
+### Local Redaction
+
+The bundled `redaction` plugin provides an opt-in Markdown masking transform:
+
+```bash
+abg read t1 --format markdown --redact
+abg read t1 --format markdown --redact --redact-regex 'ACME-[0-9]+'
+printf 'ada@example.com' | abg redaction redact --stdin
+abg redaction redact --json '{"text":"ticket ACME-123","customRegexes":["ACME-[0-9]+"]}'
+```
+
+The baseline masks email addresses, phone-like strings, credit-card-like strings, and optional custom
+regexes supplied by the caller. It is a local content-minimization helper, not a security guarantee.
+When `--redact` runs, the audit log records transform names and custom regex count, not raw matched
+values.
+
 ## Per-Domain Markdown Plugin
 
 This is the smallest useful per-domain plugin:
@@ -285,6 +301,7 @@ transform.
 - `plugins/notion-plugin` is a per-domain plugin for `notion.so` and `notion.site` pages. It strips
   Notion app chrome, scripts, styles, sidebars, popovers, and bookkeeping attributes before
   returning compact Markdown.
+- `plugins/redaction-plugin` provides opt-in local Markdown redaction.
 - `plugins/info-plugin` is a loader smoke test.
 
 Run the Notion benchmark:

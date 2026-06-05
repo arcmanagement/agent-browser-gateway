@@ -1,0 +1,21 @@
+{
+  "name": "redaction",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Opt-in local masking transform for Markdown output. Use abg read --format markdown --redact.",
+  "domains": [],
+  "transforms": [
+    "local-redact-markdown"
+  ],
+  "commands": [
+    {
+      "name": "redact",
+      "description": "Redact a supplied text payload locally.",
+      "args": [
+        { "name": "text", "type": "string", "required": false },
+        { "name": "stdin", "type": "string", "required": false },
+        { "name": "customRegexes", "type": "array", "required": false }
+      ]
+    }
+  ]
+}

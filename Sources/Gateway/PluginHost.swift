@@ -110,6 +110,34 @@ final class PluginHost {
         return nil
     }
 
+    func redact(kind: String, input: String, customRegexes: [String] = []) -> (names: [String], output: String)? {
+        var output = input
+        var names: [String] = []
+        for plugin in plugins {
+            for transformName in plugin.manifest?.transforms ?? [] {
+                let lowercased = transformName.lowercased()
+                guard lowercased.contains("redact"),
+                      lowercased.contains(kind.lowercased()),
+                      let next = transform(name: transformName, input: output)
+                else { continue }
+                output = next
+                names.append(transformName)
+            }
+        }
+        for (index, pattern) in customRegexes.enumerated() {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(output.startIndex..<output.endIndex, in: output)
+            output = regex.stringByReplacingMatches(
+                in: output,
+                options: [],
+                range: range,
+                withTemplate: "[redacted:custom-\(index + 1)]"
+            )
+            names.append("custom-regex-\(index + 1)")
+        }
+        return names.isEmpty ? nil : (names, output)
+    }
+
     func commandList() -> [[String: Any]] {
         plugins.flatMap { plugin -> [[String: Any]] in
             let manifestCommands = Dictionary(

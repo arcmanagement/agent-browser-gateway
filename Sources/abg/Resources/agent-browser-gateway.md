@@ -232,6 +232,11 @@ keeps the previous loaded version active.
 Audit logs for plugin commands record `argsKeys`, `argsBytes`, and tab binding mode only. Argument values are never
 recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.
 
+Use `abg read <tab> --format markdown --redact` only when opt-in local masking is desired. The
+bundled `redaction` plugin masks common email, phone-like, and credit-card-like strings. Add
+repeatable `--redact-regex '<pattern>'` for caller-supplied deterministic masks. Redaction audit logs
+record transform names and regex count, not raw matched values.
+
 Plugins can drive a shared tab directly through `context.tab` when the command has a tab context:
 
 ```js
@@ -333,4 +338,4 @@ For deeper details, examples, and installation/update commands, see `docs/PLUGIN
 - `replace` は外部ページを永続変更しない。一時的な DOM 差し替えで、承認付き write operation として扱う。注釈コメントが「このロゴを変えて」のような DOM 見た目変更なら、注釈の `selector` / `element.selector` を使って `abg replace <ref> --selector ... --html ...` を使える
 - ページ遷移後など要素出現を待つときは `abg wait <tabId> --selector "..."` を使う。`sleep` を bash で書かない
 - read は出力が大きいので、可能なら `--selector` で絞るか `--format markdown` / `--format text` で圧縮する。token 効率に直結
-- `--format markdown` は generic `markdown-plugin` を使う。共有タブ URL が `notion.so` / `notion.site` に一致する場合は bundled `notion-plugin` が先に適用され、Notion の sidebar/topbar/popover 等を落としてから Markdown 化する
+- `--format markdown` は generic `markdown-plugin` を使う。共有タブ URL が `notion.so` / `notion.site` に一致する場合は bundled `notion-plugin` が先に適用され、Notion の sidebar/topbar/popover 等を落としてから Markdown 化する。`--redact` を付けた場合だけ bundled `redaction` plugin が Markdown をローカルマスクする
