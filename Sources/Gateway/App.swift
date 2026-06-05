@@ -22,10 +22,11 @@ struct GatewayApp: App {
         MenuBarExtra {
             MenuBarView(coordinator: coordinator)
         } label: {
-            Label {
-                Text(menuBarTitle)
-            } icon: {
+            HStack(spacing: 4) {
                 Image(systemName: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled")
+                Text(menuBarTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .fixedSize()
             }
         }
         .menuBarExtraStyle(.window)

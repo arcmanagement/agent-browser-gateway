@@ -5,77 +5,88 @@ import GatewayCore
 struct MenuBarView: View {
     @ObservedObject var coordinator: GatewayCoordinator
 
-    private let panelWidth: CGFloat = 380
+    private let panelWidth: CGFloat = 390
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             header
-            metrics
-            connectionSection
-            sharedTabsSection
-            actions
+            statusStrip
+            sharedTabsCard
+            extensionsCard
+            toolsCard
             footer
         }
-        .padding(16)
+        .padding(14)
         .frame(width: panelWidth)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.24), radius: 28, x: 0, y: 18)
+        )
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(statusColor.opacity(0.14))
-                Image(systemName: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(statusColor)
-            }
-            .frame(width: 44, height: 44)
+        GlassCard(padding: 14) {
+            HStack(spacing: 12) {
+                GaugeBadge(
+                    symbol: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled",
+                    color: statusColor
+                )
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("Agent Browser Gateway")
-                        .font(.system(size: 15, weight: .semibold))
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Text("Agent Browser Gateway")
+                            .font(.system(size: 16, weight: .semibold))
+                            .lineLimit(1)
+                        profileBadge
+                    }
+
+                    Text(statusText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    profileBadge
                 }
 
-                Text(coordinator.statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-
-            Spacer(minLength: 0)
         }
     }
 
     private var profileBadge: some View {
-        Text(ABGConstants.runtimeProfileLabel)
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        Text(ABGConstants.runtimeProfileLabel.uppercased())
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
             .foregroundStyle(profileColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
                 Capsule(style: .continuous)
-                    .fill(profileColor.opacity(0.12))
+                    .fill(profileColor.opacity(0.13))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(profileColor.opacity(0.26), lineWidth: 1)
+                    )
             )
     }
 
-    private var metrics: some View {
-        HStack(spacing: 8) {
-            MetricTile(
-                title: "Extensions",
+    private var statusStrip: some View {
+        HStack(spacing: 10) {
+            CompactMetric(
+                title: "Tabs",
+                value: "\(coordinator.permittedTabs.count)",
+                symbol: "rectangle.stack.badge.person.crop",
+                color: coordinator.permittedTabs.isEmpty ? .secondary : .blue
+            )
+            CompactMetric(
+                title: "Ext",
                 value: "\(coordinator.connectedExtensionIds.count)",
                 symbol: "puzzlepiece.extension",
                 color: coordinator.connectedExtensionIds.isEmpty ? .secondary : .blue
             )
-            MetricTile(
-                title: "Shared Tabs",
-                value: "\(coordinator.permittedTabs.count)",
-                symbol: "rectangle.stack.badge.person.crop",
-                color: coordinator.permittedTabs.isEmpty ? .secondary : .green
-            )
-            MetricTile(
+            CompactMetric(
                 title: "Port",
                 value: "\(ABGConstants.wsPort)",
                 symbol: "network",
@@ -84,12 +95,105 @@ struct MenuBarView: View {
         }
     }
 
-    private var connectionSection: some View {
-        SectionBlock(title: "Extensions", symbol: "puzzlepiece.extension") {
+    private var sharedTabsCard: some View {
+        GlassCard {
+            CardTitle("Shared tabs", symbol: "rectangle.stack.badge.person.crop", count: coordinator.permittedTabs.count)
+
+            if coordinator.permittedTabs.isEmpty {
+                EmptyStateRow(symbol: "lock.circle", text: "No tabs are shared with this Gateway")
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(coordinator.permittedTabs, id: \.tabId) { tab in
+                            tabRow(tab)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .frame(maxHeight: 270)
+
+                Button(role: .destructive) {
+                    revokeAll()
+                } label: {
+                    Label("Revoke all shared tabs", systemImage: "xmark.shield")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(GlassButtonStyle(tint: .red))
+                .controlSize(.small)
+                .help("Revoke every shared tab immediately")
+            }
+        }
+    }
+
+    private func tabRow(_ tab: PermittedTab) -> some View {
+        HStack(spacing: 10) {
+            VStack(spacing: 2) {
+                Text("\(tab.tabId)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.blue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 5, height: 5)
+            }
+            .frame(width: 42, height: 38)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Color.blue.opacity(0.11))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(Color.blue.opacity(0.20), lineWidth: 1)
+                    )
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(tabTitle(tab))
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+
+                    Text(accessModeLabel(tab.accessMode))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(accessModeColor(tab.accessMode))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(accessModeColor(tab.accessMode).opacity(0.12))
+                        )
+                }
+
+                Text(tabHost(tab.url))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                copy("\(tab.tabId)")
+            } label: {
+                Image(systemName: "number")
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Copy tab id")
+        }
+        .padding(9)
+        .background(glassRowBackground)
+    }
+
+    private var extensionsCard: some View {
+        GlassCard {
+            CardTitle("Extensions", symbol: "puzzlepiece.extension", count: coordinator.connectedExtensionIds.count)
+
             if coordinator.connectedExtensionIds.isEmpty {
                 EmptyStateRow(symbol: "bolt.horizontal.circle", text: "No extension connected")
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 7) {
                     ForEach(coordinator.connectedExtensionIds, id: \.self) { id in
                         extensionRow(id)
                     }
@@ -111,10 +215,10 @@ struct MenuBarView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(details)
-                    .font(.caption2)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -125,109 +229,28 @@ struct MenuBarView: View {
                 copy(id)
             } label: {
                 Image(systemName: "doc.on.doc")
-                    .frame(width: 22, height: 22)
+                    .frame(width: 24, height: 24)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .help("Copy extension id")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(rowBackground)
+        .padding(9)
+        .background(glassRowBackground)
     }
 
-    private var sharedTabsSection: some View {
-        SectionBlock(title: "Shared Tabs", symbol: "rectangle.stack.badge.person.crop") {
-            if coordinator.permittedTabs.isEmpty {
-                EmptyStateRow(symbol: "lock.circle", text: "No shared tabs")
-            } else {
-                VStack(spacing: 8) {
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            ForEach(coordinator.permittedTabs, id: \.tabId) { tab in
-                                tabRow(tab)
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 260)
-
-                    Button(role: .destructive) {
-                        revokeAll()
-                    } label: {
-                        Label("Revoke all", systemImage: "xmark.shield")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Revoke every shared tab immediately")
-                }
-            }
-        }
-    }
-
-    private func tabRow(_ tab: PermittedTab) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.green.opacity(0.12))
-                Text("\(tab.tabId)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.green)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.65)
-            }
-            .frame(width: 38, height: 30)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(tabTitle(tab))
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-
-                    Text(accessModeLabel(tab.accessMode))
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(accessModeColor(tab.accessMode))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(accessModeColor(tab.accessMode).opacity(0.12))
-                        )
-                }
-
-                Text(tabHost(tab.url))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
-            Button {
-                copy("\(tab.tabId)")
-            } label: {
-                Image(systemName: "number")
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.borderless)
-            .help("Copy tab id")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(rowBackground)
-    }
-
-    private var actions: some View {
-        VStack(spacing: 8) {
+    private var toolsCard: some View {
+        GlassCard {
             HStack(spacing: 8) {
-                PanelActionButton(title: "Audit", symbol: "doc.text.magnifyingglass") {
+                ToolButton(title: "Audit", symbol: "doc.text.magnifyingglass") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: ABGConstants.auditLogPath))
                 }
 
-                PanelActionButton(title: "Logs", symbol: "folder") {
+                ToolButton(title: "Logs", symbol: "folder") {
                     NSWorkspace.shared.open(ABGConstants.logsDir)
                 }
 
-                PanelActionButton(title: "Socket", symbol: "point.3.connected.trianglepath.dotted") {
+                ToolButton(title: "Socket", symbol: "point.3.connected.trianglepath.dotted") {
                     copy(ABGConstants.udsPath)
                 }
             }
@@ -238,8 +261,8 @@ struct MenuBarView: View {
                 Label("Quit Gateway", systemImage: "power")
                     .frame(maxWidth: .infinity)
             }
+            .buttonStyle(GlassButtonStyle(tint: .red))
             .keyboardShortcut("q")
-            .buttonStyle(.bordered)
             .controlSize(.small)
         }
     }
@@ -247,35 +270,38 @@ struct MenuBarView: View {
     private var footer: some View {
         HStack(spacing: 6) {
             Text("v\(appVersion())")
-            Text("•")
-            Text(buildShortId())
-            Text("•")
-            Text(ABGConstants.runtimeProfileLabel)
+            Text("multi-profile")
             Spacer(minLength: 0)
-            Text(ABGConstants.wsHost)
+            Text("\(ABGConstants.wsHost):\(ABGConstants.wsPort)")
         }
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
+        .font(.system(size: 10, weight: .medium, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
         .lineLimit(1)
     }
 
-    private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color.secondary.opacity(0.08))
+    private var glassRowBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.regularMaterial)
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.white.opacity(0.24), lineWidth: 1)
             )
+            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
     }
 
     private var statusColor: Color {
-        if !coordinator.permittedTabs.isEmpty { return .green }
+        if !coordinator.permittedTabs.isEmpty { return .blue }
         if !coordinator.connectedExtensionIds.isEmpty { return .blue }
         return .secondary
     }
 
     private var profileColor: Color {
         ABGConstants.runtimeProfile == nil ? .secondary : .orange
+    }
+
+    private var statusText: String {
+        "Local only - \(ABGConstants.wsHost):\(ABGConstants.wsPort)"
     }
 
     private func revokeAll() {
@@ -339,35 +365,87 @@ struct MenuBarView: View {
     private func appVersion() -> String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
     }
-
-    private func buildShortId() -> String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "local"
-    }
 }
 
-private struct SectionBlock<Content: View>: View {
-    let title: String
-    let symbol: String
+private struct GlassCard<Content: View>: View {
+    let padding: CGFloat
     let content: Content
 
-    init(title: String, symbol: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.symbol = symbol
+    init(padding: CGFloat = 12, @ViewBuilder content: () -> Content) {
+        self.padding = padding
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            content
+        }
+        .padding(padding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.thinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.30), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 14, x: 0, y: 8)
+        )
+    }
+}
+
+private struct GaugeBadge: View {
+    let symbol: String
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(0.14))
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.32), lineWidth: 1)
+                )
+            Image(systemName: symbol)
+                .font(.system(size: 21, weight: .semibold))
+                .foregroundStyle(color)
+        }
+        .frame(width: 48, height: 48)
+        .shadow(color: color.opacity(0.16), radius: 10, x: 0, y: 4)
+    }
+}
+
+private struct CardTitle: View {
+    let title: String
+    let symbol: String
+    let count: Int
+
+    init(_ title: String, symbol: String, count: Int) {
+        self.title = title
+        self.symbol = symbol
+        self.count = count
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
             Label(title, systemImage: symbol)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-
-            content
+            Spacer(minLength: 0)
+            Text("\(count)")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.secondary.opacity(0.10))
+                )
         }
     }
 }
 
-private struct MetricTile: View {
+private struct CompactMetric: View {
     let title: String
     let value: String
     let symbol: String
@@ -397,12 +475,13 @@ private struct MetricTile: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 50)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(color.opacity(0.10))
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(.regularMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(color.opacity(0.14), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
                 )
+                .shadow(color: .black.opacity(0.10), radius: 12, x: 0, y: 7)
         )
     }
 }
@@ -412,25 +491,25 @@ private struct EmptyStateRow: View {
     let text: String
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 9) {
             Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 18)
+                .frame(width: 20)
             Text(text)
-                .font(.system(size: 12))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.secondary.opacity(0.07))
         )
     }
 }
 
-private struct PanelActionButton: View {
+private struct ToolButton: View {
     let title: String
     let symbol: String
     let action: () -> Void
@@ -440,7 +519,27 @@ private struct PanelActionButton: View {
             Label(title, systemImage: symbol)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(GlassButtonStyle(tint: .blue))
         .controlSize(.small)
+    }
+}
+
+private struct GlassButtonStyle: ButtonStyle {
+    let tint: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(configuration.isPressed ? tint.opacity(0.18) : tint.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(tint.opacity(0.22), lineWidth: 1)
+                    )
+            )
     }
 }
