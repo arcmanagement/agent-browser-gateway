@@ -30,12 +30,17 @@ abg plugin uninstall my-plugin
 ```
 
 The macOS plugin browser exposes the same install path through the `+` button. Paste `user/repo`,
-an HTTPS GitHub URL, an SSH Git URL, or another `git clone` URL.
+an HTTPS GitHub URL, an SSH Git URL, or another `git clone` URL. User-installed plugins also show
+Update and Uninstall actions in the detail view.
 
 `install` requires `--yes` in the CLI because plugin code is arbitrary JavaScript loaded by the
 local Gateway. Repository installs use the local `git` command, so private repositories use the
 user's existing SSH keys, git credential helper, or GitHub CLI-backed git authentication. ABG does
 not ask for or store GitHub tokens, and HTTPS URLs with embedded credentials are rejected.
+
+Update runs `git pull --ff-only` for git-backed user plugins. Uninstall only removes directories
+under the active user plugin root. Built-in plugins come from the app bundle, and Local Dev plugins
+are external working copies, so the browser does not uninstall them.
 
 ## Directory Layout
 

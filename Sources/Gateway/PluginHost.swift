@@ -249,6 +249,15 @@ final class PluginHost {
         }
     }
 
+    @discardableResult
+    func unload(plugin pluginName: String) -> Bool {
+        guard plugins.contains(where: { $0.name == pluginName }) else {
+            return false
+        }
+        removePluginState(name: pluginName)
+        return true
+    }
+
     func runCommand(plugin pluginName: String, command commandName: String, args: [String: Any], tabId: Int?) async throws -> AnyCodable {
         guard let plugin = plugins.first(where: { $0.name == pluginName }) else {
             throw PluginCommandError.pluginNotFound(pluginName)
@@ -477,15 +486,7 @@ final class PluginHost {
     private func applyLoadedPlugin(_ result: LoadResult, replacingExisting: Bool) {
         let name = result.plugin.name
         if replacingExisting {
-            plugins.removeAll { $0.name == name }
-            commands.removeValue(forKey: name)
-            let ownedTransforms = transformOwners.compactMap { transformName, owner in
-                owner == name ? transformName : nil
-            }
-            for transformName in ownedTransforms {
-                transforms.removeValue(forKey: transformName)
-                transformOwners.removeValue(forKey: transformName)
-            }
+            removePluginState(name: name)
         }
         for (transformName, fn) in result.transforms {
             transforms[transformName] = fn
@@ -495,6 +496,18 @@ final class PluginHost {
         plugins.append(result.plugin)
         warnForUnregisteredManifestCommands(plugin: name, manifest: result.plugin.manifest)
         stderr("loaded plugin \(name)")
+    }
+
+    private func removePluginState(name: String) {
+        plugins.removeAll { $0.name == name }
+        commands.removeValue(forKey: name)
+        let ownedTransforms = transformOwners.compactMap { transformName, owner in
+            owner == name ? transformName : nil
+        }
+        for transformName in ownedTransforms {
+            transforms.removeValue(forKey: transformName)
+            transformOwners.removeValue(forKey: transformName)
+        }
     }
 
     func loadedPluginSummaries() -> [[String: Any]] {

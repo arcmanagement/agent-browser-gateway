@@ -140,6 +140,9 @@ for `ABG_PORT=8766` dev runs). First-party bundled plugins live under
 The macOS plugin browser and `abg plugin install` both accept `user/repo`, HTTPS GitHub URLs, SSH
 Git URLs, or local directories. Private repositories use local git authentication such as SSH keys,
 git credential helpers, or GitHub CLI-backed credentials; ABG does not store GitHub tokens.
+The plugin browser can update or uninstall only user plugins under that directory. Built-in plugins
+come from the app bundle, and Local Dev plugins are external working copies, so the browser never
+removes them.
 
 Recommended layout:
 
