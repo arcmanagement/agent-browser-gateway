@@ -325,6 +325,63 @@ final class PluginHostTests: XCTestCase {
         XCTAssertNil(host.domainPatterns(for: "missing-plugin"))
     }
 
+    func testPluginReloadKeepsPreviousVersionWhenReloadFails() throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            abg.registerTransform("reload-demo-markdown", function () { return "v1"; });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [root])
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v1")
+
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            throw new Error("reload failed");
+            """
+        )
+        let failed = host.reload(plugin: "reload-plugin")
+        XCTAssertEqual(failed.first?["status"] as? String, "failed")
+        XCTAssertEqual(failed.first?["previousVersionKept"] as? Bool, true)
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v1")
+
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            abg.registerTransform("reload-demo-markdown", function () { return "v2"; });
+            """
+        )
+        let reloaded = host.reload(plugin: "reload-plugin")
+        XCTAssertEqual(reloaded.first?["status"] as? String, "reloaded")
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v2")
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)

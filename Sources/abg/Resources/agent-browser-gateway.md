@@ -127,6 +127,7 @@ abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # user plugin を ~/.abg/plugins に追加
+abg plugin reload [name]                # Gateway 再起動なしで plugin を再読み込み
 abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 ```
 
@@ -217,13 +218,16 @@ abg hello greet --json '{"name":"world","loud":true}'
 printf '{"name":"world"}' | abg hello greet --stdin
 abg hello --help
 abg plugin list
+abg plugin reload hello
 ```
 
 `--key value` becomes a string/number/boolean value in `args`, `--flag` becomes `true`, JSON
 `--stdin` and `--json` merge object values into `args`, and non-JSON stdin is passed as
 `args.stdin`. `abg <plugin> --help` shows manifest-driven command and arg specs. `abg plugin list`
 prefers the running Gateway view and shows registered commands per plugin; use `--local-only` only
-when you need filesystem metadata without the daemon.
+when you need filesystem metadata without the daemon. `abg plugin reload [name]` re-reads
+`index.js` and `plugin.json` without quitting ABG.app, preserving current tab shares. A failed reload
+keeps the previous loaded version active.
 
 Audit logs for plugin commands record `argsKeys`, `argsBytes`, and tab binding mode only. Argument values are never
 recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.

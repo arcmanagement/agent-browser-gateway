@@ -349,6 +349,7 @@ User plugins can be managed from the CLI:
 abg plugin list
 abg plugin install user/repo --yes
 abg plugin update
+abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 

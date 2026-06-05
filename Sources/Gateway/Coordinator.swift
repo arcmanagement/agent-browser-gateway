@@ -319,6 +319,8 @@ final class GatewayCoordinator: ObservableObject {
             return CLIResponse(id: req.id, result: AnyCodable(pluginHost.commandList()))
         case "plugin_command_run":
             return await handlePluginCommandRun(req: req)
+        case "plugin_reload":
+            return await handlePluginReload(req: req)
         default:
             return CLIResponse(id: req.id, error: ErrorPayload(code: "unknown_method", message: req.method))
         }
@@ -432,6 +434,23 @@ final class GatewayCoordinator: ObservableObject {
             expectedDomains: domains,
             candidates: matches
         )
+    }
+
+    private func handlePluginReload(req: CLIRequest) async -> CLIResponse {
+        let params = (req.params?.value as? [String: Any]) ?? [:]
+        let pluginName = params["pluginName"] as? String
+        let result = pluginHost.reload(plugin: pluginName)
+        Task {
+            await auditLog.log(
+                action: "plugin_reload",
+                agent: "cli",
+                details: [
+                    "plugin": AnyCodable(pluginName ?? "all"),
+                    "count": AnyCodable(result.count),
+                ]
+            )
+        }
+        return CLIResponse(id: req.id, result: AnyCodable(result))
     }
 
     private func dispatchPluginTabCommand(method: String, params: [String: Any]) async throws -> AnyCodable {
