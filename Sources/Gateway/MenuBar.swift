@@ -4,6 +4,7 @@ import GatewayCore
 
 struct MenuBarView: View {
     @ObservedObject var coordinator: GatewayCoordinator
+    var openWindow: () -> Void = {}
 
     private let panelWidth: CGFloat = 390
 
@@ -242,10 +243,16 @@ struct MenuBarView: View {
     private var toolsCard: some View {
         GlassCard {
             HStack(spacing: 8) {
+                ToolButton(title: "Plugins", symbol: "puzzlepiece.extension") {
+                    openWindow()
+                }
+
                 ToolButton(title: "Audit", symbol: "doc.text.magnifyingglass") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: ABGConstants.auditLogPath))
                 }
+            }
 
+            HStack(spacing: 8) {
                 ToolButton(title: "Logs", symbol: "folder") {
                     NSWorkspace.shared.open(ABGConstants.logsDir)
                 }

@@ -54,6 +54,26 @@ final class PluginHost {
         let manifest: Manifest?
     }
 
+    struct CommandSummary: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let description: String?
+        let args: [String]
+    }
+
+    struct PluginSummary: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let version: String?
+        let author: String?
+        let description: String?
+        let path: String
+        let domains: [String]
+        let transforms: [String]
+        let registeredCommands: [String]
+        let commands: [CommandSummary]
+    }
+
     private struct LoadResult {
         let plugin: LoadedPlugin
         let transforms: [String: JSValue]
@@ -494,6 +514,31 @@ final class PluginHost {
                 dict["commands"] = commands.map { commandSpecDictionary($0) }
             }
             return dict
+        }
+    }
+
+    func loadedPluginSummaryModels() -> [PluginSummary] {
+        plugins.map { plugin in
+            let registeredCommands = (commands[plugin.name] ?? [:]).keys.sorted()
+            return PluginSummary(
+                id: plugin.sourceURL.deletingLastPathComponent().path,
+                name: plugin.name,
+                version: plugin.manifest?.version,
+                author: plugin.manifest?.author,
+                description: plugin.manifest?.description,
+                path: plugin.sourceURL.deletingLastPathComponent().path,
+                domains: plugin.manifest?.domains ?? [],
+                transforms: plugin.manifest?.transforms ?? [],
+                registeredCommands: registeredCommands,
+                commands: (plugin.manifest?.commands ?? []).map { spec in
+                    CommandSummary(
+                        id: "\(plugin.name).\(spec.name)",
+                        name: spec.name,
+                        description: spec.description,
+                        args: (spec.args ?? []).map { $0.name }
+                    )
+                }
+            )
         }
     }
 

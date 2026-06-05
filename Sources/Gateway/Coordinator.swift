@@ -14,6 +14,7 @@ final class GatewayCoordinator: ObservableObject {
     @Published var extensionBrowsers: [String: String] = [:]
     /// extensionId -> browser extension version reported by the extension hello
     @Published var extensionVersions: [String: String] = [:]
+    @Published var pluginSummaries: [PluginHost.PluginSummary] = []
     @Published var statusMessage: String = "Starting…"
 
     private(set) var auditLog = AuditLog()
@@ -35,6 +36,7 @@ final class GatewayCoordinator: ObservableObject {
 
     func start() {
         pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
+        pluginSummaries = pluginHost.loadedPluginSummaryModels()
 
         let ws = WSServer(coordinator: self)
         wsServer = ws
@@ -448,6 +450,7 @@ final class GatewayCoordinator: ObservableObject {
         let params = (req.params?.value as? [String: Any]) ?? [:]
         let pluginName = params["pluginName"] as? String
         let result = pluginHost.reload(plugin: pluginName)
+        pluginSummaries = pluginHost.loadedPluginSummaryModels()
         Task {
             await auditLog.log(
                 action: "plugin_reload",
