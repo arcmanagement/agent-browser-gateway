@@ -1,0 +1,13 @@
+{
+  "name": "linear",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Cleans Linear issue pages into compact Markdown for shared linear.app tabs.",
+  "domains": [
+    "https://linear.app/*"
+  ],
+  "transforms": [
+    "linear-to-markdown"
+  ],
+  "commands": []
+}

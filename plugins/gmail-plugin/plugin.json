@@ -1,0 +1,13 @@
+{
+  "name": "gmail",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Cleans Gmail threads into compact Markdown for shared mail.google.com tabs.",
+  "domains": [
+    "https://mail.google.com/*"
+  ],
+  "transforms": [
+    "gmail-to-markdown"
+  ],
+  "commands": []
+}
