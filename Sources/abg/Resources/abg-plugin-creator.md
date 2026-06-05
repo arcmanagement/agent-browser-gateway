@@ -1,7 +1,7 @@
 ---
 name: abg-plugin-creator
 version: 0.1.0
-description: Scaffold and validate local Agent Browser Gateway plugins under ~/.abg/plugins or a repo plugins/ directory.
+description: Scaffold and validate local Agent Browser Gateway plugins under the ABG user plugin directory or a repo plugins/ directory.
 ---
 
 # ABG Plugin Creator
@@ -10,7 +10,7 @@ Use this skill when the user asks to create, scaffold, edit, or validate an Agen
 
 ## Workflow
 
-1. Decide whether the plugin is a user plugin under `~/.abg/plugins/<name>/` or a bundled repo plugin under `plugins/<name>-plugin/`.
+1. Decide whether the plugin is a user plugin under the ABG user plugin directory (`~/.abg/plugins/<name>/` by default, `~/.abg-dev/plugins/<name>/` for `ABG_PORT=8766` dev runs) or a bundled repo plugin under `plugins/<name>-plugin/`.
 2. Create the standard layout:
 
 ```text

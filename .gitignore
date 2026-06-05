@@ -5,6 +5,7 @@ DerivedData/
 *.xcodeproj/
 Package.resolved
 Agent Browser Gateway.app/
+Agent Browser Gateway Dev.app/
 Gateway.app/
 
 # .NET / WinUI

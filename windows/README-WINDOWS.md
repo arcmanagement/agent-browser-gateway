@@ -73,7 +73,7 @@ Right-click the tray icon for:
 - CLI: `abg.exe`
 - Audit log: `%LOCALAPPDATA%\AgentBrowserGateway\Logs\audit.jsonl`
 - Screenshots: `%TEMP%\abg\screenshots\`
-- User plugins/config: `%USERPROFILE%\.abg\`
+- User plugins/config: `%USERPROFILE%\.abg\` by default (`%USERPROFILE%\.abg-dev\` for `ABG_PORT=8766` dev runs)
 - Approved eval: `abg eval t1 --script "document.title" --approve`, disabled by default in extension settings. `--approve` and the approval window are required unless Trusted automation / AutoMode is enabled in the extension popup.
 
 ## MVP limitations

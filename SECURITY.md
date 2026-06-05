@@ -24,7 +24,7 @@ ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased
 - **Accidental over-sharing through navigation.** A manually permitted tab is automatically revoked when its origin changes. In all-tabs profile mode, navigation is intentionally tracked because the whole isolated profile is the selected boundary.
 - **Silent surveillance by an agent.** Every operation is appended to `~/Library/Logs/AgentBrowserGateway/audit.jsonl`. There is no code path that performs an extension command without an audit-log entry.
 - **Network exfiltration by ABG itself.** Gateway binds only `127.0.0.1`. The extension declares no default `host_permissions`; optional `<all_urls>` is requested only for all-tabs profile mode. There is no analytics / crash reporter / auto-update phone-home.
-- **Malicious websites trying to connect to the local Gateway.** The Gateway WebSocket rejects connections unless the handshake `Origin` is a browser-extension origin (`chrome-extension://`, `moz-extension://`, or `safari-web-extension://`). Normal websites cannot use ABG by opening `ws://127.0.0.1:8765/ws` from page JavaScript.
+- **Malicious websites trying to connect to the local Gateway.** The Gateway WebSocket rejects connections unless the handshake `Origin` is a browser-extension origin (`chrome-extension://`, `moz-extension://`, or `safari-web-extension://`). Normal websites cannot use ABG by opening the local endpoint, such as the default `ws://127.0.0.1:8765/ws`, from page JavaScript.
 
 ### What ABG does not defend against
 
@@ -32,7 +32,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 
 - **Other Chrome extensions in the same profile.** Chrome's extension model itself is not a sandbox boundary against same-profile peers. If you load malicious extensions, they can read everything you can read.
 - **Root or same-user attackers on the host machine.** If something on your Mac can read `~/Library/Application Support/AgentBrowserGateway/gateway.sock`, it can talk to the Gateway. Same for the audit log.
-- **User-installed plugins.** Plugins under `~/.abg/plugins` are local code loaded by the Gateway. ABG does not auto-download plugins; install only plugins you trust.
+- **User-installed plugins.** Plugins under the ABG user plugin directory (`~/.abg/plugins` by default, profile-specific for dev runs) are local code loaded by the Gateway. ABG does not auto-download plugins; install only plugins you trust.
 - **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, or `navigate`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary.
 - **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When Trusted automation / AutoMode is off, every call requires `--approve` plus a local approval window showing the exact script. When AutoMode is on, the local user has explicitly opted into skipping that popup for already-shared tabs; the audit log still records the script source, approval mode, and result summary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.

@@ -6,7 +6,7 @@ Gateway process through JavaScriptCore, so install only plugins you trust.
 Plugins are searched in this order:
 
 1. Bundled plugins under `Agent Browser Gateway.app/Contents/Resources/plugins/`
-2. User-installed plugins under `~/.abg/plugins/`
+2. User-installed plugins under `~/.abg/plugins/` by default (`~/.abg-dev/plugins/` for `ABG_PORT=8766` dev runs)
 
 During repo development, `abg plugin list` also shows the local `plugins/` directory when run from
 the checkout.

@@ -644,23 +644,17 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
   const isLikelyLayoutWrapper = (element: Element): boolean => {
     const tag = element.tagName.toLowerCase();
     if (
-      [
-        "html",
-        "body",
-        "main",
-        "section",
-        "article",
-        "nav",
-        "aside",
-        "header",
-        "footer",
-      ].includes(tag)
+      ["html", "body", "main", "section", "article", "nav", "aside", "header", "footer"].includes(
+        tag,
+      )
     ) {
       return true;
     }
     const role = element.getAttribute("role")?.toLowerCase();
     if (role && ["main", "region", "presentation", "none", "group"].includes(role)) return true;
-    const textLength = trimText((element as HTMLElement).innerText || element.textContent || "").length;
+    const textLength = trimText(
+      (element as HTMLElement).innerText || element.textContent || "",
+    ).length;
     return element.children.length >= 3 && textLength > 240;
   };
   const nearestMeaningfulElement = (state: AnnotationState, start: Element): Element | null => {
@@ -802,7 +796,10 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       const selectedArea = Math.max(1, rectArea(viewportRect));
       const candidateArea = Math.max(1, rectArea(candidateRect));
       if (pointMode && candidateArea / viewportArea > 0.35) return null;
-      if (!pointMode && (candidateArea / selectedArea > 1.6 || candidateArea / viewportArea > 0.55)) {
+      if (
+        !pointMode &&
+        (candidateArea / selectedArea > 1.6 || candidateArea / viewportArea > 0.55)
+      ) {
         return null;
       }
     }

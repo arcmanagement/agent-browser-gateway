@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import GatewayCore
 
 final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -21,8 +22,19 @@ struct GatewayApp: App {
         MenuBarExtra {
             MenuBarView(coordinator: coordinator)
         } label: {
-            Image(systemName: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled")
+            Label {
+                Text(menuBarTitle)
+            } icon: {
+                Image(systemName: coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled")
+            }
         }
         .menuBarExtraStyle(.menu)
+    }
+
+    private var menuBarTitle: String {
+        if let profile = ABGConstants.runtimeProfile {
+            return "ABG \(profile)"
+        }
+        return "ABG"
     }
 }

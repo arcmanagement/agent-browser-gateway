@@ -56,7 +56,7 @@ final class GatewayCoordinator: ObservableObject {
             }
         }
 
-        statusMessage = "Running on \(ABGConstants.wsHost):\(ABGConstants.wsPort)"
+        statusMessage = "Running on \(ABGConstants.wsHost):\(ABGConstants.wsPort) (\(ABGConstants.runtimeProfileLabel))"
     }
 
     func setStatus(_ msg: String) { statusMessage = msg }
@@ -166,8 +166,12 @@ final class GatewayCoordinator: ObservableObject {
             let extDetails = extensionDetails()
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
+                "stateDir": ABGConstants.supportDir.path,
+                "userDir": ABGConstants.abgUserDir.path,
+                "auditLogPath": ABGConstants.auditLogPath,
                 "extensions": extDetails,
                 "extensionCount": extDetails.count,
                 "permittedTabCount": permittedTabs.count,
@@ -177,8 +181,12 @@ final class GatewayCoordinator: ObservableObject {
         case "inspect":
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
+                "stateDir": ABGConstants.supportDir.path,
+                "userDir": ABGConstants.abgUserDir.path,
+                "auditLogPath": ABGConstants.auditLogPath,
                 "extensions": extensionDetails(),
                 "extensionCount": connectedExtensionIds.count,
                 "permittedTabCount": permittedTabs.count,

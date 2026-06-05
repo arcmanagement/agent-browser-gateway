@@ -16,7 +16,9 @@ import type {
   TabAccessMode,
 } from "./types.js";
 
-const WS_URL = "ws://127.0.0.1:8765/ws";
+declare const __ABG_WS_URL__: string;
+
+const WS_URL = __ABG_WS_URL__;
 const VERSION = "0.3.12";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped

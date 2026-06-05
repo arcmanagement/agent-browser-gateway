@@ -40,7 +40,7 @@ public sealed partial class MainWindow : Window
     {
         var snapshot = _gateway.Snapshot();
         StatusText.Text = snapshot.Running
-            ? $"Running on {AbgPaths.WsHost}:{AbgPaths.WsPort}"
+            ? $"Running on {AbgPaths.WsHost}:{AbgPaths.WsPort} ({AbgPaths.RuntimeProfile})"
             : "Stopped";
         ExtensionText.Text = $"Extensions: {snapshot.Extensions.Count}, shared tabs: {snapshot.Tabs.Count}";
         PathText.Text = $"Audit: {AbgPaths.AuditLogPath}";

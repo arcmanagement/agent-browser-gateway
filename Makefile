@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway extension all clean test lint format dist pages-dmg windows-dist pages-windows release verify
+.PHONY: help install gateway gateway-dev extension all clean test lint format dist pages-dmg windows-dist pages-windows release verify
 
 PAGES_OUTPUT_DIR ?= site/downloads
 
@@ -9,6 +9,7 @@ help:
 	@printf "ABG dev targets:\n\n"
 	@printf "  make install      install Node + pnpm via mise, then extension deps\n"
 	@printf "  make gateway      build Agent Browser Gateway.app and abg CLI (release)\n"
+	@printf "  make gateway-dev  build Agent Browser Gateway Dev.app and dev CLI (debug, port 8766)\n"
 	@printf "  make extension    build Chrome extension to extension/dist/\n"
 	@printf "  make all          gateway + extension\n"
 	@printf "  make lint         biome check\n"
@@ -31,13 +32,16 @@ gateway:
 	./build-app.sh
 	@printf "\nlink CLI to PATH:\n  ln -sf $$(pwd)/.build/release/abg /usr/local/bin/abg\n"
 
+gateway-dev:
+	CONFIG=debug APP_VARIANT=dev ./build-app.sh
+
 extension:
 	cd extension && pnpm run build
 
 all: gateway extension
 
 clean:
-	rm -rf .build dist extension/dist extension/node_modules "Agent Browser Gateway.app" Gateway.app
+	rm -rf .build dist extension/dist extension/node_modules "Agent Browser Gateway.app" "Agent Browser Gateway Dev.app" Gateway.app
 
 lint:
 	cd extension && pnpm run lint

@@ -400,9 +400,7 @@ func requireArg(_ args: [String], index: Int, error: [String: Any]) throws -> St
 }
 
 func screenshotDirectory() throws -> URL {
-    let base = FileManager.default.temporaryDirectory
-        .appendingPathComponent("abg", isDirectory: true)
-        .appendingPathComponent("screenshots", isDirectory: true)
+    let base = ABGConstants.screenshotsDir
     try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
     return base
 }
@@ -421,7 +419,7 @@ func latestScreenshotMarker() throws -> URL {
 }
 
 func abgStateDirectory() throws -> URL {
-    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".abg", isDirectory: true)
+    let url = ABGConstants.abgUserDir
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
@@ -1929,7 +1927,7 @@ struct PluginList: AsyncParsableCommand {
 }
 
 struct PluginInstall: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "install", abstract: "~/.abg/plugins に plugin をインストール")
+    static let configuration = CommandConfiguration(commandName: "install", abstract: "ABG user plugin directory に plugin をインストール")
     @Argument(help: "GitHub repo (user/repo), git URL, or local plugin directory") var source: String
     @Option(name: .long, help: "インストール名 (省略時 source から推定)") var name: String?
     @Flag(name: .long, help: "既存 plugin を置き換える") var force: Bool = false
@@ -1986,9 +1984,10 @@ struct PluginUninstall: AsyncParsableCommand {
     @Argument(help: "plugin name") var name: String
 
     func run() async throws {
-        let destination = try userPluginsDirectory().appendingPathComponent(sanitizePluginName(name), isDirectory: true)
+        let pluginsDir = try userPluginsDirectory()
+        let destination = pluginsDir.appendingPathComponent(sanitizePluginName(name), isDirectory: true)
         guard FileManager.default.fileExists(atPath: destination.path) else {
-            try failWithJSON(["error": "plugin_not_found", "message": "\(name) is not installed in ~/.abg/plugins"])
+            try failWithJSON(["error": "plugin_not_found", "message": "\(name) is not installed in \(pluginsDir.path)"])
         }
         try FileManager.default.removeItem(at: destination)
         printJSON(["ok": true, "removed": destination.path])
@@ -2041,9 +2040,7 @@ struct PluginReload: AsyncParsableCommand {
 }
 
 func userPluginsDirectory() throws -> URL {
-    let url = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".abg", isDirectory: true)
-        .appendingPathComponent("plugins", isDirectory: true)
+    let url = ABGConstants.userPluginsDir
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
