@@ -1,0 +1,26 @@
+{
+  "name": "workflow",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Domain-neutral command-abstraction examples for plugin authors.",
+  "domains": [],
+  "transforms": [],
+  "commands": [
+    {
+      "name": "clear-and-paste",
+      "description": "Clear an editable target and paste text through the shared tab API.",
+      "args": [
+        { "name": "selector", "type": "string", "required": true },
+        { "name": "value", "type": "string", "required": true }
+      ]
+    },
+    {
+      "name": "read-wait-click",
+      "description": "Wait for a selector, read it, then click it.",
+      "args": [
+        { "name": "selector", "type": "string", "required": true },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    }
+  ]
+}

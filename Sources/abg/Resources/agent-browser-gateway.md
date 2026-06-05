@@ -250,6 +250,9 @@ abg.registerCommand("clear-and-paste", async function (args, context) {
 });
 ```
 
+Bundled command examples include `workflow clear-and-paste` and `workflow read-wait-click`. Treat
+plugin command output as JSON with stable keys, and keep raw argument values out of logs.
+
 Plugin-issued tab actions use the same Gateway dispatch path as normal ABG primitives. Do not shell
 out from plugin JavaScript, bypass ABG's configured tab access mode, or log raw argument values.
 

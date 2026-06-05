@@ -153,6 +153,11 @@ Audit logs record command invocations with `action: "plugin_command_run"`, the p
 name, argument key list, and serialized argument byte length. Argument values are never written to
 the audit log because prompts and payloads may contain sensitive data.
 
+Prefer command handlers that return structured JSON with a stable `{ ok, ... }` shape. Keep command
+argument metadata in `plugin.json` so `abg <plugin> <command> --help` can display required inputs and
+defaults. Command plugins should compose `context.tab.*` primitives instead of shelling out or
+inventing a separate browser access path.
+
 The bundled agent skill in `Sources/abg/Resources/agent-browser-gateway.md` contains the concise
 agent-facing authoring guide. Keep this tutorial as the deeper human-facing reference.
 
@@ -305,6 +310,8 @@ transform.
   per-domain Markdown examples for authenticated app pages. They run locally in the Gateway plugin
   host, use deterministic transforms, and do not make network calls.
 - `plugins/redaction-plugin` provides opt-in local Markdown redaction.
+- `plugins/workflow-plugin` demonstrates command abstraction with `context.tab.clear`,
+  `context.tab.paste`, `context.tab.wait`, `context.tab.read`, and `context.tab.click`.
 - `plugins/info-plugin` is a loader smoke test.
 
 Run the Notion benchmark:
