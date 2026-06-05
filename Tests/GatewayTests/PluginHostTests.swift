@@ -400,6 +400,30 @@ final class PluginHostTests: XCTestCase {
         XCTAssertFalse(redaction.output.contains("ACME-123"))
     }
 
+    func testBundledWorkflowCommandUsesTabAPI() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        var calls: [(method: String, params: [String: Any])] = []
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            return AnyCodable(["ok": true, "method": method])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "workflow",
+            command: "clear-and-paste",
+            args: ["selector": "#prompt", "value": "Ship it"],
+            tabId: 99
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(calls.map(\.method), ["clear_tab", "paste_tab"])
+        XCTAssertEqual(calls.first?.params["tabId"] as? Int, 99)
+        XCTAssertEqual(calls.last?.params["selector"] as? String, "#prompt")
+        XCTAssertEqual(calls.last?.params["value"] as? String, "Ship it")
+    }
+
     func testBundledNotionPluginStripsAppChrome() throws {
         let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("plugins", isDirectory: true)
