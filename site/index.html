@@ -16,6 +16,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://agent-browser-gateway.com/" />
     <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/" />
     <link rel="icon" href="favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
@@ -82,6 +83,11 @@
                 Choose the notarized macOS DMG or the Windows x64 package. The Windows ZIP includes
                 <code>agent-browser-gateway.exe</code>, <code>abg.exe</code>, and the PowerShell
                 installer script.
+              </p>
+              <p>
+                Published by ArcManagement, Inc. The site links only to the current public packages;
+                older artifacts should be downloaded from GitHub Releases when needed for audit or
+                rollback work.
               </p>
               <div class="download-actions">
                 <a
@@ -169,6 +175,14 @@
                   <a href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip.sha256.txt">
                     <code>33d21cfaee94e2bae21d05e8017143758e1d267e9c7e387475ea56adae0f91fc</code>
                   </a>
+                </p>
+              </div>
+              <div class="download-trust">
+                <p><strong>macOS trust:</strong> verify the SHA-256 checksum before opening the DMG.</p>
+                <p><strong>Extension:</strong> install Agent Browser Gateway from the Chrome Web Store.</p>
+                <p>
+                  <strong>Uninstall:</strong> remove the app from <code>/Applications</code>, delete
+                  <code>abg</code> from your PATH if manually linked, and remove the Chrome extension.
                 </p>
               </div>
             </div>
