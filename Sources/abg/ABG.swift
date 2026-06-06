@@ -37,7 +37,7 @@ struct ABG: AsyncParsableCommand {
             Status.self, Tabs.self, Inspect.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
-            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Validate.self, Stream.self,
             Record.self, Replay.self,
@@ -50,7 +50,7 @@ private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
-    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
+    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -1190,6 +1190,107 @@ struct Paste: AsyncParsableCommand {
     }
 }
 
+struct ClipboardWrite: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "clipboard-write",
+        abstract: "Write a MIME payload to the local system clipboard",
+        discussion: """
+        Writes one MIME payload to the OS clipboard through the local Gateway. The audit log
+        records the MIME type and byte length, not the raw content.
+
+        Examples:
+          abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+          abg clipboard-write --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @Option(name: .long, help: "Clipboard MIME type to write") var mime: String
+    @Option(name: .long, help: "Clipboard payload") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input") var stdin: Bool = false
+
+    func run() async throws {
+        let text = try readPayload(value: value, file: file, stdin: stdin)
+        let client = UDSClient()
+        let result = try client.call(method: "clipboard_write", params: [
+            "mime": mime,
+            "value": text,
+        ])
+        printJSON(result)
+    }
+}
+
+struct PasteRich: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "paste-rich",
+        abstract: "Paste the current rich clipboard payload into a shared tab",
+        discussion: """
+        Dispatches a native paste shortcut into the focused target, or first focuses --selector.
+        Pass --mime plus --value/--file/--stdin to write a MIME payload immediately before paste.
+
+        Examples:
+          abg paste-rich t1 --selector canvas
+          abg paste-rich t1 --mime "text/html" --value "<b>Hello</b>"
+          abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Optional target CSS selector to focus before native paste") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
+    @Option(name: .long, help: "Optional clipboard MIME type to write before paste") var mime: String?
+    @Option(name: .long, help: "Clipboard payload to write before paste") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file before paste") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input before paste") var stdin: Bool = false
+
+    func run() async throws {
+        let wantsWrite = mime != nil || value != nil || file != nil || stdin
+        if wantsWrite && mime == nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when passing --value, --file, or --stdin.",
+            ])
+        }
+        if !wantsWrite && (value != nil || file != nil || stdin) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when writing clipboard content.",
+            ])
+        }
+
+        let text = wantsWrite ? try readPayload(value: value, file: file, stdin: stdin) : nil
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if let mime { params["mime"] = mime }
+        if let text { params["value"] = text }
+        let result = try client.call(method: "paste_rich_tab", params: params)
+        var step: [String: Any] = ["op": "paste_rich", "tabId": tabId]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if let mime { step["mime"] = mime }
+        if let text { step["value"] = text }
+        appendRecordedStep(step)
+        printJSON(result)
+    }
+}
+
+func readPayload(value: String?, file: String?, stdin: Bool) throws -> String {
+    let sources = [value != nil, file != nil, stdin].filter { $0 }.count
+    guard sources == 1 else {
+        try failWithJSON([
+            "error": "bad_params",
+            "message": "Pass exactly one of --value, --file, or --stdin.",
+        ])
+    }
+    if let value { return value }
+    if let file {
+        return try String(contentsOfFile: (file as NSString).expandingTildeInPath, encoding: .utf8)
+    }
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
 struct Clear: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Clear an editable element",
@@ -1755,6 +1856,12 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
         return try client.call(method: "paste_tab", params: params)
+    case "paste_rich":
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let mime = stringValue(step, "mime") { params["mime"] = mime }
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "paste_rich_tab", params: params)
     case "clear":
         params["selector"] = try requiredString(step, "selector", op: op)
         return try client.call(method: "clear_tab", params: params)

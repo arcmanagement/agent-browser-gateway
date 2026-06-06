@@ -89,6 +89,9 @@ abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/content
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
+abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+abg paste-rich <tab|ref> --selector "<css>"      # Native paste with the current rich clipboard
+abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
 abg clear <tab|ref> --selector "<css>"           # Clear an editable target before paste
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # 現在のタブ上で一時的に DOM 差し替え
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
@@ -244,6 +247,11 @@ keeps the previous loaded version active.
 
 Audit logs for plugin commands record `argsKeys`, `argsBytes`, and tab binding mode only. Argument values are never
 recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.
+
+Use `abg clipboard-write` and `abg paste-rich` for app-specific clipboard formats such as Google
+Sheets wrapped cell payloads or Figma layer payloads. The combined `paste-rich --mime ... --file`
+form writes the clipboard and pastes into the shared tab while auditing only the MIME type and byte
+length, not the raw clipboard payload.
 
 Use `abg read <tab> --format markdown --redact` only when opt-in local masking is desired. The
 bundled `redaction` plugin masks common email, phone-like, and credit-card-like strings. Add

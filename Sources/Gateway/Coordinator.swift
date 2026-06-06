@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SwiftUI
 import GatewayCore
 
@@ -256,6 +257,10 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "fill")
         case "paste_tab":
             return await dispatch(req: req, method: "paste")
+        case "clipboard_write":
+            return await handleClipboardWrite(req: req)
+        case "paste_rich_tab":
+            return await handlePasteRichTab(req: req)
         case "clear_tab":
             return await dispatch(req: req, method: "clear")
         case "replace_tab":
@@ -862,6 +867,117 @@ final class GatewayCoordinator: ObservableObject {
         } catch {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
         }
+    }
+
+    private func handleClipboardWrite(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let mime = params["mime"] as? String,
+              let value = params["value"] as? String,
+              !mime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "mime and value required"))
+        }
+
+        let response = writeClipboardPayload(mime: mime, value: value)
+        switch response {
+        case .success(let result):
+            await auditLog.log(
+                action: "clipboard_write",
+                agent: "cli",
+                details: [
+                    "mime": AnyCodable(mime),
+                    "contentBytes": AnyCodable(value.utf8.count),
+                ]
+            )
+            return CLIResponse(id: req.id, result: AnyCodable(result))
+        case .failure(let error):
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "clipboard_write_failed", message: error.message))
+        }
+    }
+
+    private func handlePasteRichTab(req: CLIRequest) async -> CLIResponse {
+        guard var params = req.params?.value as? [String: Any],
+              let tabId = params["tabId"] as? Int
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+
+        let mime = params["mime"] as? String
+        let value = params["value"] as? String
+        if (mime == nil) != (value == nil) {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "mime and value must be passed together"))
+        }
+
+        var details: [String: AnyCodable] = [:]
+        if let selector = params["selector"] as? String {
+            details["selector"] = AnyCodable(selector)
+        }
+        if let mime, let value {
+            switch writeClipboardPayload(mime: mime, value: value) {
+            case .success:
+                details["mime"] = AnyCodable(mime)
+                details["contentBytes"] = AnyCodable(value.utf8.count)
+                params.removeValue(forKey: "value")
+                params["contentBytes"] = value.utf8.count
+            case .failure(let error):
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "clipboard_write_failed", message: error.message))
+            }
+        }
+
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "paste_rich", params: AnyCodable(params))
+            if let dict = result?.value as? [String: Any] {
+                if let focused = dict["focused"] as? Bool { details["focused"] = AnyCodable(focused) }
+                if let found = dict["found"] as? Bool { details["found"] = AnyCodable(found) }
+            }
+            await auditLog.log(action: "paste_rich", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: details.isEmpty ? nil : details)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
+        }
+    }
+
+    private struct ClipboardPayloadWriteError: Error {
+        let message: String
+    }
+
+    private func writeClipboardPayload(mime: String, value: String) -> Result<[String: Any], ClipboardPayloadWriteError> {
+        let normalizedMime = mime.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMime.isEmpty else { return .failure(ClipboardPayloadWriteError(message: "mime is empty")) }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        var types = [NSPasteboard.PasteboardType(normalizedMime)]
+        switch normalizedMime.lowercased() {
+        case "text/plain":
+            types.append(.string)
+            types.append(NSPasteboard.PasteboardType("public.utf8-plain-text"))
+        case "text/html":
+            types.append(NSPasteboard.PasteboardType("public.html"))
+        default:
+            break
+        }
+
+        var writtenTypes: [String] = []
+        for type in types {
+            if !writtenTypes.contains(type.rawValue), pasteboard.setString(value, forType: type) {
+                writtenTypes.append(type.rawValue)
+            }
+        }
+
+        guard !writtenTypes.isEmpty else {
+            return .failure(ClipboardPayloadWriteError(message: "failed to write clipboard payload"))
+        }
+
+        return .success([
+            "ok": true,
+            "mime": normalizedMime,
+            "contentBytes": value.utf8.count,
+            "pasteboardTypes": writtenTypes,
+        ])
     }
 
     private func handleEvalTab(req: CLIRequest) async -> CLIResponse {

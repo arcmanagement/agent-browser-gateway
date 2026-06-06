@@ -98,6 +98,8 @@ export type GatewayCommand = {
     key?: string;
     code?: string;
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
+    mime?: string;
+    contentBytes?: number;
     // wait_for
     wait?: boolean;
     hidden?: boolean;
@@ -164,6 +166,7 @@ export type GatewayMethod =
   | "set_checked"
   | "fill"
   | "paste"
+  | "paste_rich"
   | "clear"
   | "replace_dom"
   | "upload_file"
@@ -191,6 +194,7 @@ export type OperationMethod = Extract<
   | "set_checked"
   | "fill"
   | "paste"
+  | "paste_rich"
   | "clear"
   | "replace_dom"
   | "upload_file"
