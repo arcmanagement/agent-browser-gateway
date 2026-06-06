@@ -46,7 +46,7 @@ struct ABG: AsyncParsableCommand {
             Wait.self,
             Validate.self, Stream.self,
             Record.self, Replay.self,
-            Revoke.self, Audit.self, Plugin.self, MCPServer.self, InstallSkill.self,
+            Revoke.self, Audit.self, Activity.self, Plugin.self, MCPServer.self, InstallSkill.self,
         ]
     )
 }
@@ -58,7 +58,7 @@ private let builtInTopLevelCommands: Set<String> = [
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
     "record", "replay",
-    "revoke", "audit", "plugin", "mcp-server", "install-skill",
+    "revoke", "audit", "activity", "plugin", "mcp-server", "install-skill",
     "help", "completion",
 ]
 
@@ -2147,6 +2147,17 @@ struct Audit: AsyncParsableCommand {
     func run() async throws {
         let client = UDSClient()
         let result = try client.call(method: "audit", params: ["lines": lines])
+        printJSON(result)
+    }
+}
+
+struct Activity: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "ローカル監査ログの日次/週次サマリー")
+    @Option(name: .long, help: "集計期間: day または week (デフォルト day)") var period: String = "day"
+
+    func run() async throws {
+        let client = UDSClient()
+        let result = try client.call(method: "activity_digest", params: ["period": period])
         printJSON(result)
     }
 }

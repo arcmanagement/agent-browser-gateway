@@ -330,6 +330,23 @@ final class GatewayCoordinator: ObservableObject {
                 return dict
             }
             return CLIResponse(id: req.id, result: AnyCodable(summarized))
+        case "activity_digest":
+            let period = (req.params?.value as? [String: Any])?["period"] as? String ?? "day"
+            guard AuditLog.normalizeDigestPeriod(period) != nil else {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "bad_params",
+                        message: "period must be day or week",
+                        userMessage: "period は day か week を指定してください。",
+                        nextCommand: "abg activity --period day"
+                    )
+                )
+            }
+            guard let digest = await auditLog.digest(period: period) else {
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "period must be day or week"))
+            }
+            return CLIResponse(id: req.id, result: AnyCodable(digest.asJSONObject()))
         case "plugins":
             return CLIResponse(id: req.id, result: AnyCodable(pluginHost.loadedPluginSummaries()))
         case "plugin_command_list":
