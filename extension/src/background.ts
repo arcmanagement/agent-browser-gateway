@@ -5335,6 +5335,12 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   }
   const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
   if (loadState !== undefined) {
+    if (!["networkidle", "load", "domcontentloaded"].includes(loadState)) {
+      throw new GatewayError(
+        "bad_params",
+        "loadState must be one of networkidle, load, or domcontentloaded",
+      );
+    }
     await attachDebugger(tabId);
     return waitUntil(
       tabId,
