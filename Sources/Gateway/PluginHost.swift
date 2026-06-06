@@ -314,6 +314,7 @@ final class PluginHost {
             ("wait", "wait_tab"),
             ("screenshot", "screenshot_tab"),
             ("navigate", "navigate_tab"),
+            ("scroll", "scroll_tab"),
         ]
         for method in methods {
             let fn: @convention(block) (JSValue?) -> JSValue = { [weak self] options in
@@ -381,6 +382,15 @@ final class PluginHost {
             if normalized["sleepMs"] == nil, let ms = normalized["ms"] {
                 normalized["sleepMs"] = ms
                 normalized.removeValue(forKey: "ms")
+            }
+        case "scroll":
+            if normalized["deltaX"] == nil, let dx = normalized["dx"] {
+                normalized["deltaX"] = dx
+                normalized.removeValue(forKey: "dx")
+            }
+            if normalized["deltaY"] == nil, let dy = normalized["dy"] {
+                normalized["deltaY"] = dy
+                normalized.removeValue(forKey: "dy")
             }
         default:
             break

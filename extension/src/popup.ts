@@ -1,3 +1,4 @@
+import { browserAdapter } from "./browserAdapter.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
@@ -6,6 +7,7 @@ import {
 } from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
+const browser = browserAdapter;
 const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
 const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
 const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
@@ -27,24 +29,24 @@ const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLBu
 let profileLabelTimer: number | null = null;
 
 async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
-  return (await chrome.runtime.sendMessage(msg)) as BackgroundToPopup;
+  return (await browser.runtime.sendMessage(msg)) as BackgroundToPopup;
 }
 
 async function openExtensionSettings(): Promise<void> {
-  await chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  await browser.tabs.create({ url: `chrome://extensions/?id=${browser.runtime.id}` });
   window.close();
 }
 
 async function requestAllTabsPermission(): Promise<boolean> {
-  return await chrome.permissions.request({ origins: ["<all_urls>"] });
+  return await browser.permissions.request({ origins: ["<all_urls>"] });
 }
 
 async function removeAllTabsPermission(): Promise<void> {
-  await chrome.permissions.remove({ origins: ["<all_urls>"] }).catch(() => false);
+  await browser.permissions.remove({ origins: ["<all_urls>"] }).catch(() => false);
 }
 
 async function refresh(): Promise<void> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
     tabInfoEl.textContent = "(no active tab)";
     actionBtn.disabled = true;

@@ -1,6 +1,8 @@
 import { approvalRemainingMs, scriptBlockPresentation } from "./approvalLogic.js";
+import { browserAdapter } from "./browserAdapter.js";
 import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } from "./types.js";
 
+const browser = browserAdapter;
 const intentEl = document.getElementById("intent") as HTMLDivElement;
 const tabTitleEl = document.getElementById("tabTitle") as HTMLDivElement;
 const tabUrlEl = document.getElementById("tabUrl") as HTMLDivElement;
@@ -14,7 +16,7 @@ let submitted = false;
 let timeoutId: number | null = null;
 
 async function send(msg: ApprovalToBackground): Promise<BackgroundToApproval> {
-  return (await chrome.runtime.sendMessage(msg)) as BackgroundToApproval;
+  return (await browser.runtime.sendMessage(msg)) as BackgroundToApproval;
 }
 
 async function decide(decision: ApprovalDecision): Promise<void> {

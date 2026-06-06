@@ -25,4 +25,24 @@ final class WSServerSecurityTests: XCTestCase {
         XCTAssertFalse(WSServer.isAllowedWebSocketOrigin("chrome-extension://user@abcdefghijklmnopabcdefghijklmnop"))
         XCTAssertFalse(WSServer.isAllowedWebSocketOrigin("chrome-extension://abcdefghijklmnopabcdefghijklmnop?debug=true"))
     }
+
+    func testBindFailureStatusGuidesPortConflictRecovery() {
+        let error = NSError(
+            domain: "NIO",
+            code: 48,
+            userInfo: [NSLocalizedDescriptionKey: "Address already in use"]
+        )
+
+        let message = WSServer.bindFailureStatus(
+            error: error,
+            attempt: 3,
+            totalAttempts: 7,
+            port: 8765
+        )
+
+        XCTAssertTrue(message.contains("attempt 3/7"))
+        XCTAssertTrue(message.contains("127.0.0.1:8765"))
+        XCTAssertTrue(message.contains("Address already in use"))
+        XCTAssertTrue(message.contains("lsof -nP -iTCP:8765 -sTCP:LISTEN"))
+    }
 }
