@@ -77,6 +77,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _statusItem;
+    private readonly ToolStripMenuItem _autostartItem;
     private readonly ToolStripMenuItem _restartItem;
     private bool _isRestarting;
 
@@ -84,6 +85,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
     {
         _uiContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         _statusItem = new ToolStripMenuItem("Status", null, (_, _) => ShowStatus());
+        _autostartItem = new ToolStripMenuItem("Launch at sign in", null, (_, _) => ToggleAutostart()) { CheckOnClick = false };
         _restartItem = new ToolStripMenuItem("Restart Gateway", null, async (_, _) => await RestartGatewayAsync().ConfigureAwait(true));
 
         _menu = new ContextMenuStrip();
@@ -91,6 +93,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Open audit log", null, (_, _) => OpenAuditLog());
         _menu.Items.Add("Open logs folder", null, (_, _) => OpenLogsFolder());
+        _menu.Items.Add(_autostartItem);
         _menu.Items.Add(_restartItem);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("Quit", null, (_, _) => Quit());
@@ -123,6 +126,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         var snapshot = _host.Snapshot();
         var state = snapshot.Running ? "Running" : "Stopped";
         _statusItem.Text = $"Status: {state} ({snapshot.Tabs.Count} tabs)";
+        _autostartItem.Checked = WindowsStartup.IsEnabledFor(CurrentGatewayExecutable());
         _restartItem.Enabled = !_isRestarting;
         _notifyIcon.Text = TooltipText(snapshot);
     }
@@ -153,6 +157,28 @@ internal sealed class GatewayTrayApplication : ApplicationContext
             Arguments = "--status",
             UseShellExecute = true
         });
+    }
+
+    private void ToggleAutostart()
+    {
+        var gateway = CurrentGatewayExecutable();
+        if (WindowsStartup.IsEnabledFor(gateway))
+        {
+            WindowsStartup.Disable();
+            _notifyIcon.ShowBalloonTip(2000, "Agent Browser Gateway", "Launch at sign in is disabled.", ToolTipIcon.Info);
+        }
+        else
+        {
+            WindowsStartup.SetEnabled(gateway);
+            _notifyIcon.ShowBalloonTip(2000, "Agent Browser Gateway", "Launch at sign in is enabled.", ToolTipIcon.Info);
+        }
+
+        RefreshStatus();
+    }
+
+    private static string CurrentGatewayExecutable()
+    {
+        return WindowsStartup.GatewayExecutablePath(AppContext.BaseDirectory);
     }
 
     private static void OpenAuditLog()

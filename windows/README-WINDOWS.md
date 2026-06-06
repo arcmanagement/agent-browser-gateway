@@ -12,6 +12,7 @@ AgentBrowserGatewaySetup.exe
 
 The setup app stops the old Gateway, replaces files in `C:\Tools\AgentBrowserGateway`, updates the user `PATH`, refreshes Claude/Codex skills, and starts the tray Gateway.
 `AgentBrowserGatewaySetup.exe` launches the WinUI 3 setup surface from the bundled payload; the setup behavior is the same install/update flow as the script path.
+When selected, setup also writes a per-user startup entry so the tray Gateway launches when the user signs in.
 
 ## Developer build and install
 
@@ -68,8 +69,19 @@ Right-click the tray icon for:
 - `Status` (opens the WinUI 3 status window)
 - `Open audit log`
 - `Open logs folder`
+- `Launch at sign in` (toggles the current install in the user startup list)
 - `Restart Gateway`
 - `Quit`
+
+## Startup and quit behavior
+
+Windows startup is user-scoped. ABG writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+with the installed `agent-browser-gateway.exe` path when launch-at-sign-in is enabled. It does not
+install a Windows service or machine-wide scheduled task.
+
+`Quit` exits only the current tray Gateway process. If launch-at-sign-in remains enabled, ABG starts
+again the next time the user signs in. Disable `Launch at sign in` from the tray menu or the WinUI
+status window before quitting if the Gateway should stay off after reboot.
 
 ## Paths
 

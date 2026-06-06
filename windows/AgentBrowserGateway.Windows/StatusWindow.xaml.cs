@@ -51,6 +51,7 @@ public sealed partial class StatusWindow : Window
         ProcessText.Text = string.IsNullOrWhiteSpace(_processPath) ? "-" : _processPath;
         AuditText.Text = _auditLogPath;
         StartButton.IsEnabled = false;
+        RefreshAutostartState();
 
         TabsList.ItemsSource = ReadTabs(result);
     }
@@ -65,7 +66,28 @@ public sealed partial class StatusWindow : Window
         ProcessText.Text = "-";
         AuditText.Text = _auditLogPath ?? AbgPaths.AuditLogPath;
         StartButton.IsEnabled = true;
+        RefreshAutostartState();
         TabsList.ItemsSource = Array.Empty<TabRow>();
+    }
+
+    private void RefreshAutostartState()
+    {
+        var gateway = CurrentGatewayExecutable();
+        var enabled = WindowsStartup.IsEnabledFor(gateway);
+        AutostartText.Text = enabled ? "Enabled for this Gateway" : "Disabled";
+        AutostartButton.Content = enabled ? "Disable launch at sign in" : "Enable launch at sign in";
+    }
+
+    private string CurrentGatewayExecutable()
+    {
+        if (!string.IsNullOrWhiteSpace(_processPath)
+            && File.Exists(_processPath)
+            && string.Equals(Path.GetFileName(_processPath), "agent-browser-gateway.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return _processPath;
+        }
+
+        return WindowsStartup.GatewayExecutablePath(AppContext.BaseDirectory);
     }
 
     private static List<TabRow> ReadTabs(JsonElement result)
@@ -105,7 +127,7 @@ public sealed partial class StatusWindow : Window
 
     private async void StartGateway_Click(object sender, RoutedEventArgs e)
     {
-        var gateway = Path.Combine(AppContext.BaseDirectory, "agent-browser-gateway.exe");
+        var gateway = CurrentGatewayExecutable();
         if (!File.Exists(gateway))
         {
             StateText.Text = $"Gateway executable was not found: {gateway}";
@@ -120,6 +142,21 @@ public sealed partial class StatusWindow : Window
         });
         await Task.Delay(900).ConfigureAwait(true);
         await RefreshAsync().ConfigureAwait(true);
+    }
+
+    private void Autostart_Click(object sender, RoutedEventArgs e)
+    {
+        var gateway = CurrentGatewayExecutable();
+        if (WindowsStartup.IsEnabledFor(gateway))
+        {
+            WindowsStartup.Disable();
+        }
+        else
+        {
+            WindowsStartup.SetEnabled(gateway);
+        }
+
+        RefreshAutostartState();
     }
 
     private void OpenAuditLog_Click(object sender, RoutedEventArgs e)

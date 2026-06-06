@@ -34,6 +34,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <StackPanel Spacing="2">
@@ -59,6 +60,10 @@
                 <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="2">
                     <TextBlock Text="Audit log" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock x:Name="AuditText" Text="-" TextWrapping="Wrap" FontFamily="Consolas" />
+                </StackPanel>
+                <StackPanel Grid.Row="4" Grid.ColumnSpan="2" Spacing="2">
+                    <TextBlock Text="Launch at sign in" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="AutostartText" Text="-" TextWrapping="Wrap" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -97,11 +102,13 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="1" x:Name="StartButton" Content="Start Gateway" Click="StartGateway_Click" />
-            <Button Grid.Column="2" Content="Open audit log" Click="OpenAuditLog_Click" />
-            <Button Grid.Column="3" Content="Open logs folder" Click="OpenLogsFolder_Click" />
-            <Button Grid.Column="4" Content="Refresh" Click="Refresh_Click" />
+            <Button Grid.Column="1" x:Name="AutostartButton" Content="Launch at sign in" Click="Autostart_Click" />
+            <Button Grid.Column="2" x:Name="StartButton" Content="Start Gateway" Click="StartGateway_Click" />
+            <Button Grid.Column="3" Content="Open audit log" Click="OpenAuditLog_Click" />
+            <Button Grid.Column="4" Content="Open logs folder" Click="OpenLogsFolder_Click" />
+            <Button Grid.Column="5" Content="Refresh" Click="Refresh_Click" />
         </Grid>
     </Grid>
 </Window>
