@@ -3,14 +3,14 @@ import Vapor
 import GatewayCore
 
 actor WSServer {
-    private weak var coordinator: GatewayCoordinator?
+    private weak var runtime: (any GatewayRuntime)?
     private var app: Application?
     private var sockets: [String: WebSocket] = [:]
     private var extensionIdBySocket: [ObjectIdentifier: String] = [:]
     private var runtimeStreamSockets: [ObjectIdentifier: WebSocket] = [:]
 
-    init(coordinator: GatewayCoordinator) {
-        self.coordinator = coordinator
+    init(runtime: any GatewayRuntime) {
+        self.runtime = runtime
     }
 
     func start() async throws {
@@ -21,7 +21,7 @@ actor WSServer {
         var lastError: Error?
         for (attempt, secs) in backoffs.enumerated() {
             if secs > 0 {
-                await coordinator?.setStatus("WS bind retry in \(secs)s (attempt \(attempt + 1)/\(backoffs.count))…")
+                await runtime?.setStatus("WS bind retry in \(secs)s (attempt \(attempt + 1)/\(backoffs.count))…")
                 try? await Task.sleep(nanoseconds: secs * 1_000_000_000)
             }
             do {
@@ -29,12 +29,29 @@ actor WSServer {
                 return
             } catch {
                 lastError = error
-                let msg = "bind failed (attempt \(attempt + 1)/\(backoffs.count)): \(error.localizedDescription)"
+                let msg = Self.bindFailureStatus(
+                    error: error,
+                    attempt: attempt + 1,
+                    totalAttempts: backoffs.count,
+                    port: ABGConstants.wsPort
+                )
                 print("[ABG WS] \(msg)")
-                await coordinator?.setStatus(msg)
+                await runtime?.setStatus(msg)
             }
         }
-        if let lastError = lastError { throw lastError }
+        if let lastError = lastError {
+            let msg = Self.bindFailureStatus(
+                error: lastError,
+                attempt: backoffs.count,
+                totalAttempts: backoffs.count,
+                port: ABGConstants.wsPort
+            )
+            throw NSError(domain: "ABG.WSServer", code: 1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    static func bindFailureStatus(error: Error, attempt: Int, totalAttempts: Int, port: Int) -> String {
+        "WS bind failed (attempt \(attempt)/\(totalAttempts)) on 127.0.0.1:\(port): \(error.localizedDescription). Another Gateway may already be running. Identify the listener with: lsof -nP -iTCP:\(port) -sTCP:LISTEN"
     }
 
     private func runOnce() async throws {
@@ -103,9 +120,9 @@ actor WSServer {
             extensionIdBySocket[ObjectIdentifier(ws)] = extId
         }
         guard let extId = extensionIdBySocket[ObjectIdentifier(ws)] else { return }
-        let coord = coordinator
+        let runtime = runtime
         await MainActor.run {
-            coord?.handleExtensionMessage(msg, from: extId)
+            runtime?.handleExtensionMessage(msg, from: extId)
         }
     }
 
@@ -113,9 +130,9 @@ actor WSServer {
         let key = ObjectIdentifier(ws)
         guard let extId = extensionIdBySocket.removeValue(forKey: key) else { return }
         sockets.removeValue(forKey: extId)
-        let coord = coordinator
+        let runtime = runtime
         await MainActor.run {
-            coord?.extensionDisconnected(extId)
+            runtime?.extensionDisconnected(extId)
         }
     }
 

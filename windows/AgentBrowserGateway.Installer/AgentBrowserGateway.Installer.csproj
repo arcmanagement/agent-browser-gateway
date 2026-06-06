@@ -5,10 +5,6 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <AssemblyName>AgentBrowserGatewaySetup</AssemblyName>
     <RootNamespace>AgentBrowserGateway.Installer</RootNamespace>
-    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\AgentBrowserGateway.Core\AgentBrowserGateway.Core.csproj" />
-  </ItemGroup>
 </Project>

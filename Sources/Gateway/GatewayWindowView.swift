@@ -4,9 +4,24 @@ import GatewayCore
 
 struct GatewayWindowView: View {
     @ObservedObject var coordinator: GatewayCoordinator
+    @State private var selectedSection: GatewayWindowSection = .plugins
     @State private var searchText = ""
     @State private var selectedFilter: PluginFilter = .all
     @State private var selectedPluginID: String?
+    @State private var auditSearchText = ""
+    @State private var auditEntries: [AuditLogViewEntry] = []
+    @State private var selectedAuditID: String?
+    @State private var auditCommandFilter = AuditLogViewEntry.allFilterValue
+    @State private var auditTabFilter = AuditLogViewEntry.allFilterValue
+    @State private var auditTimeFilter: AuditTimeFilter = .day
+    @State private var auditLoadError: String?
+    @State private var gatewaySettings = GatewaySettingsStore.load()
+    @State private var settingsMessage: String?
+    @State private var settingsError: String?
+    @State private var newPolicyDomain = ""
+    @State private var newPolicyApprovalMode: GatewayApprovalMode = .extensionPopup
+    @State private var newPolicyTimeoutMs = GatewaySettings.defaultTimeoutMs
+    @State private var newPolicyAppliesToSubdomains = true
     @State private var isInstallSheetPresented = false
     @State private var pluginOperation: PluginManagementOperation?
     @State private var pluginManagementMessage: String?
@@ -20,13 +35,26 @@ struct GatewayWindowView: View {
 
             Divider()
 
-            pluginList
-                .frame(width: 330)
+            if selectedSection == .plugins {
+                pluginList
+                    .frame(width: 330)
 
-            Divider()
+                Divider()
 
-            pluginDetail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                pluginDetail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if selectedSection == .audit {
+                auditList
+                    .frame(width: 390)
+
+                Divider()
+
+                auditDetail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                settingsDetail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .frame(minWidth: 820, minHeight: 560)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -62,12 +90,44 @@ struct GatewayWindowView: View {
             runtimeBadge
 
             VStack(alignment: .leading, spacing: 6) {
-                SidebarItem(
-                    title: "Plugins",
-                    subtitle: "\(loadedPluginCount) loaded",
-                    symbol: "puzzlepiece.extension",
-                    isSelected: true
-                )
+                Button {
+                    selectedSection = .plugins
+                } label: {
+                    SidebarItem(
+                        title: "Plugins",
+                        subtitle: "\(loadedPluginCount) loaded",
+                        symbol: "puzzlepiece.extension",
+                        isSelected: selectedSection == .plugins
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    selectedSection = .audit
+                    reloadAuditEntries()
+                } label: {
+                    SidebarItem(
+                        title: "Audit",
+                        subtitle: "\(auditEntries.count) entries",
+                        symbol: "list.bullet.rectangle.portrait",
+                        isSelected: selectedSection == .audit
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    selectedSection = .settings
+                    reloadGatewaySettings()
+                } label: {
+                    SidebarItem(
+                        title: "Settings",
+                        subtitle: "\(gatewaySettings.domainPolicies.count) policies",
+                        symbol: "gearshape",
+                        isSelected: selectedSection == .settings
+                    )
+                }
+                .buttonStyle(.plain)
+
                 SidebarItem(
                     title: "Shared Tabs",
                     subtitle: "\(coordinator.permittedTabs.count) active",
@@ -78,28 +138,12 @@ struct GatewayWindowView: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Filters")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                ForEach(PluginFilter.allCases) { filter in
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: filter.symbol)
-                                .frame(width: 18)
-                            Text(filter.title)
-                            Spacer(minLength: 0)
-                            Text("\(count(for: filter))")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-                    }
-                    .buttonStyle(PluginSidebarButtonStyle(isSelected: selectedFilter == filter))
-                }
+            if selectedSection == .plugins {
+                pluginFilterSection
+            } else if selectedSection == .audit {
+                auditFilterSection
+            } else {
+                settingsSidebarSection
             }
 
             Divider()
@@ -134,6 +178,85 @@ struct GatewayWindowView: View {
         .padding(20)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(.ultraThinMaterial)
+    }
+
+    private var pluginFilterSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Filters")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(PluginFilter.allCases) { filter in
+                Button {
+                    selectedFilter = filter
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: filter.symbol)
+                            .frame(width: 18)
+                        Text(filter.title)
+                        Spacer(minLength: 0)
+                        Text("\(count(for: filter))")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                }
+                .buttonStyle(PluginSidebarButtonStyle(isSelected: selectedFilter == filter))
+            }
+        }
+    }
+
+    private var auditFilterSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Audit Filters")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Picker("Time", selection: $auditTimeFilter) {
+                ForEach(AuditTimeFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Picker("Command", selection: $auditCommandFilter) {
+                Text("All Commands").tag(AuditLogViewEntry.allFilterValue)
+                ForEach(auditCommandOptions, id: \.self) { command in
+                    Text(command).tag(command)
+                }
+            }
+            .labelsHidden()
+
+            Picker("Tab", selection: $auditTabFilter) {
+                Text("All Tabs").tag(AuditLogViewEntry.allFilterValue)
+                ForEach(auditTabOptions, id: \.self) { tab in
+                    Text(tab).tag(tab)
+                }
+            }
+            .labelsHidden()
+        }
+    }
+
+    private var settingsSidebarSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Runtime Defaults")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 7) {
+                PluginChip(text: "\(gatewaySettings.defaultTimeoutMs / 1000)s", color: .blue)
+                PluginChip(text: gatewaySettings.approvalModeDefault.title, color: .green)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Label(GatewaySettingsStore.settingsFile().deletingLastPathComponent().path, systemImage: "folder")
+                    .lineLimit(2)
+                Label(settingsFileIsOwnerOnly ? "0600 local" : "local file", systemImage: "lock.doc")
+            }
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+        }
     }
 
     private var runtimeBadge: some View {
@@ -247,6 +370,97 @@ struct GatewayWindowView: View {
         )
     }
 
+    private var auditList: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text("Audit")
+                    .font(.system(size: 22, weight: .semibold))
+                Spacer(minLength: 0)
+                Button {
+                    reloadAuditEntries()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Reload audit log")
+                Button {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: ABGConstants.auditLogPath))
+                } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Open audit log file")
+            }
+
+            auditSearchField
+
+            HStack(spacing: 8) {
+                PluginChip(text: "\(filteredAuditEntries.count) shown", color: .blue)
+                PluginChip(text: ownerOnlyModeText, color: .green)
+            }
+
+            if let auditLoadError {
+                WindowEmptyState(
+                    symbol: "exclamationmark.triangle",
+                    title: "Audit log unavailable",
+                    detail: auditLoadError
+                )
+                Spacer(minLength: 0)
+            } else if filteredAuditEntries.isEmpty {
+                WindowEmptyState(
+                    symbol: "doc.text.magnifyingglass",
+                    title: "No audit entries",
+                    detail: "Try another filter or reload the audit log."
+                )
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(filteredAuditEntries) { entry in
+                            AuditLogListRow(
+                                entry: entry,
+                                isSelected: selectedAuditEntry?.id == entry.id
+                            ) {
+                                selectedAuditID = entry.id
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(.regularMaterial)
+        .onAppear(perform: reloadAuditEntries)
+    }
+
+    private var auditSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search audit", text: $auditSearchText)
+                .textFieldStyle(.plain)
+            if !auditSearchText.isEmpty {
+                Button {
+                    auditSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.10))
+        )
+    }
+
     @ViewBuilder
     private var pluginDetail: some View {
         if let plugin = selectedPlugin {
@@ -273,6 +487,364 @@ struct GatewayWindowView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    @ViewBuilder
+    private var auditDetail: some View {
+        if let entry = selectedAuditEntry {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    auditDetailHeader(entry)
+                    auditSummaryGrid(entry)
+                    if !entry.auditDiffPreview.isEmpty {
+                        PluginSection(title: "Audit Diff", symbol: "text.badge.checkmark") {
+                            VStack(alignment: .leading, spacing: 7) {
+                                ForEach(entry.auditDiffPreview, id: \.self) { line in
+                                    Text(line)
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(line.hasPrefix("+") ? .green : line.hasPrefix("-") ? .red : .secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+                    if !entry.detailRows.isEmpty {
+                        PluginSection(title: "Details", symbol: "list.bullet.rectangle") {
+                            VStack(spacing: 7) {
+                                ForEach(entry.detailRows) { row in
+                                    HStack(alignment: .top, spacing: 10) {
+                                        Text(row.key)
+                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 132, alignment: .leading)
+                                        Text(row.value)
+                                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                            .textSelection(.enabled)
+                                            .lineLimit(5)
+                                        Spacer(minLength: 0)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let rawDetails = entry.rawDetails {
+                        PluginSection(title: "Raw Details", symbol: "curlybraces") {
+                            Text(rawDetails)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    PluginSection(title: "Location", symbol: "lock.doc") {
+                        HStack(spacing: 10) {
+                            Text(ABGConstants.auditLogPath)
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                            Spacer(minLength: 0)
+                            Button {
+                                NSWorkspace.shared.selectFile(ABGConstants.auditLogPath, inFileViewerRootedAtPath: "")
+                            } label: {
+                                Image(systemName: "arrow.up.forward.app")
+                                    .frame(width: 26, height: 26)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reveal in Finder")
+                            Button {
+                                copy(ABGConstants.auditLogPath)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .frame(width: 26, height: 26)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy path")
+                        }
+                    }
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            WindowEmptyState(
+                symbol: "doc.text.magnifyingglass",
+                title: "No audit entry selected",
+                detail: "Recent local audit entries will appear here."
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var settingsDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                settingsHeader
+                settingsSummaryGrid
+                settingsDefaultsSection
+                settingsDomainPolicySection
+                settingsLocationSection
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear(perform: reloadGatewaySettings)
+    }
+
+    private var settingsHeader: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.blue.opacity(0.13))
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.blue)
+            }
+            .frame(width: 56, height: 56)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Text("Settings")
+                        .font(.system(size: 28, weight: .semibold))
+                        .lineLimit(1)
+                    PluginStatusBadge(text: ABGConstants.runtimeProfileLabel.uppercased(), color: runtimeProfileColor)
+                }
+                Text(GatewaySettingsStore.settingsFile().path)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                Button {
+                    reloadGatewaySettings()
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(PluginSecondaryButtonStyle())
+
+                Button {
+                    saveGatewaySettings()
+                } label: {
+                    Label("Save", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(PluginPrimaryButtonStyle())
+            }
+        }
+    }
+
+    private var settingsSummaryGrid: some View {
+        LazyVGrid(columns: [
+            GridItem(.adaptive(minimum: 140), spacing: 10),
+        ], spacing: 10) {
+            PluginStat(title: "Timeout", value: "\(gatewaySettings.defaultTimeoutMs / 1000)s", symbol: "timer")
+            PluginStat(title: "Approval", value: gatewaySettings.approvalModeDefault.title, symbol: "checkmark.shield")
+            PluginStat(title: "Policies", value: "\(gatewaySettings.domainPolicies.count)", symbol: "globe")
+            PluginStat(title: "Profile", value: ABGConstants.runtimeProfileLabel, symbol: "shippingbox")
+        }
+    }
+
+    private var settingsDefaultsSection: some View {
+        PluginSection(title: "Defaults", symbol: "slider.horizontal.3") {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Label("Timeout", systemImage: "timer")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer(minLength: 0)
+                        TextField("30000", value: defaultTimeoutBinding, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .frame(width: 92)
+                        Stepper("Timeout", value: defaultTimeoutBinding, in: timeoutRange, step: 1_000)
+                            .labelsHidden()
+                    }
+
+                    FlowLayout(spacing: 7) {
+                        PluginChip(text: "\(GatewaySettings.minimumTimeoutMs / 1000)s min", color: .secondary)
+                        PluginChip(text: "\(GatewaySettings.maximumTimeoutMs / 1000)s max", color: .secondary)
+                        PluginChip(text: "milliseconds", color: .blue)
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Label("Approval Default", systemImage: "checkmark.shield")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer(minLength: 0)
+                        Picker("Approval Default", selection: $gatewaySettings.approvalModeDefault) {
+                            ForEach(GatewayApprovalMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 210)
+                    }
+
+                    Text(gatewaySettings.approvalModeDefault.detail)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                settingsFeedback
+            }
+        }
+    }
+
+    private var settingsDomainPolicySection: some View {
+        PluginSection(title: "Domain Policies", symbol: "globe.badge.chevron.backward") {
+            VStack(alignment: .leading, spacing: 12) {
+                if gatewaySettings.domainPolicies.isEmpty {
+                    Text("No domain defaults")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(gatewaySettings.domainPolicies) { policy in
+                            domainPolicyRow(policy)
+                        }
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        TextField("example.com", text: $newPolicyDomain)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .onSubmit(addDomainPolicy)
+
+                        Picker("Mode", selection: $newPolicyApprovalMode) {
+                            ForEach(GatewayApprovalMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+                    }
+
+                    HStack(spacing: 10) {
+                        Toggle("Subdomains", isOn: $newPolicyAppliesToSubdomains)
+                            .toggleStyle(.checkbox)
+
+                        Spacer(minLength: 0)
+
+                        TextField("30000", value: newPolicyTimeoutBinding, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .frame(width: 92)
+
+                        Stepper("Policy Timeout", value: newPolicyTimeoutBinding, in: timeoutRange, step: 1_000)
+                            .labelsHidden()
+
+                        Button {
+                            addDomainPolicy()
+                        } label: {
+                            Label("Add", systemImage: "plus")
+                        }
+                        .buttonStyle(PluginPrimaryButtonStyle())
+                        .disabled(!canAddDomainPolicy)
+                    }
+                }
+            }
+        }
+    }
+
+    private var settingsLocationSection: some View {
+        PluginSection(title: "Location", symbol: "lock.doc") {
+            HStack(spacing: 10) {
+                Text(GatewaySettingsStore.settingsFile().path)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                Spacer(minLength: 0)
+
+                PluginChip(text: settingsFileIsOwnerOnly ? "0600 local" : "local file", color: settingsFileIsOwnerOnly ? .green : .secondary)
+
+                Button {
+                    NSWorkspace.shared.selectFile(GatewaySettingsStore.settingsFile().path, inFileViewerRootedAtPath: "")
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
+
+                Button {
+                    copy(GatewaySettingsStore.settingsFile().path)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .help("Copy path")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var settingsFeedback: some View {
+        if let settingsError {
+            Label(settingsError, systemImage: "exclamationmark.triangle")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let settingsMessage {
+            Label(settingsMessage, systemImage: "checkmark.circle")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.green)
+        }
+    }
+
+    private func domainPolicyRow(_ policy: GatewayDomainPolicy) -> some View {
+        HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.green.opacity(0.14))
+                Image(systemName: "globe")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(policy.domain)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    PluginStatusBadge(text: policy.approvalMode.title.uppercased(), color: .blue)
+                    PluginStatusBadge(text: "\(policy.timeoutMs / 1000)S", color: .secondary)
+                    if policy.appliesToSubdomains {
+                        PluginStatusBadge(text: "SUBDOMAINS", color: .green)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button(role: .destructive) {
+                removeDomainPolicy(policy)
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.red)
+            .help("Remove domain policy")
+        }
+        .padding(10)
+        .background(PluginRowBackground())
     }
 
     private func detailHeader(_ plugin: PluginHost.PluginSummary) -> some View {
@@ -518,6 +1090,52 @@ struct GatewayWindowView: View {
         }
     }
 
+    private func auditDetailHeader(_ entry: AuditLogViewEntry) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            AuditLogIcon(entry: entry, size: 56)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Text(entry.command)
+                        .font(.system(size: 28, weight: .semibold))
+                        .lineLimit(1)
+                    PluginStatusBadge(text: entry.outcome.uppercased(), color: entry.outcomeColor)
+                }
+                Text(entry.timeText)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                if let url = entry.url {
+                    Text(url)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                copy(entry.rawDetails ?? entry.searchBlob)
+            } label: {
+                Label("Copy details", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(PluginPrimaryButtonStyle())
+        }
+    }
+
+    private func auditSummaryGrid(_ entry: AuditLogViewEntry) -> some View {
+        LazyVGrid(columns: [
+            GridItem(.adaptive(minimum: 140), spacing: 10),
+        ], spacing: 10) {
+            PluginStat(title: "Action", value: entry.action, symbol: entry.symbol)
+            PluginStat(title: "Command", value: entry.command, symbol: "terminal")
+            PluginStat(title: "Tab", value: entry.tabDisplay, symbol: "rectangle.on.rectangle")
+            PluginStat(title: "Origin", value: entry.origin, symbol: "globe")
+            PluginStat(title: "Agent", value: entry.agent ?? "unknown", symbol: "person.crop.circle")
+        }
+    }
+
     private var filteredPlugins: [PluginHost.PluginSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return coordinator.pluginSummaries
@@ -539,6 +1157,82 @@ struct GatewayWindowView: View {
             return plugin
         }
         return filteredPlugins.first
+    }
+
+    private var filteredAuditEntries: [AuditLogViewEntry] {
+        let query = auditSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return auditEntries
+            .filter { auditTimeFilter.includes($0.timestamp) }
+            .filter { auditCommandFilter == AuditLogViewEntry.allFilterValue || $0.command == auditCommandFilter || $0.action == auditCommandFilter }
+            .filter { auditTabFilter == AuditLogViewEntry.allFilterValue || $0.tabFilterValue == auditTabFilter }
+            .filter { entry in
+                guard !query.isEmpty else { return true }
+                return entry.searchBlob.localizedCaseInsensitiveContains(query)
+            }
+    }
+
+    private var selectedAuditEntry: AuditLogViewEntry? {
+        if let selectedAuditID,
+           let entry = filteredAuditEntries.first(where: { $0.id == selectedAuditID }) {
+            return entry
+        }
+        return filteredAuditEntries.first
+    }
+
+    private var auditCommandOptions: [String] {
+        Array(Set(auditEntries.flatMap { [$0.command, $0.action] }))
+            .filter { !$0.isEmpty }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var auditTabOptions: [String] {
+        Array(Set(auditEntries.map(\.tabFilterValue)))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var ownerOnlyModeText: String {
+        auditLogIsOwnerOnly ? "0600 local" : "local file"
+    }
+
+    private var auditLogIsOwnerOnly: Bool {
+        guard let permissions = try? FileManager.default.attributesOfItem(atPath: ABGConstants.auditLogPath)[.posixPermissions] as? NSNumber else {
+            return false
+        }
+        return permissions.intValue & 0o077 == 0
+    }
+
+    private var settingsFileIsOwnerOnly: Bool {
+        let path = GatewaySettingsStore.settingsFile().path
+        guard FileManager.default.fileExists(atPath: path),
+              let permissions = try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber else {
+            return false
+        }
+        return permissions.intValue & 0o077 == 0
+    }
+
+    private var timeoutRange: ClosedRange<Int> {
+        GatewaySettings.minimumTimeoutMs...GatewaySettings.maximumTimeoutMs
+    }
+
+    private var defaultTimeoutBinding: Binding<Int> {
+        Binding(
+            get: { gatewaySettings.defaultTimeoutMs },
+            set: {
+                gatewaySettings.defaultTimeoutMs = GatewaySettings.clampedTimeout($0)
+                clearSettingsFeedback()
+            }
+        )
+    }
+
+    private var newPolicyTimeoutBinding: Binding<Int> {
+        Binding(
+            get: { newPolicyTimeoutMs },
+            set: { newPolicyTimeoutMs = GatewaySettings.clampedTimeout($0) }
+        )
+    }
+
+    private var canAddDomainPolicy: Bool {
+        GatewaySettings.normalizedDomain(newPolicyDomain) != nil
     }
 
     private func count(for filter: PluginFilter) -> Int {
@@ -580,6 +1274,64 @@ struct GatewayWindowView: View {
     private func reloadPlugins() {
         let _ = coordinator.pluginHost.reload()
         coordinator.refreshPluginSummaries()
+    }
+
+    private func reloadAuditEntries() {
+        let result = AuditLogViewEntry.load(from: ABGConstants.auditLogPath)
+        auditEntries = result.entries
+        auditLoadError = result.error
+        if let selectedAuditID,
+           !result.entries.contains(where: { $0.id == selectedAuditID }) {
+            self.selectedAuditID = nil
+        }
+    }
+
+    private func reloadGatewaySettings() {
+        gatewaySettings = GatewaySettingsStore.load()
+        settingsMessage = nil
+        settingsError = nil
+    }
+
+    private func saveGatewaySettings() {
+        do {
+            gatewaySettings = gatewaySettings.normalized
+            try GatewaySettingsStore.save(gatewaySettings)
+            settingsError = nil
+            settingsMessage = "Settings saved."
+        } catch {
+            settingsMessage = nil
+            settingsError = error.localizedDescription
+        }
+    }
+
+    private func addDomainPolicy() {
+        guard let domain = GatewaySettings.normalizedDomain(newPolicyDomain) else {
+            settingsMessage = nil
+            settingsError = "Enter a valid domain."
+            return
+        }
+        let policy = GatewayDomainPolicy(
+            domain: domain,
+            approvalMode: newPolicyApprovalMode,
+            timeoutMs: newPolicyTimeoutMs,
+            appliesToSubdomains: newPolicyAppliesToSubdomains
+        )
+        gatewaySettings.domainPolicies.removeAll { $0.domain == domain }
+        gatewaySettings.domainPolicies.append(policy)
+        gatewaySettings.domainPolicies = GatewaySettings.normalizedDomainPolicies(gatewaySettings.domainPolicies)
+        newPolicyDomain = ""
+        newPolicyTimeoutMs = gatewaySettings.defaultTimeoutMs
+        clearSettingsFeedback()
+    }
+
+    private func removeDomainPolicy(_ policy: GatewayDomainPolicy) {
+        gatewaySettings.domainPolicies.removeAll { $0.id == policy.id }
+        clearSettingsFeedback()
+    }
+
+    private func clearSettingsFeedback() {
+        settingsMessage = nil
+        settingsError = nil
     }
 
     @MainActor
@@ -766,6 +1518,243 @@ private enum PluginManagementAlert: Identifiable {
         case .error(let message):
             return "error-\(message)"
         }
+    }
+}
+
+private enum GatewayWindowSection {
+    case plugins
+    case audit
+    case settings
+}
+
+private enum AuditTimeFilter: String, CaseIterable, Identifiable {
+    case hour
+    case day
+    case week
+    case all
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hour: return "1h"
+        case .day: return "24h"
+        case .week: return "7d"
+        case .all: return "All"
+        }
+    }
+
+    func includes(_ date: Date, now: Date = Date()) -> Bool {
+        switch self {
+        case .hour:
+            return date >= now.addingTimeInterval(-3_600)
+        case .day:
+            return date >= now.addingTimeInterval(-86_400)
+        case .week:
+            return date >= now.addingTimeInterval(-604_800)
+        case .all:
+            return true
+        }
+    }
+}
+
+private struct AuditLogDetailRow: Identifiable, Hashable {
+    let key: String
+    let value: String
+
+    var id: String { "\(key)=\(value)" }
+}
+
+private struct AuditLogViewEntry: Identifiable {
+    static let allFilterValue = "__all__"
+
+    let id: String
+    let timestamp: Date
+    let action: String
+    let command: String
+    let extensionId: String?
+    let tabId: Int?
+    let url: String?
+    let agent: String?
+    let origin: String
+    let outcome: String
+    let detailRows: [AuditLogDetailRow]
+    let rawDetails: String?
+    let auditDiffPreview: [String]
+    let searchBlob: String
+
+    var timeText: String {
+        timestamp.formatted(.dateTime.month().day().hour().minute().second())
+    }
+
+    var tabDisplay: String {
+        tabId.map { String($0) } ?? "none"
+    }
+
+    var tabFilterValue: String {
+        tabId.map { "Tab \($0)" } ?? "(no tab)"
+    }
+
+    var symbol: String {
+        switch action {
+        case "permit": return "checkmark.shield"
+        case "revoke", "revoke_via_cli": return "xmark.shield"
+        case "fill", "paste", "clear", "replace_dom", "type_text", "keyboard_insert_text": return "square.and.pencil"
+        case "click_selector", "click_ref", "click_described", "click_at": return "cursorarrow.click"
+        case "eval_script": return "chevron.left.forwardslash.chevron.right"
+        case "plugin_command_run": return "puzzlepiece.extension"
+        case "har_export", "state_inspect", "read_dom": return "doc.text.magnifyingglass"
+        default: return "waveform.path.ecg"
+        }
+    }
+
+    var color: Color {
+        switch outcome {
+        case "failed": return .red
+        case "changed": return .orange
+        case "unchanged": return .secondary
+        case "ok": return .green
+        default: return .blue
+        }
+    }
+
+    var outcomeColor: Color { color }
+
+    static func load(from path: String) -> (entries: [AuditLogViewEntry], error: String?) {
+        guard FileManager.default.fileExists(atPath: path) else {
+            return ([], nil)
+        }
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return ([], "Cannot read \(path)")
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let entries = raw.split(separator: "\n").enumerated().compactMap { index, line -> AuditLogViewEntry? in
+            guard let entry = try? decoder.decode(AuditLog.Entry.self, from: Data(line.utf8)) else {
+                return nil
+            }
+            return AuditLogViewEntry(entry: entry, line: index + 1)
+        }
+        return (entries.reversed(), nil)
+    }
+
+    init(entry: AuditLog.Entry, line: Int) {
+        let details = entry.details?.mapValues(\.value)
+        let rawDetails = details.flatMap(Self.prettyJSONString)
+        let rows = Self.detailRows(from: details)
+        let command = (details?["command"] as? String) ?? entry.action
+        let origin = Self.originLabel(for: entry.url)
+        let outcome = Self.outcomeLabel(action: entry.action, details: details)
+        let auditDiffPreview = ((details?["auditDiff"] as? [String: Any])?["preview"] as? [String]) ?? []
+        let searchBlob = [
+            entry.action,
+            command,
+            entry.extensionId ?? "",
+            entry.tabId.map(String.init) ?? "",
+            entry.url ?? "",
+            entry.agent ?? "",
+            origin,
+            outcome,
+            rawDetails ?? "",
+            rows.map { "\($0.key) \($0.value)" }.joined(separator: " "),
+        ].joined(separator: " ")
+
+        self.id = "\(line)-\(entry.ts.timeIntervalSince1970)-\(entry.action)"
+        self.timestamp = entry.ts
+        self.action = entry.action
+        self.command = command
+        self.extensionId = entry.extensionId
+        self.tabId = entry.tabId
+        self.url = entry.url
+        self.agent = entry.agent
+        self.origin = origin
+        self.outcome = outcome
+        self.detailRows = rows
+        self.rawDetails = rawDetails
+        self.auditDiffPreview = auditDiffPreview
+        self.searchBlob = searchBlob
+    }
+
+    private static func originLabel(for url: String?) -> String {
+        guard let url, let host = URL(string: url)?.host, !host.isEmpty else {
+            return "(no origin)"
+        }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    private static func outcomeLabel(action: String, details: [String: Any]?) -> String {
+        if let auditDiff = details?["auditDiff"] as? [String: Any],
+           let changed = auditDiff["changed"] as? Bool {
+            return changed ? "changed" : "unchanged"
+        }
+        if let ok = details?["ok"] as? Bool {
+            return ok ? "ok" : "failed"
+        }
+        if details?["error"] != nil {
+            return "failed"
+        }
+        if let approval = details?["approval"] as? [String: Any],
+           let decision = approval["decision"] as? String,
+           !decision.isEmpty {
+            return decision
+        }
+        if action.contains("disconnect") || action.contains("revoke") {
+            return "closed"
+        }
+        return "recorded"
+    }
+
+    private static func detailRows(from details: [String: Any]?) -> [AuditLogDetailRow] {
+        guard let details else { return [] }
+        return flatten(details, prefix: nil).prefix(36).map { AuditLogDetailRow(key: $0.key, value: $0.value) }
+    }
+
+    private static func flatten(_ value: Any, prefix: String?) -> [(key: String, value: String)] {
+        if let dict = value as? [String: Any] {
+            return dict.keys.sorted().flatMap { key in
+                flatten(dict[key] ?? NSNull(), prefix: [prefix, key].compactMap { $0 }.joined(separator: "."))
+            }
+        }
+        if let array = value as? [Any] {
+            return [(prefix ?? "value", compactJSONString(array))]
+        }
+        return [(prefix ?? "value", clipped(displayValue(value)))]
+    }
+
+    private static func displayValue(_ value: Any) -> String {
+        switch value {
+        case let string as String:
+            return string
+        case let bool as Bool:
+            return bool ? "true" : "false"
+        case let int as Int:
+            return String(int)
+        case let double as Double:
+            return String(double)
+        case is NSNull:
+            return "null"
+        default:
+            return compactJSONString(value)
+        }
+    }
+
+    private static func prettyJSONString(_ value: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func compactJSONString(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8)
+        else { return String(describing: value) }
+        return clipped(text)
+    }
+
+    private static func clipped(_ value: String, limit: Int = 260) -> String {
+        value.count > limit ? "\(value.prefix(limit))..." : value
     }
 }
 
@@ -1054,6 +2043,63 @@ private struct PluginListRow: View {
             .opacity(plugin.isEnabled ? 1 : 0.62)
         }
         .buttonStyle(PluginListButtonStyle(isSelected: isSelected))
+    }
+}
+
+private struct AuditLogListRow: View {
+    let entry: AuditLogViewEntry
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                AuditLogIcon(entry: entry, size: 34)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(entry.command)
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                        PluginStatusBadge(text: entry.outcome.uppercased(), color: entry.outcomeColor)
+                    }
+
+                    HStack(spacing: 6) {
+                        Text(entry.timeText)
+                        Text(entry.tabFilterValue)
+                        Text(entry.origin)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        }
+        .buttonStyle(PluginListButtonStyle(isSelected: isSelected))
+    }
+}
+
+private struct AuditLogIcon: View {
+    let entry: AuditLogViewEntry
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(entry.color.opacity(0.16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+            Image(systemName: entry.symbol)
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundStyle(entry.color)
+        }
+        .frame(width: size, height: size)
     }
 }
 
