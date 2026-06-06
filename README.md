@@ -557,6 +557,7 @@ Currently shipped:
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code and Codex Skills bundled
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
+- ✅ Gateway runtime/macOS shell boundary for future desktop OS ports (see [docs/GATEWAY_CORE_BOUNDARY.md](docs/GATEWAY_CORE_BOUNDARY.md))
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 

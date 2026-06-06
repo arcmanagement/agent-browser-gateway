@@ -1,9 +1,9 @@
 import Foundation
-import SwiftUI
+import Combine
 import GatewayCore
 
 @MainActor
-final class GatewayCoordinator: ObservableObject {
+final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sendable {
     static let shared = GatewayCoordinator()
 
     @Published var permittedTabs: [PermittedTab] = []
@@ -38,7 +38,7 @@ final class GatewayCoordinator: ObservableObject {
         pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
         refreshPluginSummaries()
 
-        let ws = WSServer(coordinator: self)
+        let ws = WSServer(runtime: self)
         wsServer = ws
         Task.detached { [self] in
             do {
@@ -52,7 +52,7 @@ final class GatewayCoordinator: ObservableObject {
         udsServer = uds
         Task.detached { [self] in
             do {
-                try await uds.start(coordinator: self)
+                try await uds.start(runtime: self)
             } catch {
                 await self.setStatus("UDS error: \(error.localizedDescription)")
             }
