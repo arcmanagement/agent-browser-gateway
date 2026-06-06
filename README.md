@@ -115,7 +115,7 @@ The core security model:
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
@@ -204,6 +204,9 @@ abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
 echo "long text" | abg paste <tab|ref> --selector "<css>" --stdin
+abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+abg paste-rich <tab|ref> --selector "<css>"      # Native paste with the current rich clipboard
+abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
 abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
@@ -265,6 +268,16 @@ synthetic value updates or character events, including Lexical, ProseMirror, Sla
 native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable
 element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records the action, tab id,
 selector, and byte length only, never the pasted text.
+
+Use `clipboard-write` and `paste-rich` for app-specific clipboard formats. `clipboard-write` writes
+one MIME payload to the local OS clipboard without a tab operation. `paste-rich` sends the native
+paste shortcut to the currently focused target, or focuses `--selector` first. The combined form
+`abg paste-rich t1 --mime "<type>" --value "<payload>"` writes the clipboard and pastes in one
+audited tab operation; the audit log records the tab, MIME type, and payload byte length, not the
+payload. For Google Sheets edit-mode cells, prepare the Sheets wrapped MIME payload and run
+`abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip`.
+For Figma layer paste, write the Figma-specific MIME payload first, focus the canvas, then run
+`abg paste-rich t1`.
 
 Use `exec-command` when the target already has focus in an edit-mode proxy and browser-native
 `document.execCommand` is the right input path. For example, double-click a Google Sheets cell or
@@ -572,7 +585,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
 | Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
 | Frame targeting | `frames`, plus `--frame @fN` on read/get/find/snapshot/predicates/waits/actions | Playwright `frameLocator` / frame targets | Same-origin frames only; cross-origin returns explicit errors |
-| Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext`, `exec-command insertText` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste`; exec-command is allowlisted |
+| Rich editor input | `fill`, `replace-editable`, `paste`, `paste-rich`, `keyboard inserttext`, `exec-command insertText` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` / `paste-rich`; exec-command is allowlisted |
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
@@ -606,7 +619,7 @@ Currently shipped:
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
-- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `exec-command`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
+- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clipboard-write`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `exec-command`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
 - ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents

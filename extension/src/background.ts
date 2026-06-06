@@ -46,6 +46,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "set_checked",
   "fill",
   "paste",
+  "paste_rich",
   "clear",
   "replace_dom",
   "upload_file",
@@ -1316,6 +1317,24 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Paste ${new TextEncoder().encode(value).byteLength} bytes into the editable element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
       run: () => pasteText(tabId, selector, value, frame),
+    };
+  }
+  if (cmd.method === "paste_rich") {
+    const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+    if (cmd.params?.selector !== undefined && (!selector || selector.length === 0)) {
+      throw new Error("selector must be a non-empty string");
+    }
+    const mime = typeof cmd.params?.mime === "string" ? cmd.params.mime : undefined;
+    const contentBytes = typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
+    const target = selector
+      ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
+      : "the currently focused target";
+    const payload = mime
+      ? ` ${quoteForIntent(mime)} clipboard payload${contentBytes === undefined ? "" : ` (${contentBytes} bytes)`}`
+      : " current clipboard payload";
+    return {
+      intent: `Paste${payload} into ${target}.`,
+      run: () => pasteRichClipboard(tabId, selector, frame),
     };
   }
   if (cmd.method === "clear") {
@@ -4693,6 +4712,30 @@ async function pasteText(
     viaClipboardFallback,
     pasteStrategy: pasted ? "clipboardEvent" : null,
   };
+}
+
+async function pasteRichClipboard(
+  tabId: number,
+  selector?: string,
+  frame?: string,
+): Promise<{ ok: boolean; found?: boolean; focused?: boolean; tag?: string; activeTag?: string }> {
+  if (selector) {
+    const focusResult = await focusElement(tabId, selector, frame);
+    if (!focusResult.found || !focusResult.focused) {
+      return {
+        ok: false,
+        found: focusResult.found,
+        focused: focusResult.focused,
+        tag: focusResult.tag,
+        activeTag: focusResult.activeTag,
+      };
+    }
+    await dispatchPasteShortcut(tabId);
+    return { ok: true, ...focusResult };
+  }
+
+  await dispatchPasteShortcut(tabId);
+  return { ok: true };
 }
 
 async function clearEditable(
