@@ -1492,53 +1492,150 @@ struct Wait: AsyncParsableCommand {
 
     func run() async throws {
         let client = UDSClient()
+        let nonLoadModes = [selector != nil, text != nil, url != nil, fn != nil, ms != nil].filter { $0 }.count
+        if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Unsupported --load value. Use networkidle, load, or domcontentloaded.",
+                ])
+            }
+            guard nonLoadModes == 0 || (selector != nil && nonLoadModes == 1) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Compose --load only with --selector, or pass --load by itself.",
+                ])
+            }
+        } else {
+            guard nonLoadModes == 1 else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
+                ])
+            }
+        }
+
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "timeoutMs": timeout]
-        let modes = [selector != nil, text != nil, url != nil, load != nil, fn != nil, ms != nil].filter { $0 }.count
-        guard modes == 1 else {
+        let result: Any?
+        if let load {
+            params["loadState"] = load
+            let loadResult = try client.call(method: "wait_tab", params: params)
+            if let selector {
+                guard waitResultOK(loadResult) else {
+                    result = combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                    printJSON(result)
+                    appendRecordedStep(waitRecordedStep(
+                        tabId: tabId,
+                        timeout: timeout,
+                        selector: selector,
+                        hidden: hidden,
+                        frame: frame,
+                        load: load
+                    ))
+                    return
+                }
+                var selectorParams: [String: Any] = [
+                    "tabId": tabId,
+                    "timeoutMs": timeout,
+                    "selector": selector,
+                    "hidden": hidden,
+                ]
+                if let frame { selectorParams["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: selectorParams)
+                result = combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                result = loadResult
+            }
+        } else if let s = selector {
+            params["selector"] = s
+            params["hidden"] = hidden
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let text {
+            params["text"] = text
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let url {
+            params["urlPattern"] = url
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let fn {
+            params["predicate"] = fn
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let m = ms {
+            params["sleepMs"] = m
+            result = try client.call(method: "wait_tab", params: params)
+        } else {
             try failWithJSON([
                 "error": "bad_params",
                 "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
             ])
         }
-        if let s = selector {
-            params["selector"] = s
-            params["hidden"] = hidden
-            if let frame { params["frame"] = frame }
-        } else if let text {
-            params["text"] = text
-            if let frame { params["frame"] = frame }
-        } else if let url {
-            params["urlPattern"] = url
-        } else if let load {
-            params["loadState"] = load
-        } else if let fn {
-            params["predicate"] = fn
-            if let frame { params["frame"] = frame }
-        } else if let m = ms {
-            params["sleepMs"] = m
-        }
-        let result = try client.call(method: "wait_tab", params: params)
-        var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
-        if let selector {
-            step["selector"] = selector
-            if hidden { step["hidden"] = true }
-            if let frame { step["frame"] = frame }
-        }
-        if let ms { step["ms"] = ms }
-        if let text {
-            step["text"] = text
-            if let frame { step["frame"] = frame }
-        }
-        if let url { step["url"] = url }
-        if let load { step["load"] = load }
-        if let fn {
-            step["fn"] = fn
-            if let frame { step["frame"] = frame }
-        }
-        appendRecordedStep(step)
+        appendRecordedStep(waitRecordedStep(
+            tabId: tabId,
+            timeout: timeout,
+            selector: selector,
+            hidden: hidden,
+            frame: frame,
+            ms: ms,
+            text: text,
+            url: url,
+            load: load,
+            fn: fn
+        ))
         printJSON(result)
     }
+}
+
+let validWaitLoadStates: Set<String> = ["networkidle", "load", "domcontentloaded"]
+
+func waitResultOK(_ value: Any?) -> Bool {
+    guard let dict = value as? [String: Any] else { return false }
+    return dict["ok"] as? Bool == true
+}
+
+func combinedLoadSelectorWaitResult(load: Any?, selector: Any?) -> [String: Any] {
+    let selectorOK = selector.map(waitResultOK) ?? false
+    return [
+        "ok": selectorOK,
+        "mode": "load_then_selector",
+        "phase": selectorOK ? "complete" : (selector == nil ? "load" : "selector"),
+        "load": load ?? NSNull(),
+        "selector": selector ?? NSNull(),
+    ]
+}
+
+func waitRecordedStep(
+    tabId: Int,
+    timeout: Int,
+    selector: String? = nil,
+    hidden: Bool = false,
+    frame: String? = nil,
+    ms: Int? = nil,
+    text: String? = nil,
+    url: String? = nil,
+    load: String? = nil,
+    fn: String? = nil
+) -> [String: Any] {
+    var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
+    if let selector {
+        step["selector"] = selector
+        if hidden { step["hidden"] = true }
+        if let frame { step["frame"] = frame }
+    }
+    if let ms { step["ms"] = ms }
+    if let text {
+        step["text"] = text
+        if let frame { step["frame"] = frame }
+    }
+    if let url { step["url"] = url }
+    if let load { step["load"] = load }
+    if let fn {
+        step["fn"] = fn
+        if let frame { step["frame"] = frame }
+    }
+    return step
 }
 
 struct Record: AsyncParsableCommand {
@@ -1807,21 +1904,43 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["file"] = try requiredString(step, "file", op: op)
         return try client.call(method: "upload_tab", params: params)
     case "wait":
+        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
+        let load = stringValue(step, "load")
         if let selector = stringValue(step, "selector") {
-            params["selector"] = selector
-            if boolValue(step, "hidden") == true { params["hidden"] = true }
+            if let load {
+                guard validWaitLoadStates.contains(load) else {
+                    try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+                }
+                var loadParams = params
+                loadParams["loadState"] = load
+                let loadResult = try client.call(method: "wait_tab", params: loadParams)
+                guard waitResultOK(loadResult) else {
+                    return combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                }
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: params)
+                return combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+            }
         } else if let ms = intValue(step, "ms") {
             params["sleepMs"] = ms
         } else if let text = stringValue(step, "text") {
             params["text"] = text
         } else if let url = stringValue(step, "url") {
             params["urlPattern"] = url
-        } else if let load = stringValue(step, "load") {
+        } else if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+            }
             params["loadState"] = load
         } else if let fn = stringValue(step, "fn") {
             params["predicate"] = fn
         }
-        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
         return try client.call(method: "wait_tab", params: params)
     default:
         try failWithJSON(["error": "unknown_replay_op", "message": "Unknown replay op: \(op)"])

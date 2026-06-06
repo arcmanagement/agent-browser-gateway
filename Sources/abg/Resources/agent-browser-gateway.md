@@ -109,6 +109,7 @@ abg wait <tab|ref> --ms 1500                     # 単純 sleep
 abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle 後に selector visible を待つ
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
 abg eval <tab|ref> --script "return window.__STATE__" --approve  # AutoMode OFF では --approve + popup 承認が必要
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream

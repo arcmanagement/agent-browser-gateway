@@ -222,6 +222,7 @@ abg wait <tab|ref> --ms 1500
 abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle, then selector visible
 abg wait <tab|ref> --fn "window.ready === true"
 
 # Escape hatch
