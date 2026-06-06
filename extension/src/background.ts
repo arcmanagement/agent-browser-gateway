@@ -1,5 +1,12 @@
 import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
-import { detectBrowserKind, isShareableTabUrl, originForUrl } from "./backgroundLogic.js";
+import {
+  type AuditDiffPayload,
+  type AuditDiffValue,
+  createAuditDiff,
+  detectBrowserKind,
+  isShareableTabUrl,
+  originForUrl,
+} from "./backgroundLogic.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -1279,11 +1286,19 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     }
     const value = rawValue ?? "";
     const dryRun = cmd.params?.dryRun === true;
+    const auditDiff = cmd.params?.auditDiff === true;
+    const auditDiffExcerptChars = cmd.params?.auditDiffExcerptChars;
     return {
       intent: dryRun
         ? `Preview editable replacement for selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`
-        : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
-      run: () => fillField(tabId, selector, value, dryRun, frame),
+        : auditDiff
+          ? `Fill ${new TextEncoder().encode(value).byteLength} bytes into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} and capture a redacted audit diff.`
+          : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () =>
+        fillField(tabId, selector, value, dryRun, frame, {
+          auditDiff,
+          auditDiffExcerptChars,
+        }),
     };
   }
   if (cmd.method === "paste") {
@@ -4406,6 +4421,16 @@ type FillResult = {
   afterLength?: number;
   replacementLength?: number;
   strategy?: "valueSetter" | "selectionReplacement" | "textContentFallback" | "preview";
+  auditDiff?: AuditDiffPayload;
+};
+
+type FillAuditDiffSource = {
+  before: AuditDiffValue;
+  after: AuditDiffValue;
+};
+
+type FillFrameResult = Omit<FillResult, "auditDiff"> & {
+  auditDiffSource?: FillAuditDiffSource;
 };
 
 async function fillField(
@@ -4414,88 +4439,158 @@ async function fillField(
   value: string,
   dryRun: boolean,
   frame?: string,
+  options: { auditDiff?: boolean; auditDiffExcerptChars?: number } = {},
 ): Promise<FillResult> {
-  return runFrameScript(tabId, frame, { selector, value, dryRun }, (ctx, opts) => {
-    const sel = opts.selector;
-    const val = opts.value;
-    const previewOnly = opts.dryRun === true;
-    type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
-    const el = ctx.doc.querySelector(sel) as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | HTMLElement
-      | null;
-    if (!el) return { ok: false, found: false } as const;
+  const frameResult = await runFrameScript<
+    FillFrameResult,
+    {
+      selector: string;
+      value: string;
+      dryRun: boolean;
+      auditDiff: boolean;
+    }
+  >(
+    tabId,
+    frame,
+    { selector, value, dryRun, auditDiff: options.auditDiff === true },
+    (ctx, opts) => {
+      const sel = opts.selector;
+      const val = opts.value;
+      const previewOnly = opts.dryRun === true;
+      type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
+      type LocalAuditValue = { text: string; html?: string };
+      const el = ctx.doc.querySelector(sel) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | HTMLElement
+        | null;
+      if (!el) return { ok: false, found: false } as const;
 
-    const kindOf = (target: Element): LocalKind => {
-      if (target instanceof HTMLInputElement) return "input";
-      if (target instanceof HTMLTextAreaElement) return "textarea";
-      if ((target as HTMLElement).isContentEditable) return "contenteditable";
-      if (target.getAttribute("role") === "textbox") return "role-textbox";
-      return "unsupported";
-    };
-    const currentText = (target: typeof el): string => {
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        return target.value;
-      }
-      return target.textContent ?? "";
-    };
-    const dispatchReplacementEvents = (target: Element, text: string, inputType: string): void => {
-      const beforeInput = new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType,
-        data: text,
-      });
-      target.dispatchEvent(beforeInput);
-      target.dispatchEvent(
-        new InputEvent("input", {
+      const kindOf = (target: Element): LocalKind => {
+        if (target instanceof HTMLInputElement) return "input";
+        if (target instanceof HTMLTextAreaElement) return "textarea";
+        if ((target as HTMLElement).isContentEditable) return "contenteditable";
+        if (target.getAttribute("role") === "textbox") return "role-textbox";
+        return "unsupported";
+      };
+      const currentText = (target: typeof el): string => {
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          return target.value;
+        }
+        return target.textContent ?? "";
+      };
+      const currentSnapshot = (target: typeof el): LocalAuditValue => {
+        const text = currentText(target);
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          return { text };
+        }
+        return { text, html: target.innerHTML };
+      };
+      const dispatchReplacementEvents = (
+        target: Element,
+        text: string,
+        inputType: string,
+      ): void => {
+        const beforeInput = new InputEvent("beforeinput", {
           bubbles: true,
+          cancelable: true,
           inputType,
           data: text,
-        }),
-      );
-      target.dispatchEvent(new Event("change", { bubbles: true }));
-    };
-    const selectEditableContents = (target: HTMLElement): void => {
-      target.focus({ preventScroll: true });
-      const range = ctx.doc.createRange();
-      range.selectNodeContents(target);
-      const selection = ctx.win.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    };
+        });
+        target.dispatchEvent(beforeInput);
+        target.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType,
+            data: text,
+          }),
+        );
+        target.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const selectEditableContents = (target: HTMLElement): void => {
+        target.focus({ preventScroll: true });
+        const range = ctx.doc.createRange();
+        range.selectNodeContents(target);
+        const selection = ctx.win.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      };
 
-    const kind = kindOf(el);
-    if (kind === "unsupported") {
-      return { ok: false, found: true, kind, replacementLength: val.length } as const;
-    }
-
-    const beforeLength = currentText(el).length;
-    if (previewOnly) {
-      return {
-        ok: true,
-        found: true,
-        kind,
-        dryRun: true,
-        beforeLength,
-        replacementLength: val.length,
-        strategy: "preview",
-        frame: ctx.frame,
-      } as const;
-    }
-
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-      const proto =
-        el instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
-      el.focus({ preventScroll: true });
-      try {
-        el.setSelectionRange(0, el.value.length);
-      } catch {
-        // Some input types do not expose text selection.
+      const kind = kindOf(el);
+      if (kind === "unsupported") {
+        return { ok: false, found: true, kind, replacementLength: val.length } as const;
       }
+
+      const beforeSnapshot =
+        opts.auditDiff === true && !previewOnly ? currentSnapshot(el) : undefined;
+      const withAuditDiff = <T extends Record<string, unknown>>(result: T) => {
+        if (!beforeSnapshot) return result;
+        return {
+          ...result,
+          auditDiffSource: {
+            before: beforeSnapshot,
+            after: currentSnapshot(el),
+          },
+        };
+      };
+
+      const beforeLength = currentText(el).length;
+      if (previewOnly) {
+        return {
+          ok: true,
+          found: true,
+          kind,
+          dryRun: true,
+          beforeLength,
+          replacementLength: val.length,
+          strategy: "preview",
+          frame: ctx.frame,
+        } as const;
+      }
+
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        const proto =
+          el instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype
+            : HTMLInputElement.prototype;
+        el.focus({ preventScroll: true });
+        try {
+          el.setSelectionRange(0, el.value.length);
+        } catch {
+          // Some input types do not expose text selection.
+        }
+        el.dispatchEvent(
+          new InputEvent("beforeinput", {
+            bubbles: true,
+            cancelable: true,
+            inputType: "insertReplacementText",
+            data: val,
+          }),
+        );
+        const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+        if (setter) setter.call(el, val);
+        else el.value = val;
+        el.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertReplacementText",
+            data: val,
+          }),
+        );
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        return withAuditDiff({
+          ok: true,
+          found: true,
+          kind,
+          beforeLength,
+          afterLength: el.value.length,
+          replacementLength: val.length,
+          strategy: "valueSetter",
+          frame: ctx.frame,
+        } as const);
+      }
+
+      selectEditableContents(el);
       el.dispatchEvent(
         new InputEvent("beforeinput", {
           bubbles: true,
@@ -4504,9 +4599,21 @@ async function fillField(
           data: val,
         }),
       );
-      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-      if (setter) setter.call(el, val);
-      else el.value = val;
+      const inserted = document.execCommand("insertText", false, val);
+      if (!inserted || currentText(el) !== val) {
+        el.textContent = val;
+        dispatchReplacementEvents(el, val, "insertReplacementText");
+        return withAuditDiff({
+          ok: true,
+          found: true,
+          kind,
+          beforeLength,
+          afterLength: currentText(el).length,
+          replacementLength: val.length,
+          strategy: "textContentFallback",
+          frame: ctx.frame,
+        } as const);
+      }
       el.dispatchEvent(
         new InputEvent("input", {
           bubbles: true,
@@ -4515,61 +4622,27 @@ async function fillField(
         }),
       );
       el.dispatchEvent(new Event("change", { bubbles: true }));
-      return {
-        ok: true,
-        found: true,
-        kind,
-        beforeLength,
-        afterLength: el.value.length,
-        replacementLength: val.length,
-        strategy: "valueSetter",
-        frame: ctx.frame,
-      } as const;
-    }
-
-    selectEditableContents(el);
-    el.dispatchEvent(
-      new InputEvent("beforeinput", {
-        bubbles: true,
-        cancelable: true,
-        inputType: "insertReplacementText",
-        data: val,
-      }),
-    );
-    const inserted = document.execCommand("insertText", false, val);
-    if (!inserted || currentText(el) !== val) {
-      el.textContent = val;
-      dispatchReplacementEvents(el, val, "insertReplacementText");
-      return {
+      return withAuditDiff({
         ok: true,
         found: true,
         kind,
         beforeLength,
         afterLength: currentText(el).length,
         replacementLength: val.length,
-        strategy: "textContentFallback",
+        strategy: "selectionReplacement",
         frame: ctx.frame,
-      } as const;
-    }
-    el.dispatchEvent(
-      new InputEvent("input", {
-        bubbles: true,
-        inputType: "insertReplacementText",
-        data: val,
-      }),
-    );
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-    return {
-      ok: true,
-      found: true,
-      kind,
-      beforeLength,
-      afterLength: currentText(el).length,
-      replacementLength: val.length,
-      strategy: "selectionReplacement",
-      frame: ctx.frame,
-    } as const;
-  });
+      } as const);
+    },
+  );
+
+  const { auditDiffSource, ...result } = frameResult;
+  if (!auditDiffSource) return result;
+  return {
+    ...result,
+    auditDiff: createAuditDiff(auditDiffSource.before, auditDiffSource.after, {
+      excerptChars: options.auditDiffExcerptChars,
+    }),
+  };
 }
 
 type PasteResult = {

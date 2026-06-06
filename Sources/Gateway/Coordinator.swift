@@ -847,6 +847,44 @@ final class GatewayCoordinator: ObservableObject {
                     }
                     return values.isEmpty ? nil : values
                 }
+                if method == "fill" {
+                    var values: [String: AnyCodable] = [
+                        "command": AnyCodable((params["replaceEditable"] as? Bool) == true ? "replace-editable" : "fill"),
+                    ]
+                    if let selector = params["selector"] as? String {
+                        values["selector"] = AnyCodable(selector)
+                    }
+                    if let value = params["value"] as? String {
+                        values["replacementBytes"] = AnyCodable(value.utf8.count)
+                    }
+                    if let auditDiff = params["auditDiff"] as? Bool {
+                        values["auditDiffRequested"] = AnyCodable(auditDiff)
+                    }
+                    if let dict = result?.value as? [String: Any] {
+                        if let ok = dict["ok"] as? Bool {
+                            values["ok"] = AnyCodable(ok)
+                        }
+                        if let kind = dict["kind"] as? String {
+                            values["kind"] = AnyCodable(kind)
+                        }
+                        if let strategy = dict["strategy"] as? String {
+                            values["strategy"] = AnyCodable(strategy)
+                        }
+                        if let beforeLength = dict["beforeLength"] as? Int {
+                            values["beforeLength"] = AnyCodable(beforeLength)
+                        }
+                        if let afterLength = dict["afterLength"] as? Int {
+                            values["afterLength"] = AnyCodable(afterLength)
+                        }
+                        if let replacementLength = dict["replacementLength"] as? Int {
+                            values["replacementLength"] = AnyCodable(replacementLength)
+                        }
+                        if let auditDiff = dict["auditDiff"] as? [String: Any] {
+                            values["auditDiff"] = AnyCodable(auditDiff)
+                        }
+                    }
+                    return values
+                }
                 guard method == "paste" || method == "clear" else { return nil }
                 var values: [String: AnyCodable] = [:]
                 if let selector = params["selector"] as? String {
