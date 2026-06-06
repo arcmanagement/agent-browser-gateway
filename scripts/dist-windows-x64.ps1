@@ -2,7 +2,11 @@ param(
     [string]$Version = "0.3.12",
     [string]$Configuration = "Release",
     [switch]$SkipWinUiApp,
-    [string]$PagesOutputDir = ""
+    [string]$PagesOutputDir = "",
+    [string]$CodeSignPfxPath = "",
+    [string]$CodeSignPfxPassword = "",
+    [string]$TimestampUrl = "http://timestamp.digicert.com",
+    [switch]$RequireCodeSign
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,6 +23,67 @@ function Assert-LastExitCode {
     param([string]$Step)
     if ($LASTEXITCODE -ne 0) {
         throw "$Step failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Resolve-SignTool {
+    $Command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($Command) {
+        return $Command.Source
+    }
+
+    $KitRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
+    if (Test-Path $KitRoot) {
+        $Candidate = Get-ChildItem -Path $KitRoot -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($Candidate) {
+            return $Candidate.FullName
+        }
+    }
+
+    return $null
+}
+
+function Invoke-CodeSign {
+    param([string[]]$Paths)
+
+    if ([string]::IsNullOrWhiteSpace($CodeSignPfxPath)) {
+        if ($RequireCodeSign) {
+            throw "Code signing is required, but CodeSignPfxPath was not provided."
+        }
+        Write-Host "==> skip code signing (no certificate configured)"
+        return
+    }
+
+    $ResolvedPfx = Resolve-Path $CodeSignPfxPath -ErrorAction SilentlyContinue
+    if (-not $ResolvedPfx) {
+        throw "Code signing certificate was not found: $CodeSignPfxPath"
+    }
+
+    $SignTool = Resolve-SignTool
+    if (-not $SignTool) {
+        throw "signtool.exe was not found. Install the Windows SDK on the build machine."
+    }
+
+    $Files = $Paths |
+        Where-Object { Test-Path $_ } |
+        ForEach-Object { Get-ChildItem -Path $_ -Recurse -File } |
+        Where-Object {
+            $_.Name -in @("abg.exe", "agent-browser-gateway.exe", "AgentBrowserGatewaySetup.exe", "AgentBrowserGateway.Windows.exe") -or
+            $_.Name -like "AgentBrowserGateway.*.dll"
+        } |
+        Sort-Object FullName -Unique
+
+    if (-not $Files) {
+        throw "No Windows binaries were found to sign."
+    }
+
+    foreach ($File in $Files) {
+        Write-Host "sign: $($File.FullName)"
+        & $SignTool sign /fd SHA256 /td SHA256 /tr $TimestampUrl /f $ResolvedPfx.Path /p $CodeSignPfxPassword $File.FullName
+        Assert-LastExitCode "signtool sign $($File.Name)"
     }
 }
 
@@ -89,12 +154,17 @@ Get-ChildItem -Path (Join-Path $PublishRoot "installer") -File |
 New-Item -ItemType Directory -Force (Join-Path $SetupStage "payload") | Out-Null
 Copy-Item -Recurse -Force (Join-Path $Stage "*") (Join-Path $SetupStage "payload")
 
+Write-Host "==> sign"
+Invoke-CodeSign -Paths @($Stage, $SetupStage)
+
 Write-Host "==> zip"
 Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $ZipPath -Force
 Compress-Archive -Path (Join-Path $SetupStage "*") -DestinationPath $SetupZipPath -Force
 
 $Hash = Get-FileHash -Algorithm SHA256 $ZipPath
 $SetupHash = Get-FileHash -Algorithm SHA256 $SetupZipPath
+Set-Content -Path "$ZipPath.sha256.txt" -Value "$($Hash.Hash.ToLowerInvariant())  $(Split-Path -Leaf $ZipPath)"
+Set-Content -Path "$SetupZipPath.sha256.txt" -Value "$($SetupHash.Hash.ToLowerInvariant())  $(Split-Path -Leaf $SetupZipPath)"
 if (-not [string]::IsNullOrWhiteSpace($PagesOutputDir)) {
     $ResolvedPagesOutputDir = $PagesOutputDir
     if (-not [System.IO.Path]::IsPathRooted($ResolvedPagesOutputDir)) {
