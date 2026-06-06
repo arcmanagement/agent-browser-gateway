@@ -41,7 +41,7 @@ struct ABG: AsyncParsableCommand {
             Wait.self,
             Validate.self, Stream.self,
             Record.self, Replay.self,
-            Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
+            Revoke.self, Audit.self, Plugin.self, MCPServer.self, InstallSkill.self,
         ]
     )
 }
@@ -53,7 +53,7 @@ private let builtInTopLevelCommands: Set<String> = [
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
     "record", "replay",
-    "revoke", "audit", "plugin", "install-skill",
+    "revoke", "audit", "plugin", "mcp-server", "install-skill",
     "help", "completion",
 ]
 
@@ -2195,6 +2195,260 @@ func runProcess(_ executable: String, _ arguments: [String]) throws -> String {
         throw CLIError.ioError(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+struct MCPServer: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mcp-server",
+        abstract: "Run a stdio MCP server that exposes the abg CLI as a thin tool wrapper"
+    )
+
+    @Option(name: .long, help: "Path to the abg executable. Defaults to ABG_MCP_ABG_PATH or the current executable.") var abgPath: String?
+
+    func run() async throws {
+        let resolvedPath = abgPath
+            ?? ProcessInfo.processInfo.environment["ABG_MCP_ABG_PATH"]
+            ?? URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        try ABGMCPStdioServer(abgPath: resolvedPath).run()
+    }
+}
+
+struct ABGMCPStdioServer {
+    let abgPath: String
+    private let supportedProtocolVersions = [
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+        "2024-10-07",
+    ]
+
+    func run() throws {
+        while let line = readLine(strippingNewline: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if let response = handleLine(trimmed) {
+                print(response)
+                fflush(stdout)
+            }
+        }
+    }
+
+    private func handleLine(_ line: String) -> String? {
+        guard let data = line.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return jsonRPCError(id: NSNull(), code: -32700, message: "Parse error")
+        }
+        let id = request["id"]
+        guard let method = request["method"] as? String else {
+            return id == nil ? nil : jsonRPCError(id: id, code: -32600, message: "Invalid request")
+        }
+        if id == nil, method.hasPrefix("notifications/") {
+            return nil
+        }
+
+        switch method {
+        case "initialize":
+            let params = request["params"] as? [String: Any]
+            let protocolVersion = negotiatedProtocolVersion(params?["protocolVersion"] as? String)
+            return jsonRPCResult(id: id, result: [
+                "protocolVersion": protocolVersion,
+                "capabilities": [
+                    "tools": [
+                        "listChanged": false,
+                    ],
+                ],
+                "serverInfo": [
+                    "name": "agent-browser-gateway",
+                    "version": SkillBundle.version,
+                ],
+            ])
+        case "ping":
+            return jsonRPCResult(id: id, result: [:])
+        case "tools/list":
+            return jsonRPCResult(id: id, result: [
+                "tools": [
+                    abgCLIToolDescription(),
+                ],
+            ])
+        case "tools/call":
+            return handleToolCall(id: id, params: request["params"] as? [String: Any])
+        default:
+            return jsonRPCError(id: id, code: -32601, message: "Method not found")
+        }
+    }
+
+    private func handleToolCall(id: Any?, params: [String: Any]?) -> String {
+        guard let name = params?["name"] as? String else {
+            return jsonRPCError(id: id, code: -32602, message: "Missing tool name")
+        }
+        guard name == "abg_cli" else {
+            return jsonRPCError(id: id, code: -32602, message: "Unknown tool: \(name)")
+        }
+        guard let arguments = params?["arguments"] as? [String: Any],
+              let rawArgs = arguments["args"] as? [Any] else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli requires arguments.args")
+        }
+        let cliArgs = rawArgs.compactMap { $0 as? String }
+        guard cliArgs.count == rawArgs.count, !cliArgs.isEmpty else {
+            return jsonRPCError(id: id, code: -32602, message: "arguments.args must be a non-empty string array")
+        }
+        guard cliArgs.first != "mcp-server" else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli cannot launch mcp-server recursively")
+        }
+
+        do {
+            let result = try runABGCLI(args: cliArgs)
+            return jsonRPCResult(id: id, result: toolResult(from: result))
+        } catch {
+            return jsonRPCResult(id: id, result: [
+                "content": [
+                    [
+                        "type": "text",
+                        "text": "Failed to run abg: \(error.localizedDescription)",
+                    ],
+                ],
+                "isError": true,
+            ])
+        }
+    }
+
+    private func negotiatedProtocolVersion(_ clientVersion: String?) -> String {
+        guard let clientVersion else { return supportedProtocolVersions[0] }
+        return supportedProtocolVersions.contains(clientVersion) ? clientVersion : supportedProtocolVersions[0]
+    }
+
+    private func abgCLIToolDescription() -> [String: Any] {
+        [
+            "name": "abg_cli",
+            "description": """
+            Run the local abg CLI by passing argv tokens after `abg`. This MCP wrapper does not
+            bypass ABG permissions: tab sharing, operation approval, audit logging, and plugin
+            execution all remain enforced by the existing CLI/Gateway path. Examples: ["status"],
+            ["tabs", "--compact"], ["read", "t1", "--format", "markdown"].
+            """,
+            "inputSchema": [
+                "type": "object",
+                "properties": [
+                    "args": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "minItems": 1,
+                        "description": "Command-line arguments to pass after `abg`; shell expansion is not performed.",
+                    ],
+                ],
+                "required": ["args"],
+                "additionalProperties": false,
+            ],
+        ]
+    }
+
+    private func runABGCLI(args: [String]) throws -> ABGCLIExecutionResult {
+        let process = Process()
+        if abgPath.contains("/") {
+            process.executableURL = URL(fileURLWithPath: abgPath)
+            process.arguments = args
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = [abgPath] + args
+        }
+        process.environment = ProcessInfo.processInfo.environment
+
+        let stdoutURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stdout")
+        let stderrURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stderr")
+        FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+        let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+        defer {
+            try? stdoutHandle.close()
+            try? stderrHandle.close()
+            try? FileManager.default.removeItem(at: stdoutURL)
+            try? FileManager.default.removeItem(at: stderrURL)
+        }
+
+        process.standardOutput = stdoutHandle
+        process.standardError = stderrHandle
+        try process.run()
+        process.waitUntilExit()
+        try? stdoutHandle.close()
+        try? stderrHandle.close()
+
+        let stdout = String(data: (try? Data(contentsOf: stdoutURL)) ?? Data(), encoding: .utf8) ?? ""
+        let stderr = String(data: (try? Data(contentsOf: stderrURL)) ?? Data(), encoding: .utf8) ?? ""
+        return ABGCLIExecutionResult(
+            exitCode: Int(process.terminationStatus),
+            stdout: stdout.trimmingCharacters(in: .whitespacesAndNewlines),
+            stderr: stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private func toolResult(from execution: ABGCLIExecutionResult) -> [String: Any] {
+        let text = [execution.stdout, execution.stderr]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        var result: [String: Any] = [
+            "content": [
+                [
+                    "type": "text",
+                    "text": text.isEmpty ? "(no output)" : text,
+                ],
+            ],
+            "structuredContent": execution.structuredContent,
+        ]
+        if execution.exitCode != 0 {
+            result["isError"] = true
+        }
+        return result
+    }
+
+    private func jsonRPCResult(id: Any?, result: [String: Any]) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "result": result,
+        ])
+    }
+
+    private func jsonRPCError(id: Any?, code: Int, message: String) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "error": [
+                "code": code,
+                "message": message,
+            ],
+        ])
+    }
+
+    private func stringify(_ object: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal JSON encoding error"}}"#
+        }
+        return text
+    }
+}
+
+struct ABGCLIExecutionResult {
+    let exitCode: Int
+    let stdout: String
+    let stderr: String
+
+    var structuredContent: [String: Any] {
+        var content: [String: Any] = ["exitCode": exitCode]
+        if !stderr.isEmpty {
+            content["stderr"] = stderr
+        }
+        if let data = stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) {
+            content["json"] = json
+        }
+        return content
+    }
 }
 
 struct InstallSkill: AsyncParsableCommand {

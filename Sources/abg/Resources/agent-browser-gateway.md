@@ -125,6 +125,8 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 # 管理系
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
+abg install-skill                       # Claude Code / Codex skills を更新
+abg mcp-server                          # 同じ abg CLI を包む stdio MCP server
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
 abg plugin reload [name]                # Gateway 再起動なしで plugin を再読み込み
@@ -233,6 +235,23 @@ abg plugin reload hello
 
 `abg install-skill` installs or updates both bundled skills: `agent-browser-gateway` for ABG usage and
 `abg-plugin-creator` for scaffolding ABG plugins.
+
+`abg mcp-server` starts a stdio MCP server for Codex, Claude Code, and other MCP clients. It exposes
+one `abg_cli` tool that accepts argv tokens after `abg`, for example `{"args":["tabs","--compact"]}`.
+The wrapper launches the local CLI as a child process, so tab sharing, operation approval, audit
+logging, and plugin execution stay on the same permission boundary. Codex config:
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
 
 `--key value` becomes a string/number/boolean value in `args`, `--flag` becomes `true`, JSON
 `--stdin` and `--json` merge object values into `args`, and non-JSON stdin is passed as
