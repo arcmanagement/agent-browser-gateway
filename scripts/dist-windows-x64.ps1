@@ -15,6 +15,70 @@ $ZipPath = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64.zip"
 $SetupStage = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64-setup"
 $SetupZipPath = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64-setup.zip"
 
+function Test-ZipTopLevelLayout {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$TopLevelDirectory,
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredEntries
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $Archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $Entries = @($Archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
+        if ($Entries -notcontains "$TopLevelDirectory/") {
+            throw "Expected top-level directory $TopLevelDirectory/ in $Path"
+        }
+
+        foreach ($Entry in $RequiredEntries) {
+            if ($Entries -notcontains $Entry) {
+                throw "Expected $Entry in $Path"
+            }
+        }
+
+        $RootNames = @(
+            $Entries |
+                Where-Object { $_ -ne "" } |
+                ForEach-Object {
+                    if ($_.Contains("/")) { $_.Split("/")[0] } else { $_ }
+                } |
+                Sort-Object -Unique
+        )
+        if ($RootNames.Count -ne 1 -or $RootNames[0] -ne $TopLevelDirectory) {
+            throw "ZIP must contain exactly one top-level directory '$TopLevelDirectory'. Found: $($RootNames -join ', ')"
+        }
+    } finally {
+        $Archive.Dispose()
+    }
+}
+
+function Test-ZipRootLayout {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string[]]$RequiredRootEntries
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $Archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $Entries = @($Archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
+        foreach ($Entry in $RequiredRootEntries) {
+            if ($Entries -notcontains $Entry) {
+                throw "Expected $Entry at the ZIP root in $Path"
+            }
+        }
+    } finally {
+        $Archive.Dispose()
+    }
+}
+
 Write-Host "==> clean"
 Remove-Item -Recurse -Force $PublishRoot, $Stage, $ZipPath, $SetupStage, $SetupZipPath -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $PublishRoot, $Stage, $SetupStage | Out-Null
@@ -79,8 +143,21 @@ New-Item -ItemType Directory -Force (Join-Path $SetupStage "payload") | Out-Null
 Copy-Item -Recurse -Force (Join-Path $Stage "*") (Join-Path $SetupStage "payload")
 
 Write-Host "==> zip"
-Compress-Archive -Path (Join-Path $Stage "*") -DestinationPath $ZipPath -Force
+Compress-Archive -Path $Stage -DestinationPath $ZipPath -Force
 Compress-Archive -Path (Join-Path $SetupStage "*") -DestinationPath $SetupZipPath -Force
+Test-ZipTopLevelLayout -Path $ZipPath -TopLevelDirectory (Split-Path -Leaf $Stage) -RequiredEntries @(
+    "$(Split-Path -Leaf $Stage)/Install-AgentBrowserGateway.ps1",
+    "$(Split-Path -Leaf $Stage)/README-WINDOWS.md",
+    "$(Split-Path -Leaf $Stage)/VERSION",
+    "$(Split-Path -Leaf $Stage)/abg.exe",
+    "$(Split-Path -Leaf $Stage)/agent-browser-gateway.exe"
+)
+Test-ZipRootLayout -Path $SetupZipPath -RequiredRootEntries @(
+    "AgentBrowserGatewaySetup.exe",
+    "payload/Install-AgentBrowserGateway.ps1",
+    "payload/abg.exe",
+    "payload/agent-browser-gateway.exe"
+)
 
 $Hash = Get-FileHash -Algorithm SHA256 $ZipPath
 $SetupHash = Get-FileHash -Algorithm SHA256 $SetupZipPath

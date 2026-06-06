@@ -34,18 +34,27 @@ To skip tests during an emergency handoff:
 ## Manual install
 
 1. Extract `agent-browser-gateway-0.3.12-windows-x64.zip`.
-2. In PowerShell, run:
+2. Open PowerShell in the extracted top-level directory:
+
+   ```powershell
+   cd .\agent-browser-gateway-0.3.12-windows-x64
+   ```
+
+   If you extracted into a same-named folder, there may be one extra nested
+   `agent-browser-gateway-0.3.12-windows-x64` directory. Run `dir` and change into the folder that
+   directly contains `Install-AgentBrowserGateway.ps1`.
+3. Run:
 
    ```powershell
    Set-ExecutionPolicy -Scope Process Bypass
    .\Install-AgentBrowserGateway.ps1
    ```
 
-3. Open a new PowerShell window if the installer updated `PATH`.
-4. Start `agent-browser-gateway.exe` if it is not already running.
-5. Install the ABG Chrome extension from the Web Store or load the existing unpacked extension.
-6. Share a tab from the extension popup.
-7. Verify:
+4. Open a new PowerShell window if the installer updated `PATH`.
+5. Start `agent-browser-gateway.exe` if it is not already running.
+6. Install the ABG Chrome extension from the Web Store or load the existing unpacked extension.
+7. Share a tab from the extension popup.
+8. Verify:
 
    ```powershell
    abg status
