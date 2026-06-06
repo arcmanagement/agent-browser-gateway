@@ -60,6 +60,7 @@ credentials/
 docs/*
 !docs/HOMEBREW.md
 !docs/PLUGINS.md
+!docs/REQUIRED_CHECKS_AND_BYPASS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 
 # Brand experiments — final design TBD, not committed yet

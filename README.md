@@ -640,6 +640,8 @@ pnpm run typecheck                      # tsc --noEmit
 make verify                             # CI-style local verification
 ```
 
+Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
+
 ---
 
 ## Security
