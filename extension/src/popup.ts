@@ -1,3 +1,9 @@
+import {
+  allTabsAccessNote,
+  annotationButtonLabel,
+  sharedTabSummary,
+  trustedAutomationNote,
+} from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
 const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
@@ -86,11 +92,7 @@ async function refresh(): Promise<void> {
 
   trustedAutomationToggleEl.checked = state.settings.trustedAutomationEnabled;
   trustedAutomationToggleEl.disabled = false;
-  trustedAutomationNoteEl.textContent = state.settings.trustedAutomationEnabled
-    ? state.settings.evalEnabled
-      ? "AutoMode is active: eval skips local approval popups for shared tabs and is still audited."
-      : "AutoMode is active but eval is disabled until the eval switch is enabled."
-    : "When enabled, eval on shared tabs can skip the local approval popup. Scripts are still audited.";
+  trustedAutomationNoteEl.textContent = trustedAutomationNote(state.settings);
   trustedAutomationToggleEl.onchange = async () => {
     const nextValue = trustedAutomationToggleEl.checked;
     trustedAutomationToggleEl.disabled = true;
@@ -108,11 +110,7 @@ async function refresh(): Promise<void> {
 
   allTabsToggleEl.checked = state.allTabsAccess.active;
   allTabsToggleEl.disabled = false;
-  allTabsNoteEl.textContent = state.allTabsAccess.active
-    ? `${state.allTabsAccess.shareableTabCount} tabs are shared in sandbox mode. Browser-owned automation controls are enabled for this isolated profile.`
-    : state.settings.allTabsAccessEnabled && !state.allTabsAccess.permissionGranted
-      ? "Chrome permission is missing. Toggle this on to re-authorize."
-      : "For isolated sandbox profiles only. Do not enable this in mixed personal profiles.";
+  allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
     allTabsToggleEl.disabled = true;
@@ -182,11 +180,7 @@ async function refresh(): Promise<void> {
       await refresh();
     };
     annotationBtn.disabled = !state.permitted;
-    annotationBtn.textContent = state.annotationState.enabled
-      ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Done`
-      : state.annotationState.count > 0
-        ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Resume`
-        : "Annotate this tab";
+    annotationBtn.textContent = annotationButtonLabel(state.annotationState);
     annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
     annotationBtn.onclick = async () => {
       if (!state.permitted) return;
@@ -231,11 +225,7 @@ async function refresh(): Promise<void> {
       await refresh();
     };
     annotationBtn.disabled = false;
-    annotationBtn.textContent = state.annotationState.enabled
-      ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Done`
-      : state.annotationState.count > 0
-        ? `${state.annotationState.count} annotation${state.annotationState.count === 1 ? "" : "s"} - Resume`
-        : "Annotate this tab";
+    annotationBtn.textContent = annotationButtonLabel(state.annotationState);
     annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
     annotationBtn.onclick = async () => {
       annotationBtn.disabled = true;
@@ -284,9 +274,7 @@ async function refresh(): Promise<void> {
     const items = state.sharedTabs.map((t) => {
       const item = document.createElement("div");
       item.className = "shared-item";
-      item.textContent = `${t.accessMode === "all_tabs" ? "🌐" : "🔓"} [${t.tabId}] ${
-        t.title || t.url
-      }`;
+      item.textContent = sharedTabSummary(t);
       return item;
     });
     sharedListEl.replaceChildren(heading, ...items);

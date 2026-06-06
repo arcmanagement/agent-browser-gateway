@@ -151,6 +151,36 @@ public struct GatewayCommand: Codable, Sendable {
 // MARK: - CLI <-> Gateway protocol (over Unix Domain Socket)
 // Line-delimited JSON. Each line is one Request or Response.
 
+public enum CLIJSONContract {
+    public static let version = 1
+    public static let requestEnvelopeKeys = ["id", "method", "params"]
+    public static let responseEnvelopeKeys = ["id", "result", "error"]
+    public static let errorPayloadKeys = [
+        "code",
+        "message",
+        "userMessage",
+        "nextCommand",
+        "hint",
+        "tabId",
+        "plugin",
+        "command",
+        "expectedDomains",
+        "candidates",
+    ]
+    public static let stderrErrorKeys = [
+        "error",
+        "message",
+        "userMessage",
+        "nextCommand",
+        "hint",
+        "tabId",
+        "plugin",
+        "command",
+        "expectedDomains",
+        "candidates",
+    ]
+}
+
 public struct CLIRequest: Codable, Sendable {
     public let id: String
     public let method: String

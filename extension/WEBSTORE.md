@@ -20,6 +20,11 @@ dist/agent-browser-gateway-extension-0.3.10.zip
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
 `extension/dist/` folder itself as a top-level directory.
 
+CI also builds and uploads the same package shape from the
+`Chrome Extension Package` workflow. The workflow runs `pnpm run webstore:zip`,
+checks that `manifest.json` is at the archive root, and uploads
+`chrome-extension-webstore-zip` as a GitHub Actions artifact.
+
 Chrome Web Store item ID:
 
 ```text
@@ -130,3 +135,16 @@ If the item ever needs to be recreated from scratch, repeat this process:
 
 Do not commit a private `.pem` or other signing key. The manifest `"key"` value
 is a public key string used for deterministic extension ID generation.
+
+## CI and manual submission boundary
+
+The package workflow produces the submission ZIP only. It does not upload to the
+Chrome Web Store and does not store Chrome Web Store API credentials.
+
+- `extension/public/manifest.json` contains the public manifest `"key"` value so
+  CI, local builds, and unpacked builds keep the stable extension ID.
+- `extension/store-assets/` contains listing screenshots and promotional images.
+  These assets are not included in the extension ZIP; update them manually in the
+  Developer Dashboard when the listing changes.
+- A maintainer downloads the CI artifact, verifies the ZIP contents, and uploads
+  it manually to the Chrome Web Store Developer Dashboard.
