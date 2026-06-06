@@ -1,0 +1,54 @@
+name: Chrome Extension Package
+
+on:
+  pull_request:
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webstore-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Chrome Web Store ZIP
+        working-directory: extension
+        run: pnpm run webstore:zip
+
+      - name: Verify ZIP root layout
+        run: |
+          set -euo pipefail
+          zip_path="$(ls dist/agent-browser-gateway-extension-*.zip)"
+          unzip -Z1 "$zip_path" | tee /tmp/extension-zip-entries.txt
+          grep -qx "manifest.json" /tmp/extension-zip-entries.txt
+          if grep -q "^dist/" /tmp/extension-zip-entries.txt; then
+            echo "Extension ZIP must not contain a top-level dist/ directory." >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chrome-extension-webstore-zip
+          path: dist/agent-browser-gateway-extension-*.zip
+
