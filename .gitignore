@@ -58,6 +58,7 @@ credentials/
 
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
+!docs/CLI_JSON_CONTRACT.md
 !docs/HOMEBREW.md
 !docs/PLUGINS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
