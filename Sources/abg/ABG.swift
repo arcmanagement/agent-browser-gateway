@@ -1410,6 +1410,7 @@ struct Scroll: AsyncParsableCommand {
         例:
           abg scroll 328 --dy 800              # 800px 下にスクロール
           abg scroll 328 --dy -800             # 800px 上に
+          abg scroll 328 --selector ".c-virtual_list__scroll_container" --dy -5000
           abg scroll 328 --dy 800 --at-x 1200 --at-y 400  # 右側パネルだけスクロール
         """
     )
@@ -1418,15 +1419,30 @@ struct Scroll: AsyncParsableCommand {
     @Option(name: .long, help: "横 delta px (正で右、負で左、デフォルト 0)") var dx: Double = 0
     @Option(name: .long, help: "ホイール位置 X (省略時ビューポート中央)") var atX: Double?
     @Option(name: .long, help: "ホイール位置 Y (省略時ビューポート中央)") var atY: Double?
+    @Option(name: .long, help: "内側 scrollable element の CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` when using --selector") var frame: String?
+    @Option(name: .long, help: "selector scrollBy の繰り返し回数 (1-100)") var steps: Int = 1
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "deltaX": dx, "deltaY": dy]
+        if selector != nil, atX != nil || atY != nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--selector cannot be combined with --at-x or --at-y.",
+            ])
+        }
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if selector != nil { params["steps"] = steps }
         if let v = atX { params["atX"] = v }
         if let v = atY { params["atY"] = v }
         let result = try client.call(method: "scroll_tab", params: params)
         var step: [String: Any] = ["op": "scroll", "tabId": tabId, "dx": dx, "dy": dy]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if selector != nil { step["steps"] = steps }
         if let atX { step["atX"] = atX }
         if let atY { step["atY"] = atY }
         appendRecordedStep(step)
@@ -1932,6 +1948,9 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "scroll":
         params["deltaX"] = doubleValue(step, "dx") ?? 0
         params["deltaY"] = doubleValue(step, "dy") ?? 0
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let steps = intValue(step, "steps") { params["steps"] = steps }
         if let atX = doubleValue(step, "atX") { params["atX"] = atX }
         if let atY = doubleValue(step, "atY") { params["atY"] = atY }
         return try client.call(method: "scroll_tab", params: params)
