@@ -1,4 +1,7 @@
+import { browserAdapter } from "./browserAdapter.js";
 import type { AnnotationAction } from "./types.js";
+
+const browser = browserAdapter;
 
 export type AnnotationCommand = {
   action: AnnotationAction;
@@ -1792,7 +1795,7 @@ export async function manageAnnotationMode(
   command: AnnotationCommand,
 ): Promise<AnnotationModeResult> {
   try {
-    const [res] = await chrome.scripting.executeScript({
+    const [res] = await browser.scripting.executeScript({
       target: { tabId },
       func: runAnnotationCommand,
       args: [command],
@@ -1846,7 +1849,7 @@ async function evaluateAnnotationModeWithDebugger(
       return runAnnotationCommand(${commandSource});
     })()
   `;
-  const evaluated = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+  const evaluated = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
     returnByValue: true,
     awaitPromise: false,

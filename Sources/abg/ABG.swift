@@ -1,5 +1,10 @@
 import ArgumentParser
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import GatewayCore
 
 func defaultGatewayTimeoutMs() -> Int {
@@ -39,25 +44,25 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
+            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
-            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Validate.self, Stream.self,
             Record.self, Replay.self,
-            Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
+            Revoke.self, Audit.self, Activity.self, Plugin.self, MCPServer.self, InstallSkill.self,
         ]
     )
 }
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "framework", "sandbox", "download", "dialog",
+    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
-    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
+    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
     "record", "replay",
-    "revoke", "audit", "plugin", "install-skill",
+    "revoke", "audit", "activity", "plugin", "mcp-server", "install-skill",
     "help", "completion",
 ]
 
@@ -1000,6 +1005,50 @@ struct Network: AsyncParsableCommand {
     }
 }
 
+struct WaitResponse: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "wait-response",
+        abstract: "Wait for a network response matching URL, method, and status filters",
+        discussion: """
+        Waits for a buffered or future response from a shared tab. Timeout results are returned as
+        stable JSON with ok=false and error=timeout. Response body preview is local-only, opt-in via
+        --body, and capped by --max-bytes.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter such as GET or POST") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter, comma-separated") var type: String?
+    @Option(name: .long, help: "Timeout in milliseconds, clamped by the extension") var timeout: Int = 30_000
+    @Flag(name: .long, help: "Opt in to a bounded response body preview") var body: Bool = false
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "wait": true,
+            "timeoutMs": timeout,
+        ]
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        if body {
+            params["body"] = true
+            params["maxBytes"] = maxBytes
+        }
+        let result = try client.call(method: "network_tab", params: params)
+        printJSON(result)
+    }
+}
+
 func tableMarkdown(_ value: Any?) -> String {
     guard let dict = value as? [String: Any],
           let tables = dict["tables"] as? [[String: Any]],
@@ -1200,6 +1249,107 @@ struct Paste: AsyncParsableCommand {
     }
 }
 
+struct ClipboardWrite: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "clipboard-write",
+        abstract: "Write a MIME payload to the local system clipboard",
+        discussion: """
+        Writes one MIME payload to the OS clipboard through the local Gateway. The audit log
+        records the MIME type and byte length, not the raw content.
+
+        Examples:
+          abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+          abg clipboard-write --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @Option(name: .long, help: "Clipboard MIME type to write") var mime: String
+    @Option(name: .long, help: "Clipboard payload") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input") var stdin: Bool = false
+
+    func run() async throws {
+        let text = try readPayload(value: value, file: file, stdin: stdin)
+        let client = UDSClient()
+        let result = try client.call(method: "clipboard_write", params: [
+            "mime": mime,
+            "value": text,
+        ])
+        printJSON(result)
+    }
+}
+
+struct PasteRich: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "paste-rich",
+        abstract: "Paste the current rich clipboard payload into a shared tab",
+        discussion: """
+        Dispatches a native paste shortcut into the focused target, or first focuses --selector.
+        Pass --mime plus --value/--file/--stdin to write a MIME payload immediately before paste.
+
+        Examples:
+          abg paste-rich t1 --selector canvas
+          abg paste-rich t1 --mime "text/html" --value "<b>Hello</b>"
+          abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Optional target CSS selector to focus before native paste") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
+    @Option(name: .long, help: "Optional clipboard MIME type to write before paste") var mime: String?
+    @Option(name: .long, help: "Clipboard payload to write before paste") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file before paste") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input before paste") var stdin: Bool = false
+
+    func run() async throws {
+        let wantsWrite = mime != nil || value != nil || file != nil || stdin
+        if wantsWrite && mime == nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when passing --value, --file, or --stdin.",
+            ])
+        }
+        if !wantsWrite && (value != nil || file != nil || stdin) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when writing clipboard content.",
+            ])
+        }
+
+        let text = wantsWrite ? try readPayload(value: value, file: file, stdin: stdin) : nil
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if let mime { params["mime"] = mime }
+        if let text { params["value"] = text }
+        let result = try client.call(method: "paste_rich_tab", params: params)
+        var step: [String: Any] = ["op": "paste_rich", "tabId": tabId]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if let mime { step["mime"] = mime }
+        if let text { step["value"] = text }
+        appendRecordedStep(step)
+        printJSON(result)
+    }
+}
+
+func readPayload(value: String?, file: String?, stdin: Bool) throws -> String {
+    let sources = [value != nil, file != nil, stdin].filter { $0 }.count
+    guard sources == 1 else {
+        try failWithJSON([
+            "error": "bad_params",
+            "message": "Pass exactly one of --value, --file, or --stdin.",
+        ])
+    }
+    if let value { return value }
+    if let file {
+        return try String(contentsOfFile: (file as NSString).expandingTildeInPath, encoding: .utf8)
+    }
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8) ?? ""
+}
+
 struct Clear: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Clear an editable element",
@@ -1371,6 +1521,7 @@ struct Scroll: AsyncParsableCommand {
         例:
           abg scroll 328 --dy 800              # 800px 下にスクロール
           abg scroll 328 --dy -800             # 800px 上に
+          abg scroll 328 --selector ".c-virtual_list__scroll_container" --dy -5000
           abg scroll 328 --dy 800 --at-x 1200 --at-y 400  # 右側パネルだけスクロール
         """
     )
@@ -1379,15 +1530,30 @@ struct Scroll: AsyncParsableCommand {
     @Option(name: .long, help: "横 delta px (正で右、負で左、デフォルト 0)") var dx: Double = 0
     @Option(name: .long, help: "ホイール位置 X (省略時ビューポート中央)") var atX: Double?
     @Option(name: .long, help: "ホイール位置 Y (省略時ビューポート中央)") var atY: Double?
+    @Option(name: .long, help: "内側 scrollable element の CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` when using --selector") var frame: String?
+    @Option(name: .long, help: "selector scrollBy の繰り返し回数 (1-100)") var steps: Int = 1
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "deltaX": dx, "deltaY": dy]
+        if selector != nil, atX != nil || atY != nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--selector cannot be combined with --at-x or --at-y.",
+            ])
+        }
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if selector != nil { params["steps"] = steps }
         if let v = atX { params["atX"] = v }
         if let v = atY { params["atY"] = v }
         let result = try client.call(method: "scroll_tab", params: params)
         var step: [String: Any] = ["op": "scroll", "tabId": tabId, "dx": dx, "dy": dy]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if selector != nil { step["steps"] = steps }
         if let atX { step["atX"] = atX }
         if let atY { step["atY"] = atY }
         appendRecordedStep(step)
@@ -1497,53 +1663,150 @@ struct Wait: AsyncParsableCommand {
 
     func run() async throws {
         let client = UDSClient()
+        let nonLoadModes = [selector != nil, text != nil, url != nil, fn != nil, ms != nil].filter { $0 }.count
+        if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Unsupported --load value. Use networkidle, load, or domcontentloaded.",
+                ])
+            }
+            guard nonLoadModes == 0 || (selector != nil && nonLoadModes == 1) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Compose --load only with --selector, or pass --load by itself.",
+                ])
+            }
+        } else {
+            guard nonLoadModes == 1 else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
+                ])
+            }
+        }
+
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "timeoutMs": timeout]
-        let modes = [selector != nil, text != nil, url != nil, load != nil, fn != nil, ms != nil].filter { $0 }.count
-        guard modes == 1 else {
+        let result: Any?
+        if let load {
+            params["loadState"] = load
+            let loadResult = try client.call(method: "wait_tab", params: params)
+            if let selector {
+                guard waitResultOK(loadResult) else {
+                    result = combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                    printJSON(result)
+                    appendRecordedStep(waitRecordedStep(
+                        tabId: tabId,
+                        timeout: timeout,
+                        selector: selector,
+                        hidden: hidden,
+                        frame: frame,
+                        load: load
+                    ))
+                    return
+                }
+                var selectorParams: [String: Any] = [
+                    "tabId": tabId,
+                    "timeoutMs": timeout,
+                    "selector": selector,
+                    "hidden": hidden,
+                ]
+                if let frame { selectorParams["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: selectorParams)
+                result = combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                result = loadResult
+            }
+        } else if let s = selector {
+            params["selector"] = s
+            params["hidden"] = hidden
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let text {
+            params["text"] = text
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let url {
+            params["urlPattern"] = url
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let fn {
+            params["predicate"] = fn
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let m = ms {
+            params["sleepMs"] = m
+            result = try client.call(method: "wait_tab", params: params)
+        } else {
             try failWithJSON([
                 "error": "bad_params",
                 "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
             ])
         }
-        if let s = selector {
-            params["selector"] = s
-            params["hidden"] = hidden
-            if let frame { params["frame"] = frame }
-        } else if let text {
-            params["text"] = text
-            if let frame { params["frame"] = frame }
-        } else if let url {
-            params["urlPattern"] = url
-        } else if let load {
-            params["loadState"] = load
-        } else if let fn {
-            params["predicate"] = fn
-            if let frame { params["frame"] = frame }
-        } else if let m = ms {
-            params["sleepMs"] = m
-        }
-        let result = try client.call(method: "wait_tab", params: params)
-        var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
-        if let selector {
-            step["selector"] = selector
-            if hidden { step["hidden"] = true }
-            if let frame { step["frame"] = frame }
-        }
-        if let ms { step["ms"] = ms }
-        if let text {
-            step["text"] = text
-            if let frame { step["frame"] = frame }
-        }
-        if let url { step["url"] = url }
-        if let load { step["load"] = load }
-        if let fn {
-            step["fn"] = fn
-            if let frame { step["frame"] = frame }
-        }
-        appendRecordedStep(step)
+        appendRecordedStep(waitRecordedStep(
+            tabId: tabId,
+            timeout: timeout,
+            selector: selector,
+            hidden: hidden,
+            frame: frame,
+            ms: ms,
+            text: text,
+            url: url,
+            load: load,
+            fn: fn
+        ))
         printJSON(result)
     }
+}
+
+let validWaitLoadStates: Set<String> = ["networkidle", "load", "domcontentloaded"]
+
+func waitResultOK(_ value: Any?) -> Bool {
+    guard let dict = value as? [String: Any] else { return false }
+    return dict["ok"] as? Bool == true
+}
+
+func combinedLoadSelectorWaitResult(load: Any?, selector: Any?) -> [String: Any] {
+    let selectorOK = selector.map(waitResultOK) ?? false
+    return [
+        "ok": selectorOK,
+        "mode": "load_then_selector",
+        "phase": selectorOK ? "complete" : (selector == nil ? "load" : "selector"),
+        "load": load ?? NSNull(),
+        "selector": selector ?? NSNull(),
+    ]
+}
+
+func waitRecordedStep(
+    tabId: Int,
+    timeout: Int,
+    selector: String? = nil,
+    hidden: Bool = false,
+    frame: String? = nil,
+    ms: Int? = nil,
+    text: String? = nil,
+    url: String? = nil,
+    load: String? = nil,
+    fn: String? = nil
+) -> [String: Any] {
+    var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
+    if let selector {
+        step["selector"] = selector
+        if hidden { step["hidden"] = true }
+        if let frame { step["frame"] = frame }
+    }
+    if let ms { step["ms"] = ms }
+    if let text {
+        step["text"] = text
+        if let frame { step["frame"] = frame }
+    }
+    if let url { step["url"] = url }
+    if let load { step["load"] = load }
+    if let fn {
+        step["fn"] = fn
+        if let frame { step["frame"] = frame }
+    }
+    return step
 }
 
 struct Record: AsyncParsableCommand {
@@ -1766,6 +2029,12 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
         return try client.call(method: "paste_tab", params: params)
+    case "paste_rich":
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let mime = stringValue(step, "mime") { params["mime"] = mime }
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "paste_rich_tab", params: params)
     case "clear":
         params["selector"] = try requiredString(step, "selector", op: op)
         return try client.call(method: "clear_tab", params: params)
@@ -1791,12 +2060,19 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "keyboard_insert_text":
         params["text"] = try requiredString(step, "text", op: op)
         return try client.call(method: "keyboard_insert_text_tab", params: params)
+    case "exec_command":
+        params["command"] = try requiredString(step, "command", op: op)
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "exec_command_tab", params: params)
     case "navigate":
         params["url"] = try requiredString(step, "url", op: op)
         return try client.call(method: "navigate_tab", params: params)
     case "scroll":
         params["deltaX"] = doubleValue(step, "dx") ?? 0
         params["deltaY"] = doubleValue(step, "dy") ?? 0
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let steps = intValue(step, "steps") { params["steps"] = steps }
         if let atX = doubleValue(step, "atX") { params["atX"] = atX }
         if let atY = doubleValue(step, "atY") { params["atY"] = atY }
         return try client.call(method: "scroll_tab", params: params)
@@ -1813,16 +2089,39 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["file"] = try requiredString(step, "file", op: op)
         return try client.call(method: "upload_tab", params: params)
     case "wait":
+        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
+        let load = stringValue(step, "load")
         if let selector = stringValue(step, "selector") {
-            params["selector"] = selector
-            if boolValue(step, "hidden") == true { params["hidden"] = true }
+            if let load {
+                guard validWaitLoadStates.contains(load) else {
+                    try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+                }
+                var loadParams = params
+                loadParams["loadState"] = load
+                let loadResult = try client.call(method: "wait_tab", params: loadParams)
+                guard waitResultOK(loadResult) else {
+                    return combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                }
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: params)
+                return combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+            }
         } else if let ms = intValue(step, "ms") {
             params["sleepMs"] = ms
         } else if let text = stringValue(step, "text") {
             params["text"] = text
         } else if let url = stringValue(step, "url") {
             params["urlPattern"] = url
-        } else if let load = stringValue(step, "load") {
+        } else if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+            }
             params["loadState"] = load
         } else if let fn = stringValue(step, "fn") {
             params["predicate"] = fn
@@ -1860,6 +2159,17 @@ struct Audit: AsyncParsableCommand {
     func run() async throws {
         let client = UDSClient()
         let result = try client.call(method: "audit", params: ["lines": lines])
+        printJSON(result)
+    }
+}
+
+struct Activity: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "ローカル監査ログの日次/週次サマリー")
+    @Option(name: .long, help: "集計期間: day または week (デフォルト day)") var period: String = "day"
+
+    func run() async throws {
+        let client = UDSClient()
+        let result = try client.call(method: "activity_digest", params: ["period": period])
         printJSON(result)
     }
 }
@@ -2206,6 +2516,260 @@ func runProcess(_ executable: String, _ arguments: [String]) throws -> String {
         throw CLIError.ioError(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+struct MCPServer: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mcp-server",
+        abstract: "Run a stdio MCP server that exposes the abg CLI as a thin tool wrapper"
+    )
+
+    @Option(name: .long, help: "Path to the abg executable. Defaults to ABG_MCP_ABG_PATH or the current executable.") var abgPath: String?
+
+    func run() async throws {
+        let resolvedPath = abgPath
+            ?? ProcessInfo.processInfo.environment["ABG_MCP_ABG_PATH"]
+            ?? URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        try ABGMCPStdioServer(abgPath: resolvedPath).run()
+    }
+}
+
+struct ABGMCPStdioServer {
+    let abgPath: String
+    private let supportedProtocolVersions = [
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+        "2024-10-07",
+    ]
+
+    func run() throws {
+        while let line = readLine(strippingNewline: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if let response = handleLine(trimmed) {
+                print(response)
+                fflush(stdout)
+            }
+        }
+    }
+
+    private func handleLine(_ line: String) -> String? {
+        guard let data = line.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return jsonRPCError(id: NSNull(), code: -32700, message: "Parse error")
+        }
+        let id = request["id"]
+        guard let method = request["method"] as? String else {
+            return id == nil ? nil : jsonRPCError(id: id, code: -32600, message: "Invalid request")
+        }
+        if id == nil, method.hasPrefix("notifications/") {
+            return nil
+        }
+
+        switch method {
+        case "initialize":
+            let params = request["params"] as? [String: Any]
+            let protocolVersion = negotiatedProtocolVersion(params?["protocolVersion"] as? String)
+            return jsonRPCResult(id: id, result: [
+                "protocolVersion": protocolVersion,
+                "capabilities": [
+                    "tools": [
+                        "listChanged": false,
+                    ],
+                ],
+                "serverInfo": [
+                    "name": "agent-browser-gateway",
+                    "version": SkillBundle.version,
+                ],
+            ])
+        case "ping":
+            return jsonRPCResult(id: id, result: [:])
+        case "tools/list":
+            return jsonRPCResult(id: id, result: [
+                "tools": [
+                    abgCLIToolDescription(),
+                ],
+            ])
+        case "tools/call":
+            return handleToolCall(id: id, params: request["params"] as? [String: Any])
+        default:
+            return jsonRPCError(id: id, code: -32601, message: "Method not found")
+        }
+    }
+
+    private func handleToolCall(id: Any?, params: [String: Any]?) -> String {
+        guard let name = params?["name"] as? String else {
+            return jsonRPCError(id: id, code: -32602, message: "Missing tool name")
+        }
+        guard name == "abg_cli" else {
+            return jsonRPCError(id: id, code: -32602, message: "Unknown tool: \(name)")
+        }
+        guard let arguments = params?["arguments"] as? [String: Any],
+              let rawArgs = arguments["args"] as? [Any] else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli requires arguments.args")
+        }
+        let cliArgs = rawArgs.compactMap { $0 as? String }
+        guard cliArgs.count == rawArgs.count, !cliArgs.isEmpty else {
+            return jsonRPCError(id: id, code: -32602, message: "arguments.args must be a non-empty string array")
+        }
+        guard cliArgs.first != "mcp-server" else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli cannot launch mcp-server recursively")
+        }
+
+        do {
+            let result = try runABGCLI(args: cliArgs)
+            return jsonRPCResult(id: id, result: toolResult(from: result))
+        } catch {
+            return jsonRPCResult(id: id, result: [
+                "content": [
+                    [
+                        "type": "text",
+                        "text": "Failed to run abg: \(error.localizedDescription)",
+                    ],
+                ],
+                "isError": true,
+            ])
+        }
+    }
+
+    private func negotiatedProtocolVersion(_ clientVersion: String?) -> String {
+        guard let clientVersion else { return supportedProtocolVersions[0] }
+        return supportedProtocolVersions.contains(clientVersion) ? clientVersion : supportedProtocolVersions[0]
+    }
+
+    private func abgCLIToolDescription() -> [String: Any] {
+        [
+            "name": "abg_cli",
+            "description": """
+            Run the local abg CLI by passing argv tokens after `abg`. This MCP wrapper does not
+            bypass ABG permissions: tab sharing, operation approval, audit logging, and plugin
+            execution all remain enforced by the existing CLI/Gateway path. Examples: ["status"],
+            ["tabs", "--compact"], ["read", "t1", "--format", "markdown"].
+            """,
+            "inputSchema": [
+                "type": "object",
+                "properties": [
+                    "args": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "minItems": 1,
+                        "description": "Command-line arguments to pass after `abg`; shell expansion is not performed.",
+                    ],
+                ],
+                "required": ["args"],
+                "additionalProperties": false,
+            ],
+        ]
+    }
+
+    private func runABGCLI(args: [String]) throws -> ABGCLIExecutionResult {
+        let process = Process()
+        if abgPath.contains("/") {
+            process.executableURL = URL(fileURLWithPath: abgPath)
+            process.arguments = args
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = [abgPath] + args
+        }
+        process.environment = ProcessInfo.processInfo.environment
+
+        let stdoutURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stdout")
+        let stderrURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stderr")
+        FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+        let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+        defer {
+            try? stdoutHandle.close()
+            try? stderrHandle.close()
+            try? FileManager.default.removeItem(at: stdoutURL)
+            try? FileManager.default.removeItem(at: stderrURL)
+        }
+
+        process.standardOutput = stdoutHandle
+        process.standardError = stderrHandle
+        try process.run()
+        process.waitUntilExit()
+        try? stdoutHandle.close()
+        try? stderrHandle.close()
+
+        let stdout = String(data: (try? Data(contentsOf: stdoutURL)) ?? Data(), encoding: .utf8) ?? ""
+        let stderr = String(data: (try? Data(contentsOf: stderrURL)) ?? Data(), encoding: .utf8) ?? ""
+        return ABGCLIExecutionResult(
+            exitCode: Int(process.terminationStatus),
+            stdout: stdout.trimmingCharacters(in: .whitespacesAndNewlines),
+            stderr: stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private func toolResult(from execution: ABGCLIExecutionResult) -> [String: Any] {
+        let text = [execution.stdout, execution.stderr]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        var result: [String: Any] = [
+            "content": [
+                [
+                    "type": "text",
+                    "text": text.isEmpty ? "(no output)" : text,
+                ],
+            ],
+            "structuredContent": execution.structuredContent,
+        ]
+        if execution.exitCode != 0 {
+            result["isError"] = true
+        }
+        return result
+    }
+
+    private func jsonRPCResult(id: Any?, result: [String: Any]) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "result": result,
+        ])
+    }
+
+    private func jsonRPCError(id: Any?, code: Int, message: String) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "error": [
+                "code": code,
+                "message": message,
+            ],
+        ])
+    }
+
+    private func stringify(_ object: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal JSON encoding error"}}"#
+        }
+        return text
+    }
+}
+
+struct ABGCLIExecutionResult {
+    let exitCode: Int
+    let stdout: String
+    let stderr: String
+
+    var structuredContent: [String: Any] {
+        var content: [String: Any] = ["exitCode": exitCode]
+        if !stderr.isEmpty {
+            content["stderr"] = stderr
+        }
+        if let data = stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) {
+            content["json"] = json
+        }
+        return content
+    }
 }
 
 struct InstallSkill: AsyncParsableCommand {

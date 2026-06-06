@@ -195,6 +195,42 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(dispatchResult?["fromDispatcher"] as? Bool, true)
     }
 
+    func testCommandContextTabScrollDispatchesSelectorScroll() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "tab-plugin",
+            source: """
+            abg.registerCommand("scroll-history", async function (args, context) {
+              return await context.tab.scroll({ selector: args.selector, dy: args.dy, steps: 2 });
+            });
+            """
+        )
+
+        var calls: [(method: String, params: [String: Any])] = []
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            return AnyCodable(["ok": true, "fromDispatcher": true])
+        }
+        host.loadAll(from: [root])
+
+        let result = try await host.runCommand(
+            plugin: "tab-plugin",
+            command: "scroll-history",
+            args: ["selector": ".c-virtual_list__scroll_container", "dy": -5_000],
+            tabId: 42
+        ).value as? [String: Any]
+
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.method, "scroll_tab")
+        XCTAssertEqual(calls.first?.params["tabId"] as? Int, 42)
+        XCTAssertEqual(calls.first?.params["selector"] as? String, ".c-virtual_list__scroll_container")
+        XCTAssertEqual(calls.first?.params["deltaY"] as? Double, -5_000)
+        XCTAssertEqual(calls.first?.params["steps"] as? Int, 2)
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+    }
+
     func testCommandContextTabRejectsWhenDispatcherThrows() async throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }

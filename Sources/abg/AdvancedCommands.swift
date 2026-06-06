@@ -629,6 +629,62 @@ struct KeyboardInsertText: AsyncParsableCommand {
     }
 }
 
+let allowedExecCommandNames: Set<String> = ["insertText", "delete", "selectAll", "undo", "redo"]
+
+struct ExecCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "exec-command",
+        abstract: "Run an allowlisted document.execCommand against the focused element",
+        discussion: """
+        Runs a small allowlist of document.execCommand operations in the shared tab without
+        exposing general JavaScript evaluation. Supported commands: insertText, delete,
+        selectAll, undo, redo.
+
+        Examples:
+          abg exec-command t1 --command insertText --value "hello"
+          printf 'line1\\nline2\\n' | abg exec-command t1 --command insertText --stdin
+          abg exec-command t1 --command selectAll
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Allowlisted execCommand name: insertText, delete, selectAll, undo, redo") var command: String
+    @Option(name: .long, help: "Command value, used by insertText") var value: String?
+    @Flag(name: .long, help: "Read command value from standard input") var stdin: Bool = false
+
+    func run() async throws {
+        guard allowedExecCommandNames.contains(command) else {
+            try failWithJSON([
+                "error": "unsupported_exec_command",
+                "message": "Unsupported exec-command '\(command)'. Supported commands: \(allowedExecCommandNames.sorted().joined(separator: ", ")).",
+            ])
+        }
+        if stdin && value != nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass at most one of --value or --stdin.",
+            ])
+        }
+
+        let text: String?
+        if stdin {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            text = String(data: data, encoding: .utf8) ?? ""
+        } else {
+            text = value
+        }
+
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "command": command]
+        if let text { params["value"] = text }
+        let result = try client.call(method: "exec_command_tab", params: params)
+        var step: [String: Any] = ["op": "exec_command", "tabId": tabId, "command": command]
+        if let text { step["value"] = text }
+        appendRecordedStep(step)
+        printJSON(result)
+    }
+}
+
 struct KeyDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "keydown",

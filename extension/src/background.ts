@@ -7,6 +7,12 @@ import {
   isShareableTabUrl,
   originForUrl,
 } from "./backgroundLogic.js";
+import {
+  type BrowserDownloadDelta,
+  type BrowserDownloadItem,
+  type BrowserTab,
+  browserAdapter,
+} from "./browserAdapter.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -26,6 +32,7 @@ import type {
 
 declare const __ABG_WS_URL__: string;
 
+const browser = browserAdapter;
 const WS_URL = __ABG_WS_URL__;
 const VERSION = "0.3.12";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
@@ -53,6 +60,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "set_checked",
   "fill",
   "paste",
+  "paste_rich",
   "clear",
   "replace_dom",
   "upload_file",
@@ -61,6 +69,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "key_down",
   "key_up",
   "keyboard_insert_text",
+  "exec_command",
   "navigate",
   "sandbox_action",
   "scroll",
@@ -187,12 +196,12 @@ let reconnectTimer: number | null = null;
   ensureWS();
 })();
 
-chrome.runtime.onInstalled.addListener(async () => {
+browser.runtime.onInstalled.addListener(async () => {
   extensionId = await getOrCreateExtensionId();
   await ensureSettingsStored();
 });
 
-chrome.runtime.onStartup.addListener(async () => {
+browser.runtime.onStartup.addListener(async () => {
   extensionId = await getOrCreateExtensionId();
   await ensureSettingsStored();
   await restoreState();
@@ -201,8 +210,8 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 // Keep service worker warm
-chrome.alarms.create("heartbeat", { periodInMinutes: HEARTBEAT_PERIOD_MIN });
-chrome.alarms.onAlarm.addListener((alarm) => {
+browser.alarms.create("heartbeat", { periodInMinutes: HEARTBEAT_PERIOD_MIN });
+browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "heartbeat") {
     ensureWS();
   }
@@ -211,17 +220,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // ---------- Identity ----------
 
 async function getOrCreateExtensionId(): Promise<string> {
-  const stored = await chrome.storage.local.get("extensionId");
+  const stored = await browser.storage.local.get("extensionId");
   if (typeof stored.extensionId === "string") return stored.extensionId;
   const id = crypto.randomUUID();
-  await chrome.storage.local.set({ extensionId: id });
+  await browser.storage.local.set({ extensionId: id });
   return id;
 }
 
 // ---------- Persistent settings ----------
 
 async function getSettings(): Promise<ExtensionSettings> {
-  const stored = await chrome.storage.local.get([
+  const stored = await browser.storage.local.get([
     "operationsRequireApproval",
     "evalEnabled",
     "trustedAutomationEnabled",
@@ -251,7 +260,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.profileLabel !== "string" ||
     typeof stored.allTabsAccessEnabled !== "boolean"
   ) {
-    await chrome.storage.local.set({
+    await browser.storage.local.set({
       operationsRequireApproval,
       evalEnabled,
       trustedAutomationEnabled,
@@ -275,21 +284,21 @@ async function ensureSettingsStored(): Promise<void> {
 async function setOperationsRequireApproval(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, operationsRequireApproval: value };
-  await chrome.storage.local.set(settings);
+  await browser.storage.local.set(settings);
   return settings;
 }
 
 async function setEvalEnabled(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, evalEnabled: value };
-  await chrome.storage.local.set(settings);
+  await browser.storage.local.set(settings);
   return settings;
 }
 
 async function setTrustedAutomationEnabled(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, trustedAutomationEnabled: value };
-  await chrome.storage.local.set(settings);
+  await browser.storage.local.set(settings);
   return settings;
 }
 
@@ -297,7 +306,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
   const current = await getSettings();
   const trimmed = value.trim();
   const settings: ExtensionSettings = { ...current, profileLabel: trimmed };
-  await chrome.storage.local.set(settings);
+  await browser.storage.local.set(settings);
   // Re-introduce ourselves to the Gateway with the new label
   if (extensionId) {
     sendWS({
@@ -305,7 +314,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
   }
   return settings;
@@ -320,7 +329,7 @@ async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSetting
     );
   }
   const settings: ExtensionSettings = { ...current, allTabsAccessEnabled: value };
-  await chrome.storage.local.set(settings);
+  await browser.storage.local.set(settings);
   if (value) {
     await syncAllTabsAccess({ emit: true });
   } else {
@@ -331,7 +340,7 @@ async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSetting
 
 async function hasAllUrlsPermission(): Promise<boolean> {
   try {
-    return await chrome.permissions.contains({ origins: ALL_URLS_ORIGINS });
+    return await browser.permissions.contains({ origins: ALL_URLS_ORIGINS });
   } catch {
     return false;
   }
@@ -344,10 +353,29 @@ async function isAllTabsAccessActive(): Promise<boolean> {
 
 async function isIncognitoAccessAllowed(): Promise<boolean> {
   try {
-    return await chrome.extension.isAllowedIncognitoAccess();
+    return await browser.extension.isAllowedIncognitoAccess();
   } catch {
     return false;
   }
+}
+
+type BraveNavigator = Navigator & {
+  brave?: {
+    isBrave?: () => Promise<boolean>;
+  };
+};
+
+async function detectCurrentBrowserKind(): Promise<string> {
+  if (browser.kind === "firefox") return "firefox";
+  const brave = (navigator as BraveNavigator).brave;
+  if (typeof brave?.isBrave === "function") {
+    try {
+      if (await brave.isBrave()) return "brave";
+    } catch {
+      // Fall through to UA checks; browser kind is only a UI label.
+    }
+  }
+  return detectBrowserKind(navigator.userAgent);
 }
 
 // ---------- State persistence (session: cleared on browser restart) ----------
@@ -355,11 +383,11 @@ async function isIncognitoAccessAllowed(): Promise<boolean> {
 async function saveState(): Promise<void> {
   const obj: Record<string, PermittedTab> = {};
   for (const [k, v] of permittedTabs) obj[String(k)] = v;
-  await chrome.storage.session.set({ permittedTabs: obj });
+  await browser.storage.session.set({ permittedTabs: obj });
 }
 
 async function restoreState(): Promise<void> {
-  const stored = await chrome.storage.session.get("permittedTabs");
+  const stored = await browser.storage.session.get("permittedTabs");
   const obj = stored.permittedTabs as Record<string, PermittedTab> | undefined;
   if (!obj) return;
   for (const [k, v] of Object.entries(obj)) {
@@ -386,7 +414,7 @@ function ensureWS(): void {
       extensionId: extensionId ?? "?",
       version: VERSION,
       profileLabel: profileLabel || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
     await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
@@ -484,7 +512,7 @@ async function syncAllTabsAccess(
   options: { emit?: boolean } = {},
 ): Promise<{ shareableTabCount: number; skippedTabCount: number }> {
   const emit = options.emit ?? true;
-  const tabs = await chrome.tabs.query({});
+  const tabs = await browser.tabs.query({});
   const shareableTabIds = new Set<number>();
   let skippedTabCount = 0;
 
@@ -517,7 +545,7 @@ async function allTabsAccessState(): Promise<{
   const [settings, permissionGranted, tabs] = await Promise.all([
     getSettings(),
     hasAllUrlsPermission(),
-    chrome.tabs.query({}).catch(() => [] as chrome.tabs.Tab[]),
+    browser.tabs.query({}).catch(() => [] as BrowserTab[]),
   ]);
   let shareableTabCount = 0;
   let skippedTabCount = 0;
@@ -533,7 +561,7 @@ async function allTabsAccessState(): Promise<{
   };
 }
 
-async function upsertAllTabsEntry(tab: chrome.tabs.Tab, emit: boolean): Promise<void> {
+async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void> {
   if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) return;
   const tabId = tab.id;
   const url = tab.url;
@@ -580,12 +608,12 @@ async function revokeAllTabsEntries(reason: string): Promise<void> {
 }
 
 async function permitTab(tabId: number): Promise<void> {
-  const tab = await chrome.tabs.get(tabId);
+  const tab = await browser.tabs.get(tabId);
   if (!tab.url) throw new Error("tab has no URL");
   if (tab.incognito && !(await isIncognitoAccessAllowed())) {
     throw new GatewayError(
       "incognito_access_disabled",
-      `Chrome has not allowed Agent Browser Gateway to run in incognito windows. Open chrome://extensions/?id=${chrome.runtime.id} and enable "Allow in incognito".`,
+      `Chrome has not allowed Agent Browser Gateway to run in incognito windows. Open chrome://extensions/?id=${browser.runtime.id} and enable "Allow in incognito".`,
     );
   }
   const url = tab.url;
@@ -628,12 +656,12 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
 async function updateBadge(tabId: number): Promise<void> {
   const tab = permittedTabs.get(tabId);
   try {
-    await chrome.action.setBadgeText({
+    await browser.action.setBadgeText({
       tabId,
       text: tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
     });
     if (tab) {
-      await chrome.action.setBadgeBackgroundColor({
+      await browser.action.setBadgeBackgroundColor({
         tabId,
         color: tab.accessMode === "all_tabs" ? "#0a84ff" : "#34c759",
       });
@@ -643,14 +671,14 @@ async function updateBadge(tabId: number): Promise<void> {
 
 // ---------- Tab lifecycle hooks ----------
 
-chrome.tabs.onCreated.addListener(async (tab) => {
+browser.tabs.onCreated.addListener(async (tab) => {
   if ((await isAllTabsAccessActive()) && isShareableTabUrl(tab.url)) {
     await upsertAllTabsEntry(tab, true);
     await saveState();
   }
 });
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const currentUrl = tab.url ?? changeInfo.url;
   if ((await isAllTabsAccessActive()) && isShareableTabUrl(currentUrl)) {
     await upsertAllTabsEntry({ ...tab, id: tabId, url: currentUrl }, true);
@@ -687,7 +715,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   }
 });
 
-chrome.tabs.onRemoved.addListener(async (tabId) => {
+browser.tabs.onRemoved.addListener(async (tabId) => {
   if (permittedTabs.has(tabId)) {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
@@ -707,11 +735,11 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+browser.tabs.onActivated.addListener(async ({ tabId }) => {
   await updateBadge(tabId);
 });
 
-chrome.windows.onRemoved.addListener((windowId) => {
+browser.windows.onRemoved.addListener((windowId) => {
   for (const [approvalId, pending] of pendingApprovals) {
     if (pending.windowId === windowId) {
       finalizeApproval(approvalId, {
@@ -728,10 +756,10 @@ chrome.windows.onRemoved.addListener((windowId) => {
 async function attachDebugger(tabId: number): Promise<void> {
   if (attachedTabs.has(tabId)) return;
   try {
-    await chrome.debugger.attach({ tabId }, "1.3");
-    await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
-    await chrome.debugger.sendCommand({ tabId }, "Network.enable");
-    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
+    await browser.debugger.attach({ tabId }, "1.3");
+    await browser.debugger.sendCommand({ tabId }, "Runtime.enable");
+    await browser.debugger.sendCommand({ tabId }, "Network.enable");
+    await browser.debugger.sendCommand({ tabId }, "Page.enable");
     attachedTabs.add(tabId);
   } catch (e) {
     console.warn("[ABG] debugger.attach failed", e);
@@ -741,12 +769,12 @@ async function attachDebugger(tabId: number): Promise<void> {
 async function detachDebugger(tabId: number): Promise<void> {
   if (!attachedTabs.has(tabId)) return;
   try {
-    await chrome.debugger.detach({ tabId });
+    await browser.debugger.detach({ tabId });
   } catch {}
   attachedTabs.delete(tabId);
 }
 
-chrome.debugger.onEvent.addListener((source, method, params) => {
+browser.debugger.onEvent.addListener((source, method, params) => {
   if (!source.tabId) return;
   if (method === "Runtime.consoleAPICalled") {
     const p = params as {
@@ -947,15 +975,15 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
-chrome.debugger.onDetach.addListener((source) => {
+browser.debugger.onDetach.addListener((source) => {
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
 
-chrome.downloads.onCreated.addListener((item) => {
+browser.downloads.onCreated.addListener((item) => {
   void handleDownloadCreated(item);
 });
 
-chrome.downloads.onChanged.addListener((delta) => {
+browser.downloads.onChanged.addListener((delta) => {
   void handleDownloadChanged(delta);
 });
 
@@ -987,7 +1015,7 @@ function upsertTabDownload(tabId: number, patch: DownloadRecord): DownloadRecord
   return merged;
 }
 
-function resolveDownloadTab(item: chrome.downloads.DownloadItem): number | undefined {
+function resolveDownloadTab(item: BrowserDownloadItem): number | undefined {
   const mapped = downloadIdToTab.get(item.id);
   if (mapped !== undefined) return mapped;
   for (const [tabId, records] of downloadsByTab) {
@@ -1011,7 +1039,7 @@ function resolveDownloadTab(item: chrome.downloads.DownloadItem): number | undef
 }
 
 function recordFromDownloadItem(
-  item: chrome.downloads.DownloadItem,
+  item: BrowserDownloadItem,
   tabId: number,
   existingId?: string,
 ): DownloadRecord {
@@ -1037,7 +1065,7 @@ function recordFromDownloadItem(
   };
 }
 
-async function handleDownloadCreated(item: chrome.downloads.DownloadItem): Promise<void> {
+async function handleDownloadCreated(item: BrowserDownloadItem): Promise<void> {
   const tabId = resolveDownloadTab(item);
   if (tabId === undefined || !permittedTabs.has(tabId)) return;
   const existing = (downloadsByTab.get(tabId) ?? [])
@@ -1055,17 +1083,17 @@ async function handleDownloadCreated(item: chrome.downloads.DownloadItem): Promi
   });
 }
 
-async function handleDownloadChanged(delta: chrome.downloads.DownloadDelta): Promise<void> {
+async function handleDownloadChanged(delta: BrowserDownloadDelta): Promise<void> {
   let tabId = downloadIdToTab.get(delta.id);
-  let item: chrome.downloads.DownloadItem | undefined;
+  let item: BrowserDownloadItem | undefined;
   if (tabId === undefined) {
-    const found = await chrome.downloads.search({ id: delta.id });
+    const found = await browser.downloads.search({ id: delta.id });
     item = found[0];
     if (!item) return;
     tabId = resolveDownloadTab(item);
   }
   if (tabId === undefined || !permittedTabs.has(tabId)) return;
-  item = item ?? (await chrome.downloads.search({ id: delta.id }))[0];
+  item = item ?? (await browser.downloads.search({ id: delta.id }))[0];
   if (!item) return;
   const existing = (downloadsByTab.get(tabId) ?? []).find(
     (record) => record.browserDownloadId === delta.id,
@@ -1314,6 +1342,24 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => pasteText(tabId, selector, value, frame),
     };
   }
+  if (cmd.method === "paste_rich") {
+    const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+    if (cmd.params?.selector !== undefined && (!selector || selector.length === 0)) {
+      throw new Error("selector must be a non-empty string");
+    }
+    const mime = typeof cmd.params?.mime === "string" ? cmd.params.mime : undefined;
+    const contentBytes = typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
+    const target = selector
+      ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
+      : "the currently focused target";
+    const payload = mime
+      ? ` ${quoteForIntent(mime)} clipboard payload${contentBytes === undefined ? "" : ` (${contentBytes} bytes)`}`
+      : " current clipboard payload";
+    return {
+      intent: `Paste${payload} into ${target}.`,
+      run: () => pasteRichClipboard(tabId, selector, frame),
+    };
+  }
   if (cmd.method === "clear") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
@@ -1358,6 +1404,25 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => keyboardInsertText(tabId, text),
     };
   }
+  if (cmd.method === "exec_command") {
+    const command = cmd.params?.command;
+    if (!isAllowedExecCommand(command)) {
+      throw new GatewayError(
+        "unsupported_exec_command",
+        `unsupported execCommand: ${String(command ?? "")}`,
+      );
+    }
+    const rawValue = cmd.params?.value;
+    if (rawValue !== undefined && typeof rawValue !== "string") {
+      throw new Error("value must be a string");
+    }
+    const value = rawValue;
+    const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+    return {
+      intent: `Run document.execCommand(${command}) against the focused element with ${valueBytes} value bytes.`,
+      run: () => execCommand(tabId, command, value),
+    };
+  }
   if (cmd.method === "key_press") {
     const key = cmd.params?.key;
     if (typeof key !== "string" || key.length === 0) throw new Error("key required");
@@ -1392,7 +1457,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Navigate this tab to ${quoteForIntent(url)}.`,
       run: async () => {
-        await chrome.tabs.update(tabId, { url });
+        await browser.tabs.update(tabId, { url });
         return { ok: true, note: "navigation may revoke permission if origin changes" };
       },
     };
@@ -1500,6 +1565,15 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
   const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
+  const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+  const steps =
+    typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 1;
+  if (selector !== undefined) {
+    return {
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)} by (Δx=${deltaX}, Δy=${deltaY})${frameIntentSuffix(frame)}.`,
+      run: () => scrollElement(tabId, selector, deltaX, deltaY, steps, frame),
+    };
+  }
   const where =
     atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
@@ -1630,7 +1704,7 @@ async function runDialogAction(
   const promptText = typeof params.promptText === "string" ? params.promptText : undefined;
   const commandParams: Record<string, unknown> = { accept: action === "accept" };
   if (action === "accept" && promptText !== undefined) commandParams.promptText = promptText;
-  await chrome.debugger.sendCommand({ tabId }, "Page.handleJavaScriptDialog", commandParams);
+  await browser.debugger.sendCommand({ tabId }, "Page.handleJavaScriptDialog", commandParams);
   pendingDialogs.delete(tabId);
   return {
     ok: true,
@@ -1704,9 +1778,9 @@ async function requestOperationApproval(
   pendingApprovals.set(request.id, pending);
 
   try {
-    const approvalUrl = new URL(chrome.runtime.getURL("approval.html"));
+    const approvalUrl = new URL(browser.runtime.getURL("approval.html"));
     approvalUrl.searchParams.set("id", request.id);
-    const approvalWindow = await chrome.windows.create({
+    const approvalWindow = await browser.windows.create({
       type: "popup",
       url: approvalUrl.href,
       width: script === undefined ? 380 : 520,
@@ -1732,7 +1806,7 @@ async function getApprovalTab(
 ): Promise<{ tabId: number; title: string; url: string }> {
   const permitted = permittedTabs.get(tabId);
   try {
-    const tab = await chrome.tabs.get(tabId);
+    const tab = await browser.tabs.get(tabId);
     return {
       tabId,
       title: tab.title ?? permitted?.title ?? "",
@@ -1757,7 +1831,7 @@ function finalizeApproval(
   pendingApprovals.delete(approvalId);
   clearTimeout(pending.timeoutId);
   if (closeWindow && pending.windowId !== undefined) {
-    chrome.windows.remove(pending.windowId).catch(() => {});
+    browser.windows.remove(pending.windowId).catch(() => {});
   }
   pending.resolve(resolution);
   return true;
@@ -1992,8 +2066,12 @@ function createFrameApiSource(): string {
 }
 
 async function evaluatePageExpression<T>(tabId: number, expression: string): Promise<T> {
+  if (!browser.supportsDebugger) {
+    return evaluatePageExpressionWithScripting<T>(tabId, expression);
+  }
+
   await attachDebugger(tabId);
-  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+  const res = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
     returnByValue: true,
   })) as {
@@ -2006,6 +2084,48 @@ async function evaluatePageExpression<T>(tabId: number, expression: string): Pro
     );
   }
   const value = res.result?.value;
+  if (
+    value &&
+    typeof value === "object" &&
+    "__abgFrameError" in value &&
+    (value as FrameScriptError).__abgFrameError
+  ) {
+    const err = value as FrameScriptError;
+    throw new GatewayError(err.code, err.message);
+  }
+  return value as T;
+}
+
+async function evaluatePageExpressionWithScripting<T>(
+  tabId: number,
+  expression: string,
+): Promise<T> {
+  const [res] = await browser.scripting.executeScript({
+    target: { tabId },
+    func: (source: string) => {
+      try {
+        // biome-ignore lint/security/noGlobalEval: Firefox evaluates ABG-owned frame scripts for the shared tab fallback.
+        return { ok: true, value: globalThis.eval(source) };
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    args: [expression],
+  });
+  const payload = res?.result as
+    | { ok: true; value?: T | FrameScriptError }
+    | { ok: false; message?: string }
+    | undefined;
+  if (!payload) {
+    throw new Error("script injection returned no result");
+  }
+  if (!payload.ok) {
+    throw new Error(`frame script failed: ${payload.message ?? "unknown error"}`);
+  }
+  const value = payload.value;
   if (
     value &&
     typeof value === "object" &&
@@ -2253,7 +2373,7 @@ async function validateEditable(
   const selector = typeof params.selector === "string" ? params.selector : undefined;
   const selection = params.selection === true;
   const rules = typeof params.rules === "string" ? params.rules : "html-attrs,shortcodes";
-  const [res] = await chrome.scripting.executeScript({
+  const [res] = await browser.scripting.executeScript({
     target: { tabId },
     func: (sel: string | undefined, useSelection: boolean, ruleText: string) => {
       const readText = (): { found: boolean; source: string; text: string; html?: string } => {
@@ -2888,12 +3008,16 @@ async function screenshot(
   tabId: number,
   clip?: { x: number; y: number; width: number; height: number },
 ): Promise<{ dataUrl: string }> {
+  if (!browser.supportsDebugger) {
+    return screenshotWithVisibleTabCapture(tabId, clip);
+  }
+
   await attachDebugger(tabId);
   const params: Record<string, unknown> = { format: "png" };
   if (clip) {
     params.clip = { ...clip, scale: 1 };
   }
-  const result = (await chrome.debugger.sendCommand(
+  const result = (await browser.debugger.sendCommand(
     { tabId },
     "Page.captureScreenshot",
     params,
@@ -2903,12 +3027,53 @@ async function screenshot(
   return { dataUrl: `data:image/png;base64,${result.data}` };
 }
 
+async function screenshotWithVisibleTabCapture(
+  tabId: number,
+  clip?: { x: number; y: number; width: number; height: number },
+): Promise<{ dataUrl: string }> {
+  if (clip) {
+    throw new GatewayError(
+      "unsupported_on_firefox_mvp",
+      "Firefox screenshot MVP does not support clip.",
+    );
+  }
+  if (!browser.supportsVisibleTabCapture) {
+    throw new GatewayError(
+      "unsupported_on_firefox_mvp",
+      "This browser target does not support screenshot capture.",
+    );
+  }
+
+  const tab = await browser.tabs.get(tabId);
+  const windowId = tab.windowId;
+  const activeTabs =
+    typeof windowId === "number"
+      ? await browser.tabs.query({ active: true, windowId })
+      : ([] as BrowserTab[]);
+  const previousActive = activeTabs.find((item) => typeof item.id === "number");
+  const shouldRestore =
+    previousActive?.id !== undefined && previousActive.id !== tabId && typeof windowId === "number";
+
+  if (typeof windowId === "number" && tab.active !== true) {
+    await browser.tabs.update(tabId, { active: true });
+  }
+
+  try {
+    const dataUrl = await browser.tabs.captureVisibleTab(windowId, { format: "png" });
+    return { dataUrl };
+  } finally {
+    if (shouldRestore && previousActive.id !== undefined) {
+      await browser.tabs.update(previousActive.id, { active: true }).catch(() => undefined);
+    }
+  }
+}
+
 async function printPagePDF(
   tabId: number,
 ): Promise<{ dataUrl: string; url: string; title: string }> {
   await attachDebugger(tabId);
-  const tab = await chrome.tabs.get(tabId);
-  const result = (await chrome.debugger.sendCommand({ tabId }, "Page.printToPDF", {
+  const tab = await browser.tabs.get(tabId);
+  const result = (await browser.debugger.sendCommand({ tabId }, "Page.printToPDF", {
     printBackground: true,
   })) as { data: string };
   return {
@@ -2933,7 +3098,7 @@ async function setRuntimeStream(
 }
 
 async function installDomMutationStream(tabId: number): Promise<void> {
-  await chrome.scripting.executeScript({
+  await browser.scripting.executeScript({
     target: { tabId },
     func: () => {
       const key = "__abgRuntimeStreamInstalled";
@@ -2947,7 +3112,7 @@ async function installDomMutationStream(tabId: number): Promise<void> {
           setTimeout(() => {
             const count = pending;
             pending = 0;
-            chrome.runtime.sendMessage({
+            browser.runtime.sendMessage({
               type: "stream_dom_mutation",
               count,
               url: location.href,
@@ -3396,7 +3561,7 @@ async function inspectCookies(
   if (!rawUrl) return { available: false, error: "tab URL unavailable", count: 0, cookies: [] };
   const namePattern = typeof params.name === "string" ? params.name : undefined;
   try {
-    const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getCookies", {
+    const result = (await browser.debugger.sendCommand({ tabId }, "Network.getCookies", {
       urls: [rawUrl],
     })) as {
       cookies?: Array<{
@@ -3940,7 +4105,7 @@ async function getResponseBodyPreview(
   requestId: string,
   maxBytes: number,
 ): Promise<Record<string, unknown>> {
-  const result = (await chrome.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
+  const result = (await browser.debugger.sendCommand({ tabId }, "Network.getResponseBody", {
     requestId,
   })) as { body: string; base64Encoded: boolean };
   const bytes = new TextEncoder().encode(result.body);
@@ -4034,7 +4199,7 @@ async function sandboxSetViewport(
       : 1;
   const mobile = params.mobile === true;
   await attachDebugger(tabId);
-  await chrome.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
+  await browser.debugger.sendCommand({ tabId }, "Emulation.setDeviceMetricsOverride", {
     width,
     height,
     deviceScaleFactor,
@@ -4045,7 +4210,7 @@ async function sandboxSetViewport(
 
 async function sandboxClearViewport(tabId: number): Promise<Record<string, unknown>> {
   await attachDebugger(tabId);
-  await chrome.debugger.sendCommand({ tabId }, "Emulation.clearDeviceMetricsOverride");
+  await browser.debugger.sendCommand({ tabId }, "Emulation.clearDeviceMetricsOverride");
   return { ok: true, action: "viewport-clear" };
 }
 
@@ -4089,8 +4254,8 @@ async function sandboxStorage(
 }
 
 async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
-  const source = await chrome.tabs.get(tabId);
-  const created = await chrome.tabs.create({ url, windowId: source.windowId, active: true });
+  const source = await browser.tabs.get(tabId);
+  const created = await browser.tabs.create({ url, windowId: source.windowId, active: true });
   return { ok: true, action: "tab-create", tabId: created.id, url: created.url ?? url };
 }
 
@@ -4102,7 +4267,7 @@ async function sandboxCloseTab(targetTabId: number): Promise<Record<string, unkn
       "tab-close is limited to tabs shared through sandbox all-tabs mode",
     );
   }
-  await chrome.tabs.remove(targetTabId);
+  await browser.tabs.remove(targetTabId);
   return { ok: true, action: "tab-close", targetTabId };
 }
 
@@ -4121,20 +4286,20 @@ async function clickSelector(
 
 async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true }> {
   await attachDebugger(tabId);
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x,
     y,
     button: "none",
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mousePressed",
     x,
     y,
     button: "left",
     clickCount: 1,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x,
     y,
@@ -4151,21 +4316,21 @@ async function doubleClickSelector(
 ): Promise<{ ok: true; selector: string; x: number; y: number }> {
   await attachDebugger(tabId);
   const point = await resolvePoint(tabId, { kind: "selector", selector, frame });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x: point.x,
     y: point.y,
     button: "none",
   });
   for (const clickCount of [1, 2]) {
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
       type: "mousePressed",
       x: point.x,
       y: point.y,
       button: "left",
       clickCount,
     });
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
       type: "mouseReleased",
       x: point.x,
       y: point.y,
@@ -4183,7 +4348,7 @@ async function hoverSelector(
 ): Promise<{ ok: true; selector: string; x: number; y: number }> {
   await attachDebugger(tabId);
   const point = await resolvePoint(tabId, { kind: "selector", selector, frame });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x: point.x,
     y: point.y,
@@ -4372,13 +4537,13 @@ async function drag(
   await attachDebugger(tabId);
   const fromPoint = await resolvePoint(tabId, from);
   const toPoint = await resolvePoint(tabId, to);
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseMoved",
     x: fromPoint.x,
     y: fromPoint.y,
     button: "none",
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mousePressed",
     x: fromPoint.x,
     y: fromPoint.y,
@@ -4390,7 +4555,7 @@ async function drag(
     const t = i / steps;
     const x = fromPoint.x + (toPoint.x - fromPoint.x) * t;
     const y = fromPoint.y + (toPoint.y - fromPoint.y) * t;
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
       type: "mouseMoved",
       x,
       y,
@@ -4399,7 +4564,7 @@ async function drag(
     });
     await new Promise((resolve) => setTimeout(resolve, 16));
   }
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x: toPoint.x,
     y: toPoint.y,
@@ -4721,6 +4886,30 @@ async function pasteText(
   };
 }
 
+async function pasteRichClipboard(
+  tabId: number,
+  selector?: string,
+  frame?: string,
+): Promise<{ ok: boolean; found?: boolean; focused?: boolean; tag?: string; activeTag?: string }> {
+  if (selector) {
+    const focusResult = await focusElement(tabId, selector, frame);
+    if (!focusResult.found || !focusResult.focused) {
+      return {
+        ok: false,
+        found: focusResult.found,
+        focused: focusResult.focused,
+        tag: focusResult.tag,
+        activeTag: focusResult.activeTag,
+      };
+    }
+    await dispatchPasteShortcut(tabId);
+    return { ok: true, ...focusResult };
+  }
+
+  await dispatchPasteShortcut(tabId);
+  return { ok: true };
+}
+
 async function clearEditable(
   tabId: number,
   selector: string,
@@ -4940,7 +5129,7 @@ async function writeClipboardText(tabId: number, value: string): Promise<boolean
   } catch {
     // Fall back to a page-scoped copy operation below.
   }
-  const [res] = await chrome.scripting.executeScript({
+  const [res] = await browser.scripting.executeScript({
     target: { tabId },
     func: (text: string) => {
       const textarea = document.createElement("textarea");
@@ -4971,7 +5160,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
   const modifierCode = isMac ? "MetaLeft" : "ControlLeft";
   const modifierMask = isMac ? 4 : 2;
   const modifierVirtualKey = isMac ? 91 : 17;
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: modifierKey,
     code: modifierCode,
@@ -4979,7 +5168,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
     nativeVirtualKeyCode: modifierVirtualKey,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "a",
     code: "KeyA",
@@ -4987,7 +5176,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
     nativeVirtualKeyCode: 65,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: "a",
     code: "KeyA",
@@ -4995,7 +5184,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
     nativeVirtualKeyCode: 65,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: modifierKey,
     code: modifierCode,
@@ -5003,7 +5192,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
     nativeVirtualKeyCode: modifierVirtualKey,
     modifiers: 0,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "Backspace",
     code: "Backspace",
@@ -5011,7 +5200,7 @@ async function dispatchSelectAllBackspaceShortcut(tabId: number): Promise<void> 
     nativeVirtualKeyCode: 8,
     modifiers: 0,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: "Backspace",
     code: "Backspace",
@@ -5028,7 +5217,7 @@ async function dispatchPasteShortcut(tabId: number): Promise<void> {
   const modifierCode = isMac ? "MetaLeft" : "ControlLeft";
   const modifierMask = isMac ? 4 : 2;
   const modifierVirtualKey = isMac ? 91 : 17;
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: modifierKey,
     code: modifierCode,
@@ -5036,7 +5225,7 @@ async function dispatchPasteShortcut(tabId: number): Promise<void> {
     nativeVirtualKeyCode: modifierVirtualKey,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "v",
     code: "KeyV",
@@ -5044,7 +5233,7 @@ async function dispatchPasteShortcut(tabId: number): Promise<void> {
     nativeVirtualKeyCode: 86,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: "v",
     code: "KeyV",
@@ -5052,7 +5241,7 @@ async function dispatchPasteShortcut(tabId: number): Promise<void> {
     nativeVirtualKeyCode: 86,
     modifiers: modifierMask,
   });
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     key: modifierKey,
     code: modifierCode,
@@ -5189,18 +5378,18 @@ async function uploadFile(
     );
   }
   await attachDebugger(tabId);
-  const documentNode = (await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", {
+  const documentNode = (await browser.debugger.sendCommand({ tabId }, "DOM.getDocument", {
     depth: -1,
     pierce: true,
   })) as { root: { nodeId: number } };
-  const queryResult = (await chrome.debugger.sendCommand({ tabId }, "DOM.querySelector", {
+  const queryResult = (await browser.debugger.sendCommand({ tabId }, "DOM.querySelector", {
     nodeId: documentNode.root.nodeId,
     selector,
   })) as { nodeId: number };
   if (!queryResult.nodeId) {
     throw new GatewayError("selector_not_found", `selector not found: ${selector}`);
   }
-  const described = (await chrome.debugger.sendCommand({ tabId }, "DOM.describeNode", {
+  const described = (await browser.debugger.sendCommand({ tabId }, "DOM.describeNode", {
     nodeId: queryResult.nodeId,
   })) as { node: { nodeName: string; attributes?: string[] } };
   const attrs = described.node.attributes ?? [];
@@ -5216,11 +5405,11 @@ async function uploadFile(
   ) {
     throw new GatewayError("not_file_input", "selector does not point to input[type=file]");
   }
-  await chrome.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
+  await browser.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
     nodeId: queryResult.nodeId,
     files: [file],
   });
-  const [res] = await chrome.scripting.executeScript({
+  const [res] = await browser.scripting.executeScript({
     target: { tabId },
     func: (sel: string) => {
       const el = document.querySelector(sel) as HTMLInputElement | null;
@@ -5241,16 +5430,16 @@ async function typeText(tabId: number, text: string): Promise<{ ok: true }> {
   // exactly once), then keyUp (fires DOM keyup).
   // Including text on keyDown causes double-insertion on Sheets/Docs.
   for (const ch of text) {
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "keyDown",
       key: ch,
     });
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "char",
       text: ch,
       unmodifiedText: ch,
     });
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "keyUp",
       key: ch,
     });
@@ -5263,8 +5452,57 @@ async function keyboardInsertText(
   text: string,
 ): Promise<{ ok: true; insertedBytes: number }> {
   await attachDebugger(tabId);
-  await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
+  await browser.debugger.sendCommand({ tabId }, "Input.insertText", { text });
   return { ok: true, insertedBytes: new TextEncoder().encode(text).byteLength };
+}
+
+const EXEC_COMMAND_ALLOWLIST = new Set(["insertText", "delete", "selectAll", "undo", "redo"]);
+type ExecCommandName = "insertText" | "delete" | "selectAll" | "undo" | "redo";
+
+function isAllowedExecCommand(value: unknown): value is ExecCommandName {
+  return typeof value === "string" && EXEC_COMMAND_ALLOWLIST.has(value);
+}
+
+type ExecCommandResult = {
+  ok: boolean;
+  command: ExecCommandName;
+  valueBytes: number;
+  activeElement?: string;
+};
+
+async function execCommand(
+  tabId: number,
+  command: ExecCommandName,
+  value?: string,
+): Promise<ExecCommandResult> {
+  const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (commandName: ExecCommandName, commandValue: string | undefined) => {
+      const allowed = ["insertText", "delete", "selectAll", "undo", "redo"];
+      if (!allowed.includes(commandName)) {
+        return {
+          ok: false,
+          command: commandName,
+          valueBytes: 0,
+        };
+      }
+      const active = document.activeElement;
+      const activeElement = active ? active.tagName.toLowerCase() : undefined;
+      const ok =
+        commandValue === undefined
+          ? document.execCommand(commandName)
+          : document.execCommand(commandName, false, commandValue);
+      return {
+        ok,
+        command: commandName,
+        valueBytes: commandValue === undefined ? 0 : new TextEncoder().encode(commandValue).byteLength,
+        activeElement,
+      };
+    },
+    args: [command, value],
+  });
+  return res?.result ?? { ok: false, command, valueBytes };
 }
 
 const KEY_CODE_MAP: Record<string, string> = {
@@ -5309,18 +5547,18 @@ async function keyPress(
     code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
   const resolvedKey = key === "Space" ? " " : key;
   const base = { key: resolvedKey, code: resolvedCode, modifiers: mods };
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyDown",
     ...base,
   });
   if (resolvedKey.length === 1) {
-    await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "char",
       text: resolvedKey,
       ...base,
     });
   }
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
     ...base,
   });
@@ -5339,7 +5577,7 @@ async function keyEdge(
   const resolvedCode =
     code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
   const resolvedKey = key === "Space" ? " " : key;
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type,
     key: resolvedKey,
     code: resolvedCode,
@@ -5374,12 +5612,18 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   const urlPattern = typeof params.urlPattern === "string" ? params.urlPattern : undefined;
   if (urlPattern !== undefined) {
     return waitUntil(tabId, "url", timeoutMs, async () => {
-      const tab = await chrome.tabs.get(tabId);
+      const tab = await browser.tabs.get(tabId);
       return globMatch(urlPattern, tab.url ?? "");
     });
   }
   const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
   if (loadState !== undefined) {
+    if (!["networkidle", "load", "domcontentloaded"].includes(loadState)) {
+      throw new GatewayError(
+        "bad_params",
+        "loadState must be one of networkidle, load, or domcontentloaded",
+      );
+    }
     await attachDebugger(tabId);
     return waitUntil(
       tabId,
@@ -5387,7 +5631,7 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
       timeoutMs,
       async () => {
         if (loadState === "networkidle") return (activeNetworkRequests.get(tabId)?.size ?? 0) === 0;
-        const [res] = await chrome.scripting.executeScript({
+        const [res] = await browser.scripting.executeScript({
           target: { tabId },
           func: (state: string) => {
             if (state === "domcontentloaded")
@@ -5531,7 +5775,7 @@ async function runApprovedEval(
 
   await attachDebugger(tabId);
   const expression = `(${evalPageFunction.toString()})(${JSON.stringify(script)}, ${maxBytes})`;
-  const res = (await chrome.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+  const res = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
     awaitPromise: true,
     returnByValue: true,
@@ -5545,7 +5789,7 @@ async function runApprovedEval(
       res.exceptionDetails.exception?.description ?? res.exceptionDetails.text,
     );
   }
-  const tab = await chrome.tabs.get(tabId);
+  const tab = await browser.tabs.get(tabId);
   const value = res.result?.value;
   if (!value) {
     throw new GatewayError("eval_failed", "eval returned no result");
@@ -5683,14 +5927,14 @@ async function scrollTab(
   let cursorX = atX;
   let cursorY = atY;
   if (cursorX === undefined || cursorY === undefined) {
-    const layout = (await chrome.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
+    const layout = (await browser.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
       cssVisualViewport?: { clientWidth: number; clientHeight: number };
     };
     const vp = layout.cssVisualViewport ?? { clientWidth: 800, clientHeight: 600 };
     cursorX = cursorX ?? vp.clientWidth / 2;
     cursorY = cursorY ?? vp.clientHeight / 2;
   }
-  await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
     type: "mouseWheel",
     x: cursorX,
     y: cursorY,
@@ -5698,6 +5942,59 @@ async function scrollTab(
     deltaY,
   });
   return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
+}
+
+async function scrollElement(
+  tabId: number,
+  selector: string,
+  deltaX: number,
+  deltaY: number,
+  steps: number,
+  frame?: string,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selector: string;
+  deltaX: number;
+  deltaY: number;
+  steps: number;
+  scrollLeft?: number;
+  scrollTop?: number;
+  scrollWidth?: number;
+  scrollHeight?: number;
+  clientWidth?: number;
+  clientHeight?: number;
+}> {
+  return runFrameScript(tabId, frame, { selector, deltaX, deltaY, steps }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) {
+      return {
+        ok: false,
+        found: false,
+        selector: opts.selector,
+        deltaX: opts.deltaX,
+        deltaY: opts.deltaY,
+        steps: opts.steps,
+      } as const;
+    }
+    for (let i = 0; i < opts.steps; i += 1) {
+      el.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+    }
+    return {
+      ok: true,
+      found: true,
+      selector: opts.selector,
+      deltaX: opts.deltaX,
+      deltaY: opts.deltaY,
+      steps: opts.steps,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  });
 }
 
 async function scrollElementIntoView(
@@ -5744,7 +6041,7 @@ async function scrollElementIntoView(
 
 // ---------- Popup messaging ----------
 
-chrome.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
   (async () => {
     if (isRecord(rawMsg) && rawMsg.type === "stream_dom_mutation" && sender.tab?.id) {
       emitStreamEvent(sender.tab.id, {
@@ -5777,7 +6074,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   if (msg.type === "get_state") {
     await reconcileAllTabsAccess();
     const [activeTab, incognitoAccessAllowed, allTabsAccess] = await Promise.all([
-      chrome.tabs.get(msg.tabId).catch(() => undefined),
+      browser.tabs.get(msg.tabId).catch(() => undefined),
       isIncognitoAccessAllowed(),
       allTabsAccessState(),
     ]);
