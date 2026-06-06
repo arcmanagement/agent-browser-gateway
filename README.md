@@ -671,6 +671,7 @@ pnpm run test:coverage                  # Vitest coverage for unit-testable exte
 make verify                             # CI-style local verification
 ```
 
+Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
 Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
 
 ---
