@@ -84,6 +84,11 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
+Windows builds are published as ZIP packages from the same download page. Extract the Windows x64
+ZIP, open PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
+`.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
+into the nested folder that directly contains the installer script.
+
 After installation, open the tab you want to share, click the ABG extension icon,
 choose **Share this tab with agent**, and verify from a terminal:
 
