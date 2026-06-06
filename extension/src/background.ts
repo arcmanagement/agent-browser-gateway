@@ -1,4 +1,5 @@
 import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
+import { detectBrowserKind, isShareableTabUrl, originForUrl } from "./backgroundLogic.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -297,7 +298,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: await detectBrowserKind(),
+      browserKind: await detectCurrentBrowserKind(),
     });
   }
   return settings;
@@ -348,12 +349,7 @@ type BraveNavigator = Navigator & {
   };
 };
 
-async function detectBrowserKind(): Promise<string> {
-  // Lightweight UA sniff. We send this purely as a label for the Gateway UI;
-  // it is not used for any security decision.
-  const ua = navigator.userAgent;
-  if (/Edg\//.test(ua)) return "edge";
-  if (/OPR\//.test(ua)) return "opera";
+async function detectCurrentBrowserKind(): Promise<string> {
   const brave = (navigator as BraveNavigator).brave;
   if (typeof brave?.isBrave === "function") {
     try {
@@ -362,9 +358,7 @@ async function detectBrowserKind(): Promise<string> {
       // Fall through to UA checks; browser kind is only a UI label.
     }
   }
-  if (/Brave/.test(ua)) return "brave";
-  if (/Chrome\//.test(ua)) return "chrome";
-  return "browser";
+  return detectBrowserKind(navigator.userAgent);
 }
 
 // ---------- State persistence (session: cleared on browser restart) ----------
@@ -403,7 +397,7 @@ function ensureWS(): void {
       extensionId: extensionId ?? "?",
       version: VERSION,
       profileLabel: profileLabel || undefined,
-      browserKind: await detectBrowserKind(),
+      browserKind: await detectCurrentBrowserKind(),
     });
     await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
@@ -482,24 +476,6 @@ function sendTabUpdated(tabId: number, tab: PermittedTab): void {
     origin: tab.origin,
     accessMode: tab.accessMode,
   });
-}
-
-function isShareableTabUrl(url: string | undefined): url is string {
-  if (!url) return false;
-  try {
-    const protocol = new URL(url).protocol;
-    return protocol === "http:" || protocol === "https:" || protocol === "file:";
-  } catch {
-    return false;
-  }
-}
-
-function originForUrl(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "";
-  }
 }
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
