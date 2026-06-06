@@ -69,15 +69,35 @@ Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The ex
 
 ## Install
 
-Download the current packages from [agent-browser-gateway.com](https://agent-browser-gateway.com/).
+ABG has three local pieces: the Chrome extension, the Gateway app, and the `abg`
+CLI. Install the browser extension first, then install the local Gateway.
 
-- macOS: open the DMG and install `Agent Browser Gateway.app`.
-- Windows: extract the Windows x64 ZIP, open PowerShell in the extracted
-  `agent-browser-gateway-<version>-windows-x64` folder, and run
-  `.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and
-  `cd` into the nested folder that directly contains the installer script.
-- Chrome: install Agent Browser Gateway from the Chrome Web Store, then share a tab from the
-  extension popup.
+1. Install Agent Browser Gateway from the Chrome Web Store:
+
+   https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+
+2. Download the current macOS DMG from
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/).
+3. Open the DMG and double-click **Install Agent Browser Gateway.app**.
+
+The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
+`abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
+and starts the menubar app.
+
+Windows builds are published as ZIP packages from the same download page. Extract the Windows x64
+ZIP, open PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
+`.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
+into the nested folder that directly contains the installer script.
+
+After installation, open the tab you want to share, click the ABG extension icon,
+choose **Share this tab with agent**, and verify from a terminal:
+
+```bash
+abg tabs
+```
+
+Source builds, unpacked extension loading, and the separate dev app are covered
+in [Developer setup](#developer-setup).
 
 ---
 
@@ -570,7 +590,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 ---
 
-## Getting started
+## Developer setup
 
 ### Prerequisites
 
@@ -598,13 +618,7 @@ open "Agent Browser Gateway Dev.app"         # separate menubar app/profile from
 ABG_PORT=8766 .build/debug/abg status        # point CLI at the dev app
 ```
 
-### Install the Chrome extension
-
-Install Agent Browser Gateway from the Chrome Web Store:
-
-https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
-
-For local development, build and load the unpacked extension:
+### Build and load the development extension
 
 ```bash
 cd extension
@@ -613,6 +627,7 @@ pnpm run build                          # outputs to extension/dist/
 ```
 
 In Chrome: open `chrome://extensions` → enable Developer mode → **Load unpacked** → pick `extension/dist/`.
+Use the Chrome Web Store extension for normal installs; use this unpacked build only when developing or testing extension changes.
 
 For incognito / Secret Window workflows, open
 `chrome://extensions/?id=ojgedfcgebjchckaagjkmlpgonpjggpi` and enable **Allow in incognito**.
