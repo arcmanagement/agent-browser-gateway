@@ -51,4 +51,3 @@ jobs:
         with:
           name: chrome-extension-webstore-zip
           path: dist/agent-browser-gateway-extension-*.zip
-

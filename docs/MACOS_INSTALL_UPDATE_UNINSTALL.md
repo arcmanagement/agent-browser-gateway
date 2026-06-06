@@ -107,4 +107,3 @@ The DMG flow is different:
   installed CLI version.
 - The browser extension is installed from the Chrome Web Store for normal use; no
   unpacked extension folder needs to be preserved or reloaded.
-

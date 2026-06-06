@@ -47,4 +47,3 @@ echo "updated: $CASK_PATH"
 echo "version: $VERSION"
 echo "sha256: $SHA256"
 echo "asset:   ${ABG_CASK_ASSET_PATH:-$ASSET_URL}"
-

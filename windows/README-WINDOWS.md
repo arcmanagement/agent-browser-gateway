@@ -92,6 +92,31 @@ install a Windows service or machine-wide scheduled task.
 again the next time the user signs in. Disable `Launch at sign in` from the tray menu or the WinUI
 status window before quitting if the Gateway should stay off after reboot.
 
+## Signing, SmartScreen, and release artifacts
+
+Windows release artifacts are produced on GitHub Actions `windows-latest` by the `Windows CI`
+workflow. The workflow uploads both:
+
+- `agent-browser-gateway-<version>-windows-x64.zip`
+- `agent-browser-gateway-<version>-windows-x64-setup.zip`
+
+Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing artifact.
+
+For signed releases, configure these repository secrets before dispatching the workflow:
+
+- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded Authenticode signing certificate in PFX format
+- `WINDOWS_CODESIGN_PFX_PASSWORD`: PFX password
+
+Then run `Windows CI` with `require_code_sign=true`. The packaging script signs the staged `.exe`
+and `.dll` files before zipping, including `AgentBrowserGatewaySetup.exe`, `abg.exe`, and
+`agent-browser-gateway.exe`. If signing is required but the certificate or `signtool.exe` is
+unavailable, the workflow fails instead of publishing an unsigned final artifact.
+
+SmartScreen reputation is attached to the signing certificate and observed download history, not to
+this repository alone. Early signed releases can still show SmartScreen warnings until reputation is
+established. Keep timestamp signing enabled so existing artifacts remain verifiable after certificate
+expiration.
+
 ## Paths
 
 - Tray Gateway: `agent-browser-gateway.exe`
