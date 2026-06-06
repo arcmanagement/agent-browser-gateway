@@ -1,0 +1,133 @@
+---
+title: プラグイン
+description: Agent Browser Gateway のローカルプラグインをインストール、管理、作成する。
+sidebar:
+  order: 5
+---
+
+ABGプラグインはGatewayが読み込むローカルJavaScript moduleです。ブラウザーデータを変換したり、
+高レベルのローカルコマンドを追加したりできます。コードはローカルGateway process内で動くため、
+信頼できるpluginだけをインストールしてください。
+
+## plugin source
+
+ABGは次の順序でpluginを探します。
+
+1. `Agent Browser Gateway.app/Contents/Resources/plugins/` に入っているbundled plugin。
+2. `~/.abg/plugins/` にあるuser-installed plugin。
+3. checkoutから実行している場合のrepository内local development plugin。
+
+port `8766` のdev Gatewayでは `~/.abg/plugins/` ではなく `~/.abg-dev/plugins/` を使います。
+productionとdevelopmentのplugin stateを分けるためです。
+
+## インストールと管理
+
+```bash
+abg plugin list
+abg plugin list --loaded
+abg plugin install user/repo --yes
+abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
+abg plugin install ./my-plugin --name my-plugin --yes
+abg plugin update
+abg plugin update my-plugin
+abg plugin disable my-plugin
+abg plugin enable my-plugin
+abg plugin reload my-plugin
+abg plugin uninstall my-plugin
+```
+
+`install` に `--yes` が必要なのは、plugin codeがローカルGatewayに読み込まれる任意のJavaScriptだからです。
+repository installはローカルの `git` commandを使います。private repositoryでは、既存のSSH key、git credential helper、
+GitHub CLIに紐づいたgit認証を使います。ABGはGitHub tokenを要求・保存しません。認証情報入りHTTPS URLは拒否します。
+
+`update` はgit-backed user pluginに `git pull --ff-only` を実行します。`disable` はplugin directoryを残したまま、
+profile-localな `plugin-state.json` に状態を書きます。plugin enablement用のapp databaseはありません。
+
+## plugin layout
+
+```text
+my-plugin/
+  index.js
+  plugin.json
+```
+
+`index.js` は必須です。`plugin.json` は任意ですが、一覧表示やcommand helpに使われるため推奨です。
+
+```json
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "Short human-readable summary.",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"],
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" }
+      ]
+    }
+  ]
+}
+```
+
+## Host API
+
+Host APIは小さく保っています。
+
+```js
+abg.log("loaded " + abg.plugin.name);
+
+abg.registerTransform("my-transform", function (input) {
+  return String(input).trim();
+});
+```
+
+transformは同期的なstring-to-string関数です。`abg read --format markdown` ではgeneric Markdown transformを使い、
+共有タブURLがpluginの `domains` globに一致する場合はdomain-specificなMarkdown transformを選べます。
+
+## Command API
+
+pluginはCLI commandも追加できます。
+
+```js
+abg.registerCommand("greet", async function (args, context) {
+  return {
+    ok: true,
+    message: "Hello, " + (args.name || "ABG"),
+    plugin: context.plugin.name
+  };
+});
+```
+
+dynamic ABG subcommandとして実行します。
+
+```bash
+abg my-plugin greet --name "Ada"
+abg my-plugin greet --tab t1
+abg my-plugin greet --json '{"name":"Ada"}'
+printf '{"name":"Ada"}' | abg my-plugin greet --stdin
+```
+
+command resultはJSONです。失敗時もstructured JSON errorとして返します。監査ログにはplugin名、command名、argument key list、
+serialized argument byte lengthを記録します。argument valueは監査ログに書きません。
+
+## Tab API
+
+command handlerは `context.tab.<action>(options)` で共有タブを操作できます。このmethodはCLIと同じGateway pathを通るため、
+per-tab consent、operation approval、audit loggingが同じように適用されます。
+
+```js
+abg.registerCommand("clear-and-paste", async function (args, context) {
+  if (context.tabId == null) {
+    return { ok: false, error: "no_tab_context" };
+  }
+  await context.tab.clear({ selector: args.selector });
+  await context.tab.paste({ selector: args.selector, value: args.value });
+  return { ok: true };
+});
+```
+
+JavaScriptからshell outしてABGのbrowser access pathを迂回しないでください。approvalとaudit logを維持するためにTab APIを使います。

@@ -1,0 +1,80 @@
+---
+title: Architecture
+description: How the browser extension, Gateway app, CLI, audit log, and plugins fit together.
+sidebar:
+  order: 6
+---
+
+ABG is built from three local pieces:
+
+- A browser extension in the user's browser profile.
+- A native Gateway app that runs on the user's machine.
+- The `abg` CLI used by agents, scripts, and humans.
+
+```text
+Browser tab + ABG extension
+        |
+        | WebSocket on 127.0.0.1
+        v
+Gateway app
+  - permission manager
+  - plugin host
+  - audit log
+        |
+        | local IPC
+        v
+abg CLI
+        |
+        v
+AI coding agent
+```
+
+## Extension
+
+The extension is the browser-side consent surface. In normal per-tab mode, ABG starts with no visible
+tabs. The user shares a specific tab from the popup, and the extension sends tab metadata and command
+responses to the local Gateway.
+
+The optional all-tabs mode is for isolated profiles and sandbox machines. It requests optional host
+access only after the user enables it, and turning it off revokes the all-tabs entries again.
+
+## Gateway
+
+The Gateway listens on loopback and owns the runtime state:
+
+- connected extension instances,
+- shared tabs,
+- operation approval state,
+- loaded plugins,
+- local audit logging,
+- app settings and plugin state.
+
+The production app uses the normal Gateway state directory. The development app uses a separate port
+and profile-specific state so development plugins and settings do not mutate production state.
+
+## CLI
+
+`abg` is the stable interface for agents. It keeps the integration agent-agnostic: any tool that can
+run shell commands can inspect and operate a shared tab.
+
+The CLI also makes debugging simple. If an agent says it cannot see a tab, the human can run:
+
+```bash
+abg status
+abg tabs --compact
+abg audit --lines 20
+```
+
+## Plugins
+
+Plugins are local JavaScript modules loaded by the Gateway. They can transform browser data, add
+domain-specific Markdown extraction, or register higher-level commands. Plugin-issued tab operations
+use the same approval and audit path as CLI operations.
+
+See [Plugins](./plugins/) for install and authoring details.
+
+## Platform roadmap
+
+Chrome is the first browser target. Firefox support is being added through a browser adapter and a
+Firefox extension target. Safari, mobile browsers, and remote pairing are future tracks and require
+separate permission and pairing designs.

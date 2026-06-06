@@ -1,17 +1,43 @@
 ---
-title: Overview
-description: Agent Browser Gateway documentation overview.
+title: Get Started
+description: Share a browser tab with a local AI agent using Agent Browser Gateway.
+sidebar:
+  order: 1
 ---
 
 Agent Browser Gateway (ABG) is a local bridge between a browser tab you explicitly share and an AI
-coding agent that can run the `abg` CLI.
+coding agent that can run shell commands.
 
-## What is included
+The default model is simple: the agent sees no tabs until you share one from the browser extension.
+After that, the agent uses the `abg` CLI to read, screenshot, inspect, or operate only that shared
+tab.
+
+## First workflow
+
+1. [Install](./install/) the Gateway app, browser extension, and CLI.
+2. Open the browser tab you want to hand to the agent.
+3. Click the ABG extension icon and choose **Share this tab with agent**.
+4. Confirm the tab appears:
+
+   ```bash
+   abg tabs --compact
+   ```
+
+5. Give the tab reference, such as `t1`, to your agent or use it directly:
+
+   ```bash
+   abg read t1 --format markdown
+   abg screenshot t1 --out page.png
+   abg revoke t1
+   ```
+
+## What ABG installs
 
 - A local Gateway app that listens on loopback.
-- A browser extension that shares only user-approved tabs by default.
-- The `abg` CLI for agents and scripts.
-- Local audit logs for inspectable operations.
+- A browser extension that can share explicitly selected tabs.
+- The `abg` CLI for agents, scripts, and manual debugging.
+- Claude Code and Codex skills installed by `abg install-skill`.
+- A local JSONL audit log for Gateway operations.
 
 ## Access model
 
@@ -21,8 +47,14 @@ share when the tab closes, changes origin, or is explicitly revoked.
 For isolated profiles or sandbox machines, ABG also has an optional all-tabs profile mode. That mode
 uses a separate consent boundary and can be disabled again from the extension popup.
 
+Mutating commands, such as click, fill, paste, navigate, upload, and dialog handling, can require a
+local approval prompt. Read-only observation commands do not prompt, but still require a shared tab.
+
 ## Next pages
 
 - [Install](./install/)
 - [CLI](./cli/)
 - [Plugins](./plugins/)
+- [Architecture](./architecture/)
+- [Security](./security/)
+- [FAQ](./faq/)

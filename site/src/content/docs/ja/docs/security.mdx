@@ -1,0 +1,51 @@
+---
+title: セキュリティ
+description: consent、local transport、approval prompt、audit log、公式non-goal。
+sidebar:
+  order: 7
+---
+
+ABGは人間が所有しているbrowser sessionを前提に設計しています。セキュリティモデルは狭いdefaultから始まります。
+ユーザーが共有するまで、エージェントから見えるタブはありません。
+
+## consent boundary
+
+- per-tab共有がデフォルトです。
+- タブが閉じられる、originが変わる、明示的にrevokeされると共有は失効します。
+- all-tabs modeは隔離プロファイルやsandboxマシン向けです。
+- 変更系commandは実行前にローカル承認promptを要求できます。
+- 汎用JavaScript evalは初期状態OFFで、明示的なopt-inが必要です。
+
+## local transport
+
+Gatewayはloopbackで待ち受けます。ブラウザー拡張はローカルGatewayに接続し、CLIはlocal IPCでGatewayと通信します。
+通常のローカルworkflowにABG-hosted accountやcloud relayは不要です。
+
+公式ABGはcloud relayを運営せず、telemetryを集めず、広いJavaScript実行をsilentに有効化しません。将来のremote pairingは
+ユーザーが運用するconnection pathとして設計できますが、ABG運営のrelayにしてはいけません。
+
+## 監査ログ
+
+Gateway操作はローカルJSONL監査ログに書かれます。action名、tab参照、selector、approval mode、plugin command名、
+必要に応じたbyte lengthを記録します。貼り付け本文やplugin command argument valueのようなsensitive payloadは記録しません。
+
+```bash
+abg audit --lines 50
+```
+
+## 防御対象外
+
+ABGは次のものを防ぐとは主張しません。
+
+- 悪意あるローカルユーザーやroot権限の侵害
+- 同じプロファイル内の悪意あるブラウザー拡張
+- browser vulnerability
+- ユーザーが明示的に承認した操作
+- ユーザーがインストールしたplugin code
+
+pluginは信頼できるsourceからだけインストールしてください。pluginはローカルGateway process内で実行されます。
+
+## 安全なautomation default
+
+`read`、`get`、`find`、`wait`、`snapshot`、plugin commandのような名前付きcommandを優先します。
+`eval` は最後の手段です。evalを有効にする場合も、そのprofileが十分に信頼・隔離されていない限りAutoModeはOFFにします。
