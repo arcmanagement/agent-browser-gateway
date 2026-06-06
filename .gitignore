@@ -19,6 +19,7 @@ TestResults/
 # Node / extension
 node_modules/
 extension/dist/
+extension/coverage/
 dist/
 
 # macOS

@@ -48,6 +48,10 @@ jobs:
         working-directory: extension
         run: pnpm run lint
 
+      - name: Test extension with coverage
+        working-directory: extension
+        run: pnpm run test:coverage
+
       - name: Build extension
         working-directory: extension
         run: pnpm run build
