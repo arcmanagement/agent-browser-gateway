@@ -206,6 +206,7 @@ abg replay flow.json --match-url "*kintone*"
 # Management
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
+abg activity --period day|week          # Local daily/weekly activity digest
 abg install-skill                       # Install/update Claude Code + Codex Skills
 ```
 
@@ -219,6 +220,12 @@ synthetic value updates or character events, including Lexical, ProseMirror, Sla
 native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable
 element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records the action, tab id,
 selector, and byte length only, never the pasted text.
+
+Use `activity --period day` or `activity --period week` when you want an opt-in local digest of
+recent agent activity instead of raw JSONL events. The digest is generated from the on-device audit
+log only and summarizes action counts, tab IDs, origins, timestamps, and approval outcomes. It does
+not include raw pasted values, clipboard payloads, plugin arguments, or raw audit `details`. Use
+`audit` when you need exact event records for debugging or review.
 
 Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
 target, selects its content, and deletes it. The result includes `clearStrategy`, one of

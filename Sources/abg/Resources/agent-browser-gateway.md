@@ -125,11 +125,16 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 # 管理系
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
+abg activity --period day|week          # ローカルの日次/週次 activity digest
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
 abg plugin reload [name]                # Gateway 再起動なしで plugin を再読み込み
 abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 ```
+
+`abg activity` は opt-in の local-only 要約。on-device audit log から action、tab ID、origin、
+timestamp、approval outcome を集計し、貼り付け値、clipboard payload、plugin args、raw audit
+details は出さない。正確なイベント列が必要な debug / review では `abg audit` を使う。
 
 ## Authoring a user plugin
 
