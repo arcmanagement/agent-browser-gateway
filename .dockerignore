@@ -1,0 +1,16 @@
+.git
+.build
+.swiftpm
+DerivedData
+dist
+extension/dist
+extension/node_modules
+Agent Browser Gateway.app
+Agent Browser Gateway Dev.app
+Gateway.app
+*.sock
+audit.jsonl
+.env
+.env.*
+secrets
+credentials

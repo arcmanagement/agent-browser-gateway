@@ -1,6 +1,10 @@
 import ArgumentParser
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import GatewayCore
 
 enum CLIError: Error, LocalizedError {
@@ -65,7 +69,11 @@ struct UDSClient {
     }
 
     private func sendAndReceive(_ payload: Data) throws -> Data {
+        #if canImport(Glibc)
+        let sock = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let sock = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard sock >= 0 else { throw CLIError.ioError("socket() failed") }
         defer { close(sock) }
 
