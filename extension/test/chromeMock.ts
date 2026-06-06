@@ -218,6 +218,9 @@ export function createChromeMock() {
     },
     tabs: createChromeTabs(),
     permissions: createChromePermissions(),
+    scripting: {
+      executeScript: vi.fn(async (): Promise<unknown[]> => []),
+    },
     action: {
       setBadgeBackgroundColor: vi.fn(async () => undefined),
       setBadgeText: vi.fn(async () => undefined),
