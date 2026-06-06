@@ -1,11 +1,22 @@
-export type BrowserKind = "chrome";
+export type BrowserKind = "chrome" | "firefox";
 
 export type BrowserTab = chrome.tabs.Tab;
 export type BrowserDownloadDelta = chrome.downloads.DownloadDelta;
 export type BrowserDownloadItem = chrome.downloads.DownloadItem;
 
+declare const __ABG_BROWSER_TARGET__: BrowserKind | undefined;
+
+type BrowserEvent<TListener extends (...args: never[]) => unknown> = {
+  addListener(listener: TListener): void;
+  removeListener(listener: TListener): void;
+  hasListener(listener: TListener): boolean;
+  hasListeners(): boolean;
+};
+
 export type BrowserAdapter = {
   readonly kind: BrowserKind;
+  readonly supportsDebugger: boolean;
+  readonly supportsVisibleTabCapture: boolean;
   readonly action: Pick<typeof chrome.action, "setBadgeBackgroundColor" | "setBadgeText">;
   readonly alarms: Pick<typeof chrome.alarms, "create" | "onAlarm">;
   readonly debugger: Pick<
@@ -26,6 +37,7 @@ export type BrowserAdapter = {
   };
   readonly tabs: Pick<
     typeof chrome.tabs,
+    | "captureVisibleTab"
     | "create"
     | "get"
     | "onActivated"
@@ -39,41 +51,153 @@ export type BrowserAdapter = {
   readonly windows: Pick<typeof chrome.windows, "create" | "onRemoved" | "remove">;
 };
 
-export const chromeBrowserAdapter: BrowserAdapter = {
-  kind: "chrome",
-  get action() {
-    return chrome.action;
-  },
-  get alarms() {
-    return chrome.alarms;
-  },
-  get debugger() {
-    return chrome.debugger;
-  },
-  get downloads() {
-    return chrome.downloads;
-  },
-  get extension() {
-    return chrome.extension;
-  },
-  get permissions() {
-    return chrome.permissions;
-  },
-  get runtime() {
-    return chrome.runtime;
-  },
-  get scripting() {
-    return chrome.scripting;
-  },
-  get storage() {
-    return chrome.storage;
-  },
-  get tabs() {
-    return chrome.tabs;
-  },
-  get windows() {
-    return chrome.windows;
-  },
+type RuntimeBrowser = typeof chrome & {
+  browser?: never;
 };
 
-export const browserAdapter: BrowserAdapter = chromeBrowserAdapter;
+function runtimeBrowser(): RuntimeBrowser {
+  const globals = globalThis as typeof globalThis & {
+    browser?: RuntimeBrowser;
+    chrome?: RuntimeBrowser;
+  };
+  const api = globals.browser ?? globals.chrome;
+  if (!api) {
+    throw new Error("No WebExtension browser API is available.");
+  }
+  return api;
+}
+
+function configuredKind(): BrowserKind {
+  return typeof __ABG_BROWSER_TARGET__ === "string" ? __ABG_BROWSER_TARGET__ : "chrome";
+}
+
+function noopEvent<TListener extends (...args: never[]) => unknown>(): BrowserEvent<TListener> {
+  return {
+    addListener() {},
+    removeListener() {},
+    hasListener() {
+      return false;
+    },
+    hasListeners() {
+      return false;
+    },
+  };
+}
+
+function unsupportedDebugger(): BrowserAdapter["debugger"] {
+  const unavailable = async () => {
+    throw new Error("The browser debugger API is not available in this target.");
+  };
+  return {
+    attach: unavailable,
+    detach: unavailable,
+    sendCommand: unavailable,
+    onDetach: noopEvent() as BrowserAdapter["debugger"]["onDetach"],
+    onEvent: noopEvent() as BrowserAdapter["debugger"]["onEvent"],
+  };
+}
+
+function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAdapter {
+  const debuggerApi = api.debugger ?? unsupportedDebugger();
+  const extensionApi = api.extension ?? {
+    isAllowedIncognitoAccess: async () => true,
+  };
+  return {
+    kind,
+    supportsDebugger: !!api.debugger,
+    supportsVisibleTabCapture: typeof api.tabs?.captureVisibleTab === "function",
+    get action() {
+      return api.action;
+    },
+    get alarms() {
+      return api.alarms;
+    },
+    get debugger() {
+      return debuggerApi;
+    },
+    get downloads() {
+      return api.downloads;
+    },
+    get extension() {
+      return extensionApi;
+    },
+    get permissions() {
+      return api.permissions;
+    },
+    get runtime() {
+      return api.runtime;
+    },
+    get scripting() {
+      return api.scripting;
+    },
+    get storage() {
+      return api.storage;
+    },
+    get tabs() {
+      return api.tabs;
+    },
+    get windows() {
+      return api.windows;
+    },
+  };
+}
+
+function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
+  return {
+    get kind() {
+      return kind;
+    },
+    get supportsDebugger() {
+      return !!runtimeBrowser().debugger;
+    },
+    get supportsVisibleTabCapture() {
+      return typeof runtimeBrowser().tabs?.captureVisibleTab === "function";
+    },
+    get action() {
+      return runtimeBrowser().action;
+    },
+    get alarms() {
+      return runtimeBrowser().alarms;
+    },
+    get debugger() {
+      return runtimeBrowser().debugger ?? unsupportedDebugger();
+    },
+    get downloads() {
+      return runtimeBrowser().downloads;
+    },
+    get extension() {
+      return (
+        runtimeBrowser().extension ?? {
+          isAllowedIncognitoAccess: async () => true,
+        }
+      );
+    },
+    get permissions() {
+      return runtimeBrowser().permissions;
+    },
+    get runtime() {
+      return runtimeBrowser().runtime;
+    },
+    get scripting() {
+      return runtimeBrowser().scripting;
+    },
+    get storage() {
+      return runtimeBrowser().storage;
+    },
+    get tabs() {
+      return runtimeBrowser().tabs;
+    },
+    get windows() {
+      return runtimeBrowser().windows;
+    },
+  };
+}
+
+export const chromeBrowserAdapter: BrowserAdapter = createLazyBrowserAdapter("chrome");
+
+export const browserAdapter: BrowserAdapter = createLazyBrowserAdapter(configuredKind());
+
+/* c8 ignore next 3 */
+export function createTestBrowserAdapter(kind: BrowserKind, api: unknown): BrowserAdapter {
+  return createBrowserAdapter(kind, api as RuntimeBrowser);
+}

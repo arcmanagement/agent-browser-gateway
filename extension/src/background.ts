@@ -305,7 +305,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: browser.kind === "firefox" ? "firefox" : detectBrowserKind(navigator.userAgent),
     });
   }
   return settings;
@@ -1984,6 +1984,10 @@ function createFrameApiSource(): string {
 }
 
 async function evaluatePageExpression<T>(tabId: number, expression: string): Promise<T> {
+  if (!browser.supportsDebugger) {
+    return evaluatePageExpressionWithScripting<T>(tabId, expression);
+  }
+
   await attachDebugger(tabId);
   const res = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
@@ -1998,6 +2002,48 @@ async function evaluatePageExpression<T>(tabId: number, expression: string): Pro
     );
   }
   const value = res.result?.value;
+  if (
+    value &&
+    typeof value === "object" &&
+    "__abgFrameError" in value &&
+    (value as FrameScriptError).__abgFrameError
+  ) {
+    const err = value as FrameScriptError;
+    throw new GatewayError(err.code, err.message);
+  }
+  return value as T;
+}
+
+async function evaluatePageExpressionWithScripting<T>(
+  tabId: number,
+  expression: string,
+): Promise<T> {
+  const [res] = await browser.scripting.executeScript({
+    target: { tabId },
+    func: (source: string) => {
+      try {
+        // biome-ignore lint/security/noGlobalEval: Firefox evaluates ABG-owned frame scripts for the shared tab fallback.
+        return { ok: true, value: globalThis.eval(source) };
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+    args: [expression],
+  });
+  const payload = res?.result as
+    | { ok: true; value?: T | FrameScriptError }
+    | { ok: false; message?: string }
+    | undefined;
+  if (!payload) {
+    throw new Error("script injection returned no result");
+  }
+  if (!payload.ok) {
+    throw new Error(`frame script failed: ${payload.message ?? "unknown error"}`);
+  }
+  const value = payload.value;
   if (
     value &&
     typeof value === "object" &&
@@ -2880,6 +2926,10 @@ async function screenshot(
   tabId: number,
   clip?: { x: number; y: number; width: number; height: number },
 ): Promise<{ dataUrl: string }> {
+  if (!browser.supportsDebugger) {
+    return screenshotWithVisibleTabCapture(tabId, clip);
+  }
+
   await attachDebugger(tabId);
   const params: Record<string, unknown> = { format: "png" };
   if (clip) {
@@ -2893,6 +2943,47 @@ async function screenshot(
     data: string;
   };
   return { dataUrl: `data:image/png;base64,${result.data}` };
+}
+
+async function screenshotWithVisibleTabCapture(
+  tabId: number,
+  clip?: { x: number; y: number; width: number; height: number },
+): Promise<{ dataUrl: string }> {
+  if (clip) {
+    throw new GatewayError(
+      "unsupported_on_firefox_mvp",
+      "Firefox screenshot MVP does not support clip.",
+    );
+  }
+  if (!browser.supportsVisibleTabCapture) {
+    throw new GatewayError(
+      "unsupported_on_firefox_mvp",
+      "This browser target does not support screenshot capture.",
+    );
+  }
+
+  const tab = await browser.tabs.get(tabId);
+  const windowId = tab.windowId;
+  const activeTabs =
+    typeof windowId === "number"
+      ? await browser.tabs.query({ active: true, windowId })
+      : ([] as BrowserTab[]);
+  const previousActive = activeTabs.find((item) => typeof item.id === "number");
+  const shouldRestore =
+    previousActive?.id !== undefined && previousActive.id !== tabId && typeof windowId === "number";
+
+  if (typeof windowId === "number" && tab.active !== true) {
+    await browser.tabs.update(tabId, { active: true });
+  }
+
+  try {
+    const dataUrl = await browser.tabs.captureVisibleTab(windowId, { format: "png" });
+    return { dataUrl };
+  } finally {
+    if (shouldRestore && previousActive.id !== undefined) {
+      await browser.tabs.update(previousActive.id, { active: true }).catch(() => undefined);
+    }
+  }
 }
 
 async function printPagePDF(

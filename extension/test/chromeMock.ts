@@ -160,6 +160,7 @@ function createChromeTabs(initialTabs: MockTab[] = []) {
         await onRemoved.dispatch(id, {});
       }
     }),
+    captureVisibleTab: vi.fn(async () => "data:image/png;base64,test"),
     sendMessage: vi.fn(async () => undefined),
   };
 }
@@ -211,6 +212,9 @@ export function createChromeMock() {
       onInstalled: createChromeEvent<[Record<string, unknown>]>(),
       onMessage: createChromeEvent<[unknown, unknown, (response?: unknown) => void]>(),
       onStartup: createChromeEvent<[]>(),
+    },
+    extension: {
+      isAllowedIncognitoAccess: vi.fn(async () => true),
     },
     storage: {
       local: createChromeStorageArea(),

@@ -3,6 +3,7 @@ export function detectBrowserKind(userAgent: string): string {
   if (/Edg\//.test(userAgent)) return "edge";
   if (/OPR\//.test(userAgent)) return "opera";
   if (/Brave/.test(userAgent)) return "brave";
+  if (/Firefox\//.test(userAgent)) return "firefox";
   if (/Chrome\//.test(userAgent)) return "chrome";
   return "browser";
 }

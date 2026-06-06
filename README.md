@@ -552,7 +552,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
 - 📋 MCP wrapper (future)
-- 📋 Firefox / Safari / Edge / iOS / Android (Phase 3+)
+- 📋 Firefox MVP extension target, then Safari / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---

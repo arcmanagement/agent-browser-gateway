@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { browserAdapter } from "../src/browserAdapter.js";
+import { browserAdapter, createTestBrowserAdapter } from "../src/browserAdapter.js";
 import { installChromeMock } from "./chromeMock.js";
 
 afterEach(() => {
@@ -26,5 +26,24 @@ describe("browserAdapter", () => {
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://example.test" });
     expect(browserAdapter.downloads.onCreated.hasListeners()).toBe(false);
     expect(browserAdapter.windows.onRemoved.hasListeners()).toBe(false);
+  });
+
+  it("can expose Firefox browser APIs through the same boundary", async () => {
+    const firefox = installChromeMock();
+    vi.stubGlobal("browser", firefox);
+    vi.stubGlobal("chrome", undefined);
+    delete (firefox as Partial<typeof firefox>).debugger;
+
+    const adapter = createTestBrowserAdapter("firefox", firefox);
+
+    expect(adapter.kind).toBe("firefox");
+    expect(adapter.supportsDebugger).toBe(false);
+    expect(adapter.supportsVisibleTabCapture).toBe(true);
+    await expect(adapter.tabs.captureVisibleTab(1, { format: "png" })).resolves.toBe(
+      "data:image/png;base64,test",
+    );
+    await expect(adapter.debugger.attach({ tabId: 1 }, "1.3")).rejects.toThrow(
+      "debugger API is not available",
+    );
   });
 });
