@@ -1,0 +1,105 @@
+name: Release Artifacts
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, for example 0.3.12"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos-artifacts:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve release version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            version="${version#v}"
+            tag="v$version"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          fi
+          git rev-parse --verify "$tag"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build macOS release archives
+        run: make dist VERSION="${{ steps.version.outputs.version }}"
+
+      - name: Write checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          shasum -a 256 \
+            "agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip" \
+            "agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip" \
+            "agent-browser-gateway.rb" \
+            > SHA256SUMS.txt
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          previous_tag="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          notes_path="dist/RELEASE_NOTES.md"
+          {
+            echo "# Agent Browser Gateway $tag"
+            echo
+            if [ -n "$previous_tag" ]; then
+              echo "Changes since $previous_tag:"
+              echo
+              git log --pretty=format:"- %s (%h)" "$previous_tag..$tag"
+            else
+              echo "Recent changes:"
+              echo
+              git log --pretty=format:"- %s (%h)" -n 50 "$tag"
+            fi
+            echo
+            echo
+            echo "Artifacts:"
+            echo
+            echo "- agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip"
+            echo "- agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip"
+            echo "- agent-browser-gateway.rb"
+            echo "- SHA256SUMS.txt"
+          } > "$notes_path"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-browser-gateway-release-${{ steps.version.outputs.version }}
+          path: |
+            dist/agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip
+            dist/agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip
+            dist/agent-browser-gateway.rb
+            dist/SHA256SUMS.txt
+            dist/RELEASE_NOTES.md
+
