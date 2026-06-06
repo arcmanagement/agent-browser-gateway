@@ -248,6 +248,7 @@ abg replay flow.json --match-url "*kintone*"
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg install-skill                       # Install/update Claude Code + Codex Skills
+abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
 
 Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
@@ -354,16 +355,34 @@ Annotation mode lets the human mark the current tab the way they would point at 
 
 ---
 
-## Why CLI + Skill instead of MCP?
+## CLI, Skill, and MCP
 
-The agent talks to ABG by running `abg` from the shell. This is not the only design — MCP wrappers can come later — but as the primary interface it has unique advantages:
+The agent can talk to ABG by running `abg` from the shell. This remains the source of truth because
+it has unique advantages:
 
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
 - **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
 
-A thin MCP wrapper around the same CLI is on the future roadmap for ecosystem coverage. The CLI remains the source of truth.
+For MCP clients, ABG also ships `abg mcp-server`, a stdio MCP wrapper that exposes a single
+`abg_cli` tool. The tool accepts argv tokens after `abg` and launches the local CLI as a child
+process. It does not duplicate the Gateway protocol or bypass permissions: per-tab sharing,
+operation approval, audit logging, and plugin execution stay on the existing CLI/Gateway path.
+
+Codex config (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
 
 ---
 
@@ -588,12 +607,12 @@ Currently shipped:
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code and Codex Skills bundled
+- ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 MCP wrapper (future)
 - 📋 Firefox / Safari / Edge / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
