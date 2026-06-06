@@ -54,6 +54,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "key_down",
   "key_up",
   "keyboard_insert_text",
+  "exec_command",
   "navigate",
   "sandbox_action",
   "scroll",
@@ -1359,6 +1360,25 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Insert ${new TextEncoder().encode(text).byteLength} bytes into the focused element without key events.`,
       run: () => keyboardInsertText(tabId, text),
+    };
+  }
+  if (cmd.method === "exec_command") {
+    const command = cmd.params?.command;
+    if (!isAllowedExecCommand(command)) {
+      throw new GatewayError(
+        "unsupported_exec_command",
+        `unsupported execCommand: ${String(command ?? "")}`,
+      );
+    }
+    const rawValue = cmd.params?.value;
+    if (rawValue !== undefined && typeof rawValue !== "string") {
+      throw new Error("value must be a string");
+    }
+    const value = rawValue;
+    const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+    return {
+      intent: `Run document.execCommand(${command}) against the focused element with ${valueBytes} value bytes.`,
+      run: () => execCommand(tabId, command, value),
     };
   }
   if (cmd.method === "key_press") {
@@ -5219,6 +5239,55 @@ async function keyboardInsertText(
   await attachDebugger(tabId);
   await chrome.debugger.sendCommand({ tabId }, "Input.insertText", { text });
   return { ok: true, insertedBytes: new TextEncoder().encode(text).byteLength };
+}
+
+const EXEC_COMMAND_ALLOWLIST = new Set(["insertText", "delete", "selectAll", "undo", "redo"]);
+type ExecCommandName = "insertText" | "delete" | "selectAll" | "undo" | "redo";
+
+function isAllowedExecCommand(value: unknown): value is ExecCommandName {
+  return typeof value === "string" && EXEC_COMMAND_ALLOWLIST.has(value);
+}
+
+type ExecCommandResult = {
+  ok: boolean;
+  command: ExecCommandName;
+  valueBytes: number;
+  activeElement?: string;
+};
+
+async function execCommand(
+  tabId: number,
+  command: ExecCommandName,
+  value?: string,
+): Promise<ExecCommandResult> {
+  const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (commandName: ExecCommandName, commandValue: string | undefined) => {
+      const allowed = ["insertText", "delete", "selectAll", "undo", "redo"];
+      if (!allowed.includes(commandName)) {
+        return {
+          ok: false,
+          command: commandName,
+          valueBytes: 0,
+        };
+      }
+      const active = document.activeElement;
+      const activeElement = active ? active.tagName.toLowerCase() : undefined;
+      const ok =
+        commandValue === undefined
+          ? document.execCommand(commandName)
+          : document.execCommand(commandName, false, commandValue);
+      return {
+        ok,
+        command: commandName,
+        valueBytes: commandValue === undefined ? 0 : new TextEncoder().encode(commandValue).byteLength,
+        activeElement,
+      };
+    },
+    args: [command, value],
+  });
+  return res?.result ?? { ok: false, command, valueBytes };
 }
 
 const KEY_CODE_MAP: Record<string, string> = {

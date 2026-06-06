@@ -99,6 +99,9 @@ abg key <tab|ref> <key> [--modifiers ctrl,shift] # キー入力 (Enter/Space/Arr
 abg keydown <tab|ref> Shift              # keyDown のみ。hold-key 操作用
 abg keyup <tab|ref> Shift                # keyUp のみ
 abg keyboard inserttext <tab|ref> "<text>"       # keydown/char/keyup なしで直接 text insert
+abg exec-command <tab|ref> --command insertText --value $'line1\nline2'  # focused edit-mode target
+printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdin
+abg exec-command <tab|ref> --command selectAll   # allowlist: insertText/delete/selectAll/undo/redo
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
 abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール
 abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # virtual list の内側 scrollable element を直接 scrollBy
@@ -267,6 +270,10 @@ keeps the previous loaded version active.
 
 Audit logs for plugin commands record `argsKeys`, `argsBytes`, and tab binding mode only. Argument values are never
 recorded. Plugin authors must preserve that invariant by not echoing argument values into `abg.log`.
+
+Use `abg exec-command` only after focusing the actual edit-mode surface, such as a double-clicked
+Google Sheets cell or a contenteditable rich editor. `insertText` preserves multiline values through
+the browser editing path; audit logs record the command and value byte length, not the inserted text.
 
 Use `abg read <tab> --format markdown --redact` only when opt-in local masking is desired. The
 bundled `redaction` plugin masks common email, phone-like, and credit-card-like strings. Add
