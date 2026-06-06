@@ -68,7 +68,7 @@ Current repo version: **v0.3.6**.
 - Multi-element text selections store DOM Range anchors and follow responsive layout changes
 - README, bundled app resources, and Claude/Codex skills document the text annotation workflow
 
-### v0.3.3 — OSS security hardening (2026-05-03)
+### v0.3.3 — Public-source security hardening (2026-05-03)
 - Gateway WebSocket rejects non-extension Origins before accepting messages
 - Runtime support/log directories are owner-only, and the audit log is owner-only
 - Extension Popup renders page-derived tab titles/URLs with DOM text APIs instead of HTML strings

@@ -6,7 +6,7 @@
 
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
-- 📖 **Fully open source** — Every line of code that touches your browser is auditable
+- 📖 **Public source** — Every line of code that touches your browser is auditable
 - 🚫 **Zero telemetry** — No analytics. No phone-home. No cloud dependency
 - 💻 **Local first** — Runs entirely on your machine. No account, no subscription
 - 🔐 **No vendor lock-in** — Use any AI agent you choose; switch any time
@@ -254,9 +254,10 @@ For Notion-like pages, ABG now selects the domain transform automatically when `
 
 ---
 
-## Open source verifiability
+## Source-available verifiability
 
-Closed-source extensions are not auditable. Open-source extensions distributed only as binaries are barely better. ABG aims for **end-to-end verifiability**:
+Closed-source extensions are not auditable. Source-published extensions distributed only as
+binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
 - **Reproducible builds** (target for v1.0): the binary you download from Releases will hash-match a Docker-built artifact from this repo.
@@ -290,7 +291,7 @@ Use **Playwright / browser test tooling** for:
 
 | Project | Approach | What ABG offers that this doesn't |
 |---|---|---|
-| `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, OSS, per-tab consent |
+| `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, public source, per-tab consent |
 | `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab consent (you choose which tabs) |
 | `BrowserMCP` | Extension bridge, Playwright API | Per-tab consent |
 | `chrome-devtools-mcp` (Google) | CDP, requires `--remote-debugging-port` | Works with your everyday Chrome profile (Chrome 136+ blocks the CDP path) |
@@ -422,7 +423,10 @@ In short:
 
 ## License
 
-Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0** with an **ArcManagement Additional Free Use Grant** that broadens the free tier to small companies for commercial use. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0** with an
+**ArcManagement Additional Free Use Grant** that broadens the free tier to small companies for
+commercial use. This is a public-source, non-OSI license: use, modification, and redistribution are
+governed by [LICENSE](LICENSE), [COMMERCIAL.md](COMMERCIAL.md), and [NOTICE](NOTICE).
 
 ```
 Copyright 2026 ArcManagement, Inc.
@@ -473,7 +477,7 @@ ArcManagement holds a pending Japanese patent application covering aspects of AB
 ### コア思想
 
 1. **per-tab 明示許可** — タブ単位の許可。`<all_urls>` なし。`activeTab` のみ
-2. **OSS / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
+2. **ソース公開 / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
 3. **CLI + Skill が primary** — MCP より先に CLI。シェルがあれば任意のエージェントから使える
 4. **失効は明示的** — オリジン遷移 / タブクローズ / 明示解除。タイムアウトはオプション
 5. **すべて監査ログに記録** — JSONL ファイル、自分でも `abg audit` で読める

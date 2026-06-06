@@ -1,6 +1,6 @@
 # Contributing to Agent Browser Gateway
 
-Thanks for considering a contribution. ABG is a small project with a sharp thesis (`Open source. No telemetry. Verifiable.`), so a few things up front:
+Thanks for considering a contribution. ABG is a small project with a sharp thesis (`Public source. No telemetry. Verifiable.`), so a few things up front:
 
 ## Before you start
 
