@@ -53,6 +53,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "set_checked",
   "fill",
   "paste",
+  "paste_rich",
   "clear",
   "replace_dom",
   "upload_file",
@@ -61,6 +62,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "key_down",
   "key_up",
   "keyboard_insert_text",
+  "exec_command",
   "navigate",
   "sandbox_action",
   "scroll",
@@ -305,7 +307,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: browser.kind === "firefox" ? "firefox" : detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
   }
   return settings;
@@ -350,6 +352,25 @@ async function isIncognitoAccessAllowed(): Promise<boolean> {
   }
 }
 
+type BraveNavigator = Navigator & {
+  brave?: {
+    isBrave?: () => Promise<boolean>;
+  };
+};
+
+async function detectCurrentBrowserKind(): Promise<string> {
+  if (browser.kind === "firefox") return "firefox";
+  const brave = (navigator as BraveNavigator).brave;
+  if (typeof brave?.isBrave === "function") {
+    try {
+      if (await brave.isBrave()) return "brave";
+    } catch {
+      // Fall through to UA checks; browser kind is only a UI label.
+    }
+  }
+  return detectBrowserKind(navigator.userAgent);
+}
+
 // ---------- State persistence (session: cleared on browser restart) ----------
 
 async function saveState(): Promise<void> {
@@ -386,7 +407,7 @@ function ensureWS(): void {
       extensionId: extensionId ?? "?",
       version: VERSION,
       profileLabel: profileLabel || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
     await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
@@ -1306,6 +1327,24 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => pasteText(tabId, selector, value, frame),
     };
   }
+  if (cmd.method === "paste_rich") {
+    const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+    if (cmd.params?.selector !== undefined && (!selector || selector.length === 0)) {
+      throw new Error("selector must be a non-empty string");
+    }
+    const mime = typeof cmd.params?.mime === "string" ? cmd.params.mime : undefined;
+    const contentBytes = typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
+    const target = selector
+      ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
+      : "the currently focused target";
+    const payload = mime
+      ? ` ${quoteForIntent(mime)} clipboard payload${contentBytes === undefined ? "" : ` (${contentBytes} bytes)`}`
+      : " current clipboard payload";
+    return {
+      intent: `Paste${payload} into ${target}.`,
+      run: () => pasteRichClipboard(tabId, selector, frame),
+    };
+  }
   if (cmd.method === "clear") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
@@ -1348,6 +1387,25 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     return {
       intent: `Insert ${new TextEncoder().encode(text).byteLength} bytes into the focused element without key events.`,
       run: () => keyboardInsertText(tabId, text),
+    };
+  }
+  if (cmd.method === "exec_command") {
+    const command = cmd.params?.command;
+    if (!isAllowedExecCommand(command)) {
+      throw new GatewayError(
+        "unsupported_exec_command",
+        `unsupported execCommand: ${String(command ?? "")}`,
+      );
+    }
+    const rawValue = cmd.params?.value;
+    if (rawValue !== undefined && typeof rawValue !== "string") {
+      throw new Error("value must be a string");
+    }
+    const value = rawValue;
+    const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+    return {
+      intent: `Run document.execCommand(${command}) against the focused element with ${valueBytes} value bytes.`,
+      run: () => execCommand(tabId, command, value),
     };
   }
   if (cmd.method === "key_press") {
@@ -1492,6 +1550,15 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
   const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
+  const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+  const steps =
+    typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 1;
+  if (selector !== undefined) {
+    return {
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)} by (Δx=${deltaX}, Δy=${deltaY})${frameIntentSuffix(frame)}.`,
+      run: () => scrollElement(tabId, selector, deltaX, deltaY, steps, frame),
+    };
+  }
   const where =
     atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
@@ -4746,6 +4813,30 @@ async function pasteText(
   };
 }
 
+async function pasteRichClipboard(
+  tabId: number,
+  selector?: string,
+  frame?: string,
+): Promise<{ ok: boolean; found?: boolean; focused?: boolean; tag?: string; activeTag?: string }> {
+  if (selector) {
+    const focusResult = await focusElement(tabId, selector, frame);
+    if (!focusResult.found || !focusResult.focused) {
+      return {
+        ok: false,
+        found: focusResult.found,
+        focused: focusResult.focused,
+        tag: focusResult.tag,
+        activeTag: focusResult.activeTag,
+      };
+    }
+    await dispatchPasteShortcut(tabId);
+    return { ok: true, ...focusResult };
+  }
+
+  await dispatchPasteShortcut(tabId);
+  return { ok: true };
+}
+
 async function clearEditable(
   tabId: number,
   selector: string,
@@ -5292,6 +5383,55 @@ async function keyboardInsertText(
   return { ok: true, insertedBytes: new TextEncoder().encode(text).byteLength };
 }
 
+const EXEC_COMMAND_ALLOWLIST = new Set(["insertText", "delete", "selectAll", "undo", "redo"]);
+type ExecCommandName = "insertText" | "delete" | "selectAll" | "undo" | "redo";
+
+function isAllowedExecCommand(value: unknown): value is ExecCommandName {
+  return typeof value === "string" && EXEC_COMMAND_ALLOWLIST.has(value);
+}
+
+type ExecCommandResult = {
+  ok: boolean;
+  command: ExecCommandName;
+  valueBytes: number;
+  activeElement?: string;
+};
+
+async function execCommand(
+  tabId: number,
+  command: ExecCommandName,
+  value?: string,
+): Promise<ExecCommandResult> {
+  const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (commandName: ExecCommandName, commandValue: string | undefined) => {
+      const allowed = ["insertText", "delete", "selectAll", "undo", "redo"];
+      if (!allowed.includes(commandName)) {
+        return {
+          ok: false,
+          command: commandName,
+          valueBytes: 0,
+        };
+      }
+      const active = document.activeElement;
+      const activeElement = active ? active.tagName.toLowerCase() : undefined;
+      const ok =
+        commandValue === undefined
+          ? document.execCommand(commandName)
+          : document.execCommand(commandName, false, commandValue);
+      return {
+        ok,
+        command: commandName,
+        valueBytes: commandValue === undefined ? 0 : new TextEncoder().encode(commandValue).byteLength,
+        activeElement,
+      };
+    },
+    args: [command, value],
+  });
+  return res?.result ?? { ok: false, command, valueBytes };
+}
+
 const KEY_CODE_MAP: Record<string, string> = {
   Enter: "Enter",
   Tab: "Tab",
@@ -5405,6 +5545,12 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   }
   const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
   if (loadState !== undefined) {
+    if (!["networkidle", "load", "domcontentloaded"].includes(loadState)) {
+      throw new GatewayError(
+        "bad_params",
+        "loadState must be one of networkidle, load, or domcontentloaded",
+      );
+    }
     await attachDebugger(tabId);
     return waitUntil(
       tabId,
@@ -5723,6 +5869,59 @@ async function scrollTab(
     deltaY,
   });
   return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
+}
+
+async function scrollElement(
+  tabId: number,
+  selector: string,
+  deltaX: number,
+  deltaY: number,
+  steps: number,
+  frame?: string,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selector: string;
+  deltaX: number;
+  deltaY: number;
+  steps: number;
+  scrollLeft?: number;
+  scrollTop?: number;
+  scrollWidth?: number;
+  scrollHeight?: number;
+  clientWidth?: number;
+  clientHeight?: number;
+}> {
+  return runFrameScript(tabId, frame, { selector, deltaX, deltaY, steps }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) {
+      return {
+        ok: false,
+        found: false,
+        selector: opts.selector,
+        deltaX: opts.deltaX,
+        deltaY: opts.deltaY,
+        steps: opts.steps,
+      } as const;
+    }
+    for (let i = 0; i < opts.steps; i += 1) {
+      el.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+    }
+    return {
+      ok: true,
+      found: true,
+      selector: opts.selector,
+      deltaX: opts.deltaX,
+      deltaY: opts.deltaY,
+      steps: opts.steps,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  });
 }
 
 async function scrollElementIntoView(

@@ -56,22 +56,33 @@ function Ensure-Dotnet8 {
     return $Dotnet
 }
 
+function Assert-LastExitCode {
+    param([string]$Step)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Step failed with exit code $LASTEXITCODE"
+    }
+}
+
 Write-Host "==> check dotnet"
 $Dotnet = Ensure-Dotnet8
 & $Dotnet --version
+Assert-LastExitCode "dotnet --version"
 
 Write-Host "==> restore"
 & $Dotnet restore (Join-Path $Root "windows\AgentBrowserGateway.Windows.sln")
+Assert-LastExitCode "dotnet restore"
 
 if (-not $SkipTests) {
     Write-Host "==> test"
     & $Dotnet test (Join-Path $Root "windows\AgentBrowserGateway.Tests\AgentBrowserGateway.Tests.csproj") -c Release
+    Assert-LastExitCode "dotnet test"
 } else {
     Write-Host "==> skip tests"
 }
 
 Write-Host "==> package"
 & (Join-Path $Root "scripts\dist-windows-x64.ps1") -Version $Version
+Assert-LastExitCode "dist-windows-x64.ps1"
 
 Write-Host "==> extract install payload"
 Remove-Item -Recurse -Force $ExtractDir -ErrorAction SilentlyContinue
@@ -83,6 +94,7 @@ $InstallArgs = @{ InstallDir = $InstallDir }
 if ($NoPathUpdate) { $InstallArgs["NoPathUpdate"] = $true }
 if ($NoStart) { $InstallArgs["NoStart"] = $true }
 & (Join-Path $ExtractDir "Install-AgentBrowserGateway.ps1") @InstallArgs
+Assert-LastExitCode "Install-AgentBrowserGateway.ps1"
 
 Write-Host "==> done"
 Write-Host "Installed to: $InstallDir"

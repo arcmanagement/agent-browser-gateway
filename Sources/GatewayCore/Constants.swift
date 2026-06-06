@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public enum ABGConstants {
     public static let bundleId = "co.arcm.AgentBrowserGateway"
