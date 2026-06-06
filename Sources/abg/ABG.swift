@@ -7,6 +7,10 @@ import Glibc
 #endif
 import GatewayCore
 
+func defaultGatewayTimeoutMs() -> Int {
+    GatewaySettingsStore.load().defaultTimeoutMs
+}
+
 @main
 enum ABGMain {
     static func main() async {
@@ -976,7 +980,7 @@ struct Network: AsyncParsableCommand {
     @Flag(name: .long, help: "requestId のレスポンス body を取得") var body: Bool = false
     @Option(name: .long, help: "最大件数 (デフォルト 100)") var limit: Int = 100
     @Flag(name: .long, help: "Wait for a matching response instead of listing buffered requests") var waitResponse: Bool = false
-    @Option(name: .long, help: "wait-response timeout in milliseconds") var timeout: Int = 30_000
+    @Option(name: .long, help: "wait-response timeout in milliseconds") var timeout: Int = defaultGatewayTimeoutMs()
     @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
 
     func run() async throws {
@@ -1635,13 +1639,13 @@ struct Wait: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "セレクタが現れる/消えるまで or 一定時間待つ",
         discussion: """
-        --selector を指定すると、その要素が visible になるまで polling (デフォルト 10s タイムアウト)。
+        --selector を指定すると、その要素が visible になるまで polling (profile default timeout)。
         --hidden 付きなら逆に消えるまで待つ。--ms だけ指定すると単純な sleep。
         polling 間隔は 200ms 固定。timeout 時はエラーを返す。
 
         例:
-          abg wait 445 --selector ".loaded"           # .loaded が出るまで最大 10s
-          abg wait 445 --selector ".spinner" --hidden # .spinner が消えるまで最大 10s
+          abg wait 445 --selector ".loaded"           # .loaded が出るまで待つ
+          abg wait 445 --selector ".spinner" --hidden # .spinner が消えるまで待つ
           abg wait 445 --ms 1500                       # 1.5s 待つだけ
           abg wait 445 --selector "h1" --timeout 30000 # 30s タイムアウト
         """
@@ -1655,7 +1659,7 @@ struct Wait: AsyncParsableCommand {
     @Option(name: .long, help: "load state: networkidle / load / domcontentloaded") var load: String?
     @Option(name: .long, help: "JavaScript predicate expression が truthy になるまで待つ") var fn: String?
     @Option(name: .long, help: "固定 sleep ミリ秒 (selector を使わないとき)") var ms: Int?
-    @Option(name: .long, help: "selector のタイムアウト ms (デフォルト 10000)") var timeout: Int = 10_000
+    @Option(name: .long, help: "selector のタイムアウト ms (profile default)") var timeout: Int = defaultGatewayTimeoutMs()
 
     func run() async throws {
         let client = UDSClient()
@@ -2122,6 +2126,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         } else if let fn = stringValue(step, "fn") {
             params["predicate"] = fn
         }
+        params["timeoutMs"] = intValue(step, "timeout") ?? defaultGatewayTimeoutMs()
         return try client.call(method: "wait_tab", params: params)
     default:
         try failWithJSON(["error": "unknown_replay_op", "message": "Unknown replay op: \(op)"])

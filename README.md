@@ -121,6 +121,8 @@ Trusted automation / AutoMode is a separate explicit popup setting for eval-heav
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
+The Gateway window also has Settings for profile-local timeout defaults, approval defaults, and
+per-domain policy drafts stored in `gateway-settings.json` under `~/.abg/` or `~/.abg-dev/`.
 
 ---
 
@@ -473,6 +475,9 @@ removes them.
 User plugins can also be disabled without deleting their directory. ABG persists that toggle in
 the active profile's filesystem state (`plugin-state.json` under `~/.abg/` or `~/.abg-dev/`);
 there is no app database for plugin enablement.
+Gateway Settings use the same profile-local filesystem model and store timeout, approval, and
+domain-policy defaults in `gateway-settings.json`; ABG does not run an app database for these
+preferences.
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 
