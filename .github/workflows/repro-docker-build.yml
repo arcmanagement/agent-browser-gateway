@@ -1,0 +1,23 @@
+name: Reproducible Docker Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-repro:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build reproducible Docker artifacts
+        run: make docker-repro
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-browser-gateway-reproducible-docker
+          path: dist/reproducible-docker/

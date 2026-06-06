@@ -2,6 +2,16 @@ name: Windows CI
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Windows artifact version"
+        required: false
+        default: "0.3.12"
+      require_code_sign:
+        description: "Fail unless Windows signing secrets are configured"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -9,6 +19,10 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
+    env:
+      ABG_VERSION: ${{ inputs.version || '0.3.12' }}
+      WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+      WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -30,6 +44,34 @@ jobs:
       - name: Test
         run: dotnet test windows/AgentBrowserGateway.Tests/AgentBrowserGateway.Tests.csproj -c Release
 
+      - name: Decode Windows signing certificate
+        if: ${{ env.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "abg-windows-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
+          "WINDOWS_CODESIGN_PFX=$pfxPath" >> $env:GITHUB_ENV
+
       - name: Package Windows zip
         shell: pwsh
-        run: ./scripts/dist-windows-x64.ps1
+        run: |
+          $signArgs = @{}
+          if ($env:WINDOWS_CODESIGN_PFX) {
+            $signArgs["CodeSignPfxPath"] = $env:WINDOWS_CODESIGN_PFX
+            $signArgs["CodeSignPfxPassword"] = $env:WINDOWS_CODESIGN_PFX_PASSWORD
+          }
+          if ("${{ inputs.require_code_sign }}" -eq "true") {
+            $signArgs["RequireCodeSign"] = $true
+          }
+          ./scripts/dist-windows-x64.ps1 -Version $env:ABG_VERSION @signArgs
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: agent-browser-gateway-${{ env.ABG_VERSION }}-windows-x64
+          if-no-files-found: error
+          path: |
+            dist/agent-browser-gateway-${{ env.ABG_VERSION }}-windows-x64.zip
+            dist/agent-browser-gateway-${{ env.ABG_VERSION }}-windows-x64.zip.sha256.txt
+            dist/agent-browser-gateway-${{ env.ABG_VERSION }}-windows-x64-setup.zip
+            dist/agent-browser-gateway-${{ env.ABG_VERSION }}-windows-x64-setup.zip.sha256.txt

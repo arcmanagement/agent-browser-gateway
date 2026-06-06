@@ -29,12 +29,29 @@ actor WSServer {
                 return
             } catch {
                 lastError = error
-                let msg = "bind failed (attempt \(attempt + 1)/\(backoffs.count)): \(error.localizedDescription)"
+                let msg = Self.bindFailureStatus(
+                    error: error,
+                    attempt: attempt + 1,
+                    totalAttempts: backoffs.count,
+                    port: ABGConstants.wsPort
+                )
                 print("[ABG WS] \(msg)")
                 await runtime?.setStatus(msg)
             }
         }
-        if let lastError = lastError { throw lastError }
+        if let lastError = lastError {
+            let msg = Self.bindFailureStatus(
+                error: lastError,
+                attempt: backoffs.count,
+                totalAttempts: backoffs.count,
+                port: ABGConstants.wsPort
+            )
+            throw NSError(domain: "ABG.WSServer", code: 1, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+    }
+
+    static func bindFailureStatus(error: Error, attempt: Int, totalAttempts: Int, port: Int) -> String {
+        "WS bind failed (attempt \(attempt)/\(totalAttempts)) on 127.0.0.1:\(port): \(error.localizedDescription). Another Gateway may already be running. Identify the listener with: lsof -nP -iTCP:\(port) -sTCP:LISTEN"
     }
 
     private func runOnce() async throws {

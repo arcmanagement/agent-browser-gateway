@@ -1,5 +1,7 @@
 import Foundation
 import Combine
+import AppKit
+import SwiftUI
 import GatewayCore
 
 @MainActor
@@ -256,6 +258,10 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return await dispatch(req: req, method: "fill")
         case "paste_tab":
             return await dispatch(req: req, method: "paste")
+        case "clipboard_write":
+            return await handleClipboardWrite(req: req)
+        case "paste_rich_tab":
+            return await handlePasteRichTab(req: req)
         case "clear_tab":
             return await dispatch(req: req, method: "clear")
         case "replace_tab":
@@ -272,6 +278,8 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return await dispatch(req: req, method: "key_up")
         case "keyboard_insert_text_tab":
             return await dispatch(req: req, method: "keyboard_insert_text")
+        case "exec_command_tab":
+            return await dispatch(req: req, method: "exec_command")
         case "navigate_tab":
             return await dispatch(req: req, method: "navigate")
         case "scroll_tab":
@@ -323,6 +331,23 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 return dict
             }
             return CLIResponse(id: req.id, result: AnyCodable(summarized))
+        case "activity_digest":
+            let period = (req.params?.value as? [String: Any])?["period"] as? String ?? "day"
+            guard AuditLog.normalizeDigestPeriod(period) != nil else {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "bad_params",
+                        message: "period must be day or week",
+                        userMessage: "period は day か week を指定してください。",
+                        nextCommand: "abg activity --period day"
+                    )
+                )
+            }
+            guard let digest = await auditLog.digest(period: period) else {
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "period must be day or week"))
+            }
+            return CLIResponse(id: req.id, result: AnyCodable(digest.asJSONObject()))
         case "plugins":
             return CLIResponse(id: req.id, result: AnyCodable(pluginHost.loadedPluginSummaries()))
         case "plugin_command_list":
@@ -885,6 +910,66 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                     }
                     return values
                 }
+                if method == "exec_command" {
+                    var values: [String: AnyCodable] = [:]
+                    if let command = params["command"] as? String {
+                        values["command"] = AnyCodable(command)
+                    }
+                    if let value = params["value"] as? String {
+                        values["valueBytes"] = AnyCodable(value.utf8.count)
+                    }
+                    if let dict = result?.value as? [String: Any],
+                       let ok = dict["ok"] as? Bool {
+                        values["ok"] = AnyCodable(ok)
+                    }
+                    return values.isEmpty ? nil : values
+                }
+                if method == "network_log" {
+                    var values: [String: AnyCodable] = [:]
+                    if let wait = params["wait"] as? Bool {
+                        values["wait"] = AnyCodable(wait)
+                    }
+                    if let timeoutMs = params["timeoutMs"] as? Int {
+                        values["timeoutMs"] = AnyCodable(timeoutMs)
+                    }
+                    if let body = params["body"] as? Bool {
+                        values["bodyRequested"] = AnyCodable(body)
+                    }
+                    if let maxBytes = params["maxBytes"] as? Int {
+                        values["maxBytes"] = AnyCodable(maxBytes)
+                    }
+                    if let methodFilter = params["method"] as? String {
+                        values["method"] = AnyCodable(methodFilter)
+                    }
+                    if let statusMin = params["statusMin"] as? Int {
+                        values["statusMin"] = AnyCodable(statusMin)
+                    }
+                    if let statusMax = params["statusMax"] as? Int {
+                        values["statusMax"] = AnyCodable(statusMax)
+                    }
+                    if let type = params["type"] as? String {
+                        values["type"] = AnyCodable(type)
+                    }
+                    if params["urlPattern"] is String {
+                        values["urlPatternFilter"] = AnyCodable(true)
+                    }
+                    if params["urlRegex"] is String {
+                        values["urlRegexFilter"] = AnyCodable(true)
+                    }
+                    if let dict = result?.value as? [String: Any] {
+                        if let mode = dict["mode"] as? String {
+                            values["mode"] = AnyCodable(mode)
+                        }
+                        if let ok = dict["ok"] as? Bool {
+                            values["ok"] = AnyCodable(ok)
+                        }
+                        if let response = dict["response"] as? [String: Any],
+                           let status = response["status"] as? Int {
+                            values["matchedStatus"] = AnyCodable(status)
+                        }
+                    }
+                    return values.isEmpty ? nil : values
+                }
                 guard method == "paste" || method == "clear" else { return nil }
                 var values: [String: AnyCodable] = [:]
                 if let selector = params["selector"] as? String {
@@ -900,6 +985,117 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         } catch {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
         }
+    }
+
+    private func handleClipboardWrite(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let mime = params["mime"] as? String,
+              let value = params["value"] as? String,
+              !mime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "mime and value required"))
+        }
+
+        let response = writeClipboardPayload(mime: mime, value: value)
+        switch response {
+        case .success(let result):
+            await auditLog.log(
+                action: "clipboard_write",
+                agent: "cli",
+                details: [
+                    "mime": AnyCodable(mime),
+                    "contentBytes": AnyCodable(value.utf8.count),
+                ]
+            )
+            return CLIResponse(id: req.id, result: AnyCodable(result))
+        case .failure(let error):
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "clipboard_write_failed", message: error.message))
+        }
+    }
+
+    private func handlePasteRichTab(req: CLIRequest) async -> CLIResponse {
+        guard var params = req.params?.value as? [String: Any],
+              let tabId = params["tabId"] as? Int
+        else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+
+        let mime = params["mime"] as? String
+        let value = params["value"] as? String
+        if (mime == nil) != (value == nil) {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "mime and value must be passed together"))
+        }
+
+        var details: [String: AnyCodable] = [:]
+        if let selector = params["selector"] as? String {
+            details["selector"] = AnyCodable(selector)
+        }
+        if let mime, let value {
+            switch writeClipboardPayload(mime: mime, value: value) {
+            case .success:
+                details["mime"] = AnyCodable(mime)
+                details["contentBytes"] = AnyCodable(value.utf8.count)
+                params.removeValue(forKey: "value")
+                params["contentBytes"] = value.utf8.count
+            case .failure(let error):
+                return CLIResponse(id: req.id, error: ErrorPayload(code: "clipboard_write_failed", message: error.message))
+            }
+        }
+
+        do {
+            let result = try await sendCommand(to: tab.extensionId, method: "paste_rich", params: AnyCodable(params))
+            if let dict = result?.value as? [String: Any] {
+                if let focused = dict["focused"] as? Bool { details["focused"] = AnyCodable(focused) }
+                if let found = dict["found"] as? Bool { details["found"] = AnyCodable(found) }
+            }
+            await auditLog.log(action: "paste_rich", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: details.isEmpty ? nil : details)
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
+        }
+    }
+
+    private struct ClipboardPayloadWriteError: Error {
+        let message: String
+    }
+
+    private func writeClipboardPayload(mime: String, value: String) -> Result<[String: Any], ClipboardPayloadWriteError> {
+        let normalizedMime = mime.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMime.isEmpty else { return .failure(ClipboardPayloadWriteError(message: "mime is empty")) }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        var types = [NSPasteboard.PasteboardType(normalizedMime)]
+        switch normalizedMime.lowercased() {
+        case "text/plain":
+            types.append(.string)
+            types.append(NSPasteboard.PasteboardType("public.utf8-plain-text"))
+        case "text/html":
+            types.append(NSPasteboard.PasteboardType("public.html"))
+        default:
+            break
+        }
+
+        var writtenTypes: [String] = []
+        for type in types {
+            if !writtenTypes.contains(type.rawValue), pasteboard.setString(value, forType: type) {
+                writtenTypes.append(type.rawValue)
+            }
+        }
+
+        guard !writtenTypes.isEmpty else {
+            return .failure(ClipboardPayloadWriteError(message: "failed to write clipboard payload"))
+        }
+
+        return .success([
+            "ok": true,
+            "mime": normalizedMime,
+            "contentBytes": value.utf8.count,
+            "pasteboardTypes": writtenTypes,
+        ])
     }
 
     private func handleEvalTab(req: CLIRequest) async -> CLIResponse {
