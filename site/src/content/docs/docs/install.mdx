@@ -1,0 +1,28 @@
+---
+title: Install
+description: Install the Gateway app, browser extension, and abg CLI.
+---
+
+## macOS
+
+Download the current DMG from the [download page](/#download), verify its SHA-256 checksum, open the
+DMG, and move Agent Browser Gateway to `/Applications`.
+
+## Windows
+
+Download the Windows ZIP from the [download page](/#download), extract it, and run the setup or
+installer script documented in the package.
+
+## Browser extension
+
+Install Agent Browser Gateway from the Chrome Web Store for normal Chrome use. For local extension
+development, build the extension from the repository and load `extension/dist/` as an unpacked
+extension.
+
+## Agent skill
+
+After the Gateway and CLI are available, install or refresh the Claude Code and Codex skill guidance:
+
+```bash
+abg install-skill --target both
+```

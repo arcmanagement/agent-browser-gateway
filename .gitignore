@@ -20,6 +20,7 @@ TestResults/
 node_modules/
 extension/dist/
 dist/
+.astro/
 
 # macOS
 .DS_Store
