@@ -637,6 +637,8 @@ ABG_PORT=8766 pnpm run build             # local unpacked extension named Agent 
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit
+pnpm run test                           # Vitest unit tests
+pnpm run test:coverage                  # Vitest coverage for unit-testable extension logic
 make verify                             # CI-style local verification
 ```
 
