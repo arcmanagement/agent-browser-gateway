@@ -36,11 +36,12 @@ public sealed partial class SetupWindow : Window
         var installDir = Environment.ExpandEnvironmentVariables(InstallDirBox.Text.Trim());
         var addToPath = PathCheckBox.IsChecked == true;
         var startAfterInstall = StartCheckBox.IsChecked == true;
+        var enableStartup = StartupCheckBox.IsChecked == true;
 
         SetBusy(true);
         try
         {
-            await Task.Run(() => InstallAsync(installDir, addToPath, startAfterInstall)).ConfigureAwait(true);
+            await Task.Run(() => InstallAsync(installDir, addToPath, startAfterInstall, enableStartup)).ConfigureAwait(true);
             SetStatus("Installed successfully.", 100);
             ModeText.Text = "Installed";
         }
@@ -55,7 +56,7 @@ public sealed partial class SetupWindow : Window
         }
     }
 
-    private async Task InstallAsync(string installDir, bool addToPath, bool startAfterInstall)
+    private async Task InstallAsync(string installDir, bool addToPath, bool startAfterInstall, bool enableStartup)
     {
         if (string.IsNullOrWhiteSpace(installDir))
         {
@@ -87,12 +88,15 @@ public sealed partial class SetupWindow : Window
             AddUserPath(targetDir);
         }
 
-        SetStatus("Updating Claude/Codex skills...", 72);
+        SetStatus("Configuring sign-in startup...", 68);
+        ConfigureStartup(targetDir, enableStartup);
+
+        SetStatus("Updating Claude/Codex skills...", 76);
         RunInstallSkill(targetDir);
 
         if (startAfterInstall)
         {
-            SetStatus("Starting tray Gateway...", 86);
+            SetStatus("Starting tray Gateway...", 88);
             StartGateway(targetDir);
             await WaitGatewayReadyAsync().ConfigureAwait(false);
         }
@@ -218,6 +222,17 @@ public sealed partial class SetupWindow : Window
         NativeMethods.BroadcastEnvironmentChange();
     }
 
+    private static void ConfigureStartup(string installDir, bool enabled)
+    {
+        if (enabled)
+        {
+            WindowsStartup.SetEnabled(WindowsStartup.GatewayExecutablePath(installDir));
+            return;
+        }
+
+        WindowsStartup.Disable();
+    }
+
     private static void RunInstallSkill(string installDir)
     {
         var abg = Path.Combine(installDir, "abg.exe");
@@ -298,6 +313,7 @@ public sealed partial class SetupWindow : Window
             InstallDirBox.IsEnabled = !busy;
             PathCheckBox.IsEnabled = !busy;
             StartCheckBox.IsEnabled = !busy;
+            StartupCheckBox.IsEnabled = !busy;
             OpenFolderButton.IsEnabled = !busy;
         });
     }

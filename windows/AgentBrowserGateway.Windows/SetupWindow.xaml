@@ -37,6 +37,7 @@
                 <StackPanel Grid.Row="1" Spacing="8">
                     <CheckBox x:Name="PathCheckBox" Content="Add Agent Browser Gateway to PATH" IsChecked="True" />
                     <CheckBox x:Name="StartCheckBox" Content="Start tray Gateway after install" IsChecked="True" />
+                    <CheckBox x:Name="StartupCheckBox" Content="Launch tray Gateway when I sign in" IsChecked="True" />
                 </StackPanel>
                 <StackPanel Grid.Row="2" Spacing="8">
                     <TextBlock x:Name="StatusText" Text="Ready" TextWrapping="Wrap" />
@@ -50,7 +51,7 @@
                 <TextBlock Text="What setup will do" FontWeight="SemiBold" />
                 <TextBlock Text="Stop the old Gateway and wait for 127.0.0.1:8765 to become free." TextWrapping="Wrap" />
                 <TextBlock Text="Replace installed files from the bundled payload and update PATH if selected." TextWrapping="Wrap" />
-                <TextBlock Text="Refresh Claude/Codex skills and start the tray Gateway if selected." TextWrapping="Wrap" />
+                <TextBlock Text="Configure sign-in startup, refresh Claude/Codex skills, and start the tray Gateway if selected." TextWrapping="Wrap" />
                 <TextBlock
                     x:Name="PayloadText"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"

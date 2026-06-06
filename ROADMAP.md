@@ -138,7 +138,7 @@ Current repo version: **v0.3.12**.
 - Firefox extension (WebExtensions, MV3 path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
-- Windows port of the Gateway
+- Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
 
 ## Phase 4
 
