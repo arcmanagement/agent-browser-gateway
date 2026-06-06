@@ -641,6 +641,7 @@ Currently shipped:
 - ✅ `abg` CLI with Claude Code and Codex Skills bundled
 - ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
+- ✅ Extension browser-adapter boundary for future desktop browser ports (see [docs/BROWSER_ADAPTER.md](docs/BROWSER_ADAPTER.md))
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
