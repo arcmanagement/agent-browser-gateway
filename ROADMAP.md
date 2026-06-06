@@ -116,7 +116,7 @@ Current repo version: **v0.3.12**.
 
 - WS bind retry (Gateway currently does not retry if the port is already in use)
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
-- Settings UI in the Gateway window for timeout defaults, approval mode, and per-domain policy
+- Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
 
 ## Next
 

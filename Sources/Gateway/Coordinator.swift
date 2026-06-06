@@ -1046,6 +1046,7 @@ final class GatewayCoordinator: ObservableObject {
         guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
+        let timeoutMs = GatewaySettingsStore.load().defaultTimeoutMs
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable?, Error>) in
             inflight[id] = cont
             Task {
@@ -1057,9 +1058,8 @@ final class GatewayCoordinator: ObservableObject {
                     }
                 }
             }
-            // 30s timeout
             Task {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(timeoutMs) * 1_000_000)
                 await MainActor.run {
                     if let c = self.inflight.removeValue(forKey: id) {
                         c.resume(throwing: NSError(domain: "ABG", code: 3, userInfo: [NSLocalizedDescriptionKey: "command timeout"]))

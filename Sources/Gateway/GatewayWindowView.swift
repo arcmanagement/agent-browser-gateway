@@ -15,6 +15,13 @@ struct GatewayWindowView: View {
     @State private var auditTabFilter = AuditLogViewEntry.allFilterValue
     @State private var auditTimeFilter: AuditTimeFilter = .day
     @State private var auditLoadError: String?
+    @State private var gatewaySettings = GatewaySettingsStore.load()
+    @State private var settingsMessage: String?
+    @State private var settingsError: String?
+    @State private var newPolicyDomain = ""
+    @State private var newPolicyApprovalMode: GatewayApprovalMode = .extensionPopup
+    @State private var newPolicyTimeoutMs = GatewaySettings.defaultTimeoutMs
+    @State private var newPolicyAppliesToSubdomains = true
     @State private var isInstallSheetPresented = false
     @State private var pluginOperation: PluginManagementOperation?
     @State private var pluginManagementMessage: String?
@@ -36,13 +43,16 @@ struct GatewayWindowView: View {
 
                 pluginDetail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            } else if selectedSection == .audit {
                 auditList
                     .frame(width: 390)
 
                 Divider()
 
                 auditDetail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                settingsDetail
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -105,6 +115,19 @@ struct GatewayWindowView: View {
                 }
                 .buttonStyle(.plain)
 
+                Button {
+                    selectedSection = .settings
+                    reloadGatewaySettings()
+                } label: {
+                    SidebarItem(
+                        title: "Settings",
+                        subtitle: "\(gatewaySettings.domainPolicies.count) policies",
+                        symbol: "gearshape",
+                        isSelected: selectedSection == .settings
+                    )
+                }
+                .buttonStyle(.plain)
+
                 SidebarItem(
                     title: "Shared Tabs",
                     subtitle: "\(coordinator.permittedTabs.count) active",
@@ -117,8 +140,10 @@ struct GatewayWindowView: View {
 
             if selectedSection == .plugins {
                 pluginFilterSection
-            } else {
+            } else if selectedSection == .audit {
                 auditFilterSection
+            } else {
+                settingsSidebarSection
             }
 
             Divider()
@@ -210,6 +235,27 @@ struct GatewayWindowView: View {
                 }
             }
             .labelsHidden()
+        }
+    }
+
+    private var settingsSidebarSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Runtime Defaults")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 7) {
+                PluginChip(text: "\(gatewaySettings.defaultTimeoutMs / 1000)s", color: .blue)
+                PluginChip(text: gatewaySettings.approvalModeDefault.title, color: .green)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Label(GatewaySettingsStore.settingsFile().deletingLastPathComponent().path, systemImage: "folder")
+                    .lineLimit(2)
+                Label(settingsFileIsOwnerOnly ? "0600 local" : "local file", systemImage: "lock.doc")
+            }
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -529,6 +575,276 @@ struct GatewayWindowView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private var settingsDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                settingsHeader
+                settingsSummaryGrid
+                settingsDefaultsSection
+                settingsDomainPolicySection
+                settingsLocationSection
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear(perform: reloadGatewaySettings)
+    }
+
+    private var settingsHeader: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.blue.opacity(0.13))
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.blue)
+            }
+            .frame(width: 56, height: 56)
+
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    Text("Settings")
+                        .font(.system(size: 28, weight: .semibold))
+                        .lineLimit(1)
+                    PluginStatusBadge(text: ABGConstants.runtimeProfileLabel.uppercased(), color: runtimeProfileColor)
+                }
+                Text(GatewaySettingsStore.settingsFile().path)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                Button {
+                    reloadGatewaySettings()
+                } label: {
+                    Label("Reload", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(PluginSecondaryButtonStyle())
+
+                Button {
+                    saveGatewaySettings()
+                } label: {
+                    Label("Save", systemImage: "checkmark.circle")
+                }
+                .buttonStyle(PluginPrimaryButtonStyle())
+            }
+        }
+    }
+
+    private var settingsSummaryGrid: some View {
+        LazyVGrid(columns: [
+            GridItem(.adaptive(minimum: 140), spacing: 10),
+        ], spacing: 10) {
+            PluginStat(title: "Timeout", value: "\(gatewaySettings.defaultTimeoutMs / 1000)s", symbol: "timer")
+            PluginStat(title: "Approval", value: gatewaySettings.approvalModeDefault.title, symbol: "checkmark.shield")
+            PluginStat(title: "Policies", value: "\(gatewaySettings.domainPolicies.count)", symbol: "globe")
+            PluginStat(title: "Profile", value: ABGConstants.runtimeProfileLabel, symbol: "shippingbox")
+        }
+    }
+
+    private var settingsDefaultsSection: some View {
+        PluginSection(title: "Defaults", symbol: "slider.horizontal.3") {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Label("Timeout", systemImage: "timer")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer(minLength: 0)
+                        TextField("30000", value: defaultTimeoutBinding, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .frame(width: 92)
+                        Stepper("Timeout", value: defaultTimeoutBinding, in: timeoutRange, step: 1_000)
+                            .labelsHidden()
+                    }
+
+                    FlowLayout(spacing: 7) {
+                        PluginChip(text: "\(GatewaySettings.minimumTimeoutMs / 1000)s min", color: .secondary)
+                        PluginChip(text: "\(GatewaySettings.maximumTimeoutMs / 1000)s max", color: .secondary)
+                        PluginChip(text: "milliseconds", color: .blue)
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Label("Approval Default", systemImage: "checkmark.shield")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer(minLength: 0)
+                        Picker("Approval Default", selection: $gatewaySettings.approvalModeDefault) {
+                            ForEach(GatewayApprovalMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 210)
+                    }
+
+                    Text(gatewaySettings.approvalModeDefault.detail)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                settingsFeedback
+            }
+        }
+    }
+
+    private var settingsDomainPolicySection: some View {
+        PluginSection(title: "Domain Policies", symbol: "globe.badge.chevron.backward") {
+            VStack(alignment: .leading, spacing: 12) {
+                if gatewaySettings.domainPolicies.isEmpty {
+                    Text("No domain defaults")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(gatewaySettings.domainPolicies) { policy in
+                            domainPolicyRow(policy)
+                        }
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        TextField("example.com", text: $newPolicyDomain)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .onSubmit(addDomainPolicy)
+
+                        Picker("Mode", selection: $newPolicyApprovalMode) {
+                            ForEach(GatewayApprovalMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+                    }
+
+                    HStack(spacing: 10) {
+                        Toggle("Subdomains", isOn: $newPolicyAppliesToSubdomains)
+                            .toggleStyle(.checkbox)
+
+                        Spacer(minLength: 0)
+
+                        TextField("30000", value: newPolicyTimeoutBinding, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .frame(width: 92)
+
+                        Stepper("Policy Timeout", value: newPolicyTimeoutBinding, in: timeoutRange, step: 1_000)
+                            .labelsHidden()
+
+                        Button {
+                            addDomainPolicy()
+                        } label: {
+                            Label("Add", systemImage: "plus")
+                        }
+                        .buttonStyle(PluginPrimaryButtonStyle())
+                        .disabled(!canAddDomainPolicy)
+                    }
+                }
+            }
+        }
+    }
+
+    private var settingsLocationSection: some View {
+        PluginSection(title: "Location", symbol: "lock.doc") {
+            HStack(spacing: 10) {
+                Text(GatewaySettingsStore.settingsFile().path)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                Spacer(minLength: 0)
+
+                PluginChip(text: settingsFileIsOwnerOnly ? "0600 local" : "local file", color: settingsFileIsOwnerOnly ? .green : .secondary)
+
+                Button {
+                    NSWorkspace.shared.selectFile(GatewaySettingsStore.settingsFile().path, inFileViewerRootedAtPath: "")
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
+
+                Button {
+                    copy(GatewaySettingsStore.settingsFile().path)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
+                .help("Copy path")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var settingsFeedback: some View {
+        if let settingsError {
+            Label(settingsError, systemImage: "exclamationmark.triangle")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let settingsMessage {
+            Label(settingsMessage, systemImage: "checkmark.circle")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.green)
+        }
+    }
+
+    private func domainPolicyRow(_ policy: GatewayDomainPolicy) -> some View {
+        HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.green.opacity(0.14))
+                Image(systemName: "globe")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.green)
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(policy.domain)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    PluginStatusBadge(text: policy.approvalMode.title.uppercased(), color: .blue)
+                    PluginStatusBadge(text: "\(policy.timeoutMs / 1000)S", color: .secondary)
+                    if policy.appliesToSubdomains {
+                        PluginStatusBadge(text: "SUBDOMAINS", color: .green)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            Button(role: .destructive) {
+                removeDomainPolicy(policy)
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.red)
+            .help("Remove domain policy")
+        }
+        .padding(10)
+        .background(PluginRowBackground())
     }
 
     private func detailHeader(_ plugin: PluginHost.PluginSummary) -> some View {
@@ -885,6 +1201,40 @@ struct GatewayWindowView: View {
         return permissions.intValue & 0o077 == 0
     }
 
+    private var settingsFileIsOwnerOnly: Bool {
+        let path = GatewaySettingsStore.settingsFile().path
+        guard FileManager.default.fileExists(atPath: path),
+              let permissions = try? FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber else {
+            return false
+        }
+        return permissions.intValue & 0o077 == 0
+    }
+
+    private var timeoutRange: ClosedRange<Int> {
+        GatewaySettings.minimumTimeoutMs...GatewaySettings.maximumTimeoutMs
+    }
+
+    private var defaultTimeoutBinding: Binding<Int> {
+        Binding(
+            get: { gatewaySettings.defaultTimeoutMs },
+            set: {
+                gatewaySettings.defaultTimeoutMs = GatewaySettings.clampedTimeout($0)
+                clearSettingsFeedback()
+            }
+        )
+    }
+
+    private var newPolicyTimeoutBinding: Binding<Int> {
+        Binding(
+            get: { newPolicyTimeoutMs },
+            set: { newPolicyTimeoutMs = GatewaySettings.clampedTimeout($0) }
+        )
+    }
+
+    private var canAddDomainPolicy: Bool {
+        GatewaySettings.normalizedDomain(newPolicyDomain) != nil
+    }
+
     private func count(for filter: PluginFilter) -> Int {
         coordinator.pluginSummaries.filter { filter.matches(source(for: $0)) }.count
     }
@@ -934,6 +1284,54 @@ struct GatewayWindowView: View {
            !result.entries.contains(where: { $0.id == selectedAuditID }) {
             self.selectedAuditID = nil
         }
+    }
+
+    private func reloadGatewaySettings() {
+        gatewaySettings = GatewaySettingsStore.load()
+        settingsMessage = nil
+        settingsError = nil
+    }
+
+    private func saveGatewaySettings() {
+        do {
+            gatewaySettings = gatewaySettings.normalized
+            try GatewaySettingsStore.save(gatewaySettings)
+            settingsError = nil
+            settingsMessage = "Settings saved."
+        } catch {
+            settingsMessage = nil
+            settingsError = error.localizedDescription
+        }
+    }
+
+    private func addDomainPolicy() {
+        guard let domain = GatewaySettings.normalizedDomain(newPolicyDomain) else {
+            settingsMessage = nil
+            settingsError = "Enter a valid domain."
+            return
+        }
+        let policy = GatewayDomainPolicy(
+            domain: domain,
+            approvalMode: newPolicyApprovalMode,
+            timeoutMs: newPolicyTimeoutMs,
+            appliesToSubdomains: newPolicyAppliesToSubdomains
+        )
+        gatewaySettings.domainPolicies.removeAll { $0.domain == domain }
+        gatewaySettings.domainPolicies.append(policy)
+        gatewaySettings.domainPolicies = GatewaySettings.normalizedDomainPolicies(gatewaySettings.domainPolicies)
+        newPolicyDomain = ""
+        newPolicyTimeoutMs = gatewaySettings.defaultTimeoutMs
+        clearSettingsFeedback()
+    }
+
+    private func removeDomainPolicy(_ policy: GatewayDomainPolicy) {
+        gatewaySettings.domainPolicies.removeAll { $0.id == policy.id }
+        clearSettingsFeedback()
+    }
+
+    private func clearSettingsFeedback() {
+        settingsMessage = nil
+        settingsError = nil
     }
 
     @MainActor
@@ -1126,6 +1524,7 @@ private enum PluginManagementAlert: Identifiable {
 private enum GatewayWindowSection {
     case plugins
     case audit
+    case settings
 }
 
 private enum AuditTimeFilter: String, CaseIterable, Identifiable {

@@ -102,7 +102,7 @@ struct Download: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Flag(name: .long, help: "Wait until the latest/current download reaches complete or interrupted state") var wait: Bool = false
-    @Option(name: .long, help: "Wait timeout in milliseconds") var timeout: Int = 30_000
+    @Option(name: .long, help: "Wait timeout in milliseconds") var timeout: Int = defaultGatewayTimeoutMs()
 
     func run() async throws {
         let client = UDSClient()
