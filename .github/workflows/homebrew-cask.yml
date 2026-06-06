@@ -1,0 +1,39 @@
+name: Homebrew Cask Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, for example 0.3.12"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update-cask:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Update Cask from release asset
+        run: bash scripts/update-homebrew-cask.sh "${{ inputs.version }}"
+
+      - name: Verify Cask syntax
+        run: ruby -c Casks/agent-browser-gateway.rb
+
+      - name: Audit Cask
+        run: |
+          tap_name="arcmanagement/agent-browser-gateway"
+          brew tap-new --no-git "$tap_name"
+          tap_dir="$(brew --repository "$tap_name")"
+          mkdir -p "$tap_dir/Casks"
+          cp Casks/agent-browser-gateway.rb "$tap_dir/Casks/agent-browser-gateway.rb"
+          brew audit --cask --strict --tap="$tap_name" agent-browser-gateway
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-browser-gateway-cask-${{ inputs.version }}
+          path: Casks/agent-browser-gateway.rb

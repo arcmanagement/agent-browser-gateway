@@ -59,6 +59,7 @@ credentials/
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
 !docs/HOMEBREW.md
+!docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 

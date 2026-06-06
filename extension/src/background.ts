@@ -298,7 +298,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
   }
   return settings;
@@ -343,6 +343,24 @@ async function isIncognitoAccessAllowed(): Promise<boolean> {
   }
 }
 
+type BraveNavigator = Navigator & {
+  brave?: {
+    isBrave?: () => Promise<boolean>;
+  };
+};
+
+async function detectCurrentBrowserKind(): Promise<string> {
+  const brave = (navigator as BraveNavigator).brave;
+  if (typeof brave?.isBrave === "function") {
+    try {
+      if (await brave.isBrave()) return "brave";
+    } catch {
+      // Fall through to UA checks; browser kind is only a UI label.
+    }
+  }
+  return detectBrowserKind(navigator.userAgent);
+}
+
 // ---------- State persistence (session: cleared on browser restart) ----------
 
 async function saveState(): Promise<void> {
@@ -379,7 +397,7 @@ function ensureWS(): void {
       extensionId: extensionId ?? "?",
       version: VERSION,
       profileLabel: profileLabel || undefined,
-      browserKind: detectBrowserKind(navigator.userAgent),
+      browserKind: await detectCurrentBrowserKind(),
     });
     await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
