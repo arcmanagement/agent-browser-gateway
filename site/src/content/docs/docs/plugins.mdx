@@ -1,19 +1,142 @@
 ---
 title: Plugins
-description: ABG plugin system overview.
+description: Install, manage, and author local Agent Browser Gateway plugins.
+sidebar:
+  order: 5
 ---
 
 ABG supports local JavaScript plugins loaded by the Gateway. Plugins can transform browser data or
 add higher-level local commands without moving browser access into a hosted service.
 
-Bundled plugins are installed with the app. User plugins live in the ABG user directory and are
-managed with the `abg plugin` command group.
+Plugins run inside the local Gateway process through JavaScriptCore, so install only plugins you
+trust.
+
+## Plugin sources
+
+ABG searches plugins in this order:
+
+1. Bundled plugins inside `Agent Browser Gateway.app/Contents/Resources/plugins/`.
+2. User-installed plugins under `~/.abg/plugins/`.
+3. Local development plugins from the repository checkout when running from the checkout.
+
+Development Gateway runs on port `8766` use `~/.abg-dev/plugins/` instead of `~/.abg/plugins/`.
+That keeps production and development plugin state separate.
+
+## Install and manage
 
 ```bash
 abg plugin list
+abg plugin list --loaded
 abg plugin install user/repo --yes
+abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
+abg plugin install ./my-plugin --name my-plugin --yes
 abg plugin update
+abg plugin update my-plugin
+abg plugin disable my-plugin
+abg plugin enable my-plugin
+abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 
-See the repository plugin guide for manifest details and command authoring rules.
+`install` requires `--yes` because plugin code is arbitrary JavaScript loaded by the local Gateway.
+Repository installs use the local `git` command, so private repositories use the user's existing SSH
+keys, git credential helper, or GitHub CLI-backed git authentication. ABG does not ask for or store
+GitHub tokens, and HTTPS URLs with embedded credentials are rejected.
+
+Update runs `git pull --ff-only` for git-backed user plugins. Disable keeps the plugin directory in
+place and writes profile-local state to `plugin-state.json`. ABG does not use an app database for
+plugin enablement.
+
+## Plugin layout
+
+```text
+my-plugin/
+  index.js
+  plugin.json
+```
+
+`index.js` is required. `plugin.json` is optional but recommended because it powers plugin listings
+and command help.
+
+```json
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "Short human-readable summary.",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"],
+  "commands": [
+    {
+      "name": "greet",
+      "description": "Return a greeting.",
+      "args": [
+        { "name": "name", "type": "string", "required": false, "default": "ABG" }
+      ]
+    }
+  ]
+}
+```
+
+## Host API
+
+The host API is intentionally small:
+
+```js
+abg.log("loaded " + abg.plugin.name);
+
+abg.registerTransform("my-transform", function (input) {
+  return String(input).trim();
+});
+```
+
+Transforms are synchronous string-to-string functions. For `abg read --format markdown`, ABG uses
+the generic Markdown transform first and can select a domain-specific Markdown transform when the
+shared tab URL matches a plugin's `domains` globs.
+
+## Command API
+
+Plugins can expose first-class CLI commands:
+
+```js
+abg.registerCommand("greet", async function (args, context) {
+  return {
+    ok: true,
+    message: "Hello, " + (args.name || "ABG"),
+    plugin: context.plugin.name
+  };
+});
+```
+
+Invoke commands as dynamic ABG subcommands:
+
+```bash
+abg my-plugin greet --name "Ada"
+abg my-plugin greet --tab t1
+abg my-plugin greet --json '{"name":"Ada"}'
+printf '{"name":"Ada"}' | abg my-plugin greet --stdin
+```
+
+Command results are JSON. Handler failures are returned as structured JSON errors. Audit logs record
+the plugin name, command name, argument key list, and serialized argument byte length; argument
+values are not written to the audit log.
+
+## Tab API
+
+Command handlers can drive the shared tab with `context.tab.<action>(options)`. These methods route
+through the same Gateway path as CLI calls, so per-tab consent, operation approval, and audit logging
+apply uniformly.
+
+```js
+abg.registerCommand("clear-and-paste", async function (args, context) {
+  if (context.tabId == null) {
+    return { ok: false, error: "no_tab_context" };
+  }
+  await context.tab.clear({ selector: args.selector });
+  await context.tab.paste({ selector: args.selector, value: args.value });
+  return { ok: true };
+});
+```
+
+Do not shell out from JavaScript to bypass ABG's browser access path. Use the tab API so approvals
+and audit logs remain consistent.

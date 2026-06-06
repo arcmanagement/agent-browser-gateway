@@ -1,0 +1,82 @@
+---
+title: CLI
+description: 共有済みブラウザータブを観察・操作する abg コマンド。
+sidebar:
+  order: 4
+---
+
+CLIはエージェントとスクリプト向けの安定したinterfaceです。
+
+まず状態と共有タブを確認します。
+
+```bash
+abg status
+abg tabs --compact
+abg inspect
+```
+
+返ってきた `t1` のようなタブ参照をread-onlyコマンドに渡します。
+
+```bash
+abg read t1 --format markdown
+abg read t1 --selector article --format markdown
+abg frames t1
+abg get text t1 "h1"
+abg snapshot t1 --interactive-only --compact
+abg screenshot t1 --out page.png
+abg console t1
+abg table t1 --format markdown
+abg network t1 --url "*api*"
+abg audit --lines 50
+```
+
+変更系コマンドも同じ共有タブに対して実行します。設定によりローカル承認promptが出ます。
+
+```bash
+abg click t1 --selector "button.save"
+abg fill t1 --selector "input[name=email]" --value "me@example.com"
+abg paste t1 --selector "[contenteditable=true]" --stdin
+abg key t1 Enter
+abg upload t1 --selector "input[type=file]" --file ./report.pdf
+abg navigate t1 "https://example.com"
+abg revoke t1
+```
+
+## タブ指定
+
+明示的なタブ参照の代わりにmatch flagも使えます。
+
+```bash
+abg read --match-url "*notion.so*" --format markdown
+abg click --match-title "Dashboard" --selector "button.refresh"
+```
+
+iframeを扱う前には `frames` を使います。同一originでアクセスできるframeには `@f1` のような参照が付きます。
+
+```bash
+abg frames t1
+abg read t1 --frame @f1 --selector "main" --format markdown
+```
+
+## リッチエディタ
+
+通常のinputや素直なeditableには `fill` を使います。合成inputを無視するリッチエディタでは `paste` を使い、
+空にする必要がある場合は先に `clear` します。
+
+```bash
+abg clear t1 --selector "[contenteditable=true]"
+printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
+```
+
+監査ログにはselector、action名、byte lengthなどが記録されます。貼り付けた本文は監査ログに書きません。
+
+## escape hatch
+
+通常は `get`、`find`、`wait`、`snapshot`、plugin commandのような名前付きprimitiveを優先します。
+どうしても足りないときだけ `eval` を使います。
+
+```bash
+abg eval t1 --script "document.title" --approve
+```
+
+evalは拡張popupで初期状態OFFです。Trusted automationがOFFの場合、各eval呼び出しに `--approve` とローカル承認が必要です。

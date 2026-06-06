@@ -1,12 +1,33 @@
 ---
 title: Install
-description: Install the Gateway app, browser extension, and abg CLI.
+description: Install the Gateway app, browser extension, CLI, and agent skills.
+sidebar:
+  order: 2
 ---
 
-## macOS
+## Requirements
+
+- macOS 14 or newer for the current Gateway app.
+- Google Chrome 116 or newer for the Chrome extension.
+- A terminal that can run the `abg` CLI.
+- For development builds: Xcode 16 or newer, `mise`, Node.js, and pnpm.
+
+Windows support is in progress. Current Windows setup notes live in the repository and release
+artifacts may lag behind macOS.
+
+## macOS app and CLI
 
 Download the current DMG from the [download page](/#download), verify its SHA-256 checksum, open the
 DMG, and move Agent Browser Gateway to `/Applications`.
+
+Launch the app once so the menu bar icon appears. Then confirm the CLI can reach it:
+
+```bash
+abg status
+```
+
+If `abg` is not on your `PATH`, install it from the release artifact or use the Homebrew cask once
+the cask for your version is published.
 
 ## Windows
 
@@ -19,6 +40,9 @@ Install Agent Browser Gateway from the Chrome Web Store for normal Chrome use. F
 development, build the extension from the repository and load `extension/dist/` as an unpacked
 extension.
 
+For incognito windows, enable **Allow in incognito** on the extension details page. Chrome disables
+extension access to incognito windows by default.
+
 ## Agent skill
 
 After the Gateway and CLI are available, install or refresh the Claude Code and Codex skill guidance:
@@ -26,3 +50,18 @@ After the Gateway and CLI are available, install or refresh the Claude Code and 
 ```bash
 abg install-skill --target both
 ```
+
+Use `--target claude` or `--target codex` when you only want one agent's skill installed.
+
+## Development app
+
+The development variant runs as a separate menu bar app on port `8766` and uses separate local state.
+
+```bash
+CONFIG=debug APP_VARIANT=dev ./build-app.sh
+open "Agent Browser Gateway Dev.app"
+ABG_PORT=8766 .build/debug/abg status
+```
+
+Production user plugins live under `~/.abg/plugins/`. Development runs with `ABG_PORT=8766` use
+`~/.abg-dev/plugins/`, so local experiments do not mutate production plugin state.

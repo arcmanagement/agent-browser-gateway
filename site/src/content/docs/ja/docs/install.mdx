@@ -1,0 +1,64 @@
+---
+title: インストール
+description: Gatewayアプリ、ブラウザー拡張、CLI、エージェントスキルをインストールする。
+sidebar:
+  order: 2
+---
+
+## 必要なもの
+
+- 現行Gatewayアプリは macOS 14 以上。
+- Chrome拡張は Google Chrome 116 以上。
+- `abg` CLIを実行できるターミナル。
+- 開発ビルドでは Xcode 16 以上、`mise`、Node.js、pnpm。
+
+Windows対応は進行中です。Windowsのセットアップ手順とartifactは、macOSより遅れて更新される場合があります。
+
+## macOSアプリとCLI
+
+[download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから開きます。
+`Agent Browser Gateway.app` を `/Applications` に移動し、アプリを一度起動してメニューバーに
+アイコンが出ることを確認します。
+
+CLIから接続を確認します。
+
+```bash
+abg status
+```
+
+`abg` が `PATH` にない場合はrelease artifact内のCLIを配置するか、該当バージョンのHomebrew caskが
+公開されたあとにcaskからインストールします。
+
+## Windows
+
+[download page](/#download) からWindows ZIPを取得し、展開して同梱のsetupまたはinstaller scriptを実行します。
+
+## ブラウザー拡張
+
+通常利用ではChrome Web Storeから Agent Browser Gateway をインストールします。ローカル開発では
+repositoryで拡張をbuildし、`extension/dist/` をunpacked extensionとして読み込みます。
+
+incognito windowで使う場合は、拡張の詳細画面で **Allow in incognito** を有効にします。通常windowだけで
+使う場合、この設定は不要です。
+
+## エージェントスキル
+
+GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillをインストールまたは更新します。
+
+```bash
+abg install-skill --target both
+```
+
+片方だけ入れる場合は `--target claude` または `--target codex` を使います。
+
+## 開発版アプリ
+
+開発版は別のメニューバーアプリとして port `8766` で動き、ローカル状態も分離します。
+
+```bash
+CONFIG=debug APP_VARIANT=dev ./build-app.sh
+open "Agent Browser Gateway Dev.app"
+ABG_PORT=8766 .build/debug/abg status
+```
+
+productionのuser pluginは `~/.abg/plugins/`、`ABG_PORT=8766` のdev実行では `~/.abg-dev/plugins/` を使います。

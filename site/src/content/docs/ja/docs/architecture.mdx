@@ -1,0 +1,76 @@
+---
+title: アーキテクチャ
+description: ブラウザー拡張、Gatewayアプリ、CLI、監査ログ、プラグインの関係。
+sidebar:
+  order: 6
+---
+
+ABGはローカルの3要素で構成されます。
+
+- ユーザーのブラウザープロファイルで動く拡張機能。
+- ユーザーのマシンで動くnative Gateway app。
+- エージェント、script、人間が使う `abg` CLI。
+
+```text
+Browser tab + ABG extension
+        |
+        | WebSocket on 127.0.0.1
+        v
+Gateway app
+  - permission manager
+  - plugin host
+  - audit log
+        |
+        | local IPC
+        v
+abg CLI
+        |
+        v
+AI coding agent
+```
+
+## 拡張機能
+
+拡張機能はブラウザー側のconsent surfaceです。通常のper-tab modeでは、ABG起動直後に見えるタブはありません。
+ユーザーがpopupから特定タブを共有すると、拡張がtab metadataとcommand responseをローカルGatewayへ送ります。
+
+all-tabs modeは隔離プロファイルやsandboxマシン向けです。ユーザーが明示的に有効化したあとだけoptional host accessを要求し、
+OFFにするとall-tabs entryも失効します。
+
+## Gateway
+
+Gatewayはloopbackで待ち受け、runtime stateを持ちます。
+
+- 接続中のextension instance
+- 共有中のタブ
+- operation approval state
+- 読み込まれたplugin
+- ローカル監査ログ
+- app settingとplugin state
+
+production appは通常のGateway state directoryを使います。development appは別portとprofile-specificなstateを使うため、
+開発中のpluginやsettingがproduction stateを変更しません。
+
+## CLI
+
+`abg` はエージェント向けの安定interfaceです。shell commandを実行できるtoolであれば、特定agentに依存せず共有タブを扱えます。
+
+人間のdebugにも使えます。エージェントがタブを見つけられないときは次を確認します。
+
+```bash
+abg status
+abg tabs --compact
+abg audit --lines 20
+```
+
+## プラグイン
+
+pluginはGatewayが読み込むローカルJavaScript moduleです。ブラウザーデータ変換、domain-specific Markdown抽出、
+高レベルcommandの追加に使えます。pluginからのtab operationもCLIと同じapproval/audit pathを通ります。
+
+詳しくは[プラグイン](./plugins/)を参照してください。
+
+## platform roadmap
+
+最初の対象ブラウザーはChromeです。Firefoxはbrowser adapterとFirefox extension targetで追加中です。Safari、mobile browser、
+remote pairingは将来trackであり、別途permissionとpairing designが必要です。
