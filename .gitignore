@@ -3,7 +3,6 @@
 .swiftpm/
 DerivedData/
 *.xcodeproj/
-Package.resolved
 Agent Browser Gateway.app/
 Agent Browser Gateway Dev.app/
 Gateway.app/
@@ -62,6 +61,7 @@ docs/*
 !docs/HOMEBREW.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
+!docs/REPRODUCIBLE_DOCKER_BUILD.md
 !docs/REQUIRED_CHECKS_AND_BYPASS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 !docs/TESTING_INVENTORY.md
