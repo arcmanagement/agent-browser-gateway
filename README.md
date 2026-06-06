@@ -640,6 +640,8 @@ pnpm run typecheck                      # tsc --noEmit
 make verify                             # CI-style local verification
 ```
 
+Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
+
 ---
 
 ## Security
