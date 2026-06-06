@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Architecture Examples | Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="ABG architecture and token-economy specification examples for the extension, Gateway, plugin host, and CLI."
+    />
+    <meta property="og:title" content="Architecture Examples | Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="How ABG combines per-tab consent, CDP-backed operations, plugins, and token-efficient reads."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/docs/spec-examples.html" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/docs/spec-examples.html" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="nav" aria-label="Primary navigation">
+      <div class="nav-inner">
+        <a class="brand" href="../">
+          <img src="../assets/logo-shield.png" alt="" width="31" height="31" />
+          <span>Agent Browser Gateway</span>
+        </a>
+        <nav class="nav-links" aria-label="Site links">
+          <a href="../">Home</a>
+          <a href="../#download">Download</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="legal-hero">
+        <div class="section-inner">
+          <div class="eyebrow">Specification examples</div>
+          <h1>Architecture and Token Economy</h1>
+          <p>
+            ABG keeps the consent boundary in the extension and Gateway, while the CLI and plugin
+            host turn noisy browser state into compact agent input.
+          </p>
+        </div>
+      </section>
+
+      <div class="section-inner legal-content">
+        <aside class="toc" aria-label="Specification example sections">
+          <a href="#architecture">Architecture</a>
+          <a href="#cdp">CDP boundary</a>
+          <a href="#tokens">Token benchmark</a>
+          <a href="#plugins">Plugin example</a>
+        </aside>
+
+        <article class="policy">
+          <section id="architecture">
+            <h2>1. Architecture</h2>
+            <p>ABG is split into four pieces with different trust responsibilities.</p>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Layer</th>
+                    <th>Responsibility</th>
+                    <th>Boundary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Browser extension</td>
+                    <td>Owns tab sharing, optional all-tabs permission, page operations, screenshots, console, network, and DOM access.</td>
+                    <td>No default host permissions; manual sharing is per-tab.</td>
+                  </tr>
+                  <tr>
+                    <td>Gateway</td>
+                    <td>Accepts browser-extension WebSocket connections, tracks permitted tabs, dispatches commands, and writes local audit logs.</td>
+                    <td>Binds to <code>127.0.0.1</code> and accepts extension origins only.</td>
+                  </tr>
+                  <tr>
+                    <td>Plugin host</td>
+                    <td>Runs bundled and user-installed JavaScript transformers or commands inside the local Gateway process.</td>
+                    <td>User plugins are local code and must be explicitly installed from trusted sources.</td>
+                  </tr>
+                  <tr>
+                    <td>CLI</td>
+                    <td>Provides the stable agent-facing API for <code>read</code>, <code>tabs</code>, <code>screenshot</code>, actions, plugins, and audit inspection.</td>
+                    <td>Agents can address only tabs currently permitted by the Gateway.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="cdp">
+            <h2>2. Why CDP still fits per-tab consent</h2>
+            <p>
+              ABG uses Chrome extension APIs and Chrome debugging APIs for some operations, but the
+              permission decision happens before any operation reaches those APIs. The extension
+              sends tab updates only for tabs the user shared manually, or for all shareable tabs in
+              an isolated profile after explicit all-tabs opt-in.
+            </p>
+            <p>
+              The Gateway rejects commands for tabs that are not in its live permission list. That
+              means CDP-backed features such as screenshots, PDF capture, network inspection, and
+              input dispatch inherit ABG's per-tab consent gate instead of creating a global remote
+              debugging port for the whole browser profile.
+            </p>
+          </section>
+
+          <section id="tokens">
+            <h2>3. Token-economy benchmark</h2>
+            <p>
+              On a representative Japanese WordPress article, ABG's Markdown read preserves
+              headings, links, and list structure while removing scripts, styles, and layout noise.
+            </p>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Chars</th>
+                    <th>Tokens approx.</th>
+                    <th>Structure</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Playwright <code>page.content()</code></td>
+                    <td>124,476</td>
+                    <td>~50,000</td>
+                    <td>Preserved with massive overhead</td>
+                  </tr>
+                  <tr>
+                    <td>Playwright <code>locator('article').innerHTML()</code></td>
+                    <td>42,070</td>
+                    <td>~17,000</td>
+                    <td>Preserved with overhead</td>
+                  </tr>
+                  <tr>
+                    <td><code>abg read --selector article --format markdown</code></td>
+                    <td>11,780</td>
+                    <td>~5,900</td>
+                    <td>Preserved and clean</td>
+                  </tr>
+                  <tr>
+                    <td>Playwright <code>locator('article').innerText()</code></td>
+                    <td>6,543</td>
+                    <td>~3,800</td>
+                    <td>Headings, links, and lists lost</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              At 1,000 reads with Claude Opus input pricing, the naive Playwright full-HTML path is
+              about $750 of input, while ABG Markdown is about $88. That is roughly an 88% reduction
+              while keeping useful document structure.
+            </p>
+          </section>
+
+          <section id="plugins">
+            <h2>4. Plugin example</h2>
+            <p>
+              The bundled Notion plugin shows the same architecture at per-domain scope. It trims
+              app chrome, scripts, styles, sidebars, popovers, and bookkeeping attributes before the
+              agent sees the page.
+            </p>
+            <aside class="terminal" aria-label="Notion plugin benchmark command">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> node examples/benchmark-notion-plugin.mjs</pre>
+            </aside>
+            <p>
+              In the included fixture, generic Markdown reduces the raw page by 44%; the Notion
+              domain transform reduces it by 68%.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="section-inner footer-inner">
+        <span>
+          Agent Browser Gateway is managed by
+          <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+        </span>
+        <span>
+          <a href="mailto:contact@arcm.co.jp">Contact</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy Policy</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

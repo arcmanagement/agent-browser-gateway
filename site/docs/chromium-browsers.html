@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Edge and Brave | Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="Install and smoke-test Agent Browser Gateway with Chromium-compatible browsers such as Microsoft Edge and Brave."
+    />
+    <meta property="og:title" content="Edge and Brave | Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="Chromium-compatible browser install notes and smoke checklist for ABG."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/docs/chromium-browsers.html" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/docs/chromium-browsers.html" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="nav" aria-label="Primary navigation">
+      <div class="nav-inner">
+        <a class="brand" href="../">
+          <img src="../assets/logo-shield.png" alt="" width="31" height="31" />
+          <span>Agent Browser Gateway</span>
+        </a>
+        <nav class="nav-links" aria-label="Site links">
+          <a href="../">Home</a>
+          <a href="../#download">Download</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="legal-hero">
+        <div class="section-inner">
+          <div class="eyebrow">Desktop browsers</div>
+          <h1>Edge and Brave</h1>
+          <p>
+            ABG is built on the Chromium extension APIs used by Chrome, Edge, and Brave. These
+            browsers can connect to the same local Gateway when the extension is installed and a tab
+            is explicitly shared.
+          </p>
+        </div>
+      </section>
+
+      <div class="section-inner legal-content">
+        <aside class="toc" aria-label="Chromium browser sections">
+          <a href="#install">Install</a>
+          <a href="#smoke">Smoke checklist</a>
+          <a href="#caveats">Caveats</a>
+        </aside>
+
+        <article class="policy">
+          <section id="install">
+            <h2>1. Install</h2>
+            <p>
+              Start the local Gateway app first, then install the extension in the Chromium browser
+              you want to test.
+            </p>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Browser</th>
+                    <th>Install path</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Microsoft Edge</td>
+                    <td>Install from the Chrome Web Store after enabling extensions from other stores, or load <code>extension/dist/</code> from <code>edge://extensions</code>.</td>
+                    <td>Edge reports itself to the Gateway as <code>edge</code>.</td>
+                  </tr>
+                  <tr>
+                    <td>Brave</td>
+                    <td>Install from the Chrome Web Store, or load <code>extension/dist/</code> from <code>brave://extensions</code>.</td>
+                    <td>Brave reports itself through <code>navigator.brave.isBrave()</code> when available.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="smoke">
+            <h2>2. Smoke checklist</h2>
+            <ol>
+              <li>Open the Gateway app and confirm <code>abg status</code> returns local state.</li>
+              <li>Open Edge or Brave and enable the ABG extension.</li>
+              <li>Open a normal <code>https://</code> page and choose <strong>Share this tab with agent</strong> from the popup.</li>
+              <li>Run <code>abg tabs --compact</code> and confirm the shared tab appears.</li>
+              <li>Run <code>abg read t1 --format markdown</code> against the listed tab ref.</li>
+              <li>Run <code>abg screenshot t1 --out /tmp/abg-edge-brave-smoke.png</code>.</li>
+              <li>Revoke the tab from the popup or with <code>abg revoke t1</code>, then confirm it disappears from <code>abg tabs --compact</code>.</li>
+            </ol>
+          </section>
+
+          <section id="caveats">
+            <h2>3. Caveats</h2>
+            <ul>
+              <li>ABG still uses Chrome extension APIs; Firefox and Safari require separate extension work.</li>
+              <li>Incognito or private windows require the browser's extension settings to allow private-window access.</li>
+              <li>Brave Shields and enterprise Edge policies can block page behavior independently of ABG.</li>
+              <li>All-tabs mode is still intended only for isolated profiles or sandbox browsers.</li>
+              <li>Chrome Web Store dashboard pages cannot be scripted by extensions; use manual submission for store uploads.</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="section-inner footer-inner">
+        <span>
+          Agent Browser Gateway is managed by
+          <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+        </span>
+        <span>
+          <a href="mailto:contact@arcm.co.jp">Contact</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy Policy</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

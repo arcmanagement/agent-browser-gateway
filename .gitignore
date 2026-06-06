@@ -18,6 +18,7 @@ TestResults/
 # Node / extension
 node_modules/
 extension/dist/
+extension/coverage/
 dist/
 
 # macOS
@@ -58,9 +59,12 @@ credentials/
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
 !docs/HOMEBREW.md
+!docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
 !docs/REPRODUCIBLE_DOCKER_BUILD.md
+!docs/REQUIRED_CHECKS_AND_BYPASS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
+!docs/TESTING_INVENTORY.md
 
 # Brand experiments — final design TBD, not committed yet
 assets/
