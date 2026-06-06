@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -8,6 +9,7 @@ permissions:
 
 jobs:
   verify:
+    name: Swift and extension tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,8 +22,11 @@ jobs:
       - name: Swift debug build
         run: swift build
 
-      - name: Swift tests
-        run: swift test
+      - name: Swift tests with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Swift service coverage gate
+        run: scripts/swift-coverage-check.sh
 
       - name: Swift release build
         run: swift build -c release
@@ -47,6 +52,10 @@ jobs:
       - name: Lint extension
         working-directory: extension
         run: pnpm run lint
+
+      - name: Test extension with coverage
+        working-directory: extension
+        run: pnpm run test:coverage
 
       - name: Build extension
         working-directory: extension

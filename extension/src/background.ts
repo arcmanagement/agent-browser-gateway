@@ -1,4 +1,5 @@
 import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
+import { detectBrowserKind, isShareableTabUrl, originForUrl } from "./backgroundLogic.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -298,7 +299,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       extensionId,
       version: VERSION,
       profileLabel: trimmed || undefined,
-      browserKind: detectBrowserKind(),
+      browserKind: await detectCurrentBrowserKind(),
     });
   }
   return settings;
@@ -343,15 +344,22 @@ async function isIncognitoAccessAllowed(): Promise<boolean> {
   }
 }
 
-function detectBrowserKind(): string {
-  // Lightweight UA sniff. We send this purely as a label for the Gateway UI;
-  // it is not used for any security decision.
-  const ua = navigator.userAgent;
-  if (/Edg\//.test(ua)) return "edge";
-  if (/OPR\//.test(ua)) return "opera";
-  if (/Brave/.test(ua)) return "brave";
-  if (/Chrome\//.test(ua)) return "chrome";
-  return "browser";
+type BraveNavigator = Navigator & {
+  brave?: {
+    isBrave?: () => Promise<boolean>;
+  };
+};
+
+async function detectCurrentBrowserKind(): Promise<string> {
+  const brave = (navigator as BraveNavigator).brave;
+  if (typeof brave?.isBrave === "function") {
+    try {
+      if (await brave.isBrave()) return "brave";
+    } catch {
+      // Fall through to UA checks; browser kind is only a UI label.
+    }
+  }
+  return detectBrowserKind(navigator.userAgent);
 }
 
 // ---------- State persistence (session: cleared on browser restart) ----------
@@ -390,7 +398,7 @@ function ensureWS(): void {
       extensionId: extensionId ?? "?",
       version: VERSION,
       profileLabel: profileLabel || undefined,
-      browserKind: detectBrowserKind(),
+      browserKind: await detectCurrentBrowserKind(),
     });
     await reconcileAllTabsAccess({ emit: false });
     // Re-send all currently permitted tabs so Gateway is in sync
@@ -469,24 +477,6 @@ function sendTabUpdated(tabId: number, tab: PermittedTab): void {
     origin: tab.origin,
     accessMode: tab.accessMode,
   });
-}
-
-function isShareableTabUrl(url: string | undefined): url is string {
-  if (!url) return false;
-  try {
-    const protocol = new URL(url).protocol;
-    return protocol === "http:" || protocol === "https:" || protocol === "file:";
-  } catch {
-    return false;
-  }
-}
-
-function originForUrl(url: string): string {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "";
-  }
 }
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
@@ -1533,6 +1523,15 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
   const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
+  const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+  const steps =
+    typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 1;
+  if (selector !== undefined) {
+    return {
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)} by (Δx=${deltaX}, Δy=${deltaY})${frameIntentSuffix(frame)}.`,
+      run: () => scrollElement(tabId, selector, deltaX, deltaY, steps, frame),
+    };
+  }
   const where =
     atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
@@ -5404,6 +5403,12 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   }
   const loadState = typeof params.loadState === "string" ? params.loadState : undefined;
   if (loadState !== undefined) {
+    if (!["networkidle", "load", "domcontentloaded"].includes(loadState)) {
+      throw new GatewayError(
+        "bad_params",
+        "loadState must be one of networkidle, load, or domcontentloaded",
+      );
+    }
     await attachDebugger(tabId);
     return waitUntil(
       tabId,
@@ -5722,6 +5727,59 @@ async function scrollTab(
     deltaY,
   });
   return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
+}
+
+async function scrollElement(
+  tabId: number,
+  selector: string,
+  deltaX: number,
+  deltaY: number,
+  steps: number,
+  frame?: string,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selector: string;
+  deltaX: number;
+  deltaY: number;
+  steps: number;
+  scrollLeft?: number;
+  scrollTop?: number;
+  scrollWidth?: number;
+  scrollHeight?: number;
+  clientWidth?: number;
+  clientHeight?: number;
+}> {
+  return runFrameScript(tabId, frame, { selector, deltaX, deltaY, steps }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) {
+      return {
+        ok: false,
+        found: false,
+        selector: opts.selector,
+        deltaX: opts.deltaX,
+        deltaY: opts.deltaY,
+        steps: opts.steps,
+      } as const;
+    }
+    for (let i = 0; i < opts.steps; i += 1) {
+      el.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+    }
+    return {
+      ok: true,
+      found: true,
+      selector: opts.selector,
+      deltaX: opts.deltaX,
+      deltaY: opts.deltaY,
+      steps: opts.steps,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  });
 }
 
 async function scrollElementIntoView(

@@ -45,6 +45,8 @@ abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
+abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg har <tab|ref> --out /tmp/session.har         # redacted one-shot HAR export
@@ -101,7 +103,8 @@ abg exec-command <tab|ref> --command insertText --value $'line1\nline2'  # focus
 printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdin
 abg exec-command <tab|ref> --command selectAll   # allowlist: insertText/delete/selectAll/undo/redo
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
-abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール (内側 div も可)
+abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # virtual list の内側 scrollable element を直接 scrollBy
 abg scroll-into-view <tab|ref> --selector "<css>" # 要素を viewport 中央へスクロール
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"    # DnD
 
@@ -112,6 +115,7 @@ abg wait <tab|ref> --ms 1500                     # 単純 sleep
 abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle 後に selector visible を待つ
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
 abg eval <tab|ref> --script "return window.__STATE__" --approve  # AutoMode OFF では --approve + popup 承認が必要
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
@@ -128,6 +132,8 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 # 管理系
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
+abg install-skill                       # Claude Code / Codex skills を更新
+abg mcp-server                          # 同じ abg CLI を包む stdio MCP server
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
 abg plugin reload [name]                # Gateway 再起動なしで plugin を再読み込み
@@ -236,6 +242,23 @@ abg plugin reload hello
 
 `abg install-skill` installs or updates both bundled skills: `agent-browser-gateway` for ABG usage and
 `abg-plugin-creator` for scaffolding ABG plugins.
+
+`abg mcp-server` starts a stdio MCP server for Codex, Claude Code, and other MCP clients. It exposes
+one `abg_cli` tool that accepts argv tokens after `abg`, for example `{"args":["tabs","--compact"]}`.
+The wrapper launches the local CLI as a child process, so tab sharing, operation approval, audit
+logging, and plugin execution stay on the same permission boundary. Codex config:
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
 
 `--key value` becomes a string/number/boolean value in `args`, `--flag` becomes `true`, JSON
 `--stdin` and `--json` merge object values into `args`, and non-JSON stdin is passed as
@@ -402,7 +425,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
 - JavaScript dialog は `abg dialog <ref>` で pending 状態を読む。accept / dismiss / prompt-value は write-like action として通常の operation approval と audit log を通る。pending dialog がなければ `no_dialog_pending` で明示的に失敗する
 - Download は `abg download <ref>` / `abg download <ref> --wait` で metadata と Chrome が公開する final path だけを返す。ABG は downloaded file content を読まない。path が取れない場合は `unavailableReason` を確認する
-- Network response 待ちは `abg network <ref> --wait-response` を使う。URL glob / regex、method、status range、type で絞り込む。response body は `--body` 指定時だけ `--max-bytes` 上限で preview される。headers は保存しない
+- Network response 待ちは `abg wait-response <ref>` を使う。URL glob / regex、method、status range、type で絞り込む。timeout は `ok: false`, `error: "timeout"` の安定 JSON を返す。response body は `--body` 指定時だけ `--max-bytes` 上限で preview される。headers / response body は audit log に保存しない。`abg network <ref> --wait-response` も互換表記として残す
 - HAR export は `abg har <ref> --out file.har` を使う。one-shot / local-only で、cookies、authorization headers、request headers、request bodies、response bodies は default で省略する。`--limit` は最大 1000 件に bounded され、Gateway は tab、filter、byte size、redaction mode、output path を local audit log に記録する
 - Cookie / Web Storage inspection は `abg state <ref>` を使う。shared tab origin の cookies / localStorage / sessionStorage を read-only で列挙し、値は default redacted。`--values` を明示した場合だけ full values を返し、Gateway audit log に values requested と count が残る。write/delete は提供しない
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない

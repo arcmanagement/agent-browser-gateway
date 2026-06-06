@@ -863,6 +863,52 @@ final class GatewayCoordinator: ObservableObject {
                     }
                     return values.isEmpty ? nil : values
                 }
+                if method == "network_log" {
+                    var values: [String: AnyCodable] = [:]
+                    if let wait = params["wait"] as? Bool {
+                        values["wait"] = AnyCodable(wait)
+                    }
+                    if let timeoutMs = params["timeoutMs"] as? Int {
+                        values["timeoutMs"] = AnyCodable(timeoutMs)
+                    }
+                    if let body = params["body"] as? Bool {
+                        values["bodyRequested"] = AnyCodable(body)
+                    }
+                    if let maxBytes = params["maxBytes"] as? Int {
+                        values["maxBytes"] = AnyCodable(maxBytes)
+                    }
+                    if let methodFilter = params["method"] as? String {
+                        values["method"] = AnyCodable(methodFilter)
+                    }
+                    if let statusMin = params["statusMin"] as? Int {
+                        values["statusMin"] = AnyCodable(statusMin)
+                    }
+                    if let statusMax = params["statusMax"] as? Int {
+                        values["statusMax"] = AnyCodable(statusMax)
+                    }
+                    if let type = params["type"] as? String {
+                        values["type"] = AnyCodable(type)
+                    }
+                    if params["urlPattern"] is String {
+                        values["urlPatternFilter"] = AnyCodable(true)
+                    }
+                    if params["urlRegex"] is String {
+                        values["urlRegexFilter"] = AnyCodable(true)
+                    }
+                    if let dict = result?.value as? [String: Any] {
+                        if let mode = dict["mode"] as? String {
+                            values["mode"] = AnyCodable(mode)
+                        }
+                        if let ok = dict["ok"] as? Bool {
+                            values["ok"] = AnyCodable(ok)
+                        }
+                        if let response = dict["response"] as? [String: Any],
+                           let status = response["status"] as? Int {
+                            values["matchedStatus"] = AnyCodable(status)
+                        }
+                    }
+                    return values.isEmpty ? nil : values
+                }
                 guard method == "paste" || method == "clear" else { return nil }
                 var values: [String: AnyCodable] = [:]
                 if let selector = params["selector"] as? String {

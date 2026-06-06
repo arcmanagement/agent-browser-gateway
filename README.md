@@ -67,6 +67,40 @@ Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The ex
 
 ---
 
+## Install
+
+ABG has three local pieces: the Chrome extension, the Gateway app, and the `abg`
+CLI. Install the browser extension first, then install the local Gateway.
+
+1. Install Agent Browser Gateway from the Chrome Web Store:
+
+   https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+
+2. Download the current macOS DMG from
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/).
+3. Open the DMG and double-click **Install Agent Browser Gateway.app**.
+
+The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
+`abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
+and starts the menubar app.
+
+Windows builds are published as ZIP packages from the same download page. Extract the Windows x64
+ZIP, open PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
+`.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
+into the nested folder that directly contains the installer script.
+
+After installation, open the tab you want to share, click the ABG extension icon,
+choose **Share this tab with agent**, and verify from a terminal:
+
+```bash
+abg tabs
+```
+
+Source builds, unpacked extension loading, and the separate dev app are covered
+in [Developer setup](#developer-setup).
+
+---
+
 ## Tab access modes
 
 The core security model:
@@ -90,6 +124,10 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 ---
 
 ## CLI
+
+The machine-readable CLI output contract is documented in
+[`docs/CLI_JSON_CONTRACT.md`](docs/CLI_JSON_CONTRACT.md). Keep scripts and agent integrations on the
+documented JSON keys rather than parsing human-oriented help text.
 
 ```bash
 # Observation (read-only)
@@ -127,6 +165,8 @@ abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
+abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
@@ -176,7 +216,8 @@ abg exec-command <tab|ref> --command insertText --value $'line1\nline2'  # focus
 printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdin
 abg exec-command <tab|ref> --command selectAll
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
-abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
+abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px)
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # Element scrollBy for virtual lists
 abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
@@ -187,6 +228,7 @@ abg wait <tab|ref> --ms 1500
 abg wait <tab|ref> --text "Welcome"
 abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle, then selector visible
 abg wait <tab|ref> --fn "window.ready === true"
 
 # Escape hatch
@@ -210,6 +252,7 @@ abg replay flow.json --match-url "*kintone*"
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg install-skill                       # Install/update Claude Code + Codex Skills
+abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
 
 Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
@@ -269,9 +312,11 @@ Use `download --wait` after a click or form action that is expected to download 
 Chrome download metadata such as URL, suggested filename, MIME type, status, final path when
 available, byte counts, and failed/canceled states. It does not open or read downloaded file
 contents; if Chrome cannot expose a final path, the result includes `unavailableReason`.
-Use `network --wait-response` when a workflow needs a specific response before continuing. Match by
-URL glob or regex, method, status range, and resource type. Response body preview is opt-in with
-`--body` and capped by `--max-bytes`; ABG does not store headers and large bodies are truncated.
+Use `wait-response` when a workflow needs a specific response before continuing. Match by URL glob
+or regex, method, status range, and resource type. Timeout returns stable JSON with `ok: false` and
+`error: "timeout"`. Response body preview is opt-in with `--body` and capped by `--max-bytes`; ABG
+does not store headers or response bodies in audit logs. The older `network --wait-response` spelling
+uses the same protocol path and remains available for compatibility.
 Use `har` when support/debugging needs a browser-standard network artifact. HAR export is one-shot,
 local-only, and redacted by default: cookies, authorization headers, request headers, request
 bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
@@ -322,16 +367,34 @@ Annotation mode lets the human mark the current tab the way they would point at 
 
 ---
 
-## Why CLI + Skill instead of MCP?
+## CLI, Skill, and MCP
 
-The agent talks to ABG by running `abg` from the shell. This is not the only design — MCP wrappers can come later — but as the primary interface it has unique advantages:
+The agent can talk to ABG by running `abg` from the shell. This remains the source of truth because
+it has unique advantages:
 
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
 - **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
 
-A thin MCP wrapper around the same CLI is on the future roadmap for ecosystem coverage. The CLI remains the source of truth.
+For MCP clients, ABG also ships `abg mcp-server`, a stdio MCP wrapper that exposes a single
+`abg_cli` tool. The tool accepts argv tokens after `abg` and launches the local CLI as a child
+process. It does not duplicate the Gateway protocol or bypass permissions: per-tab sharing,
+operation approval, audit logging, and plugin execution stay on the existing CLI/Gateway path.
+
+Codex config (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
 
 ---
 
@@ -434,7 +497,7 @@ For Notion-like pages, ABG now selects the domain transform automatically when `
 Closed-source extensions are not auditable. Open-source extensions distributed only as binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
-- **Reproducible builds** (target for v1.0): the binary you download from Releases will hash-match a Docker-built artifact from this repo.
+- **Reproducible builds** (target for v1.0): the Linux CLI can be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). Signed macOS artifacts remain separate because they require Apple's signing and notarization toolchain.
 - **No analytics, no crash reporter, no auto-update phone-home.** The Gateway's only outbound connection is the loopback WebSocket to its own extension. Inspect with `lsof -i -p <gateway-pid>` at any time.
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
@@ -513,7 +576,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
-| Response waits | `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
+| Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
@@ -547,7 +610,7 @@ Currently shipped:
 - ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
-- ✅ Network response wait and bounded body preview: `network --wait-response`, `--body`, and `--max-bytes`
+- ✅ Network response wait and bounded body preview: `wait-response`, `network --wait-response`, `--body`, and `--max-bytes`
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
 - ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
@@ -556,18 +619,18 @@ Currently shipped:
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code and Codex Skills bundled
+- ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 MCP wrapper (future)
 - 📋 Firefox / Safari / Edge / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---
 
-## Getting started
+## Developer setup
 
 ### Prerequisites
 
@@ -595,13 +658,7 @@ open "Agent Browser Gateway Dev.app"         # separate menubar app/profile from
 ABG_PORT=8766 .build/debug/abg status        # point CLI at the dev app
 ```
 
-### Install the Chrome extension
-
-Install Agent Browser Gateway from the Chrome Web Store:
-
-https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
-
-For local development, build and load the unpacked extension:
+### Build and load the development extension
 
 ```bash
 cd extension
@@ -610,6 +667,7 @@ pnpm run build                          # outputs to extension/dist/
 ```
 
 In Chrome: open `chrome://extensions` → enable Developer mode → **Load unpacked** → pick `extension/dist/`.
+Use the Chrome Web Store extension for normal installs; use this unpacked build only when developing or testing extension changes.
 
 For incognito / Secret Window workflows, open
 `chrome://extensions/?id=ojgedfcgebjchckaagjkmlpgonpjggpi` and enable **Allow in incognito**.
@@ -648,8 +706,14 @@ ABG_PORT=8766 pnpm run build             # local unpacked extension named Agent 
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit
+pnpm run test                           # Vitest unit tests
+pnpm run test:coverage                  # Vitest coverage for unit-testable extension logic
 make verify                             # CI-style local verification
+make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
+
+Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
+Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
 
 ---
 
