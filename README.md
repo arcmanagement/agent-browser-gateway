@@ -165,6 +165,8 @@ abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
+abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
@@ -297,9 +299,11 @@ Use `download --wait` after a click or form action that is expected to download 
 Chrome download metadata such as URL, suggested filename, MIME type, status, final path when
 available, byte counts, and failed/canceled states. It does not open or read downloaded file
 contents; if Chrome cannot expose a final path, the result includes `unavailableReason`.
-Use `network --wait-response` when a workflow needs a specific response before continuing. Match by
-URL glob or regex, method, status range, and resource type. Response body preview is opt-in with
-`--body` and capped by `--max-bytes`; ABG does not store headers and large bodies are truncated.
+Use `wait-response` when a workflow needs a specific response before continuing. Match by URL glob
+or regex, method, status range, and resource type. Timeout returns stable JSON with `ok: false` and
+`error: "timeout"`. Response body preview is opt-in with `--body` and capped by `--max-bytes`; ABG
+does not store headers or response bodies in audit logs. The older `network --wait-response` spelling
+uses the same protocol path and remains available for compatibility.
 Use `har` when support/debugging needs a browser-standard network artifact. HAR export is one-shot,
 local-only, and redacted by default: cookies, authorization headers, request headers, request
 bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
@@ -541,7 +545,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
-| Response waits | `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
+| Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
@@ -575,7 +579,7 @@ Currently shipped:
 - ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
-- ✅ Network response wait and bounded body preview: `network --wait-response`, `--body`, and `--max-bytes`
+- ✅ Network response wait and bounded body preview: `wait-response`, `network --wait-response`, `--body`, and `--max-bytes`
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
 - ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
