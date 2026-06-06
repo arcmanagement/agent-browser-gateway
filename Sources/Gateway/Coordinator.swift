@@ -272,6 +272,8 @@ final class GatewayCoordinator: ObservableObject {
             return await dispatch(req: req, method: "key_up")
         case "keyboard_insert_text_tab":
             return await dispatch(req: req, method: "keyboard_insert_text")
+        case "exec_command_tab":
+            return await dispatch(req: req, method: "exec_command")
         case "navigate_tab":
             return await dispatch(req: req, method: "navigate")
         case "scroll_tab":
@@ -844,6 +846,20 @@ final class GatewayCoordinator: ObservableObject {
                                 values["unavailableReason"] = AnyCodable(unavailableReason)
                             }
                         }
+                    }
+                    return values.isEmpty ? nil : values
+                }
+                if method == "exec_command" {
+                    var values: [String: AnyCodable] = [:]
+                    if let command = params["command"] as? String {
+                        values["command"] = AnyCodable(command)
+                    }
+                    if let value = params["value"] as? String {
+                        values["valueBytes"] = AnyCodable(value.utf8.count)
+                    }
+                    if let dict = result?.value as? [String: Any],
+                       let ok = dict["ok"] as? Bool {
+                        values["ok"] = AnyCodable(ok)
                     }
                     return values.isEmpty ? nil : values
                 }

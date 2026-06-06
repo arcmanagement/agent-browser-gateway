@@ -81,7 +81,7 @@ The core security model:
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
@@ -172,6 +172,9 @@ abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / 
 abg keydown <tab|ref> Shift
 abg keyup <tab|ref> Shift
 abg keyboard inserttext <tab|ref> "<text>"        # CDP Input.insertText without key events
+abg exec-command <tab|ref> --command insertText --value $'line1\nline2'  # focused edit-mode target
+printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdin
+abg exec-command <tab|ref> --command selectAll
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
 abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
 abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
@@ -219,6 +222,14 @@ synthetic value updates or character events, including Lexical, ProseMirror, Sla
 native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable
 element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records the action, tab id,
 selector, and byte length only, never the pasted text.
+
+Use `exec-command` when the target already has focus in an edit-mode proxy and browser-native
+`document.execCommand` is the right input path. For example, double-click a Google Sheets cell or
+focus a contenteditable rich editor, then run
+`abg exec-command t1 --command insertText --value $'first line\nsecond line'`. The initial
+allowlist is `insertText`, `delete`, `selectAll`, `undo`, and `redo`; unsupported names fail before
+the browser sees the command. Audit logs record the tab, command name, and value byte length, not
+the inserted text.
 
 Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
 target, selects its content, and deletes it. The result includes `clearStrategy`, one of
@@ -498,7 +509,7 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
 | Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
 | Frame targeting | `frames`, plus `--frame @fN` on read/get/find/snapshot/predicates/waits/actions | Playwright `frameLocator` / frame targets | Same-origin frames only; cross-origin returns explicit errors |
-| Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` |
+| Rich editor input | `fill`, `replace-editable`, `paste`, `keyboard inserttext`, `exec-command insertText` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste`; exec-command is allowlisted |
 | Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
 | Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
 | Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
@@ -532,7 +543,7 @@ Currently shipped:
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
-- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
+- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `exec-command`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
 - ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
 - ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
 - ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents

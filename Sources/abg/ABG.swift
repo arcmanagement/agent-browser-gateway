@@ -37,7 +37,7 @@ struct ABG: AsyncParsableCommand {
             Status.self, Tabs.self, Inspect.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
-            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
             Validate.self, Stream.self,
             Record.self, Replay.self,
@@ -50,7 +50,7 @@ private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
-    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
+    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
     "record", "replay",
     "revoke", "audit", "plugin", "install-skill",
@@ -1780,6 +1780,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "keyboard_insert_text":
         params["text"] = try requiredString(step, "text", op: op)
         return try client.call(method: "keyboard_insert_text_tab", params: params)
+    case "exec_command":
+        params["command"] = try requiredString(step, "command", op: op)
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "exec_command_tab", params: params)
     case "navigate":
         params["url"] = try requiredString(step, "url", op: op)
         return try client.call(method: "navigate_tab", params: params)
