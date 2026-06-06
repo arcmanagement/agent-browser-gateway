@@ -63,6 +63,7 @@ docs/*
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
 !docs/TEMPORARY_ZIP_INSTALL.md
+!docs/TESTING_INVENTORY.md
 
 # Brand experiments — final design TBD, not committed yet
 assets/

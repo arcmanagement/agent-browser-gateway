@@ -671,6 +671,8 @@ pnpm run test:coverage                  # Vitest coverage for unit-testable exte
 make verify                             # CI-style local verification
 ```
 
+Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
+
 ---
 
 ## Security
