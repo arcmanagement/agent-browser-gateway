@@ -125,6 +125,10 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 
 ## CLI
 
+The machine-readable CLI output contract is documented in
+[`docs/CLI_JSON_CONTRACT.md`](docs/CLI_JSON_CONTRACT.md). Keep scripts and agent integrations on the
+documented JSON keys rather than parsing human-oriented help text.
+
 ```bash
 # Observation (read-only)
 abg status                                       # Gateway state, connected extensions, shared tab count

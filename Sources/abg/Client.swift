@@ -180,7 +180,7 @@ private func normalizedErrorObject(_ errObj: [String: Any]) -> [String: Any] {
         "error": errObj["code"] as? String ?? "unknown_error",
         "message": errObj["message"] as? String ?? "Unknown error",
     ]
-    for key in ["userMessage", "nextCommand", "hint", "tabId", "plugin", "command", "expectedDomains", "candidates"] {
+    for key in CLIJSONContract.stderrErrorKeys where key != "error" && key != "message" {
         if let value = errObj[key] {
             out[key] = value
         }
