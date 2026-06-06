@@ -11,6 +11,7 @@ AgentBrowserGatewaySetup.exe
 ```
 
 The setup app stops the old Gateway, replaces files in `C:\Tools\AgentBrowserGateway`, updates the user `PATH`, refreshes Claude/Codex skills, and starts the tray Gateway.
+`AgentBrowserGatewaySetup.exe` launches the WinUI 3 setup surface from the bundled payload; the setup behavior is the same install/update flow as the script path.
 
 ## Developer build and install
 
@@ -24,6 +25,10 @@ This restores packages, runs tests, builds `dist\agent-browser-gateway-0.3.12-wi
 builds `dist\agent-browser-gateway-0.3.12-windows-x64-setup.zip`, extracts the non-GUI payload,
 installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
 the user `PATH`, and starts the tray Gateway.
+
+WinUI 3 publish must run on Windows or GitHub Actions `windows-latest`. macOS can prepare source
+changes and non-WinUI artifacts, but it cannot publish the WinUI app because `XamlCompiler.exe` is
+provided by the Windows toolchain.
 
 To skip tests during an emergency handoff:
 
@@ -60,7 +65,7 @@ The installer copies files to `C:\Tools\AgentBrowserGateway` by default, updates
 
 Right-click the tray icon for:
 
-- `Status`
+- `Status` (opens the WinUI 3 status window)
 - `Open audit log`
 - `Open logs folder`
 - `Restart Gateway`

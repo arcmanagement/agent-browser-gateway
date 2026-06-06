@@ -15,6 +15,13 @@ $ZipPath = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64.zip"
 $SetupStage = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64-setup"
 $SetupZipPath = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64-setup.zip"
 
+function Assert-LastExitCode {
+    param([string]$Step)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Step failed with exit code $LASTEXITCODE"
+    }
+}
+
 Write-Host "==> clean"
 Remove-Item -Recurse -Force $PublishRoot, $Stage, $ZipPath, $SetupStage, $SetupZipPath -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $PublishRoot, $Stage, $SetupStage | Out-Null
@@ -28,6 +35,7 @@ if (-not $SkipWinUiApp) {
         -p:Platform=x64 `
         -p:WindowsAppSDKSelfContained=true `
         -o (Join-Path $PublishRoot "app")
+    Assert-LastExitCode "dotnet publish WinUI app"
 } else {
     Write-Host "==> skip WinUI app"
 }
@@ -40,6 +48,7 @@ dotnet publish (Join-Path $Root "windows\AgentBrowserGateway.Cli\AgentBrowserGat
     -p:PublishSingleFile=true `
     -p:EnableCompressionInSingleFile=true `
     -o (Join-Path $PublishRoot "cli")
+Assert-LastExitCode "dotnet publish CLI"
 
 Write-Host "==> publish headless Gateway"
 dotnet publish (Join-Path $Root "windows\AgentBrowserGateway.Gateway\AgentBrowserGateway.Gateway.csproj") `
@@ -49,6 +58,7 @@ dotnet publish (Join-Path $Root "windows\AgentBrowserGateway.Gateway\AgentBrowse
     -p:PublishSingleFile=true `
     -p:EnableCompressionInSingleFile=true `
     -o (Join-Path $PublishRoot "gateway")
+Assert-LastExitCode "dotnet publish headless Gateway"
 
 Write-Host "==> publish GUI installer"
 dotnet publish (Join-Path $Root "windows\AgentBrowserGateway.Installer\AgentBrowserGateway.Installer.csproj") `
@@ -58,6 +68,7 @@ dotnet publish (Join-Path $Root "windows\AgentBrowserGateway.Installer\AgentBrow
     -p:Platform=x64 `
     -p:WindowsAppSDKSelfContained=true `
     -o (Join-Path $PublishRoot "installer")
+Assert-LastExitCode "dotnet publish GUI installer"
 
 Write-Host "==> stage"
 if (Test-Path (Join-Path $PublishRoot "app")) {
