@@ -67,6 +67,20 @@ Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The ex
 
 ---
 
+## Install
+
+Download the current packages from [agent-browser-gateway.com](https://agent-browser-gateway.com/).
+
+- macOS: open the DMG and install `Agent Browser Gateway.app`.
+- Windows: extract the Windows x64 ZIP, open PowerShell in the extracted
+  `agent-browser-gateway-<version>-windows-x64` folder, and run
+  `.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and
+  `cd` into the nested folder that directly contains the installer script.
+- Chrome: install Agent Browser Gateway from the Chrome Web Store, then share a tab from the
+  extension popup.
+
+---
+
 ## Tab access modes
 
 The core security model:
