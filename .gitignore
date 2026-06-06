@@ -3,7 +3,6 @@
 .swiftpm/
 DerivedData/
 *.xcodeproj/
-Package.resolved
 Agent Browser Gateway.app/
 Agent Browser Gateway Dev.app/
 Gateway.app/
@@ -60,6 +59,7 @@ credentials/
 docs/*
 !docs/HOMEBREW.md
 !docs/PLUGINS.md
+!docs/REPRODUCIBLE_DOCKER_BUILD.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 
 # Brand experiments — final design TBD, not committed yet
