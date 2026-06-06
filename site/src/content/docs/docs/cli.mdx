@@ -1,0 +1,20 @@
+---
+title: CLI
+description: Common abg CLI commands.
+---
+
+The CLI is the stable interface for agents and scripts.
+
+```bash
+abg status
+abg tabs --compact
+abg read t1 --format markdown
+abg screenshot t1 --out page.png
+abg revoke t1
+```
+
+Use `abg tabs --compact` first, then pass the returned tab reference such as `t1` to read,
+screenshot, inspect, or operate on the tab.
+
+Mutating commands can require local approval depending on extension settings. Read-only observation
+commands do not require approval, but still require that the tab is shared.

@@ -1,0 +1,28 @@
+---
+title: Overview
+description: Agent Browser Gateway documentation overview.
+---
+
+Agent Browser Gateway (ABG) is a local bridge between a browser tab you explicitly share and an AI
+coding agent that can run the `abg` CLI.
+
+## What is included
+
+- A local Gateway app that listens on loopback.
+- A browser extension that shares only user-approved tabs by default.
+- The `abg` CLI for agents and scripts.
+- Local audit logs for inspectable operations.
+
+## Access model
+
+ABG starts with no visible tabs. The user shares a tab from the extension popup, and ABG revokes that
+share when the tab closes, changes origin, or is explicitly revoked.
+
+For isolated profiles or sandbox machines, ABG also has an optional all-tabs profile mode. That mode
+uses a separate consent boundary and can be disabled again from the extension popup.
+
+## Next pages
+
+- [Install](./install/)
+- [CLI](./cli/)
+- [Plugins](./plugins/)

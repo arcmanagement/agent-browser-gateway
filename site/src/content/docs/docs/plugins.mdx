@@ -1,0 +1,19 @@
+---
+title: Plugins
+description: ABG plugin system overview.
+---
+
+ABG supports local JavaScript plugins loaded by the Gateway. Plugins can transform browser data or
+add higher-level local commands without moving browser access into a hosted service.
+
+Bundled plugins are installed with the app. User plugins live in the ABG user directory and are
+managed with the `abg plugin` command group.
+
+```bash
+abg plugin list
+abg plugin install user/repo --yes
+abg plugin update
+abg plugin uninstall my-plugin
+```
+
+See the repository plugin guide for manifest details and command authoring rules.
