@@ -201,7 +201,9 @@ abg check <tab|ref> --selector "input[type=checkbox]"
 abg uncheck <tab|ref> --selector "input[type=checkbox]"
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable replacement
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
+abg fill <tab|ref> --selector "<css>" --value "<text>" --diff
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
+abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt --diff
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
 echo "long text" | abg paste <tab|ref> --selector "<css>" --stdin
 abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
@@ -263,7 +265,10 @@ Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets w
 replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids
 clipboard dependence, and returns the detected editable kind plus replacement lengths. Use
 `replace-editable` when the stronger command name makes a CMS/rich-editor workflow clearer; it uses
-the same replacement path and can read from `--text-file` or `--stdin`. Use `type` when the target
+the same replacement path and can read from `--text-file` or `--stdin`. Add `--diff` when a high-risk
+editor change needs compact before/after evidence. ABG captures selector-scoped text and HTML
+hashes, lengths, and redacted bounded excerpts in the command result and local audit log, but does
+not write full before/after content or replacement values by default. Use `type` when the target
 already has focus and needs per-character keyboard events. Use `paste` for rich editors that ignore
 synthetic value updates or character events, including Lexical, ProseMirror, Slate, Quill, and many
 native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable

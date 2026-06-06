@@ -89,7 +89,9 @@ abg check <tab|ref> --selector "input[type=checkbox]"
 abg uncheck <tab|ref> --selector "input[type=checkbox]"
 abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable に入力
 abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
+abg fill <tab|ref> --selector "<css>" --value "<text>" --diff
 abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
+abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt --diff
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
 abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
 abg paste-rich <tab|ref> --selector "<css>"      # Native paste with the current rich clipboard
@@ -436,6 +438,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
 - `tabId` は Chrome 内部のタブ ID で、ブラウザ再起動で変わる。通常は `abg tabs --compact` の `ref` (`t1` など) か `--match-url` / `--match-title` を使う
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
+- `abg fill ... --diff` / `abg replace-editable ... --diff` は high-risk editor change 用。selector scoped text / HTML の hash、length、redacted bounded excerpt を result と local audit log に残す。full before/after content、replacement value、plugin args は default では保存しない
 - JavaScript dialog は `abg dialog <ref>` で pending 状態を読む。accept / dismiss / prompt-value は write-like action として通常の operation approval と audit log を通る。pending dialog がなければ `no_dialog_pending` で明示的に失敗する
 - Download は `abg download <ref>` / `abg download <ref> --wait` で metadata と Chrome が公開する final path だけを返す。ABG は downloaded file content を読まない。path が取れない場合は `unavailableReason` を確認する
 - Network response 待ちは `abg wait-response <ref>` を使う。URL glob / regex、method、status range、type で絞り込む。timeout は `ok: false`, `error: "timeout"` の安定 JSON を返す。response body は `--body` 指定時だけ `--max-bytes` 上限で preview される。headers / response body は audit log に保存しない。`abg network <ref> --wait-response` も互換表記として残す

@@ -47,6 +47,8 @@ export type GatewayCommand = {
     enabled?: boolean;
     replaceEditable?: boolean;
     dryRun?: boolean;
+    auditDiff?: boolean;
+    auditDiffExcerptChars?: number;
     text?: string;
     url?: string;
     x?: number;

@@ -1128,16 +1128,19 @@ struct Fill: AsyncParsableCommand {
     @Option(name: .long, help: "入力する値") var value: String
     @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "対象種別と置換予定サイズだけを返し、DOM は変更しない") var dryRun: Bool = false
+    @Flag(name: .customLong("diff"), help: "Capture compact redacted before/after text/HTML diff metadata in the result and audit log") var diff: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "selector": selector, "value": value, "dryRun": dryRun]
         if let frame { params["frame"] = frame }
+        if diff { params["auditDiff"] = true }
         let result = try client.call(method: "fill_tab", params: params)
         if !dryRun {
             var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": value]
             if let frame { step["frame"] = frame }
+            if diff { step["diff"] = true }
             appendRecordedStep(step)
         }
         printJSON(result)
@@ -1156,6 +1159,7 @@ struct ReplaceEditable: AsyncParsableCommand {
     @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "Read replacement text from stdin") var stdin: Bool = false
     @Flag(name: .long, help: "Preview target metadata and replacement length without changing the page") var dryRun: Bool = false
+    @Flag(name: .customLong("diff"), help: "Capture compact redacted before/after text/HTML diff metadata in the result and audit log") var diff: Bool = false
 
     func run() async throws {
         let sources = [value != nil, textFile != nil, stdin].filter { $0 }.count
@@ -1184,10 +1188,12 @@ struct ReplaceEditable: AsyncParsableCommand {
             "dryRun": dryRun,
         ]
         if let frame { params["frame"] = frame }
+        if diff { params["auditDiff"] = true }
         let result = try client.call(method: "fill_tab", params: params)
         if !dryRun {
             var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": text]
             if let frame { step["frame"] = frame }
+            if diff { step["diff"] = true }
             appendRecordedStep(step)
         }
         printJSON(result)
@@ -2013,6 +2019,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "fill":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
+        if boolValue(step, "diff") == true { params["auditDiff"] = true }
         return try client.call(method: "fill_tab", params: params)
     case "paste":
         params["selector"] = try requiredString(step, "selector", op: op)
