@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Artifact Provenance | Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="Trace Agent Browser Gateway release artifacts back to source tags, build commands, GitHub Actions logs, and signing or notarization boundaries."
+    />
+    <meta property="og:title" content="Artifact Provenance | Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="How ABG maps release tags to artifacts, build logs, checksums, and non-reproducible signing steps."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/docs/provenance.html" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/docs/provenance.html" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="nav" aria-label="Primary navigation">
+      <div class="nav-inner">
+        <a class="brand" href="../">
+          <img src="../assets/logo-shield.png" alt="" width="31" height="31" />
+          <span>Agent Browser Gateway</span>
+        </a>
+        <nav class="nav-links" aria-label="Site links">
+          <a href="../">Home</a>
+          <a href="../#download">Download</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="legal-hero">
+        <div class="section-inner">
+          <div class="eyebrow">Artifact trust</div>
+          <h1>Artifact Provenance</h1>
+          <p>
+            Each public ABG artifact should be traceable to a source tag, a build command, a
+            checksum, and the public build or release record that produced it.
+          </p>
+        </div>
+      </section>
+
+      <div class="section-inner legal-content">
+        <aside class="toc" aria-label="Artifact provenance sections">
+          <a href="#release-tags">Release tags</a>
+          <a href="#artifacts">Artifacts</a>
+          <a href="#logs">Build logs</a>
+          <a href="#rebuild">Rebuild</a>
+          <a href="#signing">Signing boundary</a>
+        </aside>
+
+        <article class="policy">
+          <section id="release-tags">
+            <h2>1. Release tags</h2>
+            <p>
+              A release version <code>X.Y.Z</code> maps to the source tag <code>vX.Y.Z</code> in
+              the GitHub repository. Start provenance checks from the tag page:
+            </p>
+            <p>
+              <a href="https://github.com/arcmanagement/agent-browser-gateway/releases">
+                github.com/arcmanagement/agent-browser-gateway/releases
+              </a>
+            </p>
+            <aside class="terminal" aria-label="Tag checkout commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> git fetch --tags origin
+<span class="prompt">$</span> git checkout vX.Y.Z
+<span class="prompt">$</span> git rev-parse HEAD</pre>
+            </aside>
+          </section>
+
+          <section id="artifacts">
+            <h2>2. Artifact map</h2>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Artifact</th>
+                    <th>Source</th>
+                    <th>Produced by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>agent-browser-gateway-X.Y.Z-macos-arm64.zip</code></td>
+                    <td><code>vX.Y.Z</code></td>
+                    <td><code>make dist VERSION=X.Y.Z</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>agent-browser-gateway-X.Y.Z-macos-arm64.dmg</code></td>
+                    <td>Same staged macOS payload as the ZIP</td>
+                    <td><code>make pages-dmg VERSION=X.Y.Z</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>agent-browser-gateway-extension-X.Y.Z.zip</code></td>
+                    <td><code>extension/dist/</code> from the tag</td>
+                    <td><code>scripts/dist-macos-arm64.sh</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>agent-browser-gateway-X.Y.Z-windows-x64.zip</code></td>
+                    <td>Windows projects under <code>windows/</code></td>
+                    <td><code>scripts/dist-windows-x64.ps1</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>agent-browser-gateway-X.Y.Z-windows-x64-setup.zip</code></td>
+                    <td>Windows setup project under <code>windows/</code></td>
+                    <td><code>scripts/dist-windows-x64.ps1</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>agent-browser-gateway.rb</code></td>
+                    <td>macOS ZIP checksum for the release</td>
+                    <td><code>scripts/dist-macos-arm64.sh</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              Public checksum files use the same artifact basename with
+              <code>.sha256.txt</code> appended and are published next to the download.
+            </p>
+          </section>
+
+          <section id="logs">
+            <h2>3. Build logs</h2>
+            <p>
+              Use GitHub Actions logs to confirm the tag or branch built cleanly. Filter workflow
+              runs by the release ref when reviewing a specific release.
+            </p>
+            <ul>
+              <li>
+                macOS and extension verification:
+                <a href="https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml">
+                  CI workflow
+                </a>
+              </li>
+              <li>
+                Windows build and packaging verification:
+                <a href="https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/windows-ci.yml">
+                  Windows CI workflow
+                </a>
+              </li>
+              <li>
+                Public site publication:
+                <a href="https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/pages.yml">
+                  GitHub Pages workflow
+                </a>
+              </li>
+            </ul>
+            <p>
+              For release <code>X.Y.Z</code>, use the Actions search filter
+              <code>ref:vX.Y.Z</code> where a workflow run exists for that tag.
+            </p>
+          </section>
+
+          <section id="rebuild">
+            <h2>4. Local rebuild</h2>
+            <p>
+              Unsigned rebuilds can confirm the source and build scripts. They are not expected to
+              match signed release bytes exactly.
+            </p>
+            <aside class="terminal" aria-label="Local rebuild commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> git checkout vX.Y.Z
+<span class="prompt">$</span> mise trust
+<span class="prompt">$</span> mise install
+<span class="prompt">$</span> cd extension && pnpm install --frozen-lockfile && cd ..
+<span class="prompt">$</span> make dist VERSION=X.Y.Z</pre>
+            </aside>
+            <p>
+              Windows artifacts are rebuilt on Windows with .NET 8:
+            </p>
+            <aside class="terminal" aria-label="Windows rebuild command">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">PS&gt;</span> .\scripts\dist-windows-x64.ps1 -Version X.Y.Z</pre>
+            </aside>
+          </section>
+
+          <section id="signing">
+            <h2>5. Signing and notarization boundary</h2>
+            <p>
+              Developer ID signing, notarization, stapling, DMG compression, ZIP metadata, and
+              timestamped signatures are not byte-for-byte reproducible by third parties. ABG keeps
+              signing credentials off GitHub Actions; signed public assets are produced on a trusted
+              maintainer Mac and then uploaded with checksums.
+            </p>
+            <p>
+              Verify the source tag, inspect the public workflow logs, compare the published
+              SHA-256 checksum, and use platform trust checks such as <code>codesign</code>,
+              <code>spctl</code>, and notarization assessment for signed macOS artifacts.
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="section-inner footer-inner">
+        <span>
+          Agent Browser Gateway is managed by
+          <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+        </span>
+        <span>
+          <a href="mailto:contact@arcm.co.jp">Contact</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy Policy</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

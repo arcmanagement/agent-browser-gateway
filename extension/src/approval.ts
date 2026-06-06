@@ -1,3 +1,4 @@
+import { approvalRemainingMs, scriptBlockPresentation } from "./approvalLogic.js";
 import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } from "./types.js";
 
 const intentEl = document.getElementById("intent") as HTMLDivElement;
@@ -49,18 +50,13 @@ async function load(): Promise<void> {
   intentEl.textContent = request.intent;
   tabTitleEl.textContent = request.tab.title || "(untitled)";
   tabUrlEl.textContent = request.tab.url || "(no URL)";
-  if (request.script !== undefined) {
-    scriptBlockEl.textContent = request.script;
-    scriptBlockEl.hidden = false;
-  } else {
-    scriptBlockEl.textContent = "";
-    scriptBlockEl.hidden = true;
-  }
+  const scriptBlock = scriptBlockPresentation(request.script);
+  scriptBlockEl.textContent = scriptBlock.text;
+  scriptBlockEl.hidden = scriptBlock.hidden;
   allowBtn.disabled = false;
   denyBtn.disabled = false;
 
-  const expiresAt = request.createdAt + request.timeoutMs;
-  const remainingMs = Math.max(0, expiresAt - Date.now());
+  const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
   statusEl.textContent = "This request expires in 60 seconds.";
   timeoutId = setTimeout(() => {
     decide("timeout").catch((e) => {

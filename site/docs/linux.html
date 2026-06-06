@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Linux Headless Package Plan | Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="Initial Linux package target and install plan for a headless Agent Browser Gateway CLI service."
+    />
+    <meta property="og:title" content="Linux Headless Package Plan | Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="Tarball-first Linux packaging, service placement, systemd user setup, and install/uninstall notes for ABG."
+    />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/docs/linux.html" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/docs/linux.html" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body class="legal-page">
+    <header class="nav" aria-label="Primary navigation">
+      <div class="nav-inner">
+        <a class="brand" href="../">
+          <img src="../assets/logo-shield.png" alt="" width="31" height="31" />
+          <span>Agent Browser Gateway</span>
+        </a>
+        <nav class="nav-links" aria-label="Site links">
+          <a href="../">Home</a>
+          <a href="../#download">Download</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="legal-hero">
+        <div class="section-inner">
+          <div class="eyebrow">Linux plan</div>
+          <h1>Headless Linux Package</h1>
+          <p>
+            The initial Linux target is a no-desktop, CLI-controlled Gateway service that keeps
+            distribution assumptions minimal.
+          </p>
+        </div>
+      </section>
+
+      <div class="section-inner legal-content">
+        <aside class="toc" aria-label="Linux package sections">
+          <a href="#format">Package format</a>
+          <a href="#layout">Install layout</a>
+          <a href="#operate">Operate</a>
+          <a href="#systemd">systemd user service</a>
+          <a href="#uninstall">Uninstall</a>
+        </aside>
+
+        <article class="policy">
+          <section id="format">
+            <h2>1. Package format</h2>
+            <p>
+              The first Linux artifact should be a distribution-neutral
+              <code>agent-browser-gateway-X.Y.Z-linux-x64.tar.gz</code> archive. A tarball avoids
+              early assumptions about Debian, Fedora, Arch, desktop integration, or package
+              repository ownership.
+            </p>
+            <p>
+              Future package formats should be demand-driven: <code>.deb</code> first when Debian
+              or Ubuntu users need managed installs, then <code>.rpm</code> if Fedora/RHEL users
+              need it. AppImage is not the first target because the Linux Gateway is headless rather
+              than a desktop UI app.
+            </p>
+          </section>
+
+          <section id="layout">
+            <h2>2. Install layout</h2>
+            <p>The tarball should contain the Gateway binary, the CLI, resources, and a user service template.</p>
+            <div class="data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Path</th>
+                    <th>Purpose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>~/.local/opt/agent-browser-gateway/</code></td>
+                    <td>User-owned install root for the extracted release.</td>
+                  </tr>
+                  <tr>
+                    <td><code>~/.local/bin/abg</code></td>
+                    <td>Symlink or wrapper to the versioned CLI binary.</td>
+                  </tr>
+                  <tr>
+                    <td><code>~/.config/agent-browser-gateway/</code></td>
+                    <td>User configuration and optional profile settings.</td>
+                  </tr>
+                  <tr>
+                    <td><code>~/.local/state/agent-browser-gateway/</code></td>
+                    <td>Runtime socket, state, audit logs, and service metadata.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="operate">
+            <h2>3. Operate</h2>
+            <p>
+              The Linux CLI should expose a Gateway lifecycle group so headless use does not depend
+              on a menubar app:
+            </p>
+            <aside class="terminal" aria-label="Planned Linux gateway lifecycle commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> abg gateway start
+<span class="prompt">$</span> abg gateway status
+<span class="prompt">$</span> abg gateway stop</pre>
+            </aside>
+            <p>
+              <code>status</code> should report the loopback host and port, connected extension
+              count, shared tab count, audit log path, and active profile. Existing tab commands such as
+              <code>abg tabs --compact</code>, <code>abg read</code>, and <code>abg screenshot</code>
+              should behave the same as macOS and Windows once the browser extension is connected.
+            </p>
+          </section>
+
+          <section id="systemd">
+            <h2>4. Optional systemd user service</h2>
+            <p>
+              The tarball can include a user service template for machines that want ABG to start
+              with the login session.
+            </p>
+            <aside class="terminal" aria-label="systemd user service setup">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> mkdir -p ~/.config/systemd/user
+<span class="prompt">$</span> cp agent-browser-gateway.service ~/.config/systemd/user/
+<span class="prompt">$</span> systemctl --user daemon-reload
+<span class="prompt">$</span> systemctl --user enable --now agent-browser-gateway.service
+<span class="prompt">$</span> systemctl --user status agent-browser-gateway.service</pre>
+            </aside>
+          </section>
+
+          <section id="uninstall">
+            <h2>5. Install and uninstall</h2>
+            <p>Manual install shape:</p>
+            <aside class="terminal" aria-label="Linux install commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> mkdir -p ~/.local/opt ~/.local/bin
+<span class="prompt">$</span> tar -xzf agent-browser-gateway-X.Y.Z-linux-x64.tar.gz -C ~/.local/opt/
+<span class="prompt">$</span> ln -sf ~/.local/opt/agent-browser-gateway-X.Y.Z/bin/abg ~/.local/bin/abg</pre>
+            </aside>
+            <p>Manual uninstall shape:</p>
+            <aside class="terminal" aria-label="Linux uninstall commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> systemctl --user disable --now agent-browser-gateway.service
+<span class="prompt">$</span> rm -f ~/.config/systemd/user/agent-browser-gateway.service
+<span class="prompt">$</span> rm -f ~/.local/bin/abg
+<span class="prompt">$</span> rm -rf ~/.local/opt/agent-browser-gateway-X.Y.Z
+<span class="prompt">$</span> rm -rf ~/.config/agent-browser-gateway ~/.local/state/agent-browser-gateway</pre>
+            </aside>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="section-inner footer-inner">
+        <span>
+          Agent Browser Gateway is managed by
+          <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+        </span>
+        <span>
+          <a href="mailto:contact@arcm.co.jp">Contact</a>
+          <a href="./">Docs</a>
+          <a href="../privacy/">Privacy Policy</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>
