@@ -55,6 +55,20 @@ jobs:
       - name: Build macOS release archives
         run: make dist VERSION="${{ steps.version.outputs.version }}"
 
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SBOMs
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          syft scan dir:. \
+            --exclude "./.build/**" \
+            --exclude "./dist/**" \
+            --exclude "./extension/node_modules/**" \
+            -o "spdx-json=dist/agent-browser-gateway-${version}.spdx.json" \
+            -o "cyclonedx-json=dist/agent-browser-gateway-${version}.cyclonedx.json"
+
       - name: Write checksums
         run: |
           set -euo pipefail
@@ -63,6 +77,8 @@ jobs:
             "agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip" \
             "agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip" \
             "agent-browser-gateway.rb" \
+            "agent-browser-gateway-${{ steps.version.outputs.version }}.spdx.json" \
+            "agent-browser-gateway-${{ steps.version.outputs.version }}.cyclonedx.json" \
             > SHA256SUMS.txt
 
       - name: Generate release notes
@@ -90,6 +106,8 @@ jobs:
             echo "- agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip"
             echo "- agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip"
             echo "- agent-browser-gateway.rb"
+            echo "- agent-browser-gateway-${{ steps.version.outputs.version }}.spdx.json"
+            echo "- agent-browser-gateway-${{ steps.version.outputs.version }}.cyclonedx.json"
             echo "- SHA256SUMS.txt"
           } > "$notes_path"
 
@@ -100,6 +118,7 @@ jobs:
             dist/agent-browser-gateway-${{ steps.version.outputs.version }}-macos-arm64.zip
             dist/agent-browser-gateway-extension-${{ steps.version.outputs.version }}.zip
             dist/agent-browser-gateway.rb
+            dist/agent-browser-gateway-${{ steps.version.outputs.version }}.spdx.json
+            dist/agent-browser-gateway-${{ steps.version.outputs.version }}.cyclonedx.json
             dist/SHA256SUMS.txt
             dist/RELEASE_NOTES.md
-
