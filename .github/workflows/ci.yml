@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -8,6 +9,7 @@ permissions:
 
 jobs:
   verify:
+    name: Swift and extension tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
