@@ -115,12 +115,12 @@ Current repo version: **v0.3.12**.
 ## In progress
 
 - WS bind retry (Gateway currently does not retry if the port is already in use)
+- MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
 - Settings UI in the Gateway window for timeout defaults, approval mode, and per-domain policy
 
 ## Next
 
-- MCP server as a thin wrapper over the same CLI for ecosystem coverage
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
 - Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
@@ -138,7 +138,7 @@ Current repo version: **v0.3.12**.
 - Firefox extension (WebExtensions, MV3 path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
-- Windows port of the Gateway
+- Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
 
 ## Phase 4
 

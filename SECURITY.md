@@ -65,3 +65,25 @@ If a future PR violates any of these, it should be rejected:
 7. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
 8. The audit log records every read and every operation, with the originating agent identifier where available.
 9. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.
+
+## Dependency security gates
+
+Dependency changes are checked by `.github/workflows/dependency-security.yml`.
+
+Failure conditions:
+
+1. The extension dependency audit runs `pnpm audit --audit-level high` and fails on high or critical npm advisories.
+2. Swift dependencies are resolved from `Package.swift` and `Package.resolved`. CI fails if `swift package resolve` changes `Package.resolved`, then uploads `swift package show-dependencies --format json` as the Swift dependency inventory for review.
+3. Dependency Review runs with a `high` severity threshold and vulnerability checks enabled, but is advisory until the repository supports Dependency Review Action. Treat high or critical findings from that advisory output as release blockers; license checks are intentionally off until ABG has a separate license-allowlist policy.
+
+Swift strategy:
+
+- `Package.resolved` is the reviewed lockfile for SwiftPM dependencies.
+- GitHub Dependency Review is the first review surface for changed manifests and lockfiles where GitHub can identify advisories. It becomes a blocking gate once repository security settings support the action.
+- Until there is a stable first-party SwiftPM vulnerability audit command in the toolchain, Swift dependency security review is based on the lockfile diff, GitHub advisories, Dependabot/security alerts, and the uploaded dependency inventory.
+
+Exception policy:
+
+- Do not bypass the workflow with `warn-only` or by lowering the severity threshold in a feature PR.
+- A temporary exception must be documented in the PR with the package, version, advisory ID when available, why ABG is not affected or how the risk is mitigated, a follow-up issue, and an expiry condition.
+- Security exceptions for runtime dependencies require maintainer approval before merge.
