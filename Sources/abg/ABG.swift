@@ -35,7 +35,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
+            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
@@ -48,7 +48,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "har", "state", "framework", "sandbox", "download", "dialog",
+    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "navigate", "scroll", "scroll-into-view", "drag", "upload",
     "wait", "validate", "stream",
@@ -991,6 +991,50 @@ struct Network: AsyncParsableCommand {
             params["timeoutMs"] = timeout
         }
         if body { params["maxBytes"] = maxBytes }
+        let result = try client.call(method: "network_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct WaitResponse: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "wait-response",
+        abstract: "Wait for a network response matching URL, method, and status filters",
+        discussion: """
+        Waits for a buffered or future response from a shared tab. Timeout results are returned as
+        stable JSON with ok=false and error=timeout. Response body preview is local-only, opt-in via
+        --body, and capped by --max-bytes.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter such as GET or POST") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter, comma-separated") var type: String?
+    @Option(name: .long, help: "Timeout in milliseconds, clamped by the extension") var timeout: Int = 30_000
+    @Flag(name: .long, help: "Opt in to a bounded response body preview") var body: Bool = false
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "wait": true,
+            "timeoutMs": timeout,
+        ]
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        if body {
+            params["body"] = true
+            params["maxBytes"] = maxBytes
+        }
         let result = try client.call(method: "network_tab", params: params)
         printJSON(result)
     }

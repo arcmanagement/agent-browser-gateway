@@ -45,6 +45,8 @@ abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
+abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
 abg har <tab|ref> --out /tmp/session.har         # redacted one-shot HAR export
@@ -395,7 +397,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
 - JavaScript dialog は `abg dialog <ref>` で pending 状態を読む。accept / dismiss / prompt-value は write-like action として通常の operation approval と audit log を通る。pending dialog がなければ `no_dialog_pending` で明示的に失敗する
 - Download は `abg download <ref>` / `abg download <ref> --wait` で metadata と Chrome が公開する final path だけを返す。ABG は downloaded file content を読まない。path が取れない場合は `unavailableReason` を確認する
-- Network response 待ちは `abg network <ref> --wait-response` を使う。URL glob / regex、method、status range、type で絞り込む。response body は `--body` 指定時だけ `--max-bytes` 上限で preview される。headers は保存しない
+- Network response 待ちは `abg wait-response <ref>` を使う。URL glob / regex、method、status range、type で絞り込む。timeout は `ok: false`, `error: "timeout"` の安定 JSON を返す。response body は `--body` 指定時だけ `--max-bytes` 上限で preview される。headers / response body は audit log に保存しない。`abg network <ref> --wait-response` も互換表記として残す
 - HAR export は `abg har <ref> --out file.har` を使う。one-shot / local-only で、cookies、authorization headers、request headers、request bodies、response bodies は default で省略する。`--limit` は最大 1000 件に bounded され、Gateway は tab、filter、byte size、redaction mode、output path を local audit log に記録する
 - Cookie / Web Storage inspection は `abg state <ref>` を使う。shared tab origin の cookies / localStorage / sessionStorage を read-only で列挙し、値は default redacted。`--values` を明示した場合だけ full values を返し、Gateway audit log に values requested と count が残る。write/delete は提供しない
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない
