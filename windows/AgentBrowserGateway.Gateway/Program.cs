@@ -135,16 +135,24 @@ internal sealed class GatewayTrayApplication : ApplicationContext
 
     private void ShowStatus()
     {
-        var snapshot = _host.Snapshot();
-        var message = snapshot.Running
-            ? $"Version: {AbgPaths.Version}\nProfile: {AbgPaths.RuntimeProfile}\nRunning on {AbgPaths.WsHost}:{AbgPaths.WsPort}\nExtensions: {snapshot.Extensions.Count}\nShared tabs: {snapshot.Tabs.Count}\nProcess: {Environment.ProcessPath}\nState: {AbgPaths.AppDataDir}\nUser dir: {AbgPaths.AbgUserDir}\nAudit log: {AbgPaths.AuditLogPath}"
-            : "Stopped";
+        var statusApp = Path.Combine(AppContext.BaseDirectory, "AgentBrowserGateway.Windows.exe");
+        if (!File.Exists(statusApp))
+        {
+            _notifyIcon.ShowBalloonTip(
+                3000,
+                "Agent Browser Gateway",
+                $"Status app was not found: {statusApp}",
+                ToolTipIcon.Warning);
+            return;
+        }
 
-        MessageBox.Show(
-            message,
-            "Agent Browser Gateway",
-            MessageBoxButtons.OK,
-            snapshot.Running ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = statusApp,
+            WorkingDirectory = AppContext.BaseDirectory,
+            Arguments = "--status",
+            UseShellExecute = true
+        });
     }
 
     private static void OpenAuditLog()
