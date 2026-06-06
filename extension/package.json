@@ -7,6 +7,8 @@
     "build": "node build.mjs",
     "webstore:zip": "pnpm run build && mkdir -p ../dist && rm -f ../dist/agent-browser-gateway-extension-${npm_package_version}.zip && cd dist && zip -qr ../../dist/agent-browser-gateway-extension-${npm_package_version}.zip .",
     "watch": "node build.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write ."
@@ -15,7 +17,8 @@
     "@biomejs/biome": "^2.0.0",
     "@types/chrome": "^0.0.300",
     "esbuild": "^0.28.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.0",
+    "vitest": "^4.1.8"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
