@@ -135,6 +135,7 @@ Current repo version: **v0.3.12**.
 
 ## Phase 3
 
+- Shared extension browser-adapter boundary for desktop browser ports
 - Firefox extension (WebExtensions, MV3 path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)

@@ -241,11 +241,13 @@ export function createChromeMock() {
       cancel: vi.fn(async () => undefined),
       download: vi.fn(async () => 1),
       erase: vi.fn(async () => []),
+      onCreated: createChromeEvent<[Record<string, unknown>]>(),
       onChanged: createChromeEvent<[Record<string, unknown>]>(),
       search: vi.fn(async () => []),
     },
     windows: {
       create: vi.fn(async () => ({ id: 1 })),
+      onRemoved: createChromeEvent<[number]>(),
       remove: vi.fn(async () => undefined),
     },
   };
