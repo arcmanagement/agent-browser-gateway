@@ -135,6 +135,7 @@ Current repo version: **v0.3.12**.
 
 ## Phase 3
 
+- Gateway runtime/macOS shell boundary for desktop OS ports
 - Shared extension browser-adapter boundary for desktop browser ports
 - Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)

@@ -7,24 +7,24 @@ final class UDSServer: @unchecked Sendable {
     private var channel: Channel?
     private let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
-    func start(coordinator: GatewayCoordinator) async throws {
+    func start(runtime: any GatewayRuntime) async throws {
         let path = ABGConstants.udsPath
         try? FileManager.default.removeItem(atPath: path)
 
-        // Hold the coordinator weakly inside the long-lived bootstrap closure so we don't
-        // pin the GatewayCoordinator (a singleton, but still — no need for a retain cycle).
-        let weakCoord = WeakRef(coordinator)
+        // Hold the runtime weakly inside the long-lived bootstrap closure so the transport
+        // does not pin a platform shell implementation.
+        let weakRuntime = WeakGatewayRuntime(runtime)
 
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 16)
             .childChannelInitializer { channel in
                 let handler = LineDelimitedJSONHandler { requestData in
-                    guard let coord = weakCoord.value else { return Data() }
+                    guard let runtime = weakRuntime.value else { return Data() }
                     let decoder = JSONDecoder()
                     let encoder = JSONEncoder()
                     do {
                         let req = try decoder.decode(CLIRequest.self, from: requestData)
-                        let resp = await coord.handleCLIRequest(req)
+                        let resp = await runtime.handleCLIRequest(req)
                         return try encoder.encode(resp)
                     } catch {
                         let resp = CLIResponse(id: "?", error: ErrorPayload(code: "decode_failed", message: "\(error)"))
@@ -40,9 +40,9 @@ final class UDSServer: @unchecked Sendable {
     }
 }
 
-private final class WeakRef<T: AnyObject & Sendable>: @unchecked Sendable {
-    weak var value: T?
-    init(_ value: T?) { self.value = value }
+private final class WeakGatewayRuntime: @unchecked Sendable {
+    weak var value: (any GatewayRuntime)?
+    init(_ value: (any GatewayRuntime)?) { self.value = value }
 }
 
 final class LineDelimitedJSONHandler: ChannelInboundHandler, @unchecked Sendable {
