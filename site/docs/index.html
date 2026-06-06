@@ -54,6 +54,7 @@
       <div class="section-inner legal-content">
         <aside class="toc" aria-label="Documentation sections">
           <a href="#quickstart">Quickstart</a>
+          <a href="#verify-downloads">Verify downloads</a>
           <a href="#skills">Agent skills</a>
           <a href="#access-modes">Access modes</a>
           <a href="#commands">CLI commands</a>
@@ -89,8 +90,45 @@
             </aside>
           </section>
 
+          <section id="verify-downloads">
+            <h2>2. Verify downloads</h2>
+            <p>
+              SHA-256 checksum files are published next to each public download in the
+              <a href="../#download">download section</a>. Download the package and its matching
+              <code>.sha256.txt</code> file into the same folder before installing.
+            </p>
+            <aside class="terminal" aria-label="macOS checksum verification commands">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> cd ~/Downloads
+<span class="prompt">$</span> curl -LO https://agent-browser-gateway.com/downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg
+<span class="prompt">$</span> curl -LO https://agent-browser-gateway.com/downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg.sha256.txt
+<span class="prompt">$</span> shasum -a 256 -c agent-browser-gateway-0.3.12-macos-arm64.dmg.sha256.txt</pre>
+            </aside>
+            <p>
+              A successful check prints <code>OK</code> for the downloaded filename. The same
+              pattern works for the Windows ZIP from macOS:
+            </p>
+            <aside class="terminal" aria-label="Windows ZIP checksum verification command">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> shasum -a 256 -c agent-browser-gateway-0.3.8-windows-x64.zip.sha256.txt</pre>
+            </aside>
+            <p class="note">
+              Do not install or run an artifact when checksum verification fails. Delete the package,
+              download it again from the official site or GitHub Releases, and verify it before
+              opening the installer.
+            </p>
+          </section>
+
           <section id="skills">
-            <h2>2. Agent skills</h2>
+            <h2>3. Agent skills</h2>
             <p>
               ABG ships bundled guidance for Claude Code and Codex so agents know to use the local
               <code>abg</code> CLI, list only shared tabs, and respect the current tab access mode.
@@ -130,7 +168,7 @@
           </section>
 
           <section id="access-modes">
-            <h2>3. Tab access modes</h2>
+            <h2>4. Tab access modes</h2>
             <p>
               ABG is per-tab by default. No browser tab is visible to an agent until the user
               explicitly shares it from the extension popup.
@@ -162,11 +200,13 @@
               All-tabs mode is off by default. Enabling it requests optional <code>&lt;all_urls&gt;</code>
               access from Chrome. Disabling it revokes all all-tabs entries and removes that optional
               host permission.
+              For Chromium-compatible desktop browser notes, see
+              <a href="chromium-browsers.html">Edge and Brave</a>.
             </p>
           </section>
 
           <section id="commands">
-            <h2>4. Common CLI commands</h2>
+            <h2>5. Common CLI commands</h2>
             <p>
               The CLI is intentionally scriptable. It prints structured JSON by default, and most
               commands can target either a numeric tab ID or a short ref such as <code>t1</code>.
@@ -246,7 +286,7 @@
           </section>
 
           <section id="safety">
-            <h2>5. Safety model</h2>
+            <h2>6. Safety model</h2>
             <ul>
               <li>The Gateway binds to <code>127.0.0.1</code>.</li>
               <li>The extension declares no default host permissions.</li>
@@ -258,19 +298,24 @@
               <li>ABG-operated cloud relay, operator telemetry, and hidden JavaScript execution without explicit user policy are official non-goals.</li>
             </ul>
             <p>
-              For details on data handling and Chrome permissions, read the
-              <a href="../privacy/">Privacy Policy</a>. For advanced automation boundaries, see
-              <a href="https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/ADVANCED_AUTOMATION_POLICY.md">ADVANCED_AUTOMATION_POLICY.md</a>.
-            </p>
-          </section>
+               For details on data handling and Chrome permissions, read the
+               <a href="../privacy/">Privacy Policy</a>. For advanced automation boundaries, see
+               <a href="https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/ADVANCED_AUTOMATION_POLICY.md">ADVANCED_AUTOMATION_POLICY.md</a>.
+              For architecture and token-economy examples, see
+              <a href="spec-examples.html">Architecture Examples</a>.
+              For release artifact provenance, see <a href="provenance.html">Artifact Provenance</a>.
+             </p>
+           </section>
 
           <section id="troubleshooting">
-            <h2>6. Troubleshooting</h2>
+            <h2>7. Troubleshooting</h2>
             <h3>No shared tabs</h3>
             <p>
               Run <code>abg status</code> first. If the extension is connected but
               <code>permittedTabCount</code> is <code>0</code>, open Chrome, select the target tab,
               and share it from the ABG extension popup.
+              For the planned headless Linux package shape, see
+              <a href="linux.html">Linux Headless Package</a>.
             </p>
             <h3>Incognito tabs</h3>
             <p>

@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["chrome"]
   },
-  "include": ["src/**/*.ts", "build.mjs"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "build.mjs", "vitest.config.ts"]
 }

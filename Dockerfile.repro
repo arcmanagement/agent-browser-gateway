@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+
+FROM swift:6.1-noble@sha256:4c6af6663ed2316002a3b38ff5505a1fc1f2749ec31e84936c32dd336713c569 AS build
+
+WORKDIR /workspace
+
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+
+COPY Package.swift Package.resolved ./
+COPY Sources ./Sources
+COPY Tests ./Tests
+
+RUN swift package resolve
+RUN swift build -c release --product abg --disable-sandbox
+RUN set -eux; \
+    mkdir -p /out; \
+    arch="$(uname -m)"; \
+    bin_dir="$(swift build -c release --show-bin-path)"; \
+    cp "${bin_dir}/abg" "/out/abg-linux-${arch}"; \
+    swift --version > /out/SWIFT_VERSION.txt; \
+    printf '%s\n' "${SOURCE_DATE_EPOCH}" > /out/SOURCE_DATE_EPOCH; \
+    cd /out; \
+    sha256sum abg-linux-* > SHA256SUMS.txt
