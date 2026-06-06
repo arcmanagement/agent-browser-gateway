@@ -22,8 +22,11 @@ jobs:
       - name: Swift debug build
         run: swift build
 
-      - name: Swift tests
-        run: swift test
+      - name: Swift tests with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Swift service coverage gate
+        run: scripts/swift-coverage-check.sh
 
       - name: Swift release build
         run: swift build -c release
