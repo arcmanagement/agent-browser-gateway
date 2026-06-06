@@ -98,7 +98,8 @@ abg keydown <tab|ref> Shift              # keyDown のみ。hold-key 操作用
 abg keyup <tab|ref> Shift                # keyUp のみ
 abg keyboard inserttext <tab|ref> "<text>"       # keydown/char/keyup なしで直接 text insert
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
-abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール (内側 div も可)
+abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # virtual list の内側 scrollable element を直接 scrollBy
 abg scroll-into-view <tab|ref> --selector "<css>" # 要素を viewport 中央へスクロール
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"    # DnD
 

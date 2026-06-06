@@ -1513,6 +1513,15 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   const atX = typeof cmd.params?.atX === "number" ? cmd.params.atX : undefined;
   const atY = typeof cmd.params?.atY === "number" ? cmd.params.atY : undefined;
+  const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
+  const steps =
+    typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 1;
+  if (selector !== undefined) {
+    return {
+      intent: `Scroll the element matching selector ${quoteForIntent(selector)} by (Δx=${deltaX}, Δy=${deltaY})${frameIntentSuffix(frame)}.`,
+      run: () => scrollElement(tabId, selector, deltaX, deltaY, steps, frame),
+    };
+  }
   const where =
     atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
   return {
@@ -5653,6 +5662,59 @@ async function scrollTab(
     deltaY,
   });
   return { ok: true, deltaX, deltaY, x: cursorX, y: cursorY };
+}
+
+async function scrollElement(
+  tabId: number,
+  selector: string,
+  deltaX: number,
+  deltaY: number,
+  steps: number,
+  frame?: string,
+): Promise<{
+  ok: boolean;
+  found: boolean;
+  selector: string;
+  deltaX: number;
+  deltaY: number;
+  steps: number;
+  scrollLeft?: number;
+  scrollTop?: number;
+  scrollWidth?: number;
+  scrollHeight?: number;
+  clientWidth?: number;
+  clientHeight?: number;
+}> {
+  return runFrameScript(tabId, frame, { selector, deltaX, deltaY, steps }, (ctx, opts) => {
+    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    if (!el) {
+      return {
+        ok: false,
+        found: false,
+        selector: opts.selector,
+        deltaX: opts.deltaX,
+        deltaY: opts.deltaY,
+        steps: opts.steps,
+      } as const;
+    }
+    for (let i = 0; i < opts.steps; i += 1) {
+      el.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+    }
+    return {
+      ok: true,
+      found: true,
+      selector: opts.selector,
+      deltaX: opts.deltaX,
+      deltaY: opts.deltaY,
+      steps: opts.steps,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      scrollWidth: el.scrollWidth,
+      scrollHeight: el.scrollHeight,
+      clientWidth: el.clientWidth,
+      clientHeight: el.clientHeight,
+    };
+  });
 }
 
 async function scrollElementIntoView(
