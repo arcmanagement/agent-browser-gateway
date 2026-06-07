@@ -1,0 +1,35 @@
+flowchart TD
+  U["User"]
+  C["Agent Interface 30\nannotation call"]
+  G["Gateway Module 20"]
+  P["Permission Manager 70"]
+  E["Browser Operation Link 10"]
+  T["Browser Tab 40\nshared tab only"]
+  O["Annotation Layer 100\nArea / Text / Done / Clear"]
+  D["Annotation Data 110\nkind, comment, position, target, re-id"]
+  A["AI Agent 90"]
+
+  U --> |"popup: Annotate this tab"| E
+  A --> |"command / API / message"| C
+  C --> |"annotation request"| G
+  G --> P
+  P --> |"permitted tab check"| E
+  E --> |"render overlay"| O
+  O --> T
+
+  U --> |"drag region"| O
+  U --> |"select text"| O
+  C --> |"add target / add region"| O
+
+  O --> |"stable structure"| DOM["Structure annotation\ntarget metadata"]
+  O --> |"visual or ambiguous region"| SS["Visual region annotation\nposition data"]
+  O --> |"multi-element selection"| TXT["Text annotation\nselected text + re-id data"]
+
+  DOM --> D
+  SS --> D
+  TXT --> D
+  D --> |"list annotations"| C
+  C --> A
+
+  E --> |"primary path blocked"| F["Alternative execution\nbrowser-compatible path"]
+  F --> O

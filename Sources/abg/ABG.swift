@@ -1,6 +1,15 @@
 import ArgumentParser
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import GatewayCore
+
+func defaultGatewayTimeoutMs() -> Int {
+    GatewaySettingsStore.load().defaultTimeoutMs
+}
 
 @main
 enum ABGMain {
@@ -35,22 +44,25 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
-            Read.self, Screenshot.self, Annotate.self, Console.self, Table.self, Describe.self, Network.self,
-            Click.self, Fill.self, Paste.self, Clear.self, Replace.self, Type.self, Key.self, Navigate.self, Scroll.self, Drag.self, Upload.self,
+            Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
+            IsVisible.self, IsEnabled.self, IsChecked.self,
+            Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
             Wait.self,
+            Validate.self, Stream.self,
             Record.self, Replay.self,
-            Revoke.self, Audit.self, Plugin.self, InstallSkill.self,
+            Revoke.self, Audit.self, Activity.self, Plugin.self, MCPServer.self, InstallSkill.self,
         ]
     )
 }
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
-    "read", "screenshot", "annotate", "console", "table", "describe", "network",
-    "click", "fill", "paste", "clear", "replace", "type", "key", "navigate", "scroll", "drag", "upload",
-    "wait",
+    "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
+    "is-visible", "is-enabled", "is-checked",
+    "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
+    "wait", "validate", "stream",
     "record", "replay",
-    "revoke", "audit", "plugin", "install-skill",
+    "revoke", "audit", "activity", "plugin", "mcp-server", "install-skill",
     "help", "completion",
 ]
 
@@ -160,6 +172,10 @@ private func pluginCommands(pluginName: String) throws -> [[String: Any]] {
 private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [String: Any], tabId: Int?) {
     var args: [String: Any] = [:]
     var tabId: Int?
+    var tabToken: String?
+    var matchUrl: String?
+    var matchTitle: String?
+    var first = false
     var index = 0
     while index < rawArgs.count {
         let token = rawArgs[index]
@@ -195,6 +211,26 @@ private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [Strin
                 try failWithJSON(["error": "missing_value", "message": "--tab-id requires an integer value."])
             }
             tabId = parsed
+        case "tab":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--tab requires a tab ID/ref value."])
+            }
+            tabToken = rawArgs[index]
+        case "match-url":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--match-url requires a URL glob value."])
+            }
+            matchUrl = rawArgs[index]
+        case "match-title":
+            index += 1
+            guard rawArgs.indices.contains(index) else {
+                try failWithJSON(["error": "missing_value", "message": "--match-title requires a title glob value."])
+            }
+            matchTitle = rawArgs[index]
+        case "first":
+            first = true
         default:
             if rawArgs.indices.contains(index + 1), !rawArgs[index + 1].hasPrefix("--") {
                 index += 1
@@ -204,6 +240,15 @@ private func parsePluginCommandArgs(_ rawArgs: [String]) throws -> (args: [Strin
             }
         }
         index += 1
+    }
+    if tabId == nil, tabToken != nil || matchUrl != nil || matchTitle != nil {
+        tabId = try resolveTabId(
+            client: UDSClient(),
+            tabToken: tabToken,
+            matchUrl: matchUrl,
+            matchTitle: matchTitle,
+            first: first
+        )
     }
     return (args, tabId)
 }
@@ -327,12 +372,16 @@ func tabsWithRefs(_ value: Any?) -> [[String: Any]] {
 
 func compactTabs(_ tabs: [[String: Any]]) -> [[String: Any]] {
     tabs.map { tab in
-        [
+        var compact: [String: Any] = [
             "ref": tab["ref"] ?? "",
             "tabId": tab["tabId"] ?? 0,
             "title": tab["title"] ?? "",
             "url": tab["url"] ?? "",
         ]
+        if let accessMode = tab["accessMode"] {
+            compact["accessMode"] = accessMode
+        }
+        return compact
     }
 }
 
@@ -360,9 +409,7 @@ func requireArg(_ args: [String], index: Int, error: [String: Any]) throws -> St
 }
 
 func screenshotDirectory() throws -> URL {
-    let base = FileManager.default.temporaryDirectory
-        .appendingPathComponent("abg", isDirectory: true)
-        .appendingPathComponent("screenshots", isDirectory: true)
+    let base = ABGConstants.screenshotsDir
     try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
     return base
 }
@@ -381,7 +428,7 @@ func latestScreenshotMarker() throws -> URL {
 }
 
 func abgStateDirectory() throws -> URL {
-    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".abg", isDirectory: true)
+    let url = ABGConstants.abgUserDir
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
@@ -407,6 +454,30 @@ func saveScreenshotResult(_ result: Any?, outPath: String) throws -> [String: An
     try png.write(to: URL(fileURLWithPath: outPath))
     try outPath.write(to: latestScreenshotMarker(), atomically: true, encoding: .utf8)
     return ["path": outPath, "bytes": png.count]
+}
+
+func savePDFResult(_ result: Any?, outPath: String) throws -> [String: Any] {
+    guard let dict = result as? [String: Any], let dataUrl = dict["dataUrl"] as? String else {
+        FileHandle.standardError.write(Data("unexpected response: \(String(describing: result))\n".utf8))
+        throw ExitCode.failure
+    }
+    guard let comma = dataUrl.firstIndex(of: ",") else {
+        FileHandle.standardError.write(Data("invalid dataUrl\n".utf8))
+        throw ExitCode.failure
+    }
+    let b64 = String(dataUrl[dataUrl.index(after: comma)...])
+    guard let pdf = Data(base64Encoded: b64) else {
+        FileHandle.standardError.write(Data("base64 decode failed\n".utf8))
+        throw ExitCode.failure
+    }
+    try pdf.write(to: URL(fileURLWithPath: outPath))
+    var response: [String: Any] = [
+        "path": outPath,
+        "bytes": pdf.count,
+    ]
+    if let url = dict["url"] { response["url"] = url }
+    if let title = dict["title"] { response["title"] = title }
+    return response
 }
 
 func appendRecordedStep(_ step: [String: Any]) {
@@ -504,7 +575,8 @@ struct Tabs: AsyncParsableCommand {
                 print("Then run: abg tabs --compact")
             } else {
                 for tab in outputTabs {
-                    print("\(tab["ref"] ?? "")\t\(tab["tabId"] ?? "")\t[\(tab["title"] ?? "")]\t\(tab["url"] ?? "")")
+                    let mode = (tab["accessMode"] as? String).map { "\($0)\t" } ?? ""
+                    print("\(tab["ref"] ?? "")\t\(tab["tabId"] ?? "")\t\(mode)[\(tab["title"] ?? "")]\t\(tab["url"] ?? "")")
                 }
             }
         default:
@@ -542,25 +614,49 @@ struct Read: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象を絞る CSS selector (例: \"main\", \"#content\")") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Cross-origin frames are listed but not selector-addressable.") var frame: String?
     @Flag(name: .long, help: "HTML を Markdown に変換 (token 効率)") var asMarkdown: Bool = false
     @Option(name: .long, help: "出力形式: json / markdown / text / html") var format: String = "json"
     @Flag(name: .long, help: "Markdown 出力で画像 URL を残す") var keepImages: Bool = false
+    @Flag(name: .long, help: "Markdown 出力を local redaction plugin でマスク") var redact: Bool = false
+    @Option(name: .customLong("redact-regex"), help: "追加でマスクする regex。複数回指定可") var redactRegexes: [String] = []
+    @Flag(name: .long, help: "selector の editable value を input/textarea/contenteditable aware に返す") var editableValue: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
+        if editableValue {
+            guard let selector else {
+                try failWithJSON(["error": "selector_required", "message": "--editable-value requires --selector."])
+            }
+            var editableParams: [String: Any] = [
+                "tabId": tabId,
+                "kind": "editable-value",
+                "selector": selector,
+            ]
+            if let frame { editableParams["frame"] = frame }
+            let result = try client.call(method: "get_tab", params: editableParams)
+            printJSON(result)
+            return
+        }
         var params: [String: Any] = ["tabId": tabId]
         if let s = selector { params["selector"] = s }
+        if let frame { params["frame"] = frame }
         let wantsMarkdown = asMarkdown || format == "markdown"
         if wantsMarkdown {
             params["asMarkdown"] = true
             params["keepImages"] = keepImages
+            if redact { params["redact"] = true }
+            if !redactRegexes.isEmpty { params["redactRegexes"] = redactRegexes }
         }
         let result = try client.call(method: "read_tab", params: params)
         var step: [String: Any] = ["op": "read", "tabId": tabId, "format": format]
         if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
         if asMarkdown { step["asMarkdown"] = true }
         if keepImages { step["keepImages"] = true }
+        if redact { step["redact"] = true }
+        if !redactRegexes.isEmpty { step["redactRegexes"] = redactRegexes }
         appendRecordedStep(step)
         guard let dict = result as? [String: Any] else {
             printJSON(result)
@@ -778,10 +874,59 @@ struct Console: AsyncParsableCommand {
     }
 }
 
+struct Eval: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Run a gated JavaScript eval on a shared tab",
+        discussion: """
+        Eval is an escape hatch. It is disabled by default in the extension popup. When Trusted automation / AutoMode is off, pass --approve to open a local approval window with the exact script. When AutoMode is on, the extension may skip the popup for already-shared tabs while still auditing the script.
+        Prefer named primitives such as read/get/find/wait when they cover the workflow.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "JavaScript source to evaluate") var script: String?
+    @Option(name: .long, help: "Read JavaScript source from a local file") var scriptFile: String?
+    @Flag(name: .long, help: "Read JavaScript source from stdin") var stdin: Bool = false
+    @Flag(name: .long, help: "Required unless Trusted automation / AutoMode is enabled in the extension popup") var approve: Bool = false
+    @Option(name: .long, help: "Maximum sanitized result JSON bytes (default 65536, hard cap 262144)") var maxBytes: Int = 65_536
+
+    func run() async throws {
+        let script = try readScriptSource()
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "eval_tab", params: [
+            "tabId": tabId,
+            "script": script,
+            "approve": approve,
+            "maxBytes": maxBytes,
+        ])
+        printJSON(result)
+        if let dict = result as? [String: Any], (dict["ok"] as? Bool) == false {
+            throw ExitCode.failure
+        }
+    }
+
+    private func readScriptSource() throws -> String {
+        let sourceCount = [script != nil, scriptFile != nil, stdin].filter { $0 }.count
+        guard sourceCount == 1 else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one script source: --script, --script-file, or --stdin.",
+            ])
+        }
+        if let script { return script }
+        if let scriptFile {
+            return try String(contentsOfFile: (scriptFile as NSString).expandingTildeInPath, encoding: .utf8)
+        }
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
 struct Table: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "HTML table のヘッダー・行・セルを抽出")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象 table または table を含む CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Option(name: .long, help: "出力形式: json / markdown") var format: String = "json"
 
     func run() async throws {
@@ -789,6 +934,7 @@ struct Table: AsyncParsableCommand {
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId]
         if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "table_tab", params: params)
         if format == "json" {
             printJSON(result)
@@ -807,6 +953,7 @@ struct Describe: AsyncParsableCommand {
     @Option(name: .long, help: "最大件数 (デフォルト 80)") var limit: Int = 80
     @Option(name: .long, help: "kind フィルタ (button/input/link/clickable など)") var kind: String?
     @Option(name: .long, help: "viewport を NxM に分割した座標も出す (例: 10x10)") var grid: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
@@ -814,6 +961,7 @@ struct Describe: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "all": all, "limit": limit]
         if let kind { params["kind"] = kind }
         if let grid { params["grid"] = grid }
+        if let frame { params["frame"] = frame }
         let result = try client.call(method: "describe_tab", params: params)
         printJSON(result)
     }
@@ -823,23 +971,79 @@ struct Network: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "共有中タブのネットワークリクエストを表示")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "URL glob フィルタ") var url: String?
+    @Option(name: .long, help: "URL regex filter for wait-response workflows") var urlRegex: String?
     @Option(name: .long, help: "HTTP method フィルタ (GET/POST など)") var method: String?
     @Option(name: .long, help: "最小 HTTP status (例: 400)") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
     @Option(name: .long, help: "type フィルタ (xhr,fetch,document など。カンマ区切り可)") var type: String?
     @Option(name: .long, help: "個別 requestId") var requestId: String?
     @Flag(name: .long, help: "requestId のレスポンス body を取得") var body: Bool = false
     @Option(name: .long, help: "最大件数 (デフォルト 100)") var limit: Int = 100
+    @Flag(name: .long, help: "Wait for a matching response instead of listing buffered requests") var waitResponse: Bool = false
+    @Option(name: .long, help: "wait-response timeout in milliseconds") var timeout: Int = defaultGatewayTimeoutMs()
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "limit": limit]
         if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
         if let method { params["method"] = method }
         if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
         if let type { params["type"] = type }
         if let requestId { params["requestId"] = requestId }
         if body { params["body"] = true }
+        if waitResponse {
+            params["wait"] = true
+            params["timeoutMs"] = timeout
+        }
+        if body { params["maxBytes"] = maxBytes }
+        let result = try client.call(method: "network_tab", params: params)
+        printJSON(result)
+    }
+}
+
+struct WaitResponse: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "wait-response",
+        abstract: "Wait for a network response matching URL, method, and status filters",
+        discussion: """
+        Waits for a buffered or future response from a shared tab. Timeout results are returned as
+        stable JSON with ok=false and error=timeout. Response body preview is local-only, opt-in via
+        --body, and capped by --max-bytes.
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "URL glob filter") var url: String?
+    @Option(name: .long, help: "URL regex filter") var urlRegex: String?
+    @Option(name: .long, help: "HTTP method filter such as GET or POST") var method: String?
+    @Option(name: .long, help: "Minimum HTTP status") var statusMin: Int?
+    @Option(name: .long, help: "Maximum HTTP status") var statusMax: Int?
+    @Option(name: .long, help: "Resource type filter, comma-separated") var type: String?
+    @Option(name: .long, help: "Timeout in milliseconds, clamped by the extension") var timeout: Int = 30_000
+    @Flag(name: .long, help: "Opt in to a bounded response body preview") var body: Bool = false
+    @Option(name: .long, help: "Maximum response body preview bytes when --body is set") var maxBytes: Int = 16_384
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "wait": true,
+            "timeoutMs": timeout,
+        ]
+        if let url { params["urlPattern"] = url }
+        if let urlRegex { params["urlRegex"] = urlRegex }
+        if let method { params["method"] = method }
+        if let statusMin { params["statusMin"] = statusMin }
+        if let statusMax { params["statusMax"] = statusMax }
+        if let type { params["type"] = type }
+        if body {
+            params["body"] = true
+            params["maxBytes"] = maxBytes
+        }
         let result = try client.call(method: "network_tab", params: params)
         printJSON(result)
     }
@@ -878,6 +1082,8 @@ struct Click: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "クリック対象の CSS selector") var selector: String?
     @Option(name: .long, help: "`abg describe` の element id") var id: Int?
+    @Option(name: .long, help: "`abg snapshot` の element ref (例: @e1)") var ref: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Required to act on selectors inside a frame.") var frame: String?
     @Flag(name: .long, help: "`abg describe --all` 由来の id を解決") var all: Bool = false
     @Option(name: .long, help: "`abg describe --grid` 由来の id を解決 (例: 10x10)") var grid: String?
     @Option(name: .long, help: "`abg describe --limit` と同じ件数で id を解決") var limit: Int?
@@ -890,21 +1096,25 @@ struct Click: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId]
         if let s = selector { params["selector"] = s }
         if let id { params["id"] = id }
+        if let ref { params["ref"] = ref }
+        if let frame { params["frame"] = frame }
         if all { params["all"] = true }
         if let grid { params["grid"] = grid }
         if let limit { params["limit"] = limit }
         if let xx = x { params["x"] = xx }
         if let yy = y { params["y"] = yy }
-        guard selector != nil || id != nil || (x != nil && y != nil) else {
+        guard selector != nil || id != nil || ref != nil || (x != nil && y != nil) else {
             try failWithJSON([
                 "error": "bad_params",
-                "message": "specify --selector, --id, or both --x and --y",
+                "message": "specify --selector, --id, --ref, or both --x and --y",
             ])
         }
         let result = try client.call(method: "click_tab", params: params)
         var step: [String: Any] = ["op": "click", "tabId": tabId]
         if let selector { step["selector"] = selector }
         if let id { step["id"] = id }
+        if let ref { step["ref"] = ref }
+        if let frame { step["frame"] = frame }
         if all { step["all"] = true }
         if let grid { step["grid"] = grid }
         if let limit { step["limit"] = limit }
@@ -916,16 +1126,80 @@ struct Click: AsyncParsableCommand {
 }
 
 struct Fill: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "input/textarea にテキスト入力 (selector 必須)")
+    static let configuration = CommandConfiguration(abstract: "input/textarea/contenteditable にテキスト入力 (selector 必須)")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の CSS selector") var selector: String
     @Option(name: .long, help: "入力する値") var value: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
+    @Flag(name: .long, help: "対象種別と置換予定サイズだけを返し、DOM は変更しない") var dryRun: Bool = false
+    @Flag(name: .customLong("diff"), help: "Capture compact redacted before/after text/HTML diff metadata in the result and audit log") var diff: Bool = false
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "fill_tab", params: ["tabId": tabId, "selector": selector, "value": value])
-        appendRecordedStep(["op": "fill", "tabId": tabId, "selector": selector, "value": value])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "value": value, "dryRun": dryRun]
+        if let frame { params["frame"] = frame }
+        if diff { params["auditDiff"] = true }
+        let result = try client.call(method: "fill_tab", params: params)
+        if !dryRun {
+            var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": value]
+            if let frame { step["frame"] = frame }
+            if diff { step["diff"] = true }
+            appendRecordedStep(step)
+        }
+        printJSON(result)
+    }
+}
+
+struct ReplaceEditable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "replace-editable",
+        abstract: "Replace an input, textarea, or contenteditable target without clipboard dependence"
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Target editable CSS selector") var selector: String
+    @Option(name: .long, help: "Replacement text") var value: String?
+    @Option(name: .long, help: "Read replacement text from a file") var textFile: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
+    @Flag(name: .long, help: "Read replacement text from stdin") var stdin: Bool = false
+    @Flag(name: .long, help: "Preview target metadata and replacement length without changing the page") var dryRun: Bool = false
+    @Flag(name: .customLong("diff"), help: "Capture compact redacted before/after text/HTML diff metadata in the result and audit log") var diff: Bool = false
+
+    func run() async throws {
+        let sources = [value != nil, textFile != nil, stdin].filter { $0 }.count
+        guard sources == 1 else {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one of --value, --text-file, or --stdin.",
+            ])
+        }
+        let text: String
+        if let value {
+            text = value
+        } else if let textFile {
+            text = try String(contentsOfFile: (textFile as NSString).expandingTildeInPath, encoding: .utf8)
+        } else {
+            let data = FileHandle.standardInput.readDataToEndOfFile()
+            text = String(data: data, encoding: .utf8) ?? ""
+        }
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = [
+            "tabId": tabId,
+            "selector": selector,
+            "value": text,
+            "replaceEditable": true,
+            "dryRun": dryRun,
+        ]
+        if let frame { params["frame"] = frame }
+        if diff { params["auditDiff"] = true }
+        let result = try client.call(method: "fill_tab", params: params)
+        if !dryRun {
+            var step: [String: Any] = ["op": "fill", "tabId": tabId, "selector": selector, "value": text]
+            if let frame { step["frame"] = frame }
+            if diff { step["diff"] = true }
+            appendRecordedStep(step)
+        }
         printJSON(result)
     }
 }
@@ -946,6 +1220,7 @@ struct Paste: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target editable CSS selector") var selector: String
     @Option(name: .long, help: "Text to paste") var value: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Flag(name: .long, help: "Read text to paste from standard input") var stdin: Bool = false
 
     func run() async throws {
@@ -964,10 +1239,115 @@ struct Paste: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "paste_tab", params: ["tabId": tabId, "selector": selector, "value": text])
-        appendRecordedStep(["op": "paste", "tabId": tabId, "selector": selector, "value": text])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "value": text]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "paste_tab", params: params)
+        var step: [String: Any] = ["op": "paste", "tabId": tabId, "selector": selector, "value": text]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
+}
+
+struct ClipboardWrite: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "clipboard-write",
+        abstract: "Write a MIME payload to the local system clipboard",
+        discussion: """
+        Writes one MIME payload to the OS clipboard through the local Gateway. The audit log
+        records the MIME type and byte length, not the raw content.
+
+        Examples:
+          abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+          abg clipboard-write --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @Option(name: .long, help: "Clipboard MIME type to write") var mime: String
+    @Option(name: .long, help: "Clipboard payload") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input") var stdin: Bool = false
+
+    func run() async throws {
+        let text = try readPayload(value: value, file: file, stdin: stdin)
+        let client = UDSClient()
+        let result = try client.call(method: "clipboard_write", params: [
+            "mime": mime,
+            "value": text,
+        ])
+        printJSON(result)
+    }
+}
+
+struct PasteRich: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "paste-rich",
+        abstract: "Paste the current rich clipboard payload into a shared tab",
+        discussion: """
+        Dispatches a native paste shortcut into the focused target, or first focuses --selector.
+        Pass --mime plus --value/--file/--stdin to write a MIME payload immediately before paste.
+
+        Examples:
+          abg paste-rich t1 --selector canvas
+          abg paste-rich t1 --mime "text/html" --value "<b>Hello</b>"
+          abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Option(name: .long, help: "Optional target CSS selector to focus before native paste") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
+    @Option(name: .long, help: "Optional clipboard MIME type to write before paste") var mime: String?
+    @Option(name: .long, help: "Clipboard payload to write before paste") var value: String?
+    @Option(name: .long, help: "Read clipboard payload from a UTF-8 file before paste") var file: String?
+    @Flag(name: .long, help: "Read clipboard payload from standard input before paste") var stdin: Bool = false
+
+    func run() async throws {
+        let wantsWrite = mime != nil || value != nil || file != nil || stdin
+        if wantsWrite && mime == nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when passing --value, --file, or --stdin.",
+            ])
+        }
+        if !wantsWrite && (value != nil || file != nil || stdin) {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--mime is required when writing clipboard content.",
+            ])
+        }
+
+        let text = wantsWrite ? try readPayload(value: value, file: file, stdin: stdin) : nil
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId]
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if let mime { params["mime"] = mime }
+        if let text { params["value"] = text }
+        let result = try client.call(method: "paste_rich_tab", params: params)
+        var step: [String: Any] = ["op": "paste_rich", "tabId": tabId]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if let mime { step["mime"] = mime }
+        if let text { step["value"] = text }
+        appendRecordedStep(step)
+        printJSON(result)
+    }
+}
+
+func readPayload(value: String?, file: String?, stdin: Bool) throws -> String {
+    let sources = [value != nil, file != nil, stdin].filter { $0 }.count
+    guard sources == 1 else {
+        try failWithJSON([
+            "error": "bad_params",
+            "message": "Pass exactly one of --value, --file, or --stdin.",
+        ])
+    }
+    if let value { return value }
+    if let file {
+        return try String(contentsOfFile: (file as NSString).expandingTildeInPath, encoding: .utf8)
+    }
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8) ?? ""
 }
 
 struct Clear: AsyncParsableCommand {
@@ -983,12 +1363,17 @@ struct Clear: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "Target editable CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "clear_tab", params: ["tabId": tabId, "selector": selector])
-        appendRecordedStep(["op": "clear", "tabId": tabId, "selector": selector])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "clear_tab", params: params)
+        var step: [String: Any] = ["op": "clear", "tabId": tabId, "selector": selector]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1031,6 +1416,7 @@ struct Replace: AsyncParsableCommand {
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "置換対象の CSS selector") var selector: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
     @Option(name: .long, help: "差し替え HTML") var html: String?
     @Option(name: .long, help: "差し替え HTML を読むファイルパス") var htmlFile: String?
 
@@ -1050,17 +1436,21 @@ struct Replace: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "replace_tab", params: [
+        var params: [String: Any] = [
             "tabId": tabId,
             "selector": selector,
             "html": replacementHtml,
-        ])
-        appendRecordedStep([
+        ]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "replace_tab", params: params)
+        var step: [String: Any] = [
             "op": "replace",
             "tabId": tabId,
             "selector": selector,
             "html": replacementHtml,
-        ])
+        ]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1131,6 +1521,7 @@ struct Scroll: AsyncParsableCommand {
         例:
           abg scroll 328 --dy 800              # 800px 下にスクロール
           abg scroll 328 --dy -800             # 800px 上に
+          abg scroll 328 --selector ".c-virtual_list__scroll_container" --dy -5000
           abg scroll 328 --dy 800 --at-x 1200 --at-y 400  # 右側パネルだけスクロール
         """
     )
@@ -1139,15 +1530,30 @@ struct Scroll: AsyncParsableCommand {
     @Option(name: .long, help: "横 delta px (正で右、負で左、デフォルト 0)") var dx: Double = 0
     @Option(name: .long, help: "ホイール位置 X (省略時ビューポート中央)") var atX: Double?
     @Option(name: .long, help: "ホイール位置 Y (省略時ビューポート中央)") var atY: Double?
+    @Option(name: .long, help: "内側 scrollable element の CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` when using --selector") var frame: String?
+    @Option(name: .long, help: "selector scrollBy の繰り返し回数 (1-100)") var steps: Int = 1
 
     func run() async throws {
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "deltaX": dx, "deltaY": dy]
+        if selector != nil, atX != nil || atY != nil {
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "--selector cannot be combined with --at-x or --at-y.",
+            ])
+        }
+        if let selector { params["selector"] = selector }
+        if let frame { params["frame"] = frame }
+        if selector != nil { params["steps"] = steps }
         if let v = atX { params["atX"] = v }
         if let v = atY { params["atY"] = v }
         let result = try client.call(method: "scroll_tab", params: params)
         var step: [String: Any] = ["op": "scroll", "tabId": tabId, "dx": dx, "dy": dy]
+        if let selector { step["selector"] = selector }
+        if let frame { step["frame"] = frame }
+        if selector != nil { step["steps"] = steps }
         if let atX { step["atX"] = atX }
         if let atY { step["atY"] = atY }
         appendRecordedStep(step)
@@ -1160,6 +1566,7 @@ struct Drag: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "ドラッグ元 CSS selector") var fromSelector: String?
     @Option(name: .long, help: "ドロップ先 CSS selector") var toSelector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for selector endpoints only)") var frame: String?
     @Option(name: .long, help: "ドラッグ元 X") var fromX: Double?
     @Option(name: .long, help: "ドラッグ元 Y") var fromY: Double?
     @Option(name: .long, help: "ドロップ先 X") var toX: Double?
@@ -1172,6 +1579,7 @@ struct Drag: AsyncParsableCommand {
         var params: [String: Any] = ["tabId": tabId, "steps": steps]
         if let fromSelector { params["fromSelector"] = fromSelector }
         if let toSelector { params["toSelector"] = toSelector }
+        if let frame { params["frame"] = frame }
         if let fromX { params["fromX"] = fromX }
         if let fromY { params["fromY"] = fromY }
         if let toX { params["toX"] = toX }
@@ -1188,6 +1596,7 @@ struct Drag: AsyncParsableCommand {
         var step: [String: Any] = ["op": "drag", "tabId": tabId, "steps": steps]
         if let fromSelector { step["fromSelector"] = fromSelector }
         if let toSelector { step["toSelector"] = toSelector }
+        if let frame { step["frame"] = frame }
         if let fromX { step["fromX"] = fromX }
         if let fromY { step["fromY"] = fromY }
         if let toX { step["toX"] = toX }
@@ -1202,6 +1611,7 @@ struct Upload: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の input[type=file] CSS selector") var selector: String
     @Option(name: .long, help: "添付するローカルファイル") var file: String
+    @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
         let expanded = (file as NSString).expandingTildeInPath
@@ -1215,8 +1625,12 @@ struct Upload: AsyncParsableCommand {
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        let result = try client.call(method: "upload_tab", params: ["tabId": tabId, "selector": selector, "file": expanded])
-        appendRecordedStep(["op": "upload", "tabId": tabId, "selector": selector, "file": expanded])
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "file": expanded]
+        if let frame { params["frame"] = frame }
+        let result = try client.call(method: "upload_tab", params: params)
+        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "file": expanded]
+        if let frame { step["frame"] = frame }
+        appendRecordedStep(step)
         printJSON(result)
     }
 }
@@ -1225,46 +1639,174 @@ struct Wait: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "セレクタが現れる/消えるまで or 一定時間待つ",
         discussion: """
-        --selector を指定すると、その要素が visible になるまで polling (デフォルト 10s タイムアウト)。
+        --selector を指定すると、その要素が visible になるまで polling (profile default timeout)。
         --hidden 付きなら逆に消えるまで待つ。--ms だけ指定すると単純な sleep。
         polling 間隔は 200ms 固定。timeout 時はエラーを返す。
 
         例:
-          abg wait 445 --selector ".loaded"           # .loaded が出るまで最大 10s
-          abg wait 445 --selector ".spinner" --hidden # .spinner が消えるまで最大 10s
+          abg wait 445 --selector ".loaded"           # .loaded が出るまで待つ
+          abg wait 445 --selector ".spinner" --hidden # .spinner が消えるまで待つ
           abg wait 445 --ms 1500                       # 1.5s 待つだけ
           abg wait 445 --selector "h1" --timeout 30000 # 30s タイムアウト
         """
     )
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "待つ CSS selector") var selector: String?
+    @Option(name: .long, help: "Frame ref from `abg frames` (for selector/text/predicate waits)") var frame: String?
     @Flag(name: .long, help: "selector が消えるのを待つ (デフォルトは現れるのを待つ)") var hidden: Bool = false
+    @Option(name: .long, help: "document visible text に含まれるまで待つ") var text: String?
+    @Option(name: .long, help: "current URL が glob に一致するまで待つ") var url: String?
+    @Option(name: .long, help: "load state: networkidle / load / domcontentloaded") var load: String?
+    @Option(name: .long, help: "JavaScript predicate expression が truthy になるまで待つ") var fn: String?
     @Option(name: .long, help: "固定 sleep ミリ秒 (selector を使わないとき)") var ms: Int?
-    @Option(name: .long, help: "selector のタイムアウト ms (デフォルト 10000)") var timeout: Int = 10_000
+    @Option(name: .long, help: "selector のタイムアウト ms (profile default)") var timeout: Int = defaultGatewayTimeoutMs()
 
     func run() async throws {
         let client = UDSClient()
+        let nonLoadModes = [selector != nil, text != nil, url != nil, fn != nil, ms != nil].filter { $0 }.count
+        if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Unsupported --load value. Use networkidle, load, or domcontentloaded.",
+                ])
+            }
+            guard nonLoadModes == 0 || (selector != nil && nonLoadModes == 1) else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Compose --load only with --selector, or pass --load by itself.",
+                ])
+            }
+        } else {
+            guard nonLoadModes == 1 else {
+                try failWithJSON([
+                    "error": "bad_params",
+                    "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
+                ])
+            }
+        }
+
         let tabId = try resolveTabId(client: client, target: target)
         var params: [String: Any] = ["tabId": tabId, "timeoutMs": timeout]
-        if let s = selector {
+        let result: Any?
+        if let load {
+            params["loadState"] = load
+            let loadResult = try client.call(method: "wait_tab", params: params)
+            if let selector {
+                guard waitResultOK(loadResult) else {
+                    result = combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                    printJSON(result)
+                    appendRecordedStep(waitRecordedStep(
+                        tabId: tabId,
+                        timeout: timeout,
+                        selector: selector,
+                        hidden: hidden,
+                        frame: frame,
+                        load: load
+                    ))
+                    return
+                }
+                var selectorParams: [String: Any] = [
+                    "tabId": tabId,
+                    "timeoutMs": timeout,
+                    "selector": selector,
+                    "hidden": hidden,
+                ]
+                if let frame { selectorParams["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: selectorParams)
+                result = combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                result = loadResult
+            }
+        } else if let s = selector {
             params["selector"] = s
             params["hidden"] = hidden
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let text {
+            params["text"] = text
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let url {
+            params["urlPattern"] = url
+            result = try client.call(method: "wait_tab", params: params)
+        } else if let fn {
+            params["predicate"] = fn
+            if let frame { params["frame"] = frame }
+            result = try client.call(method: "wait_tab", params: params)
         } else if let m = ms {
             params["sleepMs"] = m
+            result = try client.call(method: "wait_tab", params: params)
         } else {
-            FileHandle.standardError.write(Data("specify --selector or --ms\n".utf8))
-            throw ExitCode.failure
+            try failWithJSON([
+                "error": "bad_params",
+                "message": "Pass exactly one wait mode: --selector, --text, --url, --load, --fn, or --ms.",
+            ])
         }
-        let result = try client.call(method: "wait_tab", params: params)
-        var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
-        if let selector {
-            step["selector"] = selector
-            if hidden { step["hidden"] = true }
-        }
-        if let ms { step["ms"] = ms }
-        appendRecordedStep(step)
+        appendRecordedStep(waitRecordedStep(
+            tabId: tabId,
+            timeout: timeout,
+            selector: selector,
+            hidden: hidden,
+            frame: frame,
+            ms: ms,
+            text: text,
+            url: url,
+            load: load,
+            fn: fn
+        ))
         printJSON(result)
     }
+}
+
+let validWaitLoadStates: Set<String> = ["networkidle", "load", "domcontentloaded"]
+
+func waitResultOK(_ value: Any?) -> Bool {
+    guard let dict = value as? [String: Any] else { return false }
+    return dict["ok"] as? Bool == true
+}
+
+func combinedLoadSelectorWaitResult(load: Any?, selector: Any?) -> [String: Any] {
+    let selectorOK = selector.map(waitResultOK) ?? false
+    return [
+        "ok": selectorOK,
+        "mode": "load_then_selector",
+        "phase": selectorOK ? "complete" : (selector == nil ? "load" : "selector"),
+        "load": load ?? NSNull(),
+        "selector": selector ?? NSNull(),
+    ]
+}
+
+func waitRecordedStep(
+    tabId: Int,
+    timeout: Int,
+    selector: String? = nil,
+    hidden: Bool = false,
+    frame: String? = nil,
+    ms: Int? = nil,
+    text: String? = nil,
+    url: String? = nil,
+    load: String? = nil,
+    fn: String? = nil
+) -> [String: Any] {
+    var step: [String: Any] = ["op": "wait", "tabId": tabId, "timeout": timeout]
+    if let selector {
+        step["selector"] = selector
+        if hidden { step["hidden"] = true }
+        if let frame { step["frame"] = frame }
+    }
+    if let ms { step["ms"] = ms }
+    if let text {
+        step["text"] = text
+        if let frame { step["frame"] = frame }
+    }
+    if let url { step["url"] = url }
+    if let load { step["load"] = load }
+    if let fn {
+        step["fn"] = fn
+        if let frame { step["frame"] = frame }
+    }
+    return step
 }
 
 struct Record: AsyncParsableCommand {
@@ -1438,6 +1980,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             params["asMarkdown"] = true
         }
         if boolValue(step, "keepImages") == true { params["keepImages"] = true }
+        if boolValue(step, "redact") == true { params["redact"] = true }
+        if let redactRegexes = step["redactRegexes"] as? [String], !redactRegexes.isEmpty {
+            params["redactRegexes"] = redactRegexes
+        }
         return try client.call(method: "read_tab", params: params)
     case "screenshot":
         if let clip = step["clip"] as? [String: Any] { params["clip"] = clip }
@@ -1447,18 +1993,48 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             ?? "/tmp/abg-replay-\(tabId)-\(Int(Date().timeIntervalSince1970)).png"
         return try saveScreenshotResult(result, outPath: outPath)
     case "click":
-        for key in ["selector", "id", "all", "grid", "limit", "x", "y"] {
+        for key in ["selector", "id", "ref", "all", "grid", "limit", "x", "y"] {
             if let value = step[key] { params[key] = value }
         }
         return try client.call(method: "click_tab", params: params)
+    case "dblclick":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "dblclick_tab", params: params)
+    case "focus":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "focus_tab", params: params)
+    case "hover":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "hover_tab", params: params)
+    case "select":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        if let value = stringValue(step, "value") { params["value"] = value }
+        if let label = stringValue(step, "label") { params["label"] = label }
+        return try client.call(method: "select_tab", params: params)
+    case "check", "uncheck":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        params["checked"] = op == "check"
+        return try client.call(method: "checked_state_tab", params: params)
+    case "find":
+        for key in ["locator", "role", "query", "action", "value", "exact", "indexModifier", "index"] {
+            if let value = step[key] { params[key] = value }
+        }
+        return try client.call(method: "find_tab", params: params)
     case "fill":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
+        if boolValue(step, "diff") == true { params["auditDiff"] = true }
         return try client.call(method: "fill_tab", params: params)
     case "paste":
         params["selector"] = try requiredString(step, "selector", op: op)
         params["value"] = stringValue(step, "value") ?? ""
         return try client.call(method: "paste_tab", params: params)
+    case "paste_rich":
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let mime = stringValue(step, "mime") { params["mime"] = mime }
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "paste_rich_tab", params: params)
     case "clear":
         params["selector"] = try requiredString(step, "selector", op: op)
         return try client.call(method: "clear_tab", params: params)
@@ -1475,15 +2051,34 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
             params["modifiers"] = modifiers.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
         }
         return try client.call(method: "key_tab", params: params)
+    case "keydown", "keyup":
+        params["key"] = try requiredString(step, "key", op: op)
+        if let modifiers = stringValue(step, "modifiers") {
+            params["modifiers"] = modifiers.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        }
+        return try client.call(method: op == "keydown" ? "key_down_tab" : "key_up_tab", params: params)
+    case "keyboard_insert_text":
+        params["text"] = try requiredString(step, "text", op: op)
+        return try client.call(method: "keyboard_insert_text_tab", params: params)
+    case "exec_command":
+        params["command"] = try requiredString(step, "command", op: op)
+        if let value = stringValue(step, "value") { params["value"] = value }
+        return try client.call(method: "exec_command_tab", params: params)
     case "navigate":
         params["url"] = try requiredString(step, "url", op: op)
         return try client.call(method: "navigate_tab", params: params)
     case "scroll":
         params["deltaX"] = doubleValue(step, "dx") ?? 0
         params["deltaY"] = doubleValue(step, "dy") ?? 0
+        if let selector = stringValue(step, "selector") { params["selector"] = selector }
+        if let frame = stringValue(step, "frame") { params["frame"] = frame }
+        if let steps = intValue(step, "steps") { params["steps"] = steps }
         if let atX = doubleValue(step, "atX") { params["atX"] = atX }
         if let atY = doubleValue(step, "atY") { params["atY"] = atY }
         return try client.call(method: "scroll_tab", params: params)
+    case "scroll-into-view":
+        params["selector"] = try requiredString(step, "selector", op: op)
+        return try client.call(method: "scroll_into_view_tab", params: params)
     case "drag":
         for key in ["fromSelector", "toSelector", "fromX", "fromY", "toX", "toY", "steps"] {
             if let value = step[key] { params[key] = value }
@@ -1494,13 +2089,44 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         params["file"] = try requiredString(step, "file", op: op)
         return try client.call(method: "upload_tab", params: params)
     case "wait":
+        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
+        let load = stringValue(step, "load")
         if let selector = stringValue(step, "selector") {
-            params["selector"] = selector
-            if boolValue(step, "hidden") == true { params["hidden"] = true }
+            if let load {
+                guard validWaitLoadStates.contains(load) else {
+                    try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+                }
+                var loadParams = params
+                loadParams["loadState"] = load
+                let loadResult = try client.call(method: "wait_tab", params: loadParams)
+                guard waitResultOK(loadResult) else {
+                    return combinedLoadSelectorWaitResult(load: loadResult, selector: nil)
+                }
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+                let selectorResult = try client.call(method: "wait_tab", params: params)
+                return combinedLoadSelectorWaitResult(load: loadResult, selector: selectorResult)
+            } else {
+                params["selector"] = selector
+                if boolValue(step, "hidden") == true { params["hidden"] = true }
+                if let frame = stringValue(step, "frame") { params["frame"] = frame }
+            }
         } else if let ms = intValue(step, "ms") {
             params["sleepMs"] = ms
+        } else if let text = stringValue(step, "text") {
+            params["text"] = text
+        } else if let url = stringValue(step, "url") {
+            params["urlPattern"] = url
+        } else if let load {
+            guard validWaitLoadStates.contains(load) else {
+                try failWithJSON(["error": "bad_params", "message": "Unsupported wait load state in replay: \(load)"])
+            }
+            params["loadState"] = load
+        } else if let fn = stringValue(step, "fn") {
+            params["predicate"] = fn
         }
-        params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
+        params["timeoutMs"] = intValue(step, "timeout") ?? defaultGatewayTimeoutMs()
         return try client.call(method: "wait_tab", params: params)
     default:
         try failWithJSON(["error": "unknown_replay_op", "message": "Unknown replay op: \(op)"])
@@ -1537,6 +2163,17 @@ struct Audit: AsyncParsableCommand {
     }
 }
 
+struct Activity: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "ローカル監査ログの日次/週次サマリー")
+    @Option(name: .long, help: "集計期間: day または week (デフォルト day)") var period: String = "day"
+
+    func run() async throws {
+        let client = UDSClient()
+        let result = try client.call(method: "activity_digest", params: ["period": period])
+        printJSON(result)
+    }
+}
+
 struct Plugin: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "plugin",
@@ -1546,6 +2183,9 @@ struct Plugin: AsyncParsableCommand {
             PluginInstall.self,
             PluginUninstall.self,
             PluginUpdate.self,
+            PluginEnable.self,
+            PluginDisable.self,
+            PluginReload.self,
         ]
     )
 }
@@ -1610,7 +2250,7 @@ struct PluginList: AsyncParsableCommand {
 }
 
 struct PluginInstall: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "install", abstract: "~/.abg/plugins に plugin をインストール")
+    static let configuration = CommandConfiguration(commandName: "install", abstract: "ABG user plugin directory に plugin をインストール")
     @Argument(help: "GitHub repo (user/repo), git URL, or local plugin directory") var source: String
     @Option(name: .long, help: "インストール名 (省略時 source から推定)") var name: String?
     @Flag(name: .long, help: "既存 plugin を置き換える") var force: Bool = false
@@ -1626,39 +2266,20 @@ struct PluginInstall: AsyncParsableCommand {
         }
 
         let userDir = try userPluginsDirectory()
-        let installName = sanitizePluginName(name ?? inferredPluginName(from: source))
-        let destination = userDir.appendingPathComponent(installName, isDirectory: true)
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destination.path) {
-            guard force else {
-                try failWithJSON([
-                    "error": "plugin_exists",
-                    "message": "\(installName) is already installed. Use --force to replace it.",
-                ])
-            }
-            try fm.removeItem(at: destination)
-        }
-
-        if localPluginSourceExists(source) {
-            try fm.copyItem(at: URL(fileURLWithPath: (source as NSString).expandingTildeInPath), to: destination)
-        } else {
-            let cloneSource = normalizedGitSource(source)
-            try runProcess("/usr/bin/env", ["git", "clone", "--depth", "1", cloneSource, destination.path])
-        }
-
-        guard fm.fileExists(atPath: destination.appendingPathComponent("index.js").path) else {
-            try? fm.removeItem(at: destination)
+        do {
+            let result = try ABGPluginInstaller.install(
+                source: source,
+                name: name,
+                force: force,
+                pluginsDirectory: userDir
+            )
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginInstallError {
             try failWithJSON([
-                "error": "invalid_plugin",
-                "message": "Installed source does not contain index.js at plugin root.",
+                "error": error.code,
+                "message": error.localizedDescription,
             ])
         }
-
-        printJSON(pluginInfo(at: destination, source: "user") ?? [
-            "name": installName,
-            "path": destination.path,
-            "source": "user",
-        ])
     }
 }
 
@@ -1667,12 +2288,16 @@ struct PluginUninstall: AsyncParsableCommand {
     @Argument(help: "plugin name") var name: String
 
     func run() async throws {
-        let destination = try userPluginsDirectory().appendingPathComponent(sanitizePluginName(name), isDirectory: true)
-        guard FileManager.default.fileExists(atPath: destination.path) else {
-            try failWithJSON(["error": "plugin_not_found", "message": "\(name) is not installed in ~/.abg/plugins"])
+        let pluginsDir = try userPluginsDirectory()
+        do {
+            let result = try ABGPluginInstaller.uninstall(name: name, pluginsDirectory: pluginsDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
         }
-        try FileManager.default.removeItem(at: destination)
-        printJSON(["ok": true, "removed": destination.path])
     }
 }
 
@@ -1682,39 +2307,86 @@ struct PluginUpdate: AsyncParsableCommand {
 
     func run() async throws {
         let root = try userPluginsDirectory()
-        let targets: [URL]
-        if let name {
-            targets = [root.appendingPathComponent(sanitizePluginName(name), isDirectory: true)]
-        } else {
-            targets = (try? FileManager.default.contentsOfDirectory(
-                at: root,
-                includingPropertiesForKeys: [.isDirectoryKey]
-            )) ?? []
-        }
+        let results = try ABGPluginInstaller.updatePlugins(name: name, pluginsDirectory: root)
+        printJSON(results.map(\.dictionary))
+    }
+}
 
-        var results: [[String: Any]] = []
-        for target in targets.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard FileManager.default.fileExists(atPath: target.appendingPathComponent(".git").path) else {
-                results.append(["name": target.lastPathComponent, "status": "skipped", "reason": "not a git checkout"])
-                continue
-            }
-            do {
-                let output = try runProcess("/usr/bin/env", ["git", "-C", target.path, "pull", "--ff-only"])
-                results.append(["name": target.lastPathComponent, "status": "updated", "output": output])
-            } catch {
-                results.append(["name": target.lastPathComponent, "status": "failed", "error": "\(error)"])
-            }
+struct PluginEnable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "enable", abstract: "disabled user plugin を有効化")
+    @Argument(help: "plugin install name") var name: String
+
+    func run() async throws {
+        if shouldUseRunningGatewayForPluginState(),
+           let result = try? UDSClient().call(
+            method: "plugin_enable",
+            params: ["pluginName": name],
+            suppressErrors: true
+           ) {
+            printJSON(result)
+            return
         }
-        printJSON(results)
+        let root = try userPluginsDirectory()
+        do {
+            let result = try ABGPluginStateStore.enable(name: name, pluginsDirectory: root, userDirectory: ABGConstants.abgUserDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
+        }
+    }
+}
+
+struct PluginDisable: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "disable", abstract: "user plugin を削除せず無効化")
+    @Argument(help: "plugin install name") var name: String
+
+    func run() async throws {
+        if shouldUseRunningGatewayForPluginState(),
+           let result = try? UDSClient().call(
+            method: "plugin_disable",
+            params: ["pluginName": name],
+            suppressErrors: true
+           ) {
+            printJSON(result)
+            return
+        }
+        let root = try userPluginsDirectory()
+        do {
+            let result = try ABGPluginStateStore.disable(name: name, pluginsDirectory: root, userDirectory: ABGConstants.abgUserDir)
+            printJSON(result.dictionary)
+        } catch let error as ABGPluginManagementError {
+            try failWithJSON([
+                "error": error.code,
+                "message": error.localizedDescription,
+            ])
+        }
+    }
+}
+
+struct PluginReload: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "reload", abstract: "起動中 Gateway の plugin を再読み込み")
+    @Argument(help: "plugin name (省略時は全 plugin)") var name: String?
+
+    func run() async throws {
+        var params: [String: Any] = [:]
+        if let name { params["pluginName"] = name }
+        let result = try UDSClient().call(method: "plugin_reload", params: params)
+        printJSON(result)
     }
 }
 
 func userPluginsDirectory() throws -> URL {
-    let url = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".abg", isDirectory: true)
-        .appendingPathComponent("plugins", isDirectory: true)
+    let url = ABGConstants.userPluginsDir
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+}
+
+func shouldUseRunningGatewayForPluginState(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+    let override = environment["ABG_USER_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return override?.isEmpty ?? true
 }
 
 func bundledPluginDirectories() -> [URL] {
@@ -1774,6 +2446,14 @@ func pluginInfo(at dir: URL, source: String) -> [String: Any]? {
         "source": source,
         "path": dir.path,
     ]
+    if source == "user" {
+        dict["enabled"] = !ABGPluginStateStore.isDisabled(
+            installName: dir.lastPathComponent,
+            userDirectory: dir.deletingLastPathComponent().deletingLastPathComponent()
+        )
+    } else {
+        dict["enabled"] = true
+    }
     if let version = manifest?.version { dict["version"] = version }
     if let author = manifest?.author { dict["author"] = author }
     if let description = manifest?.description { dict["description"] = description }
@@ -1805,28 +2485,19 @@ func readPluginManifest(at dir: URL) -> PluginManifest? {
 }
 
 func localPluginSourceExists(_ source: String) -> Bool {
-    var isDir: ObjCBool = false
-    return FileManager.default.fileExists(
-        atPath: (source as NSString).expandingTildeInPath,
-        isDirectory: &isDir
-    ) && isDir.boolValue
+    ABGPluginInstaller.localPluginSourceExists(source)
 }
 
 func normalizedGitSource(_ source: String) -> String {
-    if source.contains("://") || source.hasPrefix("git@") { return source }
-    if source.split(separator: "/").count == 2 { return "https://github.com/\(source).git" }
-    return source
+    ABGPluginInstaller.normalizedGitSource(source)
 }
 
 func inferredPluginName(from source: String) -> String {
-    let trimmed = source.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    let last = trimmed.split(separator: "/").last.map(String.init) ?? "plugin"
-    return last.hasSuffix(".git") ? String(last.dropLast(4)) : last
+    ABGPluginInstaller.inferredPluginName(from: source)
 }
 
 func sanitizePluginName(_ name: String) -> String {
-    let sanitized = name.replacingOccurrences(of: #"[^A-Za-z0-9_.-]"#, with: "-", options: .regularExpression)
-    return sanitized.isEmpty ? "plugin" : sanitized
+    ABGPluginInstaller.sanitizePluginName(name)
 }
 
 @discardableResult
@@ -1845,6 +2516,260 @@ func runProcess(_ executable: String, _ arguments: [String]) throws -> String {
         throw CLIError.ioError(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+struct MCPServer: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "mcp-server",
+        abstract: "Run a stdio MCP server that exposes the abg CLI as a thin tool wrapper"
+    )
+
+    @Option(name: .long, help: "Path to the abg executable. Defaults to ABG_MCP_ABG_PATH or the current executable.") var abgPath: String?
+
+    func run() async throws {
+        let resolvedPath = abgPath
+            ?? ProcessInfo.processInfo.environment["ABG_MCP_ABG_PATH"]
+            ?? URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path
+        try ABGMCPStdioServer(abgPath: resolvedPath).run()
+    }
+}
+
+struct ABGMCPStdioServer {
+    let abgPath: String
+    private let supportedProtocolVersions = [
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+        "2024-10-07",
+    ]
+
+    func run() throws {
+        while let line = readLine(strippingNewline: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if let response = handleLine(trimmed) {
+                print(response)
+                fflush(stdout)
+            }
+        }
+    }
+
+    private func handleLine(_ line: String) -> String? {
+        guard let data = line.data(using: .utf8),
+              let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return jsonRPCError(id: NSNull(), code: -32700, message: "Parse error")
+        }
+        let id = request["id"]
+        guard let method = request["method"] as? String else {
+            return id == nil ? nil : jsonRPCError(id: id, code: -32600, message: "Invalid request")
+        }
+        if id == nil, method.hasPrefix("notifications/") {
+            return nil
+        }
+
+        switch method {
+        case "initialize":
+            let params = request["params"] as? [String: Any]
+            let protocolVersion = negotiatedProtocolVersion(params?["protocolVersion"] as? String)
+            return jsonRPCResult(id: id, result: [
+                "protocolVersion": protocolVersion,
+                "capabilities": [
+                    "tools": [
+                        "listChanged": false,
+                    ],
+                ],
+                "serverInfo": [
+                    "name": "agent-browser-gateway",
+                    "version": SkillBundle.version,
+                ],
+            ])
+        case "ping":
+            return jsonRPCResult(id: id, result: [:])
+        case "tools/list":
+            return jsonRPCResult(id: id, result: [
+                "tools": [
+                    abgCLIToolDescription(),
+                ],
+            ])
+        case "tools/call":
+            return handleToolCall(id: id, params: request["params"] as? [String: Any])
+        default:
+            return jsonRPCError(id: id, code: -32601, message: "Method not found")
+        }
+    }
+
+    private func handleToolCall(id: Any?, params: [String: Any]?) -> String {
+        guard let name = params?["name"] as? String else {
+            return jsonRPCError(id: id, code: -32602, message: "Missing tool name")
+        }
+        guard name == "abg_cli" else {
+            return jsonRPCError(id: id, code: -32602, message: "Unknown tool: \(name)")
+        }
+        guard let arguments = params?["arguments"] as? [String: Any],
+              let rawArgs = arguments["args"] as? [Any] else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli requires arguments.args")
+        }
+        let cliArgs = rawArgs.compactMap { $0 as? String }
+        guard cliArgs.count == rawArgs.count, !cliArgs.isEmpty else {
+            return jsonRPCError(id: id, code: -32602, message: "arguments.args must be a non-empty string array")
+        }
+        guard cliArgs.first != "mcp-server" else {
+            return jsonRPCError(id: id, code: -32602, message: "abg_cli cannot launch mcp-server recursively")
+        }
+
+        do {
+            let result = try runABGCLI(args: cliArgs)
+            return jsonRPCResult(id: id, result: toolResult(from: result))
+        } catch {
+            return jsonRPCResult(id: id, result: [
+                "content": [
+                    [
+                        "type": "text",
+                        "text": "Failed to run abg: \(error.localizedDescription)",
+                    ],
+                ],
+                "isError": true,
+            ])
+        }
+    }
+
+    private func negotiatedProtocolVersion(_ clientVersion: String?) -> String {
+        guard let clientVersion else { return supportedProtocolVersions[0] }
+        return supportedProtocolVersions.contains(clientVersion) ? clientVersion : supportedProtocolVersions[0]
+    }
+
+    private func abgCLIToolDescription() -> [String: Any] {
+        [
+            "name": "abg_cli",
+            "description": """
+            Run the local abg CLI by passing argv tokens after `abg`. This MCP wrapper does not
+            bypass ABG permissions: tab sharing, operation approval, audit logging, and plugin
+            execution all remain enforced by the existing CLI/Gateway path. Examples: ["status"],
+            ["tabs", "--compact"], ["read", "t1", "--format", "markdown"].
+            """,
+            "inputSchema": [
+                "type": "object",
+                "properties": [
+                    "args": [
+                        "type": "array",
+                        "items": ["type": "string"],
+                        "minItems": 1,
+                        "description": "Command-line arguments to pass after `abg`; shell expansion is not performed.",
+                    ],
+                ],
+                "required": ["args"],
+                "additionalProperties": false,
+            ],
+        ]
+    }
+
+    private func runABGCLI(args: [String]) throws -> ABGCLIExecutionResult {
+        let process = Process()
+        if abgPath.contains("/") {
+            process.executableURL = URL(fileURLWithPath: abgPath)
+            process.arguments = args
+        } else {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = [abgPath] + args
+        }
+        process.environment = ProcessInfo.processInfo.environment
+
+        let stdoutURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stdout")
+        let stderrURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-mcp-\(UUID().uuidString).stderr")
+        FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stdoutHandle = try FileHandle(forWritingTo: stdoutURL)
+        let stderrHandle = try FileHandle(forWritingTo: stderrURL)
+        defer {
+            try? stdoutHandle.close()
+            try? stderrHandle.close()
+            try? FileManager.default.removeItem(at: stdoutURL)
+            try? FileManager.default.removeItem(at: stderrURL)
+        }
+
+        process.standardOutput = stdoutHandle
+        process.standardError = stderrHandle
+        try process.run()
+        process.waitUntilExit()
+        try? stdoutHandle.close()
+        try? stderrHandle.close()
+
+        let stdout = String(data: (try? Data(contentsOf: stdoutURL)) ?? Data(), encoding: .utf8) ?? ""
+        let stderr = String(data: (try? Data(contentsOf: stderrURL)) ?? Data(), encoding: .utf8) ?? ""
+        return ABGCLIExecutionResult(
+            exitCode: Int(process.terminationStatus),
+            stdout: stdout.trimmingCharacters(in: .whitespacesAndNewlines),
+            stderr: stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private func toolResult(from execution: ABGCLIExecutionResult) -> [String: Any] {
+        let text = [execution.stdout, execution.stderr]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        var result: [String: Any] = [
+            "content": [
+                [
+                    "type": "text",
+                    "text": text.isEmpty ? "(no output)" : text,
+                ],
+            ],
+            "structuredContent": execution.structuredContent,
+        ]
+        if execution.exitCode != 0 {
+            result["isError"] = true
+        }
+        return result
+    }
+
+    private func jsonRPCResult(id: Any?, result: [String: Any]) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "result": result,
+        ])
+    }
+
+    private func jsonRPCError(id: Any?, code: Int, message: String) -> String {
+        stringify([
+            "jsonrpc": "2.0",
+            "id": id ?? NSNull(),
+            "error": [
+                "code": code,
+                "message": message,
+            ],
+        ])
+    }
+
+    private func stringify(_ object: [String: Any]) -> String {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal JSON encoding error"}}"#
+        }
+        return text
+    }
+}
+
+struct ABGCLIExecutionResult {
+    let exitCode: Int
+    let stdout: String
+    let stderr: String
+
+    var structuredContent: [String: Any] {
+        var content: [String: Any] = ["exitCode": exitCode]
+        if !stderr.isEmpty {
+            content["stderr"] = stderr
+        }
+        if let data = stdout.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) {
+            content["json"] = json
+        }
+        return content
+    }
 }
 
 struct InstallSkill: AsyncParsableCommand {
@@ -1866,9 +2791,19 @@ struct InstallSkill: AsyncParsableCommand {
             throw ExitCode.failure
         }
 
-        let bundledVersion = SkillBundle.version
         for base in dirs {
-            try installOne(into: base, version: bundledVersion)
+            try installOne(
+                into: base,
+                skillName: "agent-browser-gateway",
+                markdown: SkillBundle.markdown,
+                version: SkillBundle.version
+            )
+            try installOne(
+                into: base,
+                skillName: "abg-plugin-creator",
+                markdown: SkillBundle.pluginCreatorMarkdown,
+                version: SkillBundle.pluginCreatorVersion
+            )
         }
 
         // Migrate away from the legacy single-file install path.
@@ -1879,14 +2814,14 @@ struct InstallSkill: AsyncParsableCommand {
         }
     }
 
-    private func installOne(into base: URL, version: String) throws {
-        let skillDir = base.appendingPathComponent("agent-browser-gateway", isDirectory: true)
+    private func installOne(into base: URL, skillName: String, markdown: String, version: String) throws {
+        let skillDir = base.appendingPathComponent(skillName, isDirectory: true)
         try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
         let dest = skillDir.appendingPathComponent("SKILL.md")
         let installedVersion = readInstalledVersion(at: dest)
         let installedMarkdown = (try? String(contentsOf: dest, encoding: .utf8))
 
-        if let installed = installedVersion, installed == version, installedMarkdown == SkillBundle.markdown {
+        if let installed = installedVersion, installed == version, installedMarkdown == markdown {
             print("up-to-date: \(dest.path) (v\(version))")
             return
         }
@@ -1896,7 +2831,7 @@ struct InstallSkill: AsyncParsableCommand {
             return
         }
 
-        try SkillBundle.markdown.write(to: dest, atomically: true, encoding: .utf8)
+        try markdown.write(to: dest, atomically: true, encoding: .utf8)
         if let installed = installedVersion {
             if installed == version {
                 print("updated: content changed at \(dest.path) (v\(version))")

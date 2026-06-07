@@ -1,10 +1,42 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-07.
+Living document. Reflects current intent, not commitment. Last updated 2026-05-31.
 
-Current repo version: **v0.3.6**.
+Current repo version: **v0.3.12**.
 
 ## Shipped
+
+### v0.3.12 — Trusted eval automation and release freshness guardrails (2026-05-31)
+- Added Trusted automation / AutoMode for eval-heavy trusted sessions, allowing already-shared tabs to skip the per-call eval approval popup only after the user opts in.
+- Kept eval disabled by default, preserved the `--approve` + local approval default path when AutoMode is off, and recorded approval mode plus result summaries in audit entries.
+- Required release bumps to verify docs, GitHub Pages content, and bundled Claude/Codex skill guidance before packaging so release artifacts and user guidance stay aligned.
+
+### v0.3.11 — Advanced browser parity under consent boundaries (2026-05-30)
+- Added iframe frame targeting, JavaScript dialog handling, download lifecycle inspection, response waits/body previews, and redacted HAR export for shared tabs.
+- Added read-only cookie/Web Storage inspection, framework/Web Vitals diagnostics, and sandbox/all-tabs browser-owned controls with approval and audit requirements.
+- Documented the advanced automation policy, official non-goals, user-controlled deployment boundary, GitHub Pages docs, and bundled Claude/Codex skill guidance for the updated command surface.
+
+### v0.3.10 — All-tabs profile mode and public docs (2026-05-28)
+- Added optional all-tabs profile access for isolated Chrome profiles and sandbox machines, with Chrome's optional `<all_urls>` permission requested only after local user opt-in.
+- Plumbed `accessMode` through the extension, Gateway protocol, CLI compact tab lists, audit details, and Windows protocol parity so agents can distinguish `manual` from `all_tabs` context.
+- Added the public Docs page and refreshed README, SECURITY, Chrome Web Store notes, plugin docs, and bundled Claude/Codex skill guidance for the updated trust model.
+
+### v0.3.9 — Incognito access guidance (2026-05-27)
+- Added Chrome incognito access detection to the extension popup so users can see when Chrome has not allowed ABG in incognito windows.
+- Added a popup settings shortcut and blocked incognito tab sharing with an explicit error when access is disabled.
+- Updated setup and temporary zip install docs to explain Chrome's `Allow in incognito` switch for Secret Window workflows.
+
+### v0.3.8 — Approved JavaScript eval escape hatch (2026-05-25)
+- Added `abg eval` as a disabled-by-default escape hatch for long-tail browser workflows that named primitives do not cover.
+- Kept eval behind extension settings, with `--approve` and a local approval window by default; explicit Trusted automation / AutoMode can skip the popup for already-shared tabs while preserving audit.
+- Added sanitized return serialization, result size caps, and audit entries with script source plus result type/byte summary.
+- Updated README, SECURITY, bundled Claude/Codex skill guidance, Windows docs, and GitHub Pages download metadata for the new boundary.
+
+### v0.3.7 — Agent-browser / Playwright parity CLI expansion (2026-05-25)
+- Completed Epic #96 by shipping the autonomous-agent CLI parity layer across focused sub-issues.
+- Added compact inspection primitives (`inspect`, `get`, `find`, `snapshot`, predicates, multi-tab snapshots) so agents can avoid brittle CSS and oversized DOM reads.
+- Expanded browser actions (`dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll-into-view`, key down/up, direct text insertion, PDF, richer waits, stream, and editable validation) while preserving per-tab consent and approval-mode boundaries.
+- Refreshed README and the bundled Claude/Codex skill guidance so the documented command surface matches the release.
 
 ### v0.3.6 — Plugin commands API and authoring guide (2026-05-07)
 - Added first-class plugin commands from PR #118 as the headline public API for this release.
@@ -19,7 +51,7 @@ Current repo version: **v0.3.6**.
 
 ### v0.1 — read-only baseline (2026-05-01)
 - macOS 14+ menubar app (Swift / SwiftUI `MenuBarExtra`)
-- Chrome MV3 extension (`activeTab` + `scripting` + `debugger` + `tabs` + `storage` + `alarms`, **no `host_permissions`**)
+- Chrome MV3 extension (`activeTab` + `scripting` + `debugger` + `tabs` + `storage` + `alarms`, no default `host_permissions`, optional `<all_urls>` for all-tabs profile mode)
 - Per-tab consent with auto-revoke on origin change / tab close / explicit revoke
 - Read tools: `read` / `screenshot` / `console`
 - `abg` CLI (Swift Argument Parser)
@@ -83,41 +115,47 @@ Current repo version: **v0.3.6**.
 ## In progress
 
 - WS bind retry (Gateway currently does not retry if the port is already in use)
+- MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
-- Settings UI in the Gateway window for timeout defaults, approval mode, and per-domain policy
+- Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
 
 ## Next
 
-- MCP server as a thin wrapper over the same CLI for ecosystem coverage
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
+- Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
+  explicit-permission track, separate from normal per-tab sharing.
 
 ## Later
 
 - Daily/weekly digest of agent activity (local only, opt-in)
 - `wait_for_response` and other DevTools-Protocol-flavored tools (network idle, page load, etc.)
+- Browser-owned automation controls such as storage mutation, network mocking, init scripts,
+  emulation, and tab/window management are sandbox/all-tabs profile work, not normal per-tab work.
 
 ## Phase 3
 
-- Firefox extension (WebExtensions, MV3 path)
+- Gateway runtime/macOS shell boundary for desktop OS ports
+- Shared extension browser-adapter boundary for desktop browser ports
+- Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
-- Windows port of the Gateway
+- Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
 
 ## Phase 4
 
 - iOS Safari Web Extension
 - Android Chrome
-- Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing
+- Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
 
 ## Hard non-goals
 
 These will not happen, regardless of demand:
 
-- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback.
-- Any telemetry / analytics. Even opt-in.
-- An "execute arbitrary JavaScript" tool exposed to agents.
+- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback; #71 is limited to private Tailnet/LAN pairing controlled by the user.
+- Any telemetry / analytics sent to ABG operators. User/team-owned local metrics in self-hosted deployments are separate from official ABG telemetry.
+- Hidden JavaScript execution without explicit user policy. The only general eval path is disabled by default and requires explicit enablement plus either per-call local approval or explicit Trusted automation / AutoMode, with audit.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.
 
 ## Reproducibility milestones (toward v1.0)

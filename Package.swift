@@ -39,7 +39,7 @@ let package = Package(
         ),
         .testTarget(
             name: "GatewayTests",
-            dependencies: ["Gateway"],
+            dependencies: ["Gateway", "GatewayCore"],
             path: "Tests/GatewayTests"
         ),
     ]

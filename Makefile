@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway extension all clean test lint format dist pages-dmg release verify
+.PHONY: help install gateway gateway-dev extension all clean test lint format dist docker-repro pages-dmg windows-dist pages-windows release verify
 
 PAGES_OUTPUT_DIR ?= site/downloads
 
@@ -9,6 +9,7 @@ help:
 	@printf "ABG dev targets:\n\n"
 	@printf "  make install      install Node + pnpm via mise, then extension deps\n"
 	@printf "  make gateway      build Agent Browser Gateway.app and abg CLI (release)\n"
+	@printf "  make gateway-dev  build Agent Browser Gateway Dev.app and dev CLI (debug, port 8766)\n"
 	@printf "  make extension    build Chrome extension to extension/dist/\n"
 	@printf "  make all          gateway + extension\n"
 	@printf "  make lint         biome check\n"
@@ -16,7 +17,10 @@ help:
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
+	@printf "  make docker-repro build reproducible Linux abg CLI artifacts through Docker\n"
 	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
+	@printf "  make windows-dist build Windows x64 zip (run from Windows with dotnet)\n"
+	@printf "  make pages-windows build Windows x64 zip and copy it to site/downloads\n"
 	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
@@ -29,13 +33,16 @@ gateway:
 	./build-app.sh
 	@printf "\nlink CLI to PATH:\n  ln -sf $$(pwd)/.build/release/abg /usr/local/bin/abg\n"
 
+gateway-dev:
+	CONFIG=debug APP_VARIANT=dev ./build-app.sh
+
 extension:
 	cd extension && pnpm run build
 
 all: gateway extension
 
 clean:
-	rm -rf .build dist extension/dist extension/node_modules "Agent Browser Gateway.app" Gateway.app
+	rm -rf .build dist extension/dist extension/node_modules "Agent Browser Gateway.app" "Agent Browser Gateway Dev.app" Gateway.app
 
 lint:
 	cd extension && pnpm run lint
@@ -55,12 +62,27 @@ verify:
 
 dist:
 ifndef VERSION
-	$(error VERSION is required, e.g. make dist VERSION=0.3.1)
+	$(error VERSION is required, e.g. make dist VERSION=0.3.10)
 endif
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" CASK_OUTPUT="$(CASK_OUTPUT)" bash scripts/dist-macos-arm64.sh
 
+docker-repro:
+	bash scripts/repro-docker-build.sh
+
 pages-dmg: dist
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" PAGES_OUTPUT_DIR="$(PAGES_OUTPUT_DIR)" bash scripts/dist-pages-dmg.sh
+
+windows-dist:
+ifndef VERSION
+	$(error VERSION is required, e.g. make windows-dist VERSION=0.3.10)
+endif
+	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)"
+
+pages-windows:
+ifndef VERSION
+	$(error VERSION is required, e.g. make pages-windows VERSION=0.3.10)
+endif
+	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)" -PagesOutputDir "$(PAGES_OUTPUT_DIR)"
 
 release: dist
 	@echo "Release artifacts for v$(VERSION) are in dist/"

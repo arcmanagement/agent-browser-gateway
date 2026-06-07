@@ -14,11 +14,16 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.3.6.zip
+dist/agent-browser-gateway-extension-0.3.10.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
 `extension/dist/` folder itself as a top-level directory.
+
+CI also builds and uploads the same package shape from the
+`Chrome Extension Package` workflow. The workflow runs `pnpm run webstore:zip`,
+checks that `manifest.json` is at the archive root, and uploads
+`chrome-extension-webstore-zip` as a GitHub Actions artifact.
 
 Chrome Web Store item ID:
 
@@ -29,7 +34,7 @@ ojgedfcgebjchckaagjkmlpgonpjggpi
 ## Store listing fields
 
 - Name: `Agent Browser Gateway`
-- Short description: `Share specific Chrome tabs with AI coding agents via per-tab explicit permission.`
+- Short description: `Share Chrome tabs with AI coding agents via explicit local permission.`
 - Category: `Developer Tools`
 - Language: `English`
 - Homepage URL: `https://agent-browser-gateway.com/`
@@ -41,24 +46,25 @@ Suggested detailed description:
 ```text
 Agent Browser Gateway lets you share the Chrome tab you choose with a local AI coding agent.
 
-It is built for browser-assisted development and support workflows where the human should keep control of the browser session. No tab is visible by default. You explicitly share one tab from the extension popup, and the local abg CLI can then read, screenshot, inspect console or network context, or perform approved operations in that shared tab.
+It is built for browser-assisted development and support workflows where the human should keep control of the browser session. No tab is visible by default. You explicitly share one tab from the extension popup, and the local abg CLI can then read, screenshot, inspect console or network context, or perform approved operations in that shared tab. For isolated Chrome profiles or sandbox machines, the user can also enable an optional all-tabs mode from the popup; Chrome then prompts for optional access to all sites in that profile.
 
 Core principles:
 - Per-tab consent instead of broad browser access
-- No host permissions in the extension manifest
+- No default host permissions in the extension manifest
+- Optional all-tabs access only after local user opt-in and Chrome's permission prompt
 - Local gateway over loopback transport
 - Agent-agnostic CLI for Codex, Claude Code, Cursor, Cline, and scripts
 - Token-efficient Markdown reads that reduce noisy HTML before it reaches an agent
 - Local audit log for inspectable operations
 - No analytics, advertising identifiers, or product telemetry
 
-ABG is not an end-to-end test runner and does not try to replace Playwright. Playwright is the right tool when automation owns the browser lifecycle. ABG is for the tab you are already using, with your current login and context, when you want to hand only that tab to an AI agent workflow.
+ABG is not an end-to-end test runner and does not try to replace Playwright. Playwright is the right tool when automation owns the browser lifecycle. ABG is for browser state you are already using, with your current login and context, when you want to hand selected tabs or an isolated all-tabs profile to an AI agent workflow.
 ```
 
 Suggested single purpose:
 
 ```text
-Provide user-authorized, local, per-tab browser access so AI coding agents can inspect or operate only the Chrome tab the user explicitly shares.
+Provide user-authorized, local browser access so AI coding agents can inspect or operate only the Chrome tab the user explicitly shares, or every shareable tab in an isolated profile after the user enables optional all-tabs mode.
 ```
 
 Suggested permission justifications:
@@ -69,6 +75,7 @@ Suggested permission justifications:
 - `storage`: Store local settings and session-scoped tab sharing state.
 - `debugger`: Capture screenshots, console messages, network information, file uploads, and input operations for a user-shared tab.
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
+- Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs in this profile"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.
 
 Remote code declaration:
 
@@ -97,7 +104,7 @@ browser data on ABG-operated servers.
 Suggested reviewer test instructions:
 
 ```text
-No account is required. To test: download the signed macOS gateway DMG from https://agent-browser-gateway.com/downloads/agent-browser-gateway-0.3.6-macos-arm64.dmg, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. For help, contact contact@arcm.co.jp.
+No account is required. To test: download the signed macOS gateway package from the latest GitHub Release at https://github.com/arcmanagement/agent-browser-gateway/releases, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. To test optional all-tabs mode, use an isolated Chrome profile, open the ABG popup, enable "Share all tabs in this profile", accept Chrome's permission prompt, then confirm `abg tabs --compact` shows `accessMode` as `all_tabs`. For help, contact contact@arcm.co.jp.
 ```
 
 ## Stable Chrome extension ID
@@ -128,3 +135,16 @@ If the item ever needs to be recreated from scratch, repeat this process:
 
 Do not commit a private `.pem` or other signing key. The manifest `"key"` value
 is a public key string used for deterministic extension ID generation.
+
+## CI and manual submission boundary
+
+The package workflow produces the submission ZIP only. It does not upload to the
+Chrome Web Store and does not store Chrome Web Store API credentials.
+
+- `extension/public/manifest.json` contains the public manifest `"key"` value so
+  CI, local builds, and unpacked builds keep the stable extension ID.
+- `extension/store-assets/` contains listing screenshots and promotional images.
+  These assets are not included in the extension ZIP; update them manually in the
+  Developer Dashboard when the listing changes.
+- A maintainer downloads the CI artifact, verifies the ZIP contents, and uploads
+  it manually to the Chrome Web Store Developer Dashboard.

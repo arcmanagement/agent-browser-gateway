@@ -1,8 +1,12 @@
+import { approvalRemainingMs, scriptBlockPresentation } from "./approvalLogic.js";
+import { browserAdapter } from "./browserAdapter.js";
 import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } from "./types.js";
 
+const browser = browserAdapter;
 const intentEl = document.getElementById("intent") as HTMLDivElement;
 const tabTitleEl = document.getElementById("tabTitle") as HTMLDivElement;
 const tabUrlEl = document.getElementById("tabUrl") as HTMLDivElement;
+const scriptBlockEl = document.getElementById("scriptBlock") as HTMLPreElement;
 const allowBtn = document.getElementById("allowBtn") as HTMLButtonElement;
 const denyBtn = document.getElementById("denyBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -12,7 +16,7 @@ let submitted = false;
 let timeoutId: number | null = null;
 
 async function send(msg: ApprovalToBackground): Promise<BackgroundToApproval> {
-  return (await chrome.runtime.sendMessage(msg)) as BackgroundToApproval;
+  return (await browser.runtime.sendMessage(msg)) as BackgroundToApproval;
 }
 
 async function decide(decision: ApprovalDecision): Promise<void> {
@@ -48,11 +52,13 @@ async function load(): Promise<void> {
   intentEl.textContent = request.intent;
   tabTitleEl.textContent = request.tab.title || "(untitled)";
   tabUrlEl.textContent = request.tab.url || "(no URL)";
+  const scriptBlock = scriptBlockPresentation(request.script);
+  scriptBlockEl.textContent = scriptBlock.text;
+  scriptBlockEl.hidden = scriptBlock.hidden;
   allowBtn.disabled = false;
   denyBtn.disabled = false;
 
-  const expiresAt = request.createdAt + request.timeoutMs;
-  const remainingMs = Math.max(0, expiresAt - Date.now());
+  const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
   statusEl.textContent = "This request expires in 60 seconds.";
   timeoutId = setTimeout(() => {
     decide("timeout").catch((e) => {
@@ -65,6 +71,8 @@ function showError(message: string): void {
   intentEl.textContent = "Unable to load approval request.";
   tabTitleEl.textContent = "";
   tabUrlEl.textContent = "";
+  scriptBlockEl.textContent = "";
+  scriptBlockEl.hidden = true;
   statusEl.textContent = message;
   allowBtn.disabled = true;
   denyBtn.disabled = true;

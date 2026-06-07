@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agent Browser Gateway">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M32 10 50 18v13c0 12.4-7.2 19.8-18 23-10.8-3.2-18-10.6-18-23V18l18-8Z" fill="#38bdf8"/>
+  <path d="M32 17 44 22.2v9.2c0 7.6-4.6 12.4-12 15-7.4-2.6-12-7.4-12-15v-9.2L32 17Z" fill="#0f172a"/>
+  <path d="M25 32h14M32 25v14" stroke="#e0f2fe" stroke-width="4" stroke-linecap="round"/>
+</svg>

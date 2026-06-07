@@ -1,0 +1,15 @@
+stateDiagram-v2
+  [*] --> Idle
+  Idle: Non shared
+  Consenting: Popup visible
+  Active: Shared tab
+  Revoked: Permission revoked
+
+  Idle --> Consenting: user opens share UI
+  Consenting --> Active: user clicks share
+  Consenting --> Idle: popup closed
+  Active --> Revoked: target identity changed
+  Active --> Revoked: tab closed
+  Active --> Revoked: user revoke
+  Active --> Revoked: gateway revoke
+  Revoked --> Idle: permission removed

@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml)
 
+Patent Pending: JP 2026-080620
+
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
 - 📖 **Public source** — Every line of code that touches your browser is auditable
@@ -61,11 +63,45 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 └──────────────────────────────┘
 ```
 
-Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero `host_permissions`**.
+Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup.
 
 ---
 
-## Per-tab consent model
+## Install
+
+ABG has three local pieces: the Chrome extension, the Gateway app, and the `abg`
+CLI. Install the browser extension first, then install the local Gateway.
+
+1. Install Agent Browser Gateway from the Chrome Web Store:
+
+   https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+
+2. Download the current macOS DMG from
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/).
+3. Open the DMG and double-click **Install Agent Browser Gateway.app**.
+
+The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
+`abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
+and starts the menubar app.
+
+Windows builds are published as ZIP packages from the same download page. Extract the Windows x64
+ZIP, open PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
+`.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
+into the nested folder that directly contains the installer script.
+
+After installation, open the tab you want to share, click the ABG extension icon,
+choose **Share this tab with agent**, and verify from a terminal:
+
+```bash
+abg tabs
+```
+
+Source builds, unpacked extension loading, and the separate dev app are covered
+in [Developer setup](#developer-setup).
+
+---
+
+## Tab access modes
 
 The core security model:
 
@@ -77,23 +113,52 @@ The core security model:
    - You close the tab
    - You explicitly revoke (via the popup or `abg revoke`)
 
-There is no "share all tabs" button. There is no `<all_urls>` permission. There is no way for an agent to see a tab you did not explicitly share.
+For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `clear`, `replace`, `upload`, `type`, `key`, `navigate`, `scroll`, and `drag` open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+
+Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
+The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
+The Gateway window also has Settings for profile-local timeout defaults, approval defaults, and
+per-domain policy drafts stored in `gateway-settings.json` under `~/.abg/` or `~/.abg-dev/`.
 
 ---
 
 ## CLI
+
+The machine-readable CLI output contract is documented in
+[`docs/CLI_JSON_CONTRACT.md`](docs/CLI_JSON_CONTRACT.md). Keep scripts and agent integrations on the
+documented JSON keys rather than parsing human-oriented help text.
 
 ```bash
 # Observation (read-only)
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
+abg read <tab|ref> --frame @f1 --selector "<css>"
+abg read <tab|ref> --selector "<css>" --editable-value
+abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
+abg get editable-value <tab|ref> "<css>"         # Rich-editor visible text + serialized HTML
+abg get attr <tab|ref> "<css>" --name href
+abg get styles <tab|ref> "<css>" --props display,color
+abg find role <tab|ref> button click --name "Submit"
+abg find text <tab|ref> "Welcome" text
+abg find label <tab|ref> "Email" fill --value "me@example.com"
+abg find first <tab|ref> "button" click
+abg find nth <tab|ref> 2 ".result" text          # zero-based index
+abg find text <tab|ref> "Pay now" click --frame @f1
+abg snapshot <tab|ref> --interactive-only --compact
+abg snapshot --tabs "post:t1:.editor,preview:t2:main,template:t3:.template"
+abg click <tab|ref> --ref @e1                    # ref from the most recent snapshot for that tab
+abg is-visible <tab|ref> --selector "<css>"      # Boolean predicates for shell flows
+abg is-enabled <tab|ref> --selector "<css>"
+abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
+abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
 abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
@@ -103,6 +168,24 @@ abg console <tab|ref>                            # console messages
 abg table <tab|ref> [--selector "table"] [--format json|markdown]
 abg describe <tab|ref> [--grid 10x10]            # clickable elements with viewport bboxes
 abg network <tab|ref> [--url "*api*"] [--status-min 400]
+abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192
+abg network <tab|ref> --wait-response --url "*api/save*" --method POST --status-min 200 --status-max 299
+abg network <tab|ref> --wait-response --url-regex "/api/items/\\d+$" --body --max-bytes 8192
+abg har <tab|ref> --out /tmp/session.har              # Redacted one-shot HAR export
+abg state <tab|ref> --kind cookies --name "sid*"      # Cookie/storage keys, values redacted
+abg state <tab|ref> --kind local-storage --key "user*" --values
+abg framework <tab|ref> --kind react                  # React tree when hooks are available
+abg framework <tab|ref> --kind web-vitals             # Performance/Web Vitals snapshot
+abg sandbox <tab|ref> viewport --width 390 --height 844 --mobile
+abg sandbox <tab|ref> storage-set --storage local-storage --key feature --value on
+abg sandbox <tab|ref> tab-create --url https://example.test
+abg download <tab|ref>                           # Latest downloads associated with this tab
+abg download <tab|ref> --wait --timeout 30000    # Wait for complete/interrupted state
+abg dialog <tab|ref>                             # Inspect pending alert/confirm/prompt
+abg dialog <tab|ref> --accept                    # Approve and accept a pending dialog
+abg dialog <tab|ref> --dismiss                   # Approve and dismiss a pending dialog
+abg dialog <tab|ref> --prompt-value "ok"         # Approve and submit prompt text
 
 # Tab targeting shortcuts
 abg read --match-url "*kintone*" --format markdown
@@ -112,17 +195,61 @@ abg click --match-title "アプリ管理" --selector "button.save"
 abg click <tab|ref> --selector "<css>"            # CSS selector click
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
-abg fill <tab|ref> --selector "<css>" --value "<text>"
+abg dblclick <tab|ref> --selector "<css>"         # Selector double-click via CDP
+abg focus <tab|ref> --selector "<css>"            # Focus without click side effects
+abg hover <tab|ref> --selector "<css>"            # Move mouse over an element
+abg select <tab|ref> --selector "select" --value "x"
+abg select <tab|ref> --selector "select" --label "Visible label"
+abg check <tab|ref> --selector "input[type=checkbox]"
+abg uncheck <tab|ref> --selector "input[type=checkbox]"
+abg fill <tab|ref> --selector "<css>" --value "<text>"  # input/textarea/contenteditable replacement
+abg fill <tab|ref> --selector "<css>" --value "<text>" --dry-run
+abg fill <tab|ref> --selector "<css>" --value "<text>" --diff
+abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt
+abg replace-editable <tab|ref> --selector "<css>" --text-file payload.txt --diff
 abg paste <tab|ref> --selector "<css>" --value "<text>"  # Clipboard + native paste for rich editors
 echo "long text" | abg paste <tab|ref> --selector "<css>" --stdin
+abg clipboard-write --mime "text/html" --value "<b>Hello</b>"
+abg paste-rich <tab|ref> --selector "<css>"      # Native paste with the current rich clipboard
+abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip
 abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
 abg type <tab|ref> "<text>"                       # Send text to current focus
 abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
+abg keydown <tab|ref> Shift
+abg keyup <tab|ref> Shift
+abg keyboard inserttext <tab|ref> "<text>"        # CDP Input.insertText without key events
+abg exec-command <tab|ref> --command insertText --value $'line1\nline2'  # focused edit-mode target
+printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdin
+abg exec-command <tab|ref> --command selectAll
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
-abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px); works on inner-scroll containers
+abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px)
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # Element scrollBy for virtual lists
+abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
+
+# Wait
+abg wait <tab|ref> --selector "<css>"
+abg wait <tab|ref> --selector "<css>" --hidden
+abg wait <tab|ref> --ms 1500
+abg wait <tab|ref> --text "Welcome"
+abg wait <tab|ref> --url "**/dashboard"
+abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
+abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle, then selector visible
+abg wait <tab|ref> --fn "window.ready === true"
+
+# Escape hatch
+abg eval <tab|ref> --script "document.title" --approve  # --approve required unless AutoMode is enabled
+
+# Runtime stream
+abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
+abg stream status
+abg stream disable
+
+# Validation
+abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
+abg validate editable <tab|ref> --selection
 
 # Repeatable flows
 abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
@@ -132,22 +259,121 @@ abg replay flow.json --match-url "*kintone*"
 # Management
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
+abg activity --period day|week          # Local daily/weekly activity digest
 abg install-skill                       # Install/update Claude Code + Codex Skills
+abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
 
-Use `fill` for native `input` and `textarea` fields when value assignment is enough. Use `type`
-when the target already has focus and needs per-character keyboard events. Use `paste` for rich
-editors that ignore synthetic value updates or character events, including Lexical, ProseMirror,
-Slate, Quill, and many native editable surfaces. `paste` writes the text to the clipboard, focuses
-the selected editable element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records
-the action, tab id, selector, and byte length only, never the pasted text.
+Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
+replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids
+clipboard dependence, and returns the detected editable kind plus replacement lengths. Use
+`replace-editable` when the stronger command name makes a CMS/rich-editor workflow clearer; it uses
+the same replacement path and can read from `--text-file` or `--stdin`. Add `--diff` when a high-risk
+editor change needs compact before/after evidence. ABG captures selector-scoped text and HTML
+hashes, lengths, and redacted bounded excerpts in the command result and local audit log, but does
+not write full before/after content or replacement values by default. Use `type` when the target
+already has focus and needs per-character keyboard events. Use `paste` for rich editors that ignore
+synthetic value updates or character events, including Lexical, ProseMirror, Slate, Quill, and many
+native editable surfaces. `paste` writes the text to the clipboard, focuses the selected editable
+element, and sends Cmd+V on macOS or Ctrl+V elsewhere; the audit log records the action, tab id,
+selector, and byte length only, never the pasted text.
+
+Use `activity --period day` or `activity --period week` when you want an opt-in local digest of
+recent agent activity instead of raw JSONL events. The digest is generated from the on-device audit
+log only and summarizes action counts, tab IDs, origins, timestamps, and approval outcomes. It does
+not include raw pasted values, clipboard payloads, plugin arguments, or raw audit `details`. Use
+`audit` when you need exact event records for debugging or review.
+
+Use `clipboard-write` and `paste-rich` for app-specific clipboard formats. `clipboard-write` writes
+one MIME payload to the local OS clipboard without a tab operation. `paste-rich` sends the native
+paste shortcut to the currently focused target, or focuses `--selector` first. The combined form
+`abg paste-rich t1 --mime "<type>" --value "<payload>"` writes the clipboard and pastes in one
+audited tab operation; the audit log records the tab, MIME type, and payload byte length, not the
+payload. For Google Sheets edit-mode cells, prepare the Sheets wrapped MIME payload and run
+`abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip`.
+For Figma layer paste, write the Figma-specific MIME payload first, focus the canvas, then run
+`abg paste-rich t1`.
+
+Use `exec-command` when the target already has focus in an edit-mode proxy and browser-native
+`document.execCommand` is the right input path. For example, double-click a Google Sheets cell or
+focus a contenteditable rich editor, then run
+`abg exec-command t1 --command insertText --value $'first line\nsecond line'`. The initial
+allowlist is `insertText`, `delete`, `selectAll`, `undo`, and `redo`; unsupported names fail before
+the browser sees the command. Audit logs record the tab, command name, and value byte length, not
+the inserted text.
 
 Use `clear` as the single-purpose primitive for emptying rich editors. It focuses the editable
 target, selects its content, and deletes it. The result includes `clearStrategy`, one of
 `execCommand`, `selectionRange`, `syntheticInput`, `keyboardShortcut`, or `null`.
 
-For Lexical-class editors and other rich editors that ignore `fill`, the canonical "set this
-editor's content to X" sequence is explicit:
+Use `get` when a script needs one compact value instead of a larger `read` payload. `get text/html`
+returns one selector-scoped value, `get count` returns a match count, `get box` returns a viewport
+rect, and `get styles --props display,color` keeps computed-style reads small.
+Use `get editable-value` or `read --editable-value` for rich editors when the visible editable text
+and serialized contenteditable DOM may diverge.
+Use `is-visible`, `is-enabled`, and `is-checked` for conditionals; a false predicate still exits
+successfully and returns `{ "value": false }`.
+Use `find` when CSS selectors would be brittle. `find role t1 button click --name "Save"` resolves
+by role and accessible name, while `text`, `label`, `placeholder`, `alt`, `title`, and `testid`
+cover common Playwright-style locators. Use `inspect` or `text` actions to inspect matches before
+mutating actions such as `click`, `fill`, `hover`, `focus`, `check`, or `uncheck`.
+`find first`, `find last`, and `find nth` apply explicit index modifiers to a CSS selector; `nth`
+uses zero-based indexes so scripts can align with array-style JSON output.
+Use `frames` before targeting iframe content. `frames` returns stable refs such as `@f1`, frame
+URLs, names, titles, nesting, and accessibility flags. Pass `--frame @f1` to `read`, `get`,
+`find`, `snapshot`, predicates, waits, and selector actions so frame targeting is explicit in CLI
+params, approvals, and recorded flows. ABG currently targets same-origin accessible frames only;
+cross-origin frames are listed but selector access returns `frame_not_accessible` instead of
+silently falling back to the top document.
+Use `eval` only as the long-tail escape hatch when named primitives are not enough. It is disabled
+by default in the extension popup. When Trusted automation / AutoMode is off, every call must pass
+`--approve` and Chrome opens a local approval window containing the exact script. When AutoMode is on,
+eval on already-shared tabs skips that popup. The audit log records the script source, approval mode,
+and result type/size summary; sanitized return values are capped by `--max-bytes`.
+Use `snapshot` when an agent needs an inspectable list of visible accessible elements. Each snapshot
+assigns refs such as `@e1`; refs are scoped to the latest snapshot for that tab and can be used with
+`abg click <tab> --ref @e1`.
+Use `snapshot --tabs "name:tab:selector,..."` for before/after evidence across multiple already
+shared tabs. Each target reports partial failure independently, so one missing selector does not
+drop successful captures.
+Use `download --wait` after a click or form action that is expected to download a file. ABG reports
+Chrome download metadata such as URL, suggested filename, MIME type, status, final path when
+available, byte counts, and failed/canceled states. It does not open or read downloaded file
+contents; if Chrome cannot expose a final path, the result includes `unavailableReason`.
+Use `wait-response` when a workflow needs a specific response before continuing. Match by URL glob
+or regex, method, status range, and resource type. Timeout returns stable JSON with `ok: false` and
+`error: "timeout"`. Response body preview is opt-in with `--body` and capped by `--max-bytes`; ABG
+does not store headers or response bodies in audit logs. The older `network --wait-response` spelling
+uses the same protocol path and remains available for compatibility.
+Use `har` when support/debugging needs a browser-standard network artifact. HAR export is one-shot,
+local-only, and redacted by default: cookies, authorization headers, request headers, request
+bodies, and response bodies are omitted. Only bounded buffered metadata is exported, with `--limit`
+capped at 1000 entries; the Gateway writes the file to `--out` or an ABG temp directory and records
+the tab, filters, byte size, redaction mode, and output path in the local audit log.
+Use `state` to inspect whether cookies, `localStorage`, or `sessionStorage` contain expected keys
+for the shared tab origin. Values are redacted by default; `--values` must be explicit and the
+Gateway audit log records that full values were requested. `state` is read-only and does not expose
+write/delete operations.
+Use `framework` for read-only React, Web Vitals, and SPA navigation signals from the current shared
+tab. React inspection depends on a compatible page-exposed React DevTools hook; without one, ABG
+returns an explicit unavailable result and a bounded DOM marker summary. Web Vitals are snapshots
+from the browser Performance API, and SPA navigation is reported only when the browser Navigation
+API exposes entries. ABG does not install test-runner instrumentation, pre-page-load scripts,
+component patches, or telemetry collectors for this command.
+Use `sandbox` only in isolated all-tabs profile mode. The Gateway rejects sandbox browser-owned
+automation for normal per-tab shares. Supported mutating controls are viewport emulation,
+localStorage/sessionStorage set/delete, and sandbox tab create/close; each action uses the local
+operation approval flow and records audit metadata. Do not enable all-tabs mode in mixed personal
+profiles.
+Use `stream enable` only for long-running local agent sessions that need live DOM mutation,
+network, and console events. The stream endpoint is loopback-only and scoped to the currently
+enabled shared tab; unsharing the tab stops further events.
+Use `validate editable` before saving CMS/editor content when broken HTML-like or shortcode
+attributes would be hard to spot visually. It reports compact machine-readable issue locations and
+does not mutate the page.
+
+For Lexical-class editors and other rich editors that still ignore synthetic `fill`, the fallback
+"set this editor's content to X" sequence stays explicit:
 
 ```bash
 abg clear t1 --selector 'div[aria-label="Gemini へのプロンプトを入力"]'
@@ -169,16 +395,34 @@ Annotation mode lets the human mark the current tab the way they would point at 
 
 ---
 
-## Why CLI + Skill instead of MCP?
+## CLI, Skill, and MCP
 
-The agent talks to ABG by running `abg` from the shell. This is not the only design — MCP wrappers can come later — but as the primary interface it has unique advantages:
+The agent can talk to ABG by running `abg` from the shell. This remains the source of truth because
+it has unique advantages:
 
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
-- **Skill ergonomics** — Claude Code and Codex skills (`~/.claude/skills/agent-browser-gateway/` and `~/.codex/skills/agent-browser-gateway/`, installed by `abg install-skill`) teach the agent the CLI in context
+- **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
 
-A thin MCP wrapper around the same CLI is on the future roadmap for ecosystem coverage. The CLI remains the source of truth.
+For MCP clients, ABG also ships `abg mcp-server`, a stdio MCP wrapper that exposes a single
+`abg_cli` tool. The tool accepts argv tokens after `abg` and launches the local CLI as a child
+process. It does not duplicate the Gateway protocol or bypass permissions: per-tab sharing,
+operation approval, audit logging, and plugin execution stay on the existing CLI/Gateway path.
+
+Codex config (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
 
 ---
 
@@ -199,20 +443,45 @@ Currently bundled:
 
 - **`markdown-plugin`** — Converts page DOM to Markdown for `abg read --as-markdown`. Replaces what used to be a hardcoded converter inside the extension.
 - **`notion-plugin`** — Per-domain Markdown diet for `notion.so` / `notion.site`: strips app chrome, scripts, styles, popovers, and bookkeeping before the agent sees the page.
+- **`gmail-plugin` / `slack-plugin` / `linear-plugin`** — First-party per-domain Markdown examples for authenticated app pages.
+- **`slack-plugin` commands** — `abg slack catch-up`, `abg slack pending`, and `abg slack open-channel` wrap repeated Slack browser workflows.
+- **`redaction-plugin`** — Opt-in local Markdown masking via `abg read --format markdown --redact`.
+- **`workflow-plugin`** — Command-abstraction examples using `context.tab.*`.
 - **`info-plugin`** — Smoke test: prints a startup line.
 
-User plugins can be managed from the CLI:
+User plugins can be installed from the macOS plugin browser or managed from the CLI:
 
 ```bash
 abg plugin list
 abg plugin install user/repo --yes
-abg plugin update
+abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
+abg plugin update                         # git pull user plugins
+abg plugin disable my-plugin              # keep files, stop loading commands/transforms
+abg plugin enable my-plugin               # re-enable and reload when the Gateway is running
+abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 
+Repository installs use the local `git` command. Private repositories rely on the user's existing
+SSH keys, git credential helper, or GitHub CLI-backed git authentication; ABG does not ask for or
+store GitHub tokens.
+
+By default user plugins live under `~/.abg/plugins/`; `ABG_PORT=8766` dev runs use
+`~/.abg-dev/plugins/` so local experiments do not mutate production plugin state.
+The macOS plugin browser can update or uninstall only these user plugins. Built-in plugins are
+bundled with the app, and Local Dev plugins are external working copies, so the browser never
+removes them.
+User plugins can also be disabled without deleting their directory. ABG persists that toggle in
+the active profile's filesystem state (`plugin-state.json` under `~/.abg/` or `~/.abg-dev/`);
+there is no app database for plugin enablement.
+Gateway Settings use the same profile-local filesystem model and store timeout, approval, and
+domain-policy defaults in `gateway-settings.json`; ABG does not run an app database for these
+preferences.
+
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest format and authoring guide.
 
-Planned (community / future): more per-domain plugins (`gmail-plugin`, `slack-plugin`, `linear-plugin`), masking plugins (mask credit cards / personal info before the agent sees data), command-abstraction plugins (turn 50 DOM operations into `abg call cart-plugin --add "item-id"`).
+Planned (community / future): more workflow-specific plugins built from these local examples.
 
 ### Why this matters: token economy
 
@@ -260,7 +529,7 @@ Closed-source extensions are not auditable. Source-published extensions distribu
 binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
-- **Reproducible builds** (target for v1.0): the binary you download from Releases will hash-match a Docker-built artifact from this repo.
+- **Reproducible builds** (target for v1.0): the Linux CLI can be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). Signed macOS artifacts remain separate because they require Apple's signing and notarization toolchain.
 - **No analytics, no crash reporter, no auto-update phone-home.** The Gateway's only outbound connection is the loopback WebSocket to its own extension. Inspect with `lsof -i -p <gateway-pid>` at any time.
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
@@ -269,15 +538,35 @@ If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open a
 
 ---
 
+## Official non-goals and user-controlled deployments
+
+Official ABG will not operate a cloud relay, collect telemetry, or provide silent general JavaScript
+execution. Those are product boundaries, not missing roadmap items.
+
+User-controlled deployments are different. Private remote pairing over a user's Tailnet or LAN is
+tracked in [#71](https://github.com/arcmanagement/agent-browser-gateway/issues/71) and must remain
+a user-operated connection path, not an ABG-operated relay. Likewise, local or organization-owned
+metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
+configuration. They are not telemetry sent to ABG operators.
+
+The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
+extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
+and a local approval window are required on every call. With AutoMode on, the user has opted into
+skipping that popup for trusted sessions, and audit logging still records script source and approval
+mode. Hidden eval without either per-call approval or explicit AutoMode is an official non-goal.
+
+---
+
 ## Comparison
 
 ABG is not trying to replace Playwright or browser test runners. Use it when the browser session
-already exists: you are logged in, looking at the real page, and want to hand only that explicitly
-shared tab to an AI agent or CLI workflow.
+already exists: you are logged in, looking at the real page, and want to hand a selected tab, or an
+explicitly isolated all-tabs profile, to an AI agent or CLI workflow.
 
 Use **ABG** for:
 
 - inspecting or operating a tab you are already using in your normal Chrome profile
+- sandbox Chrome profiles where exposing every tab is intentional but Playwright-owned sessions are inconvenient
 - AI-assisted support/debugging where per-tab consent and audit logs matter
 - quick shell-driven reads, screenshots, table extraction, network inspection, and small operations
 - workflows where the agent should not receive a global browser context or a remote-debugging port
@@ -292,15 +581,50 @@ Use **Playwright / browser test tooling** for:
 | Project | Approach | What ABG offers that this doesn't |
 |---|---|---|
 | `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, public source, per-tab consent |
-| `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab consent (you choose which tabs) |
-| `BrowserMCP` | Extension bridge, Playwright API | Per-tab consent |
+| `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab by default; optional all-tabs only after local opt-in |
+| `BrowserMCP` | Extension bridge, Playwright API | Existing Chrome sessions with per-tab default and optional all-tabs profile mode |
 | `chrome-devtools-mcp` (Google) | CDP, requires `--remote-debugging-port` | Works with your everyday Chrome profile (Chrome 136+ blocks the CDP path) |
 | `vercel-labs/agent-browser` | Spawns Chrome for Testing | Uses the tab you're already looking at, with your logins, in your context |
 | `Playwright MCP` (Microsoft) | Dedicated browser, structured snapshots | Per-tab consent on your everyday browser |
 
 The distinction is practical: Playwright is excellent when you want a repeatable browser that the
-automation owns; ABG is for safely exposing one human-owned tab to an agent, with JSON output,
-local-only transport, and a visible audit trail.
+automation owns; ABG is for safely exposing human-owned browser state to an agent, with per-tab
+sharing by default, an explicit all-tabs profile mode for sandboxes, JSON output, local-only
+transport, and a visible audit trail.
+
+Advanced parity features are governed by the
+[Advanced Automation Policy](docs/ADVANCED_AUTOMATION_POLICY.md). The policy classifies each
+capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or an official
+`non-goal`, with the required approval and audit behavior for each mode.
+
+### Feature parity for autonomous agents
+
+| Capability | ABG | Vercel agent-browser / Playwright | ABG boundary |
+|---|---|---|---|
+| Existing logged-in browser session | Implemented via explicit shared tabs or opt-in all-tabs profile mode | Usually launched or framework-owned browser contexts | ABG exposes tabs only through the selected local access mode |
+| Read DOM / text / HTML | `read`, `get text/html/value/attr/title/url/count/box/styles` | Locator/page getters | Selector-scoped JSON by default |
+| Frame targeting | `frames`, plus `--frame @fN` on read/get/find/snapshot/predicates/waits/actions | Playwright `frameLocator` / frame targets | Same-origin frames only; cross-origin returns explicit errors |
+| Rich editor input | `fill`, `replace-editable`, `paste`, `paste-rich`, `keyboard inserttext`, `exec-command insertText` | `fill`, `keyboard.insertText`, paste-like flows | Clipboard only when explicitly using `paste` / `paste-rich`; exec-command is allowlisted |
+| Native actions | `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `scroll`, `scroll-into-view`, `drag`, `upload`, `pdf` | Locator actions, page PDF, file upload | Write-like actions go through local approval mode |
+| Keyboard primitives | `type`, `key`, `keydown`, `keyup`, `keyboard inserttext` | Keyboard type/down/up/insertText | Current focused target only |
+| Predicates and waits | `is-visible`, `is-enabled`, `is-checked`, `wait --selector/--text/--url/--load/--fn/--ms` | Locator predicates and wait APIs | `wait --fn` is predicate-only, not data extraction |
+| Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
+| HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
+| Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
+| Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
+| Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |
+| Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
+| AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
+| Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
+| JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
+| Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
+| General JavaScript eval | `eval` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval unless Trusted automation / AutoMode is enabled, exact script audit, result size cap |
+| Global browser visibility | Optional all-tabs profile mode | Common in automation frameworks | Off by default, local opt-in, removable optional permission, audit log |
+
+ABG treats general-purpose JavaScript eval as an explicit escape hatch, not the default automation
+surface. Prefer named, auditable primitives (`get`, `find`, `wait --fn`, `snapshot`, or
+manifest-backed plugin commands) whenever they cover the workflow. `wait --fn` remains limited to
+readiness predicates and returns only success or timeout state, not arbitrary extracted data.
 
 ---
 
@@ -309,28 +633,39 @@ local-only transport, and a visible audit trail.
 Currently shipped:
 
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
-- ✅ Chrome extension (Manifest V3, no `<all_urls>`, `activeTab` only)
+- ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
+- ✅ Firefox extension MVP target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md))
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
-- ✅ Read tools: `read` / `screenshot` / `console` / `table` / `describe` / `network` (with selectors, compact formats, and latest screenshot references)
+- ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
+- ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
 - ✅ Annotation mode: popup or `abg annotate --start` overlay for numbered DOM/screenshot annotations and comments
-- ✅ Operation tools: `click` / `fill` / `paste` / `clear` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag` (CDP wheel — works on inner-scroll containers)
-- ✅ Wait tool: `wait --selector` / `--ms`
+- ✅ Operation tools: `click`, `dblclick`, `focus`, `hover`, `select`, `check`, `uncheck`, `fill`, `replace-editable`, `paste`, `clipboard-write`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `keydown`, `keyup`, `keyboard inserttext`, `exec-command`, `navigate`, `scroll`, `scroll-into-view`, and `drag`
+- ✅ JavaScript dialog inspection and approved handling: `dialog`, `dialog --accept`, `dialog --dismiss`, and `dialog --prompt-value`
+- ✅ Wait, stream, and validation tools: `wait --selector/--text/--url/--load/--fn/--ms`, `stream enable/status/disable`, and `validate editable`
+- ✅ Download lifecycle observation: `download` and `download --wait` return metadata and paths without reading file contents
+- ✅ Network response wait and bounded body preview: `wait-response`, `network --wait-response`, `--body`, and `--max-bytes`
+- ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
+- ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
+- ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
+- ✅ Sandbox-only browser-owned automation controls: `sandbox`, rejected outside all-tabs profile mode
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
 - ✅ `abg` CLI with Claude Code and Codex Skills bundled
+- ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
+- ✅ Gateway runtime/macOS shell boundary for future desktop OS ports (see [docs/GATEWAY_CORE_BOUNDARY.md](docs/GATEWAY_CORE_BOUNDARY.md))
+- ✅ Extension browser-adapter boundary for future desktop browser ports (see [docs/BROWSER_ADAPTER.md](docs/BROWSER_ADAPTER.md))
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 MCP wrapper (future)
-- 📋 Firefox / Safari / Edge / iOS / Android (Phase 3+)
+- 📋 Safari / Edge / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---
 
-## Getting started
+## Developer setup
 
 ### Prerequisites
 
@@ -352,15 +687,13 @@ mise install
 ./build-app.sh                          # produces Agent Browser Gateway.app and .build/release/abg
 open "Agent Browser Gateway.app"        # menubar shield icon appears
 ln -sf $(pwd)/.build/release/abg /usr/local/bin/abg
+
+CONFIG=debug APP_VARIANT=dev ./build-app.sh  # produces Agent Browser Gateway Dev.app on port 8766
+open "Agent Browser Gateway Dev.app"         # separate menubar app/profile from production
+ABG_PORT=8766 .build/debug/abg status        # point CLI at the dev app
 ```
 
-### Install the Chrome extension
-
-Install Agent Browser Gateway from the Chrome Web Store:
-
-https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
-
-For local development, build and load the unpacked extension:
+### Build and load the development extension
 
 ```bash
 cd extension
@@ -369,6 +702,11 @@ pnpm run build                          # outputs to extension/dist/
 ```
 
 In Chrome: open `chrome://extensions` → enable Developer mode → **Load unpacked** → pick `extension/dist/`.
+Use the Chrome Web Store extension for normal installs; use this unpacked build only when developing or testing extension changes.
+
+For incognito / Secret Window workflows, open
+`chrome://extensions/?id=ojgedfcgebjchckaagjkmlpgonpjggpi` and enable **Allow in incognito**.
+Chrome disables extension access to incognito windows by default; normal tabs do not require this.
 
 ### Share a tab
 
@@ -392,15 +730,25 @@ Claude Code or Codex will now invoke `abg` automatically when the conversation r
 ```bash
 swift build                             # debug build
 swift test                              # Swift unit tests
-swift run Gateway                       # menubar app without bundling (dev)
+swift run Gateway                       # single debug process without app-bundle separation
+CONFIG=debug APP_VARIANT=dev ./build-app.sh  # separate dev menubar app: 8766 + AgentBrowserGateway-dev/.abg-dev
+open "Agent Browser Gateway Dev.app"
+ABG_PORT=8766 .build/debug/abg status   # point CLI at the dev app
 
 cd extension
 pnpm run watch                          # rebuild on save
+ABG_PORT=8766 pnpm run build             # local unpacked extension named Agent Browser Gateway Dev
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit
+pnpm run test                           # Vitest unit tests
+pnpm run test:coverage                  # Vitest coverage for unit-testable extension logic
 make verify                             # CI-style local verification
+make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
+
+Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
+Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
 
 ---
 
@@ -411,13 +759,13 @@ Threat model and the explicit non-goals are in [SECURITY.md](SECURITY.md). To re
 In short:
 - We **defend against** prompt injection that tries to leak un-shared tabs, accidental over-sharing, and silent audit-log tampering.
 - We **do not defend against** other malicious extensions in the same Chrome profile (Chrome's responsibility), root attackers on your machine, or operations the user explicitly authorizes.
-- We **never expose** an "execute arbitrary JavaScript" tool to agents. The CLI surface is curated.
+- We expose JavaScript eval only as a disabled-by-default escape hatch for already-shared tabs. Per-call approval is the default; explicit Trusted automation / AutoMode can skip the popup while preserving audit logs. The normal CLI surface is curated and named.
 
 ---
 
 ## Status
 
-🚧 **v0.3.6 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.3.12 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
@@ -470,13 +818,13 @@ ArcManagement holds a pending Japanese patent application covering aspects of AB
 
 ## 日本語サマリ
 
-**「いま開いてるタブだけ、AI に渡す。」**
+**「いま開いてるタブを、明示的に AI に渡す。」**
 
-普段使いの Chrome に入れる軽量拡張と、Mac メニューバーに常駐する小さな .app + `abg` CLI。ユーザーが明示的に「このタブを共有」とした **そのタブだけ** が、Claude Code などの AI コーディングエージェントから見える。
+普段使いの Chrome に入れる軽量拡張と、Mac メニューバーに常駐する小さな .app + `abg` CLI。デフォルトでは、ユーザーが明示的に「このタブを共有」とした **そのタブだけ** が、Claude Code などの AI コーディングエージェントから見える。隔離プロファイルや sandbox マシンでは、popup から all-tabs mode を明示的に ON にできる。
 
 ### コア思想
 
-1. **per-tab 明示許可** — タブ単位の許可。`<all_urls>` なし。`activeTab` のみ
+1. **per-tab 明示許可がデフォルト** — 通常はタブ単位の許可。`host_permissions` は空。隔離プロファイル用 all-tabs mode のみ optional `<all_urls>` を要求
 2. **ソース公開 / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
 3. **CLI + Skill が primary** — MCP より先に CLI。シェルがあれば任意のエージェントから使える
 4. **失効は明示的** — オリジン遷移 / タブクローズ / 明示解除。タイムアウトはオプション

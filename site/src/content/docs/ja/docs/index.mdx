@@ -1,0 +1,58 @@
+---
+title: はじめに
+description: Agent Browser Gateway でブラウザータブをローカルAIエージェントに共有する。
+sidebar:
+  order: 1
+---
+
+Agent Browser Gateway (ABG) は、ユーザーが明示的に共有したブラウザータブと、`abg` CLI
+を実行できるAIコーディングエージェントをつなぐローカルブリッジです。デフォルトでは、
+エージェントから見えるタブはありません。ユーザーが拡張機能のpopupからタブを共有して初めて、
+そのタブだけをCLI経由で扱えるようになります。
+
+## 最初の流れ
+
+1. [インストール](./install/)でGatewayアプリ、ブラウザー拡張、CLIを用意します。
+2. エージェントに渡したいタブを開きます。
+3. ABG拡張アイコンから **Share this tab with agent** を選びます。
+4. 共有状態を確認します。
+
+   ```bash
+   abg tabs --compact
+   ```
+
+5. 返ってきた `t1` のような参照を使います。
+
+   ```bash
+   abg read t1 --format markdown
+   abg screenshot t1 --out page.png
+   abg revoke t1
+   ```
+
+## 含まれるもの
+
+- loopbackで待ち受けるローカルGatewayアプリ
+- 明示的に選択したタブを共有するブラウザー拡張
+- エージェントやスクリプトから使う `abg` CLI
+- `abg install-skill` で入る Claude Code / Codex 向けスキル
+- 操作を確認できるローカル監査ログ
+
+## アクセスモデル
+
+ABGは、最初はどのタブも見えない状態で起動します。ユーザーが拡張のpopupからタブを共有し、
+タブが閉じられたとき、originが変わったとき、または明示的に解除されたときに共有は失効します。
+
+隔離プロファイルやsandboxマシン向けには、明示的にONにできるall-tabs modeもあります。通常の
+普段使いプロファイルでは、per-tab共有をデフォルトとして扱います。
+
+click、fill、paste、navigate、upload、dialog操作のような変更系コマンドは、設定によりローカル承認
+promptを挟みます。read-onlyの観察コマンドは承認promptを出しませんが、共有済みタブである必要はあります。
+
+## 次に読む
+
+- [インストール](./install/)
+- [CLI](./cli/)
+- [プラグイン](./plugins/)
+- [アーキテクチャ](./architecture/)
+- [セキュリティ](./security/)
+- [FAQ](./faq/)

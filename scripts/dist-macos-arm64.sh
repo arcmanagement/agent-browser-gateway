@@ -32,6 +32,11 @@ GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-arcmanagement/agent-browser-gateway}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
+if [[ ! "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    echo "GITHUB_REPOSITORY must be owner/repo, got: $GITHUB_REPOSITORY" >&2
+    exit 1
+fi
+
 create_app_zip() {
     rm -f "$ZIP_PATH"
     (
@@ -121,7 +126,7 @@ cask "agent-browser-gateway" do
 
   url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
-  desc "Share specific Chrome tabs with AI coding agents"
+  desc "Share authorized Chrome tabs with AI coding agents"
   homepage "https://github.com/$GITHUB_REPOSITORY"
 
   depends_on macos: ">= :sonoma"

@@ -1,0 +1,55 @@
+---
+title: FAQ
+description: Common Agent Browser Gateway questions.
+sidebar:
+  order: 8
+---
+
+## Is ABG a Playwright replacement?
+
+No. Use Playwright when you want a clean, repeatable browser that automation owns. Use ABG when the
+browser session already exists and you want to hand one selected tab, or an isolated all-tabs profile,
+to an agent.
+
+## Can the agent see every tab?
+
+Not by default. In normal mode, the agent sees only tabs you explicitly share. All-tabs mode exists
+for isolated profiles and sandbox machines, and it is a separate opt-in.
+
+## Does ABG send browser data to a cloud service?
+
+No for the normal local workflow. The Gateway listens locally, and there is no ABG-hosted account or
+cloud relay in the local product boundary.
+
+## Why use a CLI instead of MCP first?
+
+The CLI works with any agent that can run shell commands, is easy for humans to debug, and remains
+the source of truth. MCP wrappers can be built on top of the same local command surface later.
+
+## Where are plugins stored?
+
+Bundled plugins live inside the app bundle. User-installed plugins live under `~/.abg/plugins/`.
+Development Gateway runs on port `8766` use `~/.abg-dev/plugins/`.
+
+## Does ABG store plugin settings in a database?
+
+No. Plugin enablement is profile-local filesystem state in `plugin-state.json` under the active ABG
+user directory. There is no app database for plugin enablement.
+
+## How do private plugin repositories work?
+
+`abg plugin install` uses the local `git` command. Private repositories rely on your existing SSH
+keys, git credential helper, or GitHub CLI-backed git authentication. ABG does not ask for or store
+GitHub tokens.
+
+## What should I do when a tab disappears?
+
+Check whether the tab navigated to another origin, closed, or was revoked:
+
+```bash
+abg status
+abg tabs --compact
+abg audit --lines 20
+```
+
+Share the tab again from the extension popup if needed.

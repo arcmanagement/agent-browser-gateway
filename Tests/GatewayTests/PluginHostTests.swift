@@ -80,6 +80,82 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(result?["plugin"] as? String, "command-plugin")
     }
 
+    func testDisabledUserPluginIsSkippedButVisibleInSummary() throws {
+        let userDir = try makeTempPluginRoot()
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(
+            root: pluginsRoot,
+            name: "disabled-plugin",
+            manifest: """
+            {
+              "name": "disabled-plugin",
+              "version": "0.1.0",
+              "commands": [{"name": "ping", "description": "Ping."}],
+              "transforms": ["disabled-transform"]
+            }
+            """,
+            source: """
+            abg.registerTransform("disabled-transform", function (input) {
+              return "loaded:" + input;
+            });
+            abg.registerCommand("ping", function () {
+              return { ok: true };
+            });
+            """
+        )
+        _ = try ABGPluginStateStore.disable(
+            name: "disabled-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        let host = PluginHost(abgVersion: "test", userPluginsDirectory: pluginsRoot, userDirectory: userDir)
+        host.loadAll(from: [pluginsRoot])
+
+        XCTAssertTrue(host.plugins.isEmpty)
+        XCTAssertNil(host.transform(name: "disabled-transform", input: "abg"))
+        let summary = try XCTUnwrap(host.loadedPluginSummaryModels().first)
+        XCTAssertEqual(summary.name, "disabled-plugin")
+        XCTAssertFalse(summary.isEnabled)
+        XCTAssertFalse(summary.isLoaded)
+        XCTAssertEqual(summary.commands.map(\.name), ["ping"])
+    }
+
+    func testEnabledUserPluginReloadsAfterBeingDisabled() throws {
+        let userDir = try makeTempPluginRoot()
+        let pluginsRoot = userDir.appendingPathComponent("plugins", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        try writePlugin(
+            root: pluginsRoot,
+            name: "toggle-plugin",
+            source: """
+            abg.registerTransform("toggle-transform", function (input) {
+              return input.toUpperCase();
+            });
+            """
+        )
+        _ = try ABGPluginStateStore.disable(
+            name: "toggle-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+
+        let host = PluginHost(abgVersion: "test", userPluginsDirectory: pluginsRoot, userDirectory: userDir)
+        host.loadAll(from: [pluginsRoot])
+        XCTAssertNil(host.transform(name: "toggle-transform", input: "abg"))
+
+        _ = try ABGPluginStateStore.enable(
+            name: "toggle-plugin",
+            pluginsDirectory: pluginsRoot,
+            userDirectory: userDir
+        )
+        let reload = host.reload(plugin: "toggle-plugin")
+
+        XCTAssertEqual(reload.first?["status"] as? String, "reloaded")
+        XCTAssertEqual(host.transform(name: "toggle-transform", input: "abg"), "ABG")
+    }
+
     func testCommandContextTabPasteDispatchesAndResolves() async throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -117,6 +193,42 @@ final class PluginHostTests: XCTestCase {
         let dispatchResult = result?["result"] as? [String: Any]
         XCTAssertEqual(dispatchResult?["ok"] as? Bool, true)
         XCTAssertEqual(dispatchResult?["fromDispatcher"] as? Bool, true)
+    }
+
+    func testCommandContextTabScrollDispatchesSelectorScroll() async throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "tab-plugin",
+            source: """
+            abg.registerCommand("scroll-history", async function (args, context) {
+              return await context.tab.scroll({ selector: args.selector, dy: args.dy, steps: 2 });
+            });
+            """
+        )
+
+        var calls: [(method: String, params: [String: Any])] = []
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            return AnyCodable(["ok": true, "fromDispatcher": true])
+        }
+        host.loadAll(from: [root])
+
+        let result = try await host.runCommand(
+            plugin: "tab-plugin",
+            command: "scroll-history",
+            args: ["selector": ".c-virtual_list__scroll_container", "dy": -5_000],
+            tabId: 42
+        ).value as? [String: Any]
+
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls.first?.method, "scroll_tab")
+        XCTAssertEqual(calls.first?.params["tabId"] as? Int, 42)
+        XCTAssertEqual(calls.first?.params["selector"] as? String, ".c-virtual_list__scroll_container")
+        XCTAssertEqual(calls.first?.params["deltaY"] as? Double, -5_000)
+        XCTAssertEqual(calls.first?.params["steps"] as? Int, 2)
+        XCTAssertEqual(result?["ok"] as? Bool, true)
     }
 
     func testCommandContextTabRejectsWhenDispatcherThrows() async throws {
@@ -242,6 +354,27 @@ final class PluginHostTests: XCTestCase {
         )
     }
 
+    func testBundledMarkdownPluginNormalizesSlackSenderName() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let html =
+            #"<div><img src="https://cdn.example/avatar.png">"# +
+            #"<span data-qa="message_sender_name"><span aria-label="Ada Lovelace">Ada Lovelace</span><span>Ada Lovelace</span></span>"# +
+            #"<span aria-hidden="true"> : </span>"# +
+            #"<a href="https://example.slack.com/archives/C0EXAMPLE0/p1710000000000000">12:19</a></div>"#
+        let markdown = try XCTUnwrap(host.transform(name: "html-to-markdown", input: html))
+
+        XCTAssertEqual(
+            markdown,
+            "[img]Ada Lovelace [12:19](https://example.slack.com/archives/C0EXAMPLE0/p1710000000000000)"
+        )
+        XCTAssertFalse(markdown.contains("Ada LovelaceAda Lovelace"))
+        XCTAssertFalse(markdown.contains("Ada Lovelace :"))
+    }
+
     func testDomainTransformUsesMatchingPluginManifest() throws {
         let root = try makeTempPluginRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -273,6 +406,213 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(matched?.name, "notion-lite-markdown")
         XCTAssertEqual(matched?.output, "notion:page")
         XCTAssertNil(host.domainTransform(url: "https://example.com/page", kind: "markdown", input: "page"))
+    }
+
+    func testManifestDomainHelpersExposePluginCommandBindingPatterns() throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "gemini-plugin",
+            manifest: """
+            {
+              "name": "gemini-plugin",
+              "domains": ["https://gemini.google.com/*"],
+              "commands": ["summarize"]
+            }
+            """,
+            source: """
+            abg.registerCommand("summarize", function () {
+              return { ok: true };
+            });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [root])
+
+        XCTAssertEqual(host.domainPatterns(for: "gemini-plugin"), ["https://gemini.google.com/*"])
+        XCTAssertTrue(host.matchesManifestDomain(plugin: "gemini-plugin", url: "https://gemini.google.com/app"))
+        XCTAssertFalse(host.matchesManifestDomain(plugin: "gemini-plugin", url: "https://example.com/app"))
+        XCTAssertNil(host.domainPatterns(for: "missing-plugin"))
+    }
+
+    func testPluginReloadKeepsPreviousVersionWhenReloadFails() throws {
+        let root = try makeTempPluginRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            abg.registerTransform("reload-demo-markdown", function () { return "v1"; });
+            """
+        )
+
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [root])
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v1")
+
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            throw new Error("reload failed");
+            """
+        )
+        let failed = host.reload(plugin: "reload-plugin")
+        XCTAssertEqual(failed.first?["status"] as? String, "failed")
+        XCTAssertEqual(failed.first?["previousVersionKept"] as? Bool, true)
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v1")
+
+        try writePlugin(
+            root: root,
+            name: "reload-plugin",
+            manifest: """
+            {
+              "name": "reload-plugin",
+              "transforms": ["reload-demo-markdown"]
+            }
+            """,
+            source: """
+            abg.registerTransform("reload-demo-markdown", function () { return "v2"; });
+            """
+        )
+        let reloaded = host.reload(plugin: "reload-plugin")
+        XCTAssertEqual(reloaded.first?["status"] as? String, "reloaded")
+        XCTAssertEqual(host.transform(name: "reload-demo-markdown", input: "x"), "v2")
+    }
+
+    func testBundledRedactionPluginMasksSensitivePatternsAndCustomRegexes() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let input = "Email ada@example.com, phone +1 (415) 555-0123, card 4242 4242 4242 4242, ticket ACME-123."
+        let redaction = try XCTUnwrap(host.redact(kind: "markdown", input: input, customRegexes: ["ACME-[0-9]+"]))
+
+        XCTAssertEqual(redaction.names, ["local-redact-markdown", "custom-regex-1"])
+        XCTAssertTrue(redaction.output.contains("[redacted:email]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:phone]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:card]"))
+        XCTAssertTrue(redaction.output.contains("[redacted:custom-1]"))
+        XCTAssertFalse(redaction.output.contains("ada@example.com"))
+        XCTAssertFalse(redaction.output.contains("ACME-123"))
+    }
+
+    func testBundledWorkflowCommandUsesTabAPI() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        var calls: [(method: String, params: [String: Any])] = []
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            return AnyCodable(["ok": true, "method": method])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "workflow",
+            command: "clear-and-paste",
+            args: ["selector": "#prompt", "value": "Ship it"],
+            tabId: 99
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(calls.map(\.method), ["clear_tab", "paste_tab"])
+        XCTAssertEqual(calls.first?.params["tabId"] as? Int, 99)
+        XCTAssertEqual(calls.last?.params["selector"] as? String, "#prompt")
+        XCTAssertEqual(calls.last?.params["value"] as? String, "Ship it")
+    }
+
+    func testBundledSlackCatchUpWaitsForSettledChannelDom() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let fixture = try readFixture("slack-channel.html")
+        let staleFixture = fixture.replacingOccurrences(of: "/archives/C123/", with: "/archives/C999/")
+        var readCount = 0
+        var calls: [String] = []
+        let host = PluginHost(abgVersion: "test") { method, _ in
+            calls.append(method)
+            if method == "read_tab" {
+                readCount += 1
+                return AnyCodable([
+                    "url": "https://app.slack.com/client/T123/C123",
+                    "title": "Slack",
+                    "html": readCount == 1 ? staleFixture : fixture,
+                    "text": "Slack fixture",
+                ])
+            }
+            return AnyCodable(["ok": true])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "slack",
+            command: "catch-up",
+            args: ["limit": 5, "timeoutMs": 1000],
+            tabId: 1
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(result?["channel_id"] as? String, "C123")
+        XCTAssertEqual(result?["count"] as? Int, 2)
+        XCTAssertTrue((result?["markdown"] as? String)?.contains("open-channel helper") == true)
+        XCTAssertEqual(calls, ["read_tab", "wait_tab", "read_tab"])
+    }
+
+    func testBundledSlackOpenChannelNavigatesByName() async throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let sidebar = """
+        <html><body>
+          <a href="https://app.slack.com/client/T123/C123">#general</a>
+        </body></html>
+        """
+        var calls: [(method: String, params: [String: Any])] = []
+        var navigatedURL: String?
+        let host = PluginHost(abgVersion: "test") { method, params in
+            calls.append((method, params))
+            if method == "navigate_tab" {
+                navigatedURL = params["url"] as? String
+                return AnyCodable(["ok": true])
+            }
+            if method == "read_tab" {
+                return AnyCodable([
+                    "url": navigatedURL ?? "https://app.slack.com/client/T123/C111",
+                    "title": "Slack",
+                    "html": sidebar,
+                    "text": "Slack sidebar",
+                ])
+            }
+            return AnyCodable(["ok": true])
+        }
+        host.loadAll(from: [pluginsDir])
+
+        let result = try await host.runCommand(
+            plugin: "slack",
+            command: "open-channel",
+            args: ["name": "general", "timeoutMs": 1000],
+            tabId: 1
+        ).value as? [String: Any]
+
+        XCTAssertEqual(result?["ok"] as? Bool, true)
+        XCTAssertEqual(result?["channel_id"] as? String, "C123")
+        XCTAssertEqual(result?["before"] as? String, "C111")
+        XCTAssertEqual(result?["after"] as? String, "C123")
+        XCTAssertEqual(navigatedURL, "https://app.slack.com/client/T123/C123")
+        XCTAssertEqual(calls.map(\.method), ["read_tab", "navigate_tab", "read_tab"])
     }
 
     func testBundledNotionPluginStripsAppChrome() throws {
@@ -315,11 +655,42 @@ final class PluginHostTests: XCTestCase {
         )
     }
 
+    func testBundledGmailSlackLinearPluginsStripAppChrome() throws {
+        let pluginsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("plugins", isDirectory: true)
+        let host = PluginHost(abgVersion: "test")
+        host.loadAll(from: [pluginsDir])
+
+        let gmail = try XCTUnwrap(host.transform(name: "gmail-to-markdown", input: readFixture("gmail-thread.html")))
+        XCTAssertTrue(gmail.contains("Plugin launch notes"))
+        XCTAssertTrue(gmail.contains("Please review the ABG plugin plan."))
+        XCTAssertFalse(gmail.contains("Inbox Starred"))
+        XCTAssertFalse(gmail.contains("Search mail"))
+
+        let slack = try XCTUnwrap(host.transform(name: "slack-to-markdown", input: readFixture("slack-channel.html")))
+        XCTAssertTrue(slack.contains("Ship the plugin auto-bind fix."))
+        XCTAssertTrue(slack.contains("Add the open-channel helper."))
+        XCTAssertFalse(slack.contains("channels random general"))
+
+        let linear = try XCTUnwrap(host.transform(name: "linear-to-markdown", input: readFixture("linear-issue.html")))
+        XCTAssertTrue(linear.contains("# Plugin commands should auto-bind tabs"))
+        XCTAssertTrue(linear.contains("Issue: ABG-42"))
+        XCTAssertTrue(linear.contains("Status: In Progress"))
+        XCTAssertFalse(linear.contains("Workspace Projects Views"))
+    }
+
     private func makeTempPluginRoot() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("abg-plugin-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func readFixture(_ name: String) throws -> String {
+        let url = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("examples/fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
     private func writePlugin(root: URL, name: String, manifest: String? = nil, source: String) throws {

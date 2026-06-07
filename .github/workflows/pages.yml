@@ -7,6 +7,7 @@ on:
     paths:
       - "site/**"
       - ".github/workflows/pages.yml"
+      - "mise.toml"
   workflow_dispatch:
 
 permissions:
@@ -31,9 +32,27 @@ jobs:
 
       - uses: actions/configure-pages@v6
 
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.21.1
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: Install site dependencies
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Starlight site
+        working-directory: site
+        run: pnpm build
+
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: site/dist
 
       - id: deployment
         uses: actions/deploy-pages@v5

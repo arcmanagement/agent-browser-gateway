@@ -1,0 +1,48 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Core", "AgentBrowserGateway.Core\AgentBrowserGateway.Core.csproj", "{3F4DD8E6-6A96-4C57-8B2A-CE3D01EACF03}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Cli", "AgentBrowserGateway.Cli\AgentBrowserGateway.Cli.csproj", "{6E78F018-90C1-49F7-960C-42F11F468828}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Gateway", "AgentBrowserGateway.Gateway\AgentBrowserGateway.Gateway.csproj", "{81D2C6E0-EA4C-4A8C-9FE6-C3FB908C4F6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Windows", "AgentBrowserGateway.Windows\AgentBrowserGateway.Windows.csproj", "{17CF4034-1270-4586-98C4-A6EC9E1F6B62}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Installer", "AgentBrowserGateway.Installer\AgentBrowserGateway.Installer.csproj", "{C3D3F8E6-3F08-4C77-BD9A-17710D99E494}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentBrowserGateway.Tests", "AgentBrowserGateway.Tests\AgentBrowserGateway.Tests.csproj", "{36A70D74-E592-4A74-BA40-8B4454DF832E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3F4DD8E6-6A96-4C57-8B2A-CE3D01EACF03}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3F4DD8E6-6A96-4C57-8B2A-CE3D01EACF03}.Debug|x64.Build.0 = Debug|Any CPU
+		{3F4DD8E6-6A96-4C57-8B2A-CE3D01EACF03}.Release|x64.ActiveCfg = Release|Any CPU
+		{3F4DD8E6-6A96-4C57-8B2A-CE3D01EACF03}.Release|x64.Build.0 = Release|Any CPU
+		{6E78F018-90C1-49F7-960C-42F11F468828}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6E78F018-90C1-49F7-960C-42F11F468828}.Debug|x64.Build.0 = Debug|Any CPU
+		{6E78F018-90C1-49F7-960C-42F11F468828}.Release|x64.ActiveCfg = Release|Any CPU
+		{6E78F018-90C1-49F7-960C-42F11F468828}.Release|x64.Build.0 = Release|Any CPU
+		{81D2C6E0-EA4C-4A8C-9FE6-C3FB908C4F6D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{81D2C6E0-EA4C-4A8C-9FE6-C3FB908C4F6D}.Debug|x64.Build.0 = Debug|Any CPU
+		{81D2C6E0-EA4C-4A8C-9FE6-C3FB908C4F6D}.Release|x64.ActiveCfg = Release|Any CPU
+		{81D2C6E0-EA4C-4A8C-9FE6-C3FB908C4F6D}.Release|x64.Build.0 = Release|Any CPU
+		{17CF4034-1270-4586-98C4-A6EC9E1F6B62}.Debug|x64.ActiveCfg = Debug|x64
+		{17CF4034-1270-4586-98C4-A6EC9E1F6B62}.Debug|x64.Build.0 = Debug|x64
+		{17CF4034-1270-4586-98C4-A6EC9E1F6B62}.Release|x64.ActiveCfg = Release|x64
+		{17CF4034-1270-4586-98C4-A6EC9E1F6B62}.Release|x64.Build.0 = Release|x64
+		{C3D3F8E6-3F08-4C77-BD9A-17710D99E494}.Debug|x64.ActiveCfg = Debug|x64
+		{C3D3F8E6-3F08-4C77-BD9A-17710D99E494}.Debug|x64.Build.0 = Debug|x64
+		{C3D3F8E6-3F08-4C77-BD9A-17710D99E494}.Release|x64.ActiveCfg = Release|x64
+		{C3D3F8E6-3F08-4C77-BD9A-17710D99E494}.Release|x64.Build.0 = Release|x64
+		{36A70D74-E592-4A74-BA40-8B4454DF832E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{36A70D74-E592-4A74-BA40-8B4454DF832E}.Debug|x64.Build.0 = Debug|Any CPU
+		{36A70D74-E592-4A74-BA40-8B4454DF832E}.Release|x64.ActiveCfg = Release|Any CPU
+		{36A70D74-E592-4A74-BA40-8B4454DF832E}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

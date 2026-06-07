@@ -4,8 +4,32 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.3.6}"
-APP_NAME="Agent Browser Gateway"
+VERSION="${VERSION:-0.3.12}"
+APP_VARIANT="${APP_VARIANT:-prod}"
+case "$APP_VARIANT" in
+    prod|production)
+        APP_VARIANT="prod"
+        DEFAULT_APP_NAME="Agent Browser Gateway"
+        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway"
+        DEFAULT_ABG_PORT=""
+        DEFAULT_ABG_PROFILE=""
+        ;;
+    dev|development)
+        APP_VARIANT="dev"
+        DEFAULT_APP_NAME="Agent Browser Gateway Dev"
+        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway.dev"
+        DEFAULT_ABG_PORT="8766"
+        DEFAULT_ABG_PROFILE="dev"
+        ;;
+    *)
+        echo "APP_VARIANT must be prod or dev (got: $APP_VARIANT)" >&2
+        exit 1
+        ;;
+esac
+APP_NAME="${APP_NAME:-$DEFAULT_APP_NAME}"
+APP_BUNDLE_ID="${APP_BUNDLE_ID:-$DEFAULT_BUNDLE_ID}"
+APP_ABG_PORT="${APP_ABG_PORT:-$DEFAULT_ABG_PORT}"
+APP_ABG_PROFILE="${APP_ABG_PROFILE:-$DEFAULT_ABG_PROFILE}"
 APP="$APP_NAME.app"
 LEGACY_APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
@@ -33,11 +57,22 @@ swift build -c "$CONFIG"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
-if [ "$LEGACY_APP" != "$APP" ]; then
+if [ "$APP_VARIANT" = "prod" ] && [ "$LEGACY_APP" != "$APP" ]; then
     rm -rf "$LEGACY_APP"
 fi
 mkdir -p "$APP/Contents/MacOS"
-cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
+if [ "$APP_VARIANT" = "dev" ]; then
+    cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway.bin"
+    cat > "$APP/Contents/MacOS/Gateway" <<EOF
+#!/bin/sh
+export ABG_PORT="\${ABG_PORT:-$APP_ABG_PORT}"
+export ABG_PROFILE="\${ABG_PROFILE:-$APP_ABG_PROFILE}"
+exec "\$(dirname "\$0")/Gateway.bin"
+EOF
+    chmod 755 "$APP/Contents/MacOS/Gateway"
+else
+    cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
+fi
 
 echo "==> bundling app icon"
 if [ -f "$ICON_SOURCE_SVG" ] || [ -f "$ICON_SOURCE_PNG" ]; then
@@ -70,7 +105,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <dict>
     <key>CFBundleName</key><string>$APP_NAME</string>
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
-    <key>CFBundleIdentifier</key><string>co.arcm.AgentBrowserGateway</string>
+    <key>CFBundleIdentifier</key><string>$APP_BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>Gateway</string>
     <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
@@ -87,7 +122,14 @@ EOF
 echo "==> done"
 echo "    app:  $(pwd)/$APP"
 echo "    cli:  $(pwd)/$BIN_DIR/abg"
+if [ "$APP_VARIANT" = "dev" ]; then
+    echo "    env:  ABG_PORT=$APP_ABG_PORT ABG_PROFILE=$APP_ABG_PROFILE"
+fi
 echo ""
 echo "next:"
 printf '  open "%s"                           # launch menubar app\n' "$APP"
-echo "  ln -sf $(pwd)/$BIN_DIR/abg /usr/local/bin/abg # symlink CLI to PATH"
+if [ "$APP_VARIANT" = "dev" ]; then
+    printf '  ABG_PORT=%s "%s" status          # point CLI at dev app\n' "$APP_ABG_PORT" "$(pwd)/$BIN_DIR/abg"
+else
+    echo "  ln -sf $(pwd)/$BIN_DIR/abg /usr/local/bin/abg # symlink CLI to PATH"
+fi

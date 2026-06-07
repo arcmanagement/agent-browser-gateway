@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Browser Gateway</title>
+    <meta
+      name="description"
+      content="Agent Browser Gateway lets you share Chrome tabs with local AI coding agents using explicit consent, local transport, and an audit trail."
+    />
+    <meta property="og:title" content="Agent Browser Gateway" />
+    <meta
+      property="og:description"
+      content="Per-tab browser access for AI agents. Local-first, explicit, and auditable."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://agent-browser-gateway.com/" />
+    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
+    <link rel="canonical" href="https://agent-browser-gateway.com/" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="nav" aria-label="Primary navigation">
+        <div class="nav-inner">
+          <a class="brand" href="./">
+            <img src="assets/logo-shield.png" alt="" width="31" height="31" />
+            <span>Agent Browser Gateway</span>
+          </a>
+          <nav class="nav-links" aria-label="Site links">
+            <a href="#why">Why</a>
+            <a href="#download">Download</a>
+            <a href="docs/">Docs</a>
+            <a href="#model">Consent</a>
+            <a href="#tokens">Tokens</a>
+            <a href="#compare">Compare</a>
+            <a href="privacy/">Privacy</a>
+          </nav>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="section-inner hero-inner">
+            <div class="hero-copy">
+              <div class="eyebrow">Local browser access for AI agents</div>
+              <h1 id="hero-title">Agent Browser Gateway</h1>
+              <p class="lead">
+                Share the tab you choose with an AI coding agent. Nothing else is visible by
+                default, and every local operation is designed to stay inspectable.
+              </p>
+              <div class="hero-actions">
+                <a class="button" href="#download">Download</a>
+                <a class="button secondary" href="docs/">Read the docs</a>
+              </div>
+              <div class="proof-row" aria-label="Product principles">
+                <span class="proof">Per-tab consent</span>
+                <span class="proof">Loopback transport</span>
+                <span class="proof">Token-efficient reads</span>
+                <span class="proof">Zero telemetry</span>
+                <span class="proof">Local audit log</span>
+              </div>
+            </div>
+          </div>
+          <img
+            class="hero-visual"
+            src="assets/gateway-visual.png"
+            alt="A gateway illustration showing one approved browser tab"
+            width="600"
+            height="534"
+          />
+        </section>
+
+        <section class="band surface download-band" id="download" aria-labelledby="download-title">
+          <div class="section-inner download-layout">
+            <div class="copy">
+              <h2 id="download-title">Download Agent Browser Gateway.</h2>
+              <p>
+                Choose the notarized macOS DMG or the Windows x64 package. The Windows ZIP includes
+                <code>agent-browser-gateway.exe</code>, <code>abg.exe</code>, and the PowerShell
+                installer script.
+              </p>
+              <p>
+                Published by ArcManagement, Inc. The site links only to the current public packages;
+                older artifacts should be downloaded from GitHub Releases when needed for audit or
+                rollback work.
+              </p>
+              <div class="download-actions">
+                <a
+                  class="button"
+                  href="downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg"
+                >
+                  <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
+                    <g transform="translate(0 624.5254) scale(1 -1)">
+                      <path d="M250.04 297.5742 C249.9609 297.3496 248.7129 293.0371 245.6621 288.584 C243.0283 284.7344 240.292 280.8926 235.9844 280.8145 C231.752 280.7363 230.3906 283.3262 225.5537 283.3262 C220.7119 283.3262 219.1973 280.8926 215.1953 280.7363 C211.0361 280.5801 207.8682 284.9004 205.2129 288.7344 C199.7822 296.5859 195.6387 310.918 201.21 320.5859 C203.9707 325.3926 208.9199 328.4336 214.2871 328.5117 C218.373 328.5898 222.2227 325.7676 224.7217 325.7676 C227.2188 325.7676 231.8984 329.1621 236.8213 328.666 C238.8809 328.5781 244.666 327.834 248.3838 322.3945 C248.0869 322.207 241.4785 318.3613 241.5508 310.3633 C241.6367 300.7949 249.9443 297.6152 250.04 297.5742 Z" />
+                      <path d="M233.5947 333.8535 C235.8086 336.5273 237.293 340.2461 236.8848 343.9453 C233.7051 343.8281 229.8516 341.8281 227.5723 339.1563 C225.5273 336.791 223.7334 333.0059 224.2197 329.3828 C227.7637 329.1074 231.3896 331.1855 233.5947 333.8535 Z" />
+                    </g>
+                  </svg>
+                  <span>macOS DMG</span>
+                </a>
+                <a
+                  class="button secondary"
+                  href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip"
+                >
+                  <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+                    <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
+                    <path d="M12.1 4.1 21 2.8v8.7h-8.9V4.1z" />
+                    <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
+                    <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
+                  </svg>
+                  <span>Windows x64 ZIP</span>
+                </a>
+                <a
+                  class="button store-button"
+                  href="https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi"
+                >
+                  <img class="chrome-icon" src="assets/chrome-logo.svg" alt="" width="20" height="20" />
+                  <span class="store-label">Chrome Web Store</span>
+                </a>
+              </div>
+            </div>
+            <div class="download-panel" aria-label="Download details">
+              <div class="download-meta">
+                <span>macOS 0.3.12 / Windows 0.3.8</span>
+                <span>macOS 14+ Apple Silicon</span>
+                <span>Windows 10/11 x64</span>
+              </div>
+              <div class="download-items">
+                <div>
+                  <strong>
+                    <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
+                      <g transform="translate(0 624.5254) scale(1 -1)">
+                        <path d="M250.04 297.5742 C249.9609 297.3496 248.7129 293.0371 245.6621 288.584 C243.0283 284.7344 240.292 280.8926 235.9844 280.8145 C231.752 280.7363 230.3906 283.3262 225.5537 283.3262 C220.7119 283.3262 219.1973 280.8926 215.1953 280.7363 C211.0361 280.5801 207.8682 284.9004 205.2129 288.7344 C199.7822 296.5859 195.6387 310.918 201.21 320.5859 C203.9707 325.3926 208.9199 328.4336 214.2871 328.5117 C218.373 328.5898 222.2227 325.7676 224.7217 325.7676 C227.2188 325.7676 231.8984 329.1621 236.8213 328.666 C238.8809 328.5781 244.666 327.834 248.3838 322.3945 C248.0869 322.207 241.4785 318.3613 241.5508 310.3633 C241.6367 300.7949 249.9443 297.6152 250.04 297.5742 Z" />
+                        <path d="M233.5947 333.8535 C235.8086 336.5273 237.293 340.2461 236.8848 343.9453 C233.7051 343.8281 229.8516 341.8281 227.5723 339.1563 C225.5273 336.791 223.7334 333.0059 224.2197 329.3828 C227.7637 329.1074 231.3896 331.1855 233.5947 333.8535 Z" />
+                      </g>
+                    </svg>
+                    <span>macOS DMG</span>
+                  </strong>
+                  <span>Installs to <code>/Applications</code> and starts after setup.</span>
+                </div>
+                <div>
+                  <strong>
+                    <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
+                      <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
+                      <path d="M12.1 4.1 21 2.8v8.7h-8.9V4.1z" />
+                      <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
+                      <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
+                    </svg>
+                    <span>Windows ZIP</span>
+                  </strong>
+                  <span>
+                    Extract it, <code>cd</code> into the
+                    <code>agent-browser-gateway-0.3.8-windows-x64</code> folder, then run
+                    <code>.\Install-AgentBrowserGateway.ps1</code>.
+                  </span>
+                </div>
+                <div>
+                  <strong>CLI ready</strong>
+                  <span>Installs <code>abg</code> and refreshes Claude Code and Codex skills.</span>
+                </div>
+                <div>
+                  <strong>Chrome extension</strong>
+                  <span>Install from the Chrome Web Store to share tabs with the local gateway.</span>
+                </div>
+              </div>
+              <div class="checksum-list">
+                <p class="checksum">
+                  <span>macOS SHA-256</span>
+                  <a href="downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg.sha256.txt">
+                    <code>46694cbc4693f57f93b2fab521c75ba5651385236be595b3579449c4e305d62a</code>
+                  </a>
+                </p>
+                <p class="checksum">
+                  <span>Windows SHA-256</span>
+                  <a href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip.sha256.txt">
+                    <code>33d21cfaee94e2bae21d05e8017143758e1d267e9c7e387475ea56adae0f91fc</code>
+                  </a>
+                </p>
+              </div>
+              <div class="download-trust">
+                <p><strong>macOS trust:</strong> verify the SHA-256 checksum before opening the DMG.</p>
+                <p><strong>Extension:</strong> install Agent Browser Gateway from the Chrome Web Store.</p>
+                <p>
+                  <strong>Uninstall:</strong> remove the app from <code>/Applications</code>, delete
+                  <code>abg</code> from your PATH if manually linked, and remove the Chrome extension.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="band surface" id="why" aria-labelledby="why-title">
+          <div class="section-inner split">
+            <div class="copy">
+              <h2 id="why-title">Why ABG exists.</h2>
+              <p>
+                Browser access is powerful for AI agents because the real work often happens inside
+                pages you are already logged into. That same power becomes risky when the bridge is
+                opaque, global, or tied to a single hosted assistant.
+              </p>
+              <p class="principle">
+                If your AI can see your browser, you should be able to inspect the bridge it uses.
+              </p>
+            </div>
+            <div class="reason-list" aria-label="ABG design reasons">
+              <div class="reason">
+                <h3>Less ambient access</h3>
+                <p>No tab is shared until you choose it, and sharing is scoped to that tab.</p>
+              </div>
+              <div class="reason">
+                <h3>Less platform lock-in</h3>
+                <p>The CLI can be used by Codex, Claude Code, Cursor, Cline, or your own scripts.</p>
+              </div>
+              <div class="reason">
+                <h3>Less hidden movement</h3>
+                <p>ABG is local-first, avoids product telemetry, and records operations in a local audit log.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="band surface" id="model" aria-labelledby="model-title">
+          <div class="section-inner">
+            <div class="section-heading">
+              <h2 id="model-title">The browser remains human-owned.</h2>
+              <p>
+                ABG is built for the moment when you are already looking at the real page and want
+                to hand selected local browser state to an agent workflow.
+              </p>
+            </div>
+            <div class="feature-grid">
+              <article class="feature">
+                <div class="feature-mark">1</div>
+                <h3>No access by default</h3>
+                <p>The agent sees no tabs until you explicitly share a tab or enable all-tabs mode for an isolated profile.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-mark">2</div>
+                <h3>Per-tab by default</h3>
+                <p>ABG keeps permission scoped to selected tabs unless you opt into all-tabs access for a sandbox profile.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-mark">3</div>
+                <h3>Automatic revocation</h3>
+                <p>Manual tab access is revoked when the tab closes, navigates to another origin, or you revoke it.</p>
+              </article>
+              <article class="feature">
+                <div class="feature-mark">4</div>
+                <h3>Visible operations</h3>
+                <p>Write actions can require a local approval step before they run.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="band" id="trust" aria-labelledby="trust-title">
+          <div class="section-inner split">
+            <div class="copy">
+              <h2 id="trust-title">A small local bridge, not another browser cloud.</h2>
+              <p>
+                Agent Browser Gateway combines a Chrome extension, a macOS menu bar gateway, and
+                the <code>abg</code> CLI. The extension has no default host permissions, optional
+                all-tabs access is local opt-in, the gateway listens on <code>127.0.0.1</code>, and
+                the product does not include analytics or telemetry.
+              </p>
+              <div class="steps">
+                <div class="step">
+                  <div class="step-number">A</div>
+                  <div>
+                    <h3>Share from Chrome</h3>
+                    <p>You choose the active tab from the extension popup.</p>
+                  </div>
+                </div>
+                <div class="step">
+                  <div class="step-number">B</div>
+                  <div>
+                    <h3>Use a local CLI</h3>
+                    <p>Your agent asks <code>abg</code> for reads, screenshots, console logs, tables, or operations.</p>
+                  </div>
+                </div>
+                <div class="step">
+                  <div class="step-number">C</div>
+                  <div>
+                    <h3>Review the audit trail</h3>
+                    <p>Local operation records are written to a JSONL audit log on your Mac.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <aside class="terminal" aria-label="Example ABG command output">
+              <div class="terminal-bar" aria-hidden="true">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <pre><span class="prompt">$</span> abg tabs --compact
+[
+  &#123;
+    "ref": "t1",
+    "title": "Issue tracker",
+    "origin": "https://example.com"
+  &#125;
+]
+
+<span class="prompt">$</span> abg read t1 --format markdown</pre>
+            </aside>
+          </div>
+        </section>
+
+        <section class="band" id="tokens" aria-labelledby="tokens-title">
+          <div class="section-inner split">
+            <div class="copy">
+              <h2 id="tokens-title">Cleaner browser context. Fewer wasted tokens.</h2>
+              <p>
+                Raw browser HTML is noisy: scripts, styles, framework wrappers, hidden UI, and
+                unrelated app chrome all get mixed into the prompt. ABG can return clean Markdown
+                from the shared tab, preserving useful structure while cutting out the page noise.
+              </p>
+              <p>
+                In a README benchmark on a typical article page, ABG's Markdown read reduced input
+                from roughly 50,000 tokens of raw HTML to roughly 5,900 tokens while keeping
+                headings, links, lists, and article structure.
+              </p>
+            </div>
+            <div class="metric-grid" aria-label="Token efficiency benchmark summary">
+              <div class="metric">
+                <span class="metric-label">Raw page HTML</span>
+                <strong>~50k</strong>
+                <span>tokens</span>
+              </div>
+              <div class="metric accent">
+                <span class="metric-label">ABG Markdown</span>
+                <strong>~5.9k</strong>
+                <span>tokens</span>
+              </div>
+              <div class="metric wide">
+                <span class="metric-label">Reduction vs naive full HTML</span>
+                <strong>~88%</strong>
+                <span>less prompt noise, with structure preserved</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="band surface" id="compare" aria-labelledby="compare-title">
+          <div class="section-inner">
+            <div class="section-heading">
+              <h2 id="compare-title">Not a test runner. Not a hosted browser assistant.</h2>
+              <p>
+                ABG is for handing a human-owned, already-open tab to an agent workflow. Playwright
+                remains the better fit when automation should own the whole browser lifecycle.
+              </p>
+            </div>
+            <div class="compare-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Option</th>
+                    <th>Best fit</th>
+                    <th>Tradeoff</th>
+                    <th>Where ABG differs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Agent Browser Gateway</td>
+                    <td>AI-assisted work in a tab you are already using</td>
+                    <td>Requires explicit local setup and tab sharing</td>
+                    <td>Per-tab consent, local transport, CLI-first workflow, local audit log</td>
+                  </tr>
+                  <tr>
+                    <td>Playwright</td>
+                    <td>Deterministic E2E tests, CI, screenshots, clean browser profiles</td>
+                    <td>Automation owns the browser session</td>
+                    <td>ABG uses your everyday Chrome tab with your current login and context</td>
+                  </tr>
+                  <tr>
+                    <td>Claude in Chrome</td>
+                    <td>Provider-integrated browser assistance</td>
+                    <td>Tied to that provider's product surface and data path</td>
+                    <td>ABG is agent-agnostic and designed around local-first browser access</td>
+                  </tr>
+                  <tr>
+                    <td>Browser MCP tools</td>
+                    <td>MCP-native browser control and structured snapshots</td>
+                    <td>Often targets a dedicated or broader browser context</td>
+                    <td>ABG keeps the human's selected tab as the permission boundary</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="footer">
+        <div class="section-inner footer-inner">
+          <span>
+            Agent Browser Gateway is managed by
+            <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+          </span>
+          <span>
+            <a href="mailto:contact@arcm.co.jp">Contact</a>
+            <a href="docs/">Docs</a>
+            <a href="privacy/">Privacy Policy</a>
+          </span>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

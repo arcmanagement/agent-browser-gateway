@@ -1,0 +1,16 @@
+{
+  "name": "agent-browser-gateway-site",
+  "version": "0.3.12",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.39.3",
+    "astro": "6.4.4",
+    "pagefind": "1.5.2"
+  }
+}

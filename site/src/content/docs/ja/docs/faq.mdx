@@ -1,0 +1,52 @@
+---
+title: FAQ
+description: Agent Browser Gateway のよくある質問。
+sidebar:
+  order: 8
+---
+
+## ABGはPlaywrightの代替ですか？
+
+いいえ。automationが所有するcleanで再現可能なbrowserが必要ならPlaywrightを使います。ABGは、すでに人間が使っている
+browser sessionから、選択した1タブまたは隔離されたall-tabs profileをagentに渡すためのtoolです。
+
+## エージェントは全タブを見られますか？
+
+デフォルトでは見られません。通常modeでは、明示的に共有したタブだけが見えます。all-tabs modeは隔離プロファイルや
+sandboxマシン向けの別opt-inです。
+
+## ABGはブラウザーデータをcloud serviceに送りますか？
+
+通常のローカルworkflowでは送りません。Gatewayはlocalに待ち受け、ABG-hosted accountやcloud relayはproduct boundaryに含みません。
+
+## なぜ最初にMCPではなくCLIなのですか？
+
+CLIはshell commandを実行できる任意のagentで使え、人間もdebugしやすく、source of truthとして保てます。
+MCP wrapperは同じローカルcommand surfaceの上にあとから作れます。
+
+## pluginはどこに保存されますか？
+
+bundled pluginはapp bundle内にあります。user-installed pluginは `~/.abg/plugins/` に置かれます。
+port `8766` のdevelopment Gatewayでは `~/.abg-dev/plugins/` を使います。
+
+## plugin設定はDBに保存されますか？
+
+いいえ。plugin enablementはactive ABG user directory配下の `plugin-state.json` にあるprofile-local filesystem stateです。
+plugin enablement用のapp databaseはありません。
+
+## private plugin repositoryはどう認証しますか？
+
+`abg plugin install` はローカルの `git` commandを使います。private repositoryでは既存のSSH key、git credential helper、
+GitHub CLIに紐づいたgit認証を使います。ABGはGitHub tokenを要求・保存しません。
+
+## タブが見えなくなったら？
+
+origin遷移、タブclose、revokeのいずれかを確認します。
+
+```bash
+abg status
+abg tabs --compact
+abg audit --lines 20
+```
+
+必要なら拡張popupからもう一度タブを共有してください。

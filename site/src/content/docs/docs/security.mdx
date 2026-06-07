@@ -1,0 +1,57 @@
+---
+title: Security
+description: Consent, local transport, approval prompts, audit logs, and official non-goals.
+sidebar:
+  order: 7
+---
+
+ABG is designed for human-owned browser sessions. The security model starts from a narrow default:
+the agent sees no tabs until the user shares one.
+
+## Consent boundaries
+
+- Per-tab sharing is the default.
+- Shares revoke when the tab closes, changes origin, or is explicitly revoked.
+- Optional all-tabs mode is for isolated profiles and sandbox machines.
+- Mutating commands can require a local approval prompt before they run.
+- General JavaScript eval is disabled by default and requires explicit opt-in.
+
+## Local transport
+
+The Gateway listens on loopback. The browser extension connects to the Gateway locally, and the CLI
+talks to the Gateway through local IPC. ABG does not need an ABG-hosted account or cloud relay for
+the normal local workflow.
+
+Official ABG will not operate a cloud relay, collect telemetry, or silently enable broad JavaScript
+execution. User-controlled remote pairing can exist as a future self-operated connection path, but it
+must not become an ABG-operated relay.
+
+## Audit log
+
+Gateway operations are written to a local JSONL audit log. The log records action names, tab
+references, selectors, approval mode, plugin command names, and byte lengths where relevant. It avoids
+recording sensitive payload values such as pasted text and plugin command argument values.
+
+Use:
+
+```bash
+abg audit --lines 50
+```
+
+## What ABG does not defend against
+
+ABG does not claim to protect against:
+
+- a malicious local user or root-level compromise,
+- malicious browser extensions in the same profile,
+- browser vulnerabilities,
+- operations the user explicitly approves,
+- plugin code the user chooses to install.
+
+Install plugins only from sources you trust. Plugins execute in the local Gateway process.
+
+## Safer automation defaults
+
+Prefer named commands such as `read`, `get`, `find`, `wait`, `snapshot`, and plugin commands. Use
+`eval` only as a last resort. When eval is enabled, keep AutoMode off unless the profile is trusted
+and isolated enough for that workflow.

@@ -18,6 +18,8 @@ function convertHtmlToMarkdown(html, keepImages) {
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
     .replace(/<svg[\s\S]*?<\/svg>/gi, "");
 
+  s = normalizeSlackSenderNames(s);
+
   // Block elements with structural meaning.
   s = s
     .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "\n# $1\n\n")
@@ -90,6 +92,125 @@ function imageMarkdown(alt, src, keepImages) {
   if (keepImages) return "![" + cleanAlt + "](" + src + ")";
   if (!cleanAlt) return "[img]";
   return "![" + cleanAlt + "]";
+}
+
+function normalizeSlackSenderNames(html) {
+  var startTagRe = /<([a-z0-9-]+)\b(?=[^>]*\bdata-qa\s*=\s*["']message_sender_name["'])[^>]*>/ig;
+  var output = "";
+  var cursor = 0;
+  var match;
+
+  while ((match = startTagRe.exec(html)) !== null) {
+    var tagName = match[1];
+    var close = findClosingTag(html, tagName, startTagRe.lastIndex);
+    if (!close) continue;
+
+    var startTag = match[0];
+    var inner = html.slice(startTagRe.lastIndex, close.start);
+    var senderName = slackSenderName(startTag, inner);
+    if (!senderName) continue;
+
+    var afterSeparator = consumeSlackSenderSeparator(html, close.end);
+    output += html.slice(cursor, match.index) + senderName;
+    if (afterSeparator > close.end) output += " ";
+    cursor = afterSeparator;
+    startTagRe.lastIndex = afterSeparator;
+  }
+
+  return output + html.slice(cursor);
+}
+
+function findClosingTag(html, tagName, fromIndex) {
+  var tagRe = new RegExp("</?" + escapeRegExp(tagName) + "\\b[^>]*>", "ig");
+  tagRe.lastIndex = fromIndex;
+  var depth = 1;
+  var match;
+
+  while ((match = tagRe.exec(html)) !== null) {
+    if (match[0].charAt(1) === "/") {
+      depth -= 1;
+    } else if (!/\/\s*>$/.test(match[0])) {
+      depth += 1;
+    }
+    if (depth === 0) return { start: match.index, end: tagRe.lastIndex };
+  }
+
+  return null;
+}
+
+function slackSenderName(startTag, innerHtml) {
+  var label = attrValue(startTag, "aria-label") || firstAttrValue(innerHtml, "aria-label");
+  if (label) return cleanSenderName(label);
+
+  var text = textFromHtml(innerHtml);
+  var clean = cleanSenderName(text);
+  return collapseRepeatedSenderName(clean);
+}
+
+function consumeSlackSenderSeparator(html, fromIndex) {
+  var i = skipWhitespace(html, fromIndex);
+  if (html.charAt(i) === ":") return skipWhitespace(html, i + 1);
+
+  var tag = html.slice(i).match(/^<([a-z0-9-]+)\b[^>]*>/i);
+  if (!tag) return fromIndex;
+
+  var close = findClosingTag(html, tag[1], i + tag[0].length);
+  if (!close) return fromIndex;
+
+  var text = textFromHtml(html.slice(i + tag[0].length, close.start)).replace(/\s+/g, " ").trim();
+  if (text === ":") return skipWhitespace(html, close.end);
+
+  return fromIndex;
+}
+
+function skipWhitespace(text, index) {
+  var i = index;
+  while (i < text.length && /\s/.test(text.charAt(i))) i += 1;
+  return i;
+}
+
+function attrValue(html, name) {
+  var re = new RegExp("\\s" + escapeRegExp(name) + "\\s*=\\s*([\"'])([\\s\\S]*?)\\1", "i");
+  var match = html.match(re);
+  return match ? match[2] : "";
+}
+
+function firstAttrValue(html, name) {
+  var tagRe = /<[^>]+>/g;
+  var match;
+  while ((match = tagRe.exec(html)) !== null) {
+    var value = attrValue(match[0], name);
+    if (value) return value;
+  }
+  return "";
+}
+
+function textFromHtml(html) {
+  return String(html)
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
+function cleanSenderName(name) {
+  return String(name).replace(/\s*:\s*$/, "").replace(/\s+/g, " ").trim();
+}
+
+function collapseRepeatedSenderName(name) {
+  var half = name.length / 2;
+  if (half % 1 === 0 && name.slice(0, half) === name.slice(half)) {
+    return name.slice(0, half).trim();
+  }
+  return name;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 abg.registerTransform("html-to-markdown", function (html) {

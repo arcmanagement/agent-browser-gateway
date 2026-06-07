@@ -1,6 +1,10 @@
 import ArgumentParser
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import GatewayCore
 
 enum CLIError: Error, LocalizedError {
@@ -26,7 +30,7 @@ struct UDSClient {
         self.path = path
     }
 
-    func call(method: String, params: [String: Any]? = nil) throws -> Any? {
+    func call(method: String, params: [String: Any]? = nil, suppressErrors: Bool = false) throws -> Any? {
         let id = UUID().uuidString
         let req: [String: Any] = {
             var d: [String: Any] = ["id": id, "method": method]
@@ -38,11 +42,14 @@ struct UDSClient {
         do {
             respData = try sendAndReceive(reqData)
         } catch CLIError.gatewayNotRunning(let message) {
+            guard !suppressErrors else {
+                throw CLIError.gatewayNotRunning(message)
+            }
             printErrorJSON([
                 "error": "gateway_not_running",
                 "message": message,
                 "userMessage": "Gateway が起動していません。Agent Browser Gateway.app を起動してから、もう一度コマンドを実行してください。",
-                "nextCommand": "open \"Agent Browser Gateway.app\" && abg status",
+                "nextCommand": gatewayStartCommand(),
             ])
             throw ExitCode.failure
         }
@@ -50,6 +57,11 @@ struct UDSClient {
             throw CLIError.decodeError("invalid JSON")
         }
         if let errObj = json["error"] as? [String: Any] {
+            guard !suppressErrors else {
+                let code = errObj["code"] as? String ?? errObj["error"] as? String ?? "gateway_error"
+                let message = errObj["message"] as? String ?? code
+                throw CLIError.responseError(message)
+            }
             printErrorJSON(normalizedErrorObject(errObj))
             throw ExitCode.failure
         }
@@ -57,7 +69,11 @@ struct UDSClient {
     }
 
     private func sendAndReceive(_ payload: Data) throws -> Data {
+        #if canImport(Glibc)
+        let sock = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let sock = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard sock >= 0 else { throw CLIError.ioError("socket() failed") }
         defer { close(sock) }
 
@@ -114,6 +130,29 @@ struct UDSClient {
     }
 }
 
+private func gatewayStartCommand() -> String {
+    let environment = ProcessInfo.processInfo.environment
+    let envKeys = ["ABG_PORT", "ABG_PROFILE", "ABG_STATE_DIR", "ABG_LOGS_DIR", "ABG_USER_DIR"]
+    let envAssignments = envKeys.compactMap { key -> String? in
+        guard let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return "\(key)=\(shellQuoted(value))"
+    }
+    guard !envAssignments.isEmpty else {
+        return "open \"Agent Browser Gateway.app\" && abg status"
+    }
+    return "\(envAssignments.joined(separator: " ")) swift run Gateway"
+}
+
+private func shellQuoted(_ value: String) -> String {
+    guard value.rangeOfCharacter(from: CharacterSet(charactersIn: " \t\n'\"\\$`")) != nil else {
+        return value
+    }
+    return "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+}
+
 // Pretty-print helpers
 func printJSON(_ value: Any?) {
     guard let v = value else { print("null"); return }
@@ -141,7 +180,7 @@ private func normalizedErrorObject(_ errObj: [String: Any]) -> [String: Any] {
         "error": errObj["code"] as? String ?? "unknown_error",
         "message": errObj["message"] as? String ?? "Unknown error",
     ]
-    for key in ["userMessage", "nextCommand", "hint", "tabId", "plugin", "command"] {
+    for key in CLIJSONContract.stderrErrorKeys where key != "error" && key != "message" {
         if let value = errObj[key] {
             out[key] = value
         }

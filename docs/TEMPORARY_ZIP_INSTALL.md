@@ -13,18 +13,18 @@
 以下の 2 つを送ります。
 
 ```text
-agent-browser-gateway-0.3.6-macos-arm64.zip
-agent-browser-gateway-extension-0.3.6.zip
+agent-browser-gateway-0.3.12-macos-arm64.zip
+agent-browser-gateway-extension-0.3.12.zip
 ```
 
 チェックサム:
 
 ```text
-TODO: update after signed v0.3.6 artifacts are generated  agent-browser-gateway-0.3.6-macos-arm64.zip
-TODO: update after extension v0.3.6 artifact is generated  agent-browser-gateway-extension-0.3.6.zip
+cf4133a12ecfd75ad7438604a83844ed90d5987f4cd44ad63341e8ef5e46ba02  agent-browser-gateway-0.3.12-macos-arm64.zip
+74fc77b993e40ce84f63b19c9cbf3691c977bdf13d87a68392a8481f00a4a2c5  agent-browser-gateway-extension-0.3.12.zip
 ```
 
-`agent-browser-gateway-0.3.6-macos-arm64.zip` の中身:
+`agent-browser-gateway-0.3.12-macos-arm64.zip` の中身:
 
 ```text
 Agent Browser Gateway.app
@@ -38,7 +38,7 @@ AgentBrowserGateway_abg.bundle
 
 ## アプリと CLI をインストール
 
-`agent-browser-gateway-0.3.6-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
+`agent-browser-gateway-0.3.12-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -58,12 +58,12 @@ abg install-skill
 
 ## Chrome 拡張をインストール
 
-`agent-browser-gateway-extension-0.3.6.zip` を、消さない場所へ展開します。
+`agent-browser-gateway-extension-0.3.12.zip` を、消さない場所へ展開します。
 
 ```bash
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 mkdir -p "$HOME/Applications/Agent Browser Gateway Extension"
-unzip agent-browser-gateway-extension-0.3.6.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
+unzip agent-browser-gateway-extension-0.3.12.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
 Chrome で以下を行います。
@@ -74,6 +74,10 @@ Chrome で以下を行います。
 4. `$HOME/Applications/Agent Browser Gateway Extension` を選択する
 
 このフォルダは削除しないでください。Chrome は選択したフォルダから unpacked extension を読み込みます。
+
+シークレットウィンドウで ABG を使う場合は、Chrome の拡張機能詳細画面で `Allow in incognito`
+を有効にしてください。Chrome は初期状態では拡張機能をシークレットウィンドウで実行しません。
+通常ウィンドウだけで使う場合、この設定は不要です。
 
 ## 動作確認
 

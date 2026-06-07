@@ -12,13 +12,15 @@ The Chrome extension is shipped as a separate release asset and must be loaded s
 Unsigned local smoke build:
 
 ```bash
-make dist VERSION=0.3.6
+export VERSION=0.3.12
+make dist VERSION="$VERSION"
 ```
 
 Developer ID signed and notarized build:
 
 ```bash
-make dist VERSION=0.3.6 \
+export VERSION=0.3.12
+make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
 ```
@@ -31,12 +33,23 @@ created on a trusted maintainer Mac and uploaded to GitHub Releases afterward.
 Outputs:
 
 ```text
-dist/agent-browser-gateway-0.3.6-macos-arm64.zip
-dist/agent-browser-gateway-extension-0.3.6.zip
+dist/agent-browser-gateway-0.3.12-macos-arm64.zip
+dist/agent-browser-gateway-extension-0.3.12.zip
 dist/agent-browser-gateway.rb
 ```
 
 `dist/agent-browser-gateway.rb` contains the calculated `sha256` for the Homebrew cask.
+
+## Tag-triggered CI artifact build
+
+The `Release Artifacts` workflow runs on tags matching `v*.*.*` and can also be
+started manually with a version input. It builds the unsigned macOS ZIP, Chrome
+extension ZIP, generated Cask, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`, then
+uploads them as a GitHub Actions artifact.
+
+This workflow is for reproducible archive generation and release review. It does
+not publish a GitHub Release and does not handle Developer ID signing,
+notarization, stapling, or Chrome Web Store submission.
 
 ## Publish
 
@@ -66,17 +79,47 @@ dist/agent-browser-gateway.rb
      --notes-file release-notes.md
    ```
 
-5. Copy `dist/agent-browser-gateway.rb` into the tap repository as `Casks/agent-browser-gateway.rb`.
-6. Commit and push the tap update.
+5. Update `Casks/agent-browser-gateway.rb` from the uploaded release asset:
+
+   ```bash
+   bash scripts/update-homebrew-cask.sh "$VERSION"
+   ```
+
+6. Verify the Cask:
+
+   ```bash
+   ruby -c Casks/agent-browser-gateway.rb
+   tap_name="arcmanagement/agent-browser-gateway"
+   brew tap-new --no-git "$tap_name"
+   tap_dir="$(brew --repository "$tap_name")"
+   mkdir -p "$tap_dir/Casks"
+   cp Casks/agent-browser-gateway.rb "$tap_dir/Casks/agent-browser-gateway.rb"
+   brew audit --cask --strict --tap="$tap_name" agent-browser-gateway
+   git diff -- Casks/agent-browser-gateway.rb
+   ```
+
+   After the GitHub Release asset is reachable from the network, run the online
+   check as well:
+
+   ```bash
+   brew audit --cask --strict --online --tap="$tap_name" agent-browser-gateway
+   ```
+
+7. Commit and push the tap update.
 
 For a same-repository tap, generate directly into `Casks/` after the GitHub Release asset exists:
 
 ```bash
-make dist VERSION=0.3.6 CASK_OUTPUT=Casks/agent-browser-gateway.rb
+export VERSION=0.3.12
+bash scripts/update-homebrew-cask.sh "$VERSION"
 git add Casks/agent-browser-gateway.rb
-git commit -m "Update Homebrew cask for v0.3.6"
+git commit -m "Update Homebrew cask for v$VERSION"
 git push
 ```
+
+The `Homebrew Cask Update` GitHub Actions workflow runs the same update command
+for a manually supplied version, audits the Cask, and uploads the updated Cask as
+an artifact. It does not push commits automatically.
 
 ## Install Test
 

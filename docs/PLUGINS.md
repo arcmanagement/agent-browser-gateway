@@ -6,7 +6,7 @@ Gateway process through JavaScriptCore, so install only plugins you trust.
 Plugins are searched in this order:
 
 1. Bundled plugins under `Agent Browser Gateway.app/Contents/Resources/plugins/`
-2. User-installed plugins under `~/.abg/plugins/`
+2. User-installed plugins under `~/.abg/plugins/` by default (`~/.abg-dev/plugins/` for `ABG_PORT=8766` dev runs)
 
 During repo development, `abg plugin list` also shows the local `plugins/` directory when run from
 the checkout.
@@ -19,14 +19,36 @@ abg plugin list --loaded                  # requires a running Gateway
 
 abg plugin install user/repo --yes
 abg plugin install https://github.com/user/repo.git --yes
+abg plugin install git@github.com:user/private-plugin.git --yes
 abg plugin install ./my-plugin --name my-plugin --yes
 
 abg plugin update                         # git pull all user plugins
 abg plugin update my-plugin
+abg plugin disable my-plugin              # keep files, stop loading commands/transforms
+abg plugin enable my-plugin               # re-enable and reload when the Gateway is running
+abg plugin reload my-plugin               # reload in the running Gateway without re-sharing tabs
+abg plugin reload                         # reload all plugins on the Gateway search paths
 abg plugin uninstall my-plugin
 ```
 
-`install` requires `--yes` because plugin code is arbitrary JavaScript loaded by the local Gateway.
+The macOS plugin browser exposes the same install path through the `+` button. Paste `user/repo`,
+an HTTPS GitHub URL, an SSH Git URL, or another `git clone` URL. User-installed plugins also show
+Update, Enable/Disable, and Uninstall actions in the detail view.
+
+`install` requires `--yes` in the CLI because plugin code is arbitrary JavaScript loaded by the
+local Gateway. Repository installs use the local `git` command, so private repositories use the
+user's existing SSH keys, git credential helper, or GitHub CLI-backed git authentication. ABG does
+not ask for or store GitHub tokens, and HTTPS URLs with embedded credentials are rejected.
+
+Update runs `git pull --ff-only` for git-backed user plugins. Uninstall only removes directories
+under the active user plugin root. Built-in plugins come from the app bundle, and Local Dev plugins
+are external working copies, so the browser does not uninstall them.
+
+Disable keeps the plugin directory in place but stops ABG from loading that user plugin's commands
+and transforms. Enable removes the disabled marker and reloads the plugin when the Gateway is
+running. This state is stored as profile-local filesystem state in `plugin-state.json` under the
+active ABG user directory (`~/.abg/` for production or `~/.abg-dev/` for dev), not in an app
+database.
 
 ## Directory Layout
 
@@ -126,6 +148,8 @@ Invoke plugin commands as dynamic ABG subcommands:
 
 ```bash
 abg hello-plugin greet --name "Ada" --loud
+abg hello-plugin greet --tab t1
+abg hello-plugin greet --match-url "*example.com*"
 abg hello-plugin greet --json '{"name":"Ada","loud":true}'
 printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 ```
@@ -133,13 +157,26 @@ printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 `--key value` becomes `{ "key": value }`; `--flag` becomes `{ "flag": true }`. Scalar values are
 parsed as booleans or numbers when possible, otherwise they remain strings. `--json` and JSON
 `--stdin` merge object values into `args`; non-JSON stdin is passed as `args.stdin`.
+`--tab`, `--tab-id`, `--match-url`, `--match-title`, and `--first` are reserved by the dynamic
+command runner for tab binding and are not passed through as plugin args.
 
 The command result is serialized as JSON to stdout. Handler failures are returned as structured JSON
 errors containing `error`, `message`, `plugin`, and `command`.
 
+If the command is invoked without an explicit tab and the plugin manifest declares `domains`, the
+Gateway tries to bind the command to a shared tab whose URL matches those domain globs. Exactly one
+match becomes `context.tabId`; zero matches returns `no_matching_tab` with `expectedDomains`; multiple
+matches returns `ambiguous_tab` with compact `candidates`. `--tab-id`, `--tab`, or `--match-url`
+remain explicit overrides.
+
 Audit logs record command invocations with `action: "plugin_command_run"`, the plugin name, command
 name, argument key list, and serialized argument byte length. Argument values are never written to
 the audit log because prompts and payloads may contain sensitive data.
+
+Prefer command handlers that return structured JSON with a stable `{ ok, ... }` shape. Keep command
+argument metadata in `plugin.json` so `abg <plugin> <command> --help` can display required inputs and
+defaults. Command plugins should compose `context.tab.*` primitives instead of shelling out or
+inventing a separate browser access path.
 
 The bundled agent skill in `Sources/abg/Resources/agent-browser-gateway.md` contains the concise
 agent-facing authoring guide. Keep this tutorial as the deeper human-facing reference.
@@ -164,6 +201,7 @@ Available methods:
 - `context.tab.wait({ selector, hidden, ms })` mirrors `abg wait`.
 - `context.tab.screenshot({ selector, x, y, width, height })` mirrors `abg screenshot`; clipping uses
   `x`, `y`, `width`, and `height`.
+- `context.tab.navigate({ url })` mirrors `abg navigate`.
 
 Plugin-issued tab actions route through the same Gateway dispatch path as CLI calls, so per-tab
 consent, operation approval, debug bar behavior, and audit logging apply uniformly. Do not shell out
@@ -218,6 +256,10 @@ After installing or bundling the plugin and restarting the Gateway:
 abg hello-plugin greet --name "Ada"
 ```
 
+During plugin development, use `abg plugin reload hello-plugin` to reload `index.js` and
+`plugin.json` without quitting ABG.app. Existing tab shares are preserved. If a reload fails, the
+previous loaded version remains active.
+
 Expected output:
 
 ```json
@@ -226,6 +268,22 @@ Expected output:
   "ok": true
 }
 ```
+
+### Local Redaction
+
+The bundled `redaction` plugin provides an opt-in Markdown masking transform:
+
+```bash
+abg read t1 --format markdown --redact
+abg read t1 --format markdown --redact --redact-regex 'ACME-[0-9]+'
+printf 'ada@example.com' | abg redaction redact --stdin
+abg redaction redact --json '{"text":"ticket ACME-123","customRegexes":["ACME-[0-9]+"]}'
+```
+
+The baseline masks email addresses, phone-like strings, credit-card-like strings, and optional custom
+regexes supplied by the caller. It is a local content-minimization helper, not a security guarantee.
+When `--redact` runs, the audit log records transform names and custom regex count, not raw matched
+values.
 
 ## Per-Domain Markdown Plugin
 
@@ -269,6 +327,14 @@ transform.
 - `plugins/notion-plugin` is a per-domain plugin for `notion.so` and `notion.site` pages. It strips
   Notion app chrome, scripts, styles, sidebars, popovers, and bookkeeping attributes before
   returning compact Markdown.
+- `plugins/gmail-plugin`, `plugins/slack-plugin`, and `plugins/linear-plugin` are first-party
+  per-domain Markdown examples for authenticated app pages. They run locally in the Gateway plugin
+  host, use deterministic transforms, and do not make network calls.
+- `plugins/slack-plugin` also provides `catch-up`, `pending`, and `open-channel` workflow commands
+  for reading settled channel messages and jumping to a channel by name or id.
+- `plugins/redaction-plugin` provides opt-in local Markdown redaction.
+- `plugins/workflow-plugin` demonstrates command abstraction with `context.tab.clear`,
+  `context.tab.paste`, `context.tab.wait`, `context.tab.read`, and `context.tab.click`.
 - `plugins/info-plugin` is a loader smoke test.
 
 Run the Notion benchmark:
@@ -280,6 +346,6 @@ node examples/benchmark-notion-plugin.mjs
 ## Safety Rules
 
 - Do not add telemetry or network calls.
-- Do not bypass per-tab consent.
-- Do not expose arbitrary JavaScript execution to agents.
+- Do not bypass the configured tab access mode. Plugins must use the Gateway tab APIs and must not invent a separate browser access path.
+- Do not bypass the approved-eval / Trusted automation boundary or expose unapproved arbitrary JavaScript execution to agents.
 - Prefer deterministic transforms that are easy to audit.

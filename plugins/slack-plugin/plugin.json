@@ -1,0 +1,40 @@
+{
+  "name": "slack",
+  "version": "0.1.0",
+  "author": "arcmanagement",
+  "description": "Cleans Slack pages into compact Markdown for shared Slack tabs.",
+  "domains": [
+    "https://app.slack.com/*",
+    "https://*.slack.com/*"
+  ],
+  "transforms": [
+    "slack-to-markdown"
+  ],
+  "commands": [
+    {
+      "name": "catch-up",
+      "description": "Read recent messages from the active Slack channel after the DOM settles.",
+      "args": [
+        { "name": "limit", "type": "number", "required": false, "default": 20 },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    },
+    {
+      "name": "pending",
+      "description": "Read pending-looking messages from the active Slack channel.",
+      "args": [
+        { "name": "limit", "type": "number", "required": false, "default": 20 },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    },
+    {
+      "name": "open-channel",
+      "description": "Open a Slack channel by name or channel id and wait for the URL to settle.",
+      "args": [
+        { "name": "name", "type": "string", "required": false },
+        { "name": "channel-id", "type": "string", "required": false },
+        { "name": "timeoutMs", "type": "number", "required": false, "default": 3000 }
+      ]
+    }
+  ]
+}

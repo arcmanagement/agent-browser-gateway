@@ -1,0 +1,85 @@
+---
+title: CLI
+description: Common abg commands for observing and operating shared browser tabs.
+sidebar:
+  order: 4
+---
+
+The CLI is the stable interface for agents and scripts.
+
+Start with status and tab discovery:
+
+```bash
+abg status
+abg tabs --compact
+abg inspect
+```
+
+Use the returned tab reference, such as `t1`, with read-only commands:
+
+```bash
+abg read t1 --format markdown
+abg read t1 --selector article --format markdown
+abg frames t1
+abg get text t1 "h1"
+abg snapshot t1 --interactive-only --compact
+abg screenshot t1 --out page.png
+abg console t1
+abg table t1 --format markdown
+abg network t1 --url "*api*"
+abg audit --lines 50
+```
+
+Mutating commands operate on the same shared tab and can trigger a local approval prompt:
+
+```bash
+abg click t1 --selector "button.save"
+abg fill t1 --selector "input[name=email]" --value "me@example.com"
+abg paste t1 --selector "[contenteditable=true]" --stdin
+abg key t1 Enter
+abg upload t1 --selector "input[type=file]" --file ./report.pdf
+abg navigate t1 "https://example.com"
+abg revoke t1
+```
+
+## Targeting
+
+Commands accept an explicit tab reference or match flags:
+
+```bash
+abg read --match-url "*notion.so*" --format markdown
+abg click --match-title "Dashboard" --selector "button.refresh"
+```
+
+Use `frames` before selecting iframe content. Same-origin accessible frames receive refs such as
+`@f1`:
+
+```bash
+abg frames t1
+abg read t1 --frame @f1 --selector "main" --format markdown
+```
+
+## Rich editors
+
+Use `fill` for normal inputs and plain editable fields. Use `paste` when a rich editor ignores
+synthetic value updates, and `clear` when you need to empty an editor first:
+
+```bash
+abg clear t1 --selector "[contenteditable=true]"
+printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
+```
+
+The audit log records selectors, action names, and byte lengths. It does not write pasted text into
+the audit log.
+
+## Escape hatch
+
+Prefer named primitives such as `get`, `find`, `wait`, `snapshot`, and plugin commands. Use `eval`
+only when those primitives are not enough:
+
+```bash
+abg eval t1 --script "document.title" --approve
+```
+
+Eval is disabled by default in the extension popup. When Trusted automation is off, `--approve` and
+a local approval prompt are required for each eval call.

@@ -1,6 +1,7 @@
 // Shared message types between background, popup, and Gateway.
 
 export type AnnotationAction = "start" | "stop" | "clear" | "list" | "add_region" | "add_selector";
+export type TabAccessMode = "manual" | "all_tabs";
 
 export type ExtToGateway =
   | {
@@ -17,10 +18,19 @@ export type ExtToGateway =
       title: string;
       origin: string;
       expiresAt?: string;
+      accessMode?: TabAccessMode;
     }
   | { type: "tab_revoked"; tabId: number; reason: string }
-  | { type: "tab_updated"; tabId: number; url: string; title: string; origin: string }
+  | {
+      type: "tab_updated";
+      tabId: number;
+      url: string;
+      title: string;
+      origin: string;
+      accessMode?: TabAccessMode;
+    }
   | { type: "tab_closed"; tabId: number }
+  | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }
   | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
 
 export type GatewayCommand = {
@@ -29,8 +39,16 @@ export type GatewayCommand = {
   params?: {
     tabId?: number;
     selector?: string;
+    frame?: string;
     html?: string;
     value?: string;
+    label?: string;
+    checked?: boolean;
+    enabled?: boolean;
+    replaceEditable?: boolean;
+    dryRun?: boolean;
+    auditDiff?: boolean;
+    auditDiffExcerptChars?: number;
     text?: string;
     url?: string;
     x?: number;
@@ -38,16 +56,34 @@ export type GatewayCommand = {
     id?: number;
     width?: number;
     height?: number;
+    deviceScaleFactor?: number;
+    mobile?: boolean;
     all?: boolean;
     limit?: number;
     kind?: string;
+    props?: string[];
+    name?: string;
+    role?: string;
+    locator?: string;
+    query?: string;
+    indexModifier?: string;
+    index?: number;
+    exact?: boolean;
+    ref?: string;
+    depth?: number;
+    interactiveOnly?: boolean;
+    compact?: boolean;
+    rules?: string;
+    selection?: boolean;
     grid?: string;
     urlPattern?: string;
     method?: string;
     statusMin?: number;
+    statusMax?: number;
     type?: string;
     requestId?: string;
     body?: boolean;
+    urlRegex?: string;
     fromSelector?: string;
     toSelector?: string;
     fromX?: number;
@@ -62,44 +98,91 @@ export type GatewayCommand = {
     atX?: number;
     atY?: number;
     key?: string;
+    command?: string;
     code?: string;
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
+    mime?: string;
+    contentBytes?: number;
     // wait_for
+    wait?: boolean;
     hidden?: boolean;
     sleepMs?: number;
     timeoutMs?: number;
+    loadState?: string;
+    predicate?: string;
+    // eval_script
+    script?: string;
+    approve?: boolean;
+    maxBytes?: number;
     // screenshot
     clip?: { x: number; y: number; width: number; height: number };
     // read_dom
     asMarkdown?: boolean;
     // annotation_mode
-    action?: AnnotationAction;
+    action?: AnnotationAction | string;
     comment?: string;
+    // dialog_action
+    promptText?: string;
+    // har_export
+    outputPath?: string;
+    // state_inspect
+    includeValues?: boolean;
+    storageKey?: string;
+    storageKind?: string;
+    targetTabId?: number;
   };
 };
 
 export type GatewayMethod =
+  | "frames"
   | "read_dom"
+  | "get_dom"
+  | "predicate"
+  | "find"
+  | "snapshot"
   | "screenshot"
+  | "pdf"
   | "console"
   | "table"
   | "describe"
   | "network_log"
+  | "har_export"
+  | "state_inspect"
+  | "framework_inspect"
+  | "download_state"
   | "revoke"
   | "wait_for"
+  | "eval_script"
   | "annotation_mode"
+  | "validate_editable"
+  | "stream_control"
+  | "dialog_state"
+  | "dialog_action"
   | "click_selector"
   | "click_described"
   | "click_at"
+  | "click_ref"
+  | "dblclick_selector"
+  | "focus_selector"
+  | "hover_selector"
+  | "select_option"
+  | "set_checked"
   | "fill"
   | "paste"
+  | "paste_rich"
   | "clear"
   | "replace_dom"
   | "upload_file"
   | "type_text"
   | "key_press"
+  | "key_down"
+  | "key_up"
+  | "keyboard_insert_text"
+  | "exec_command"
   | "navigate"
+  | "sandbox_action"
   | "scroll"
+  | "scroll_into_view"
   | "drag";
 
 export type OperationMethod = Extract<
@@ -107,29 +190,48 @@ export type OperationMethod = Extract<
   | "click_selector"
   | "click_described"
   | "click_at"
+  | "click_ref"
+  | "dblclick_selector"
+  | "focus_selector"
+  | "hover_selector"
+  | "select_option"
+  | "set_checked"
   | "fill"
   | "paste"
+  | "paste_rich"
   | "clear"
   | "replace_dom"
   | "upload_file"
   | "type_text"
   | "key_press"
+  | "key_down"
+  | "key_up"
+  | "keyboard_insert_text"
+  | "exec_command"
   | "navigate"
   | "scroll"
+  | "scroll_into_view"
+  | "sandbox_action"
+  | "dialog_action"
   | "drag"
 >;
 
 export type ExtensionSettings = {
   operationsRequireApproval: boolean;
+  evalEnabled: boolean;
+  trustedAutomationEnabled: boolean;
   profileLabel: string;
+  allTabsAccessEnabled: boolean;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
+export type ApprovalMethod = OperationMethod | "eval_script";
 
 export type ApprovalRequest = {
   id: string;
-  method: OperationMethod;
+  method: ApprovalMethod;
   intent: string;
+  script?: string;
   tab: {
     tabId: number;
     title: string;
@@ -144,7 +246,10 @@ export type PopupToBackground =
   | { type: "permit"; tabId: number }
   | { type: "revoke"; tabId: number }
   | { type: "set_operations_require_approval"; value: boolean }
+  | { type: "set_eval_enabled"; value: boolean }
+  | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
+  | { type: "set_all_tabs_access"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
@@ -152,7 +257,17 @@ export type BackgroundToPopup =
       type: "state";
       permitted: boolean;
       wsConnected: boolean;
-      sharedTabs: { tabId: number; title: string; url: string }[];
+      activeTab: {
+        incognito: boolean;
+        incognitoAccessAllowed: boolean;
+      };
+      sharedTabs: { tabId: number; title: string; url: string; accessMode: TabAccessMode }[];
+      allTabsAccess: {
+        permissionGranted: boolean;
+        active: boolean;
+        shareableTabCount: number;
+        skippedTabCount: number;
+      };
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };
     }

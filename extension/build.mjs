@@ -1,17 +1,29 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as esbuild from "esbuild";
 
 const watch = process.argv.includes("--watch");
+const target = parseTarget(
+  process.env.ABG_EXTENSION_TARGET ?? readArgValue("--target") ?? "chrome",
+);
+const DEFAULT_ABG_PORT = 8765;
+const rawPort = process.env.ABG_EXTENSION_PORT || process.env.ABG_PORT;
+const abgPort = parsePort(rawPort, DEFAULT_ABG_PORT);
+const abgWsUrl = `ws://127.0.0.1:${abgPort}/ws`;
 
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 await cp("public", "dist", { recursive: true });
+await patchManifest(target);
 
 const common = {
   bundle: true,
   target: "es2022",
   platform: "browser",
   logLevel: "info",
+  define: {
+    __ABG_WS_URL__: JSON.stringify(abgWsUrl),
+    __ABG_BROWSER_TARGET__: JSON.stringify(target),
+  },
 };
 
 const bgCfg = {
@@ -40,8 +52,68 @@ if (watch) {
   const pop = await esbuild.context(popupCfg);
   const approval = await esbuild.context(approvalCfg);
   await Promise.all([bg.watch(), pop.watch(), approval.watch()]);
-  console.log("watching...");
+  console.log(`watching ${target} extension... (gateway ${abgWsUrl})`);
 } else {
   await Promise.all([esbuild.build(bgCfg), esbuild.build(popupCfg), esbuild.build(approvalCfg)]);
-  console.log("built to dist/");
+  console.log(`built ${target} extension to dist/ (gateway ${abgWsUrl})`);
+}
+
+function readArgValue(name) {
+  const prefix = `${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function parseTarget(raw) {
+  if (raw === "chrome" || raw === "firefox") return raw;
+  throw new Error(`Invalid extension target: ${raw}`);
+}
+
+function parsePort(raw, fallback) {
+  if (!raw) return fallback;
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid ABG port: ${raw}`);
+  }
+  return port;
+}
+
+async function patchManifest(target) {
+  const configuredName = process.env.ABG_EXTENSION_NAME?.trim();
+  const devBuild = abgPort !== DEFAULT_ABG_PORT;
+  const manifestPath = "dist/manifest.json";
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  if (target === "firefox") {
+    delete manifest.key;
+    delete manifest.minimum_chrome_version;
+    manifest.description =
+      "Share Firefox tabs with AI coding agents via explicit local permission.";
+    manifest.background = {
+      scripts: ["background.js"],
+      type: "module",
+    };
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: "agent-browser-gateway@arcm.co.jp",
+        strict_min_version: "128.0",
+        data_collection_permissions: {
+          required: ["none"],
+        },
+      },
+    };
+  }
+  if (!configuredName && !devBuild && target === "chrome") {
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    return;
+  }
+  const name =
+    configuredName ||
+    (target === "firefox" ? "Agent Browser Gateway for Firefox" : "Agent Browser Gateway Dev");
+  manifest.name = name;
+  if (manifest.action) {
+    manifest.action.default_title = name;
+  }
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
