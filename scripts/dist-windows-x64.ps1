@@ -102,8 +102,8 @@ function Test-ZipTopLevelLayout {
     $Archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
     try {
         $Entries = @($Archive.Entries | ForEach-Object { $_.FullName.Replace("\", "/") })
-        if ($Entries -notcontains "$TopLevelDirectory/") {
-            throw "Expected top-level directory $TopLevelDirectory/ in $Path"
+        if (-not ($Entries | Where-Object { $_.StartsWith("$TopLevelDirectory/") } | Select-Object -First 1)) {
+            throw "Expected entries under top-level directory $TopLevelDirectory/ in $Path"
         }
 
         foreach ($Entry in $RequiredEntries) {

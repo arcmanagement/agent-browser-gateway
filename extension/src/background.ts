@@ -1348,7 +1348,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       throw new Error("selector must be a non-empty string");
     }
     const mime = typeof cmd.params?.mime === "string" ? cmd.params.mime : undefined;
-    const contentBytes = typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
+    const contentBytes =
+      typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
     const target = selector
       ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
       : "the currently focused target";
@@ -5496,7 +5497,8 @@ async function execCommand(
       return {
         ok,
         command: commandName,
-        valueBytes: commandValue === undefined ? 0 : new TextEncoder().encode(commandValue).byteLength,
+        valueBytes:
+          commandValue === undefined ? 0 : new TextEncoder().encode(commandValue).byteLength,
         activeElement,
       };
     },

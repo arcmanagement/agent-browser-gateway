@@ -1646,18 +1646,21 @@ private struct AuditLogViewEntry: Identifiable {
         let origin = Self.originLabel(for: entry.url)
         let outcome = Self.outcomeLabel(action: entry.action, details: details)
         let auditDiffPreview = ((details?["auditDiff"] as? [String: Any])?["preview"] as? [String]) ?? []
-        let searchBlob = [
+        let tabIDText = entry.tabId.map(String.init) ?? ""
+        let detailSearchText = rows.map { "\($0.key) \($0.value)" }.joined(separator: " ")
+        let searchBlobParts: [String] = [
             entry.action,
             command,
             entry.extensionId ?? "",
-            entry.tabId.map(String.init) ?? "",
+            tabIDText,
             entry.url ?? "",
             entry.agent ?? "",
             origin,
             outcome,
             rawDetails ?? "",
-            rows.map { "\($0.key) \($0.value)" }.joined(separator: " "),
-        ].joined(separator: " ")
+            detailSearchText,
+        ]
+        let searchBlob = searchBlobParts.joined(separator: " ")
 
         self.id = "\(line)-\(entry.ts.timeIntervalSince1970)-\(entry.action)"
         self.timestamp = entry.ts
