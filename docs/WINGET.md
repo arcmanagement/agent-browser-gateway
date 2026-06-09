@@ -6,6 +6,11 @@ ABG for Windows is submitted to the Microsoft Windows Package Manager Community 
 ArcManagement.AgentBrowserGateway
 ```
 
+Current `v0.4.1` status: ABG is not indexed by WinGet yet, and no Windows release ZIP has been
+published. The release is waiting on
+[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) to configure signed
+Windows release and WinGet submission secrets.
+
 Once the WinGet PR for a release is merged into `microsoft/winget-pkgs`, users can install ABG with:
 
 ```powershell

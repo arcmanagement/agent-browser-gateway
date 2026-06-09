@@ -2,6 +2,10 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
+Current `v0.4.1` release status: WinGet install and Windows release ZIPs are pending while
+[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) completes the signed
+Windows release workflow and WinGet submission setup.
+
 ## Normal GUI install
 
 After the package is accepted by the Windows Package Manager Community Repository:
@@ -10,7 +14,8 @@ After the package is accepted by the Windows Package Manager Community Repositor
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-For regular Windows use, extract `agent-browser-gateway-0.4.0-windows-x64-setup.zip` and double-click:
+When a Windows setup ZIP is published, extract
+`agent-browser-gateway-<version>-windows-x64-setup.zip` and double-click:
 
 ```text
 AgentBrowserGatewaySetup.exe
@@ -29,14 +34,14 @@ Silent setup is available for WinGet and scripted installs:
 
 ## Developer build and install
 
-After extracting the Windows source zip, run this from the extracted repository root:
+After cloning the repository or extracting the Windows source zip, run this from the repository root:
 
 ```powershell
 .\windows-build-install.cmd
 ```
 
-This restores packages, runs tests, builds `dist\agent-browser-gateway-0.4.0-windows-x64.zip`,
-builds `dist\agent-browser-gateway-0.4.0-windows-x64-setup.zip`, extracts the non-GUI payload,
+This restores packages, runs tests, builds `dist\agent-browser-gateway-<version>-windows-x64.zip`,
+builds `dist\agent-browser-gateway-<version>-windows-x64-setup.zip`, extracts the non-GUI payload,
 installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
 the user `PATH`, and starts the tray Gateway.
 
@@ -52,15 +57,15 @@ To skip tests during an emergency handoff:
 
 ## Manual install
 
-1. Extract `agent-browser-gateway-0.4.0-windows-x64.zip`.
+1. Extract `agent-browser-gateway-<version>-windows-x64.zip`.
 2. Open PowerShell in the extracted top-level directory:
 
    ```powershell
-   cd .\agent-browser-gateway-0.4.0-windows-x64
+   cd .\agent-browser-gateway-<version>-windows-x64
    ```
 
    If you extracted into a same-named folder, there may be one extra nested
-   `agent-browser-gateway-0.4.0-windows-x64` directory. Run `dir` and change into the folder that
+   `agent-browser-gateway-<version>-windows-x64` directory. Run `dir` and change into the folder that
    directly contains `Install-AgentBrowserGateway.ps1`.
 3. Run:
 

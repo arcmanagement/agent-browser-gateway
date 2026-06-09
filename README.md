@@ -85,14 +85,22 @@ CLI. Install the browser extension first, then install the local Gateway.
    brew install --cask agent-browser-gateway
    ```
 
+   If Homebrew says the latest version is already installed, the cask is present. Verify with
+   `brew info --cask agent-browser-gateway` or `abg --help`; use
+   `brew reinstall --cask agent-browser-gateway` only when you want to force a fresh install.
+   Homebrew may also print trust warnings for unrelated taps; check the final install line and
+   `brew info --cask agent-browser-gateway` to confirm the ABG cask state.
+
    Windows:
 
    ```powershell
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet availability depends on the Microsoft `winget-pkgs` PR for the current release being
-   merged. Until then, use the Windows ZIP from the download page.
+   WinGet is not live for `v0.4.1` yet. If this command reports no matching package, that is the
+   current expected result until
+   [issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) is complete and
+   Microsoft indexes the package.
 
 3. For manual macOS install, download the current DMG from
    [agent-browser-gateway.com](https://agent-browser-gateway.com/), open it, and double-click
@@ -102,11 +110,9 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows builds are also published as ZIP packages from the same download page. Extract the Windows
-x64 setup ZIP and run `AgentBrowserGatewaySetup.exe`, or extract the non-GUI payload ZIP, open
-PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
-`.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
-into the nested folder that directly contains the installer script.
+Windows package-manager install and release ZIPs are pending for `v0.4.1` while the signed Windows
+release workflow is completed. For current Windows testing, clone the repository on Windows and run
+`.\windows-build-install.cmd` from the repository root.
 
 After installation, open the tab you want to share, click the ABG extension icon,
 choose **Share this tab with agent**, and verify from a terminal:

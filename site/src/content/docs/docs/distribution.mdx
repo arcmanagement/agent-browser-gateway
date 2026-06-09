@@ -22,6 +22,9 @@ brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/ag
 brew install --cask agent-browser-gateway
 ```
 
+If Homebrew reports that the latest version is already installed, the cask install path is working
+and no update is needed.
+
 Homebrew is ready for a release when the versioned macOS ZIP is on GitHub Releases and
 `Casks/agent-browser-gateway.rb` on the default branch points at that version and SHA-256.
 
@@ -32,6 +35,9 @@ The Windows package identifier is:
 ```powershell
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
+
+Current `v0.4.1` status: this package is not indexed yet, and the command above returns no matching
+package until the signed Windows release workflow and WinGet submission are completed.
 
 WinGet is ready for a release after the `microsoft/winget-pkgs` PR generated from the Windows setup
 ZIP is merged and indexed. The release-triggered `Windows CI` workflow uploads the Windows ZIPs to

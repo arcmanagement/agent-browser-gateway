@@ -21,6 +21,12 @@ brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/ag
 brew install --cask agent-browser-gateway
 ```
 
+Homebrew が `Not upgrading agent-browser-gateway, the latest version is already installed` と表示する場合、
+cask はすでにインストール済みです。`brew info --cask agent-browser-gateway` または `abg --help` で確認できます。
+強制的に入れ直す場合だけ `brew reinstall --cask agent-browser-gateway` を使います。
+Homebrew が無関係な tap の trust warning を表示することもあります。ABG の状態は最後の install 行と
+`brew info --cask agent-browser-gateway` で確認してください。
+
 [download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
 インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
 
@@ -34,15 +40,21 @@ abg status
 
 ## Windows
 
-対象releaseの `microsoft/winget-pkgs` PR がmergeされたあと、WinGetからインストールできます。
+対象releaseの `microsoft/winget-pkgs` PR がmergeされ、indexされたあと、WinGetからインストールできます。
 
 ```powershell
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-WinGetに現在のreleaseが反映されるまでは、[download page](/#download) からWindows x64 setup ZIPを取得し、
-展開して `AgentBrowserGatewaySetup.exe` を実行します。非GUI payload ZIPには scripted install 用の
-`Install-AgentBrowserGateway.ps1` も含まれます。
+現在の `v0.4.1` では、WinGet はまだ公開されておらず、Windows release ZIP もまだ公開されていません。
+`winget` が matching package なしと表示する場合、それは
+[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) が完了するまでの想定動作です。
+
+現時点でWindows上で試す場合は、repositoryをcloneして次を実行します。
+
+```powershell
+.\windows-build-install.cmd
+```
 
 ## ブラウザー拡張
 
