@@ -52,6 +52,34 @@ final class AuditLogTests: XCTestCase {
         XCTAssertEqual(entries.first?.details?["ok"]?.value as? Bool, true)
     }
 
+    func testTailReturnsRequestedRecentEntriesFromLargeLog() async throws {
+        let path = tempAuditLogPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let log = AuditLog(path: path)
+
+        for index in 0..<600 {
+            await log.log(action: "entry-\(index)", details: ["index": AnyCodable(index)])
+        }
+
+        let entries = await log.tail(lines: 5)
+
+        XCTAssertEqual(entries.map(\.action), ["entry-595", "entry-596", "entry-597", "entry-598", "entry-599"])
+        XCTAssertEqual(entries.first?.details?["index"]?.value as? Int, 595)
+        XCTAssertEqual(entries.last?.details?["index"]?.value as? Int, 599)
+    }
+
+    func testTailReturnsEmptyForZeroLines() async throws {
+        let path = tempAuditLogPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let log = AuditLog(path: path)
+
+        await log.log(action: "permit")
+
+        let entries = await log.tail(lines: 0)
+
+        XCTAssertTrue(entries.isEmpty)
+    }
+
     func testDigestSummarizesLocalAuditLogWithoutSensitiveDetails() async throws {
         let path = tempAuditLogPath()
         defer { try? FileManager.default.removeItem(atPath: path) }

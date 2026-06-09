@@ -15,6 +15,7 @@ struct GatewayWindowView: View {
     @State private var auditTabFilter = AuditLogViewEntry.allFilterValue
     @State private var auditTimeFilter: AuditTimeFilter = .day
     @State private var auditLoadError: String?
+    @State private var isAuditReloading = false
     @State private var gatewaySettings = GatewaySettingsStore.load()
     @State private var settingsMessage: String?
     @State private var settingsError: String?
@@ -27,6 +28,8 @@ struct GatewayWindowView: View {
     @State private var pluginManagementMessage: String?
     @State private var pluginManagementAlert: PluginManagementAlert?
     @AppStorage("pluginBrowserAppearance") private var appearanceRawValue = PluginBrowserAppearance.system.rawValue
+
+    private static let auditEntryLoadLimit = 500
 
     var body: some View {
         HStack(spacing: 0) {
@@ -108,7 +111,7 @@ struct GatewayWindowView: View {
                 } label: {
                     SidebarItem(
                         title: "Audit",
-                        subtitle: "\(auditEntries.count) entries",
+                        subtitle: auditSidebarSubtitle,
                         symbol: "list.bullet.rectangle.portrait",
                         isSelected: selectedSection == .audit
                     )
@@ -379,10 +382,18 @@ struct GatewayWindowView: View {
                 Button {
                     reloadAuditEntries()
                 } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(width: 28, height: 28)
+                    Group {
+                        if isAuditReloading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
+                .disabled(isAuditReloading)
                 .help("Reload audit log")
                 Button {
                     NSWorkspace.shared.open(URL(fileURLWithPath: ABGConstants.auditLogPath))
@@ -398,6 +409,7 @@ struct GatewayWindowView: View {
 
             HStack(spacing: 8) {
                 PluginChip(text: "\(filteredAuditEntries.count) shown", color: .blue)
+                PluginChip(text: "latest \(auditEntries.count)", color: .secondary)
                 PluginChip(text: ownerOnlyModeText, color: .green)
             }
 
@@ -1194,6 +1206,13 @@ struct GatewayWindowView: View {
         auditLogIsOwnerOnly ? "0600 local" : "local file"
     }
 
+    private var auditSidebarSubtitle: String {
+        if auditEntries.isEmpty {
+            return "latest entries"
+        }
+        return "latest \(auditEntries.count)"
+    }
+
     private var auditLogIsOwnerOnly: Bool {
         guard let permissions = try? FileManager.default.attributesOfItem(atPath: ABGConstants.auditLogPath)[.posixPermissions] as? NSNumber else {
             return false
@@ -1277,12 +1296,21 @@ struct GatewayWindowView: View {
     }
 
     private func reloadAuditEntries() {
-        let result = AuditLogViewEntry.load(from: ABGConstants.auditLogPath)
-        auditEntries = result.entries
-        auditLoadError = result.error
-        if let selectedAuditID,
-           !result.entries.contains(where: { $0.id == selectedAuditID }) {
-            self.selectedAuditID = nil
+        guard !isAuditReloading else { return }
+        let path = ABGConstants.auditLogPath
+        let limit = Self.auditEntryLoadLimit
+        isAuditReloading = true
+        Task { @MainActor in
+            let result = await Task.detached(priority: .userInitiated) {
+                AuditLogViewEntry.loadRecent(from: path, limit: limit)
+            }.value
+            auditEntries = result.entries
+            auditLoadError = result.error
+            isAuditReloading = false
+            if let selectedAuditID,
+               !result.entries.contains(where: { $0.id == selectedAuditID }) {
+                self.selectedAuditID = nil
+            }
         }
     }
 
@@ -1620,25 +1648,25 @@ private struct AuditLogViewEntry: Identifiable {
 
     var outcomeColor: Color { color }
 
-    static func load(from path: String) -> (entries: [AuditLogViewEntry], error: String?) {
+    static func loadRecent(from path: String, limit: Int) -> (entries: [AuditLogViewEntry], error: String?) {
         guard FileManager.default.fileExists(atPath: path) else {
             return ([], nil)
         }
-        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else {
+        guard let lines = try? AuditLog.tailLineData(from: path, maxLines: limit) else {
             return ([], "Cannot read \(path)")
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let entries = raw.split(separator: "\n").enumerated().compactMap { index, line -> AuditLogViewEntry? in
-            guard let entry = try? decoder.decode(AuditLog.Entry.self, from: Data(line.utf8)) else {
+        let entries = lines.compactMap { line -> AuditLogViewEntry? in
+            guard let entry = try? decoder.decode(AuditLog.Entry.self, from: line.data) else {
                 return nil
             }
-            return AuditLogViewEntry(entry: entry, line: index + 1)
+            return AuditLogViewEntry(entry: entry, idSeed: "offset-\(line.byteOffset)")
         }
         return (entries.reversed(), nil)
     }
 
-    init(entry: AuditLog.Entry, line: Int) {
+    init(entry: AuditLog.Entry, idSeed: String) {
         let details = entry.details?.mapValues(\.value)
         let rawDetails = details.flatMap(Self.prettyJSONString)
         let rows = Self.detailRows(from: details)
@@ -1662,7 +1690,7 @@ private struct AuditLogViewEntry: Identifiable {
         ]
         let searchBlob = searchBlobParts.joined(separator: " ")
 
-        self.id = "\(line)-\(entry.ts.timeIntervalSince1970)-\(entry.action)"
+        self.id = "\(idSeed)-\(entry.ts.timeIntervalSince1970)-\(entry.action)"
         self.timestamp = entry.ts
         self.action = entry.action
         self.command = command
