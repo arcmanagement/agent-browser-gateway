@@ -46,6 +46,7 @@ $Hash = Get-InstallerHash
 New-Item -ItemType Directory -Force $ManifestDir | Out-Null
 
 $VersionManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 DefaultLocale: en-US
@@ -54,6 +55,7 @@ ManifestVersion: $ManifestVersion
 "@
 
 $InstallerManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 MinimumOSVersion: 10.0.19041.0
@@ -88,6 +90,7 @@ ManifestVersion: $ManifestVersion
 "@
 
 $DefaultLocaleManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 PackageLocale: en-US
