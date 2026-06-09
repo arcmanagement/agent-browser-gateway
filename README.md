@@ -771,16 +771,15 @@ In short:
 
 ## License
 
-Agent Browser Gateway is licensed under the **PolyForm Strict License 1.0.0** with an
-**ArcManagement Additional Free Use Grant** that broadens the free tier to small companies for
-commercial use. This is a public-source, non-OSI license: use, modification, and redistribution are
-governed by [LICENSE](LICENSE), [COMMERCIAL.md](COMMERCIAL.md), and [NOTICE](NOTICE).
+Agent Browser Gateway is published with source code available under the license terms in
+[LICENSE](LICENSE). This is a public-source, non-OSI license. The controlling license text is
+Japanese; the English materials in this README and [COMMERCIAL.md](COMMERCIAL.md) are explanatory
+summaries.
 
 ```
-Copyright 2026 ArcManagement, Inc.
+Copyright 2026 ArcManagement株式会社 / ArcManagement, Inc.
 
-Licensed under the PolyForm Strict License 1.0.0, with the
-ArcManagement Additional Free Use Grant (see LICENSE for full text).
+Licensed under LICENSE.
 ```
 
 ### Transparency commitment
@@ -789,7 +788,8 @@ ArcManagement publishes the full source code of every release of ABG publicly on
 
 ### Free use — who qualifies
 
-ABG is **free** for the following uses:
+ABG is **free** for the following uses. Within those permitted purposes, the license covers use,
+copying, modification, and distribution:
 
 - **Personal, hobby, learning, non-profit, educational, and public research** — individuals, students, charitable organizations, schools, public research institutions, government bodies
 - **Small companies** for any use including commercial — companies with **fewer than 50 employees & contractors** AND **less than JPY 500,000,000 annual revenue**
@@ -804,7 +804,7 @@ See [COMMERCIAL.md](COMMERCIAL.md) for more.
 
 ### Contributing — let's build together
 
-Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (PolyForm Strict License 1.0.0 + ArcManagement Additional Free Use Grant, inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Patents
 
