@@ -1,0 +1,77 @@
+---
+title: 配布
+description: release、signing、Homebrew、artifact verificationのメモ。
+sidebar:
+  order: 3
+---
+
+ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けに公開されます。
+public download pageでは、現在のartifactを `/downloads/` 配下で提供します。
+
+## Homebrew cask
+
+macOS caskは次をインストールします。
+
+- `Agent Browser Gateway.app` を `/Applications` に配置
+- `abg` をHomebrewの `bin` に配置
+
+install test:
+
+```bash
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew install --cask agent-browser-gateway
+```
+
+Homebrew が `Not upgrading agent-browser-gateway, the latest version is already installed` と表示する場合、
+cask はすでにインストール済みです。ABG の状態は `brew info --cask agent-browser-gateway` または
+`abg --help` で確認できます。無関係な tap の trust warning が表示されることもありますが、その警告は
+ABG cask の install 結果とは別です。
+
+Homebrew releaseの準備完了条件は、versioned macOS ZIPがGitHub Releasesにあり、default branch上の
+`Casks/agent-browser-gateway.rb` がそのversionとSHA-256を指していることです。
+
+## WinGet
+
+Windows package identifier:
+
+```powershell
+winget install --id ArcManagement.AgentBrowserGateway --source winget
+```
+
+現在の `v0.4.1` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
+返す場合、それはsigned Windows release workflowとWinGet submissionが完了するまでの想定動作です。
+
+WinGet releaseの準備完了条件は、Windows setup ZIPから生成された `microsoft/winget-pkgs` PRがmergeされ、
+indexされることです。release triggerの `Windows CI` workflowは、`WINGET_CREATE_GITHUB_TOKEN` が設定されている場合に、
+Windows ZIPをGitHub Releaseへuploadし、manifestを生成し、WinGet PRをsubmitします。
+
+## Signed local release build
+
+maintainer release buildは信頼済みMac上で作成します。
+
+```bash
+export VERSION=0.4.1
+make dist VERSION="$VERSION" \
+  SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
+  NOTARY_PROFILE="abg-notary"
+```
+
+Developer ID signingはlocalに保持します。Developer ID private key、certificate password、App Store Connect
+credentials、`notarytool` credentialsをGitHub Actions secretsに入れないでください。
+
+## artifact verification
+
+```bash
+codesign --verify --strict --verbose=2 \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
+codesign --verify --strict --verbose=2 \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64/abg"
+spctl --assess --type execute --verbose \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
+shasum -a 256 \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
+  "dist/agent-browser-gateway-extension-$VERSION.zip"
+```
+
+CIではunsigned artifactのbuildとtestを実行できます。signed release assetは信頼済みmaintainer Macで作成し、
+そのあとGitHub Releasesにuploadします。
