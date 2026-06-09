@@ -93,7 +93,57 @@ actor AuditLog {
     }
 
     func tail(lines: Int = 50) -> [Entry] {
-        readEntries().suffix(lines).map { $0 }
+        guard lines > 0 else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let rawLines = try? Self.tailLineData(from: path, maxLines: lines) else {
+            return []
+        }
+        return rawLines.compactMap {
+            try? decoder.decode(Entry.self, from: $0.data)
+        }
+    }
+
+    struct TailLine: Sendable {
+        let data: Data
+        let byteOffset: UInt64
+    }
+
+    nonisolated static func tailLineData(from path: String, maxLines: Int) throws -> [TailLine] {
+        guard maxLines > 0 else { return [] }
+
+        let url = URL(fileURLWithPath: path)
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        let chunkSize: UInt64 = 64 * 1024
+        let fileSize = try handle.seekToEnd()
+        guard fileSize > 0 else { return [] }
+
+        var offset = fileSize
+        var newlineCount = 0
+        var chunks: [(offset: UInt64, data: Data)] = []
+
+        while offset > 0 && newlineCount <= maxLines {
+            let readSize = min(chunkSize, offset)
+            offset -= readSize
+            try handle.seek(toOffset: offset)
+            let chunk = try handle.read(upToCount: Int(readSize)) ?? Data()
+            newlineCount += chunk.reduce(0) { count, byte in
+                count + (byte == 0x0A ? 1 : 0)
+            }
+            chunks.append((offset: offset, data: chunk))
+        }
+
+        guard let firstOffset = chunks.last?.offset else { return [] }
+
+        var buffer = Data()
+        buffer.reserveCapacity(chunks.reduce(0) { $0 + $1.data.count })
+        for chunk in chunks.reversed() {
+            buffer.append(chunk.data)
+        }
+
+        return lines(in: buffer, baseOffset: firstOffset).suffix(maxLines).map { $0 }
     }
 
     static func normalizeDigestPeriod(_ period: String) -> String? {
@@ -170,6 +220,29 @@ actor AuditLog {
         return raw.split(separator: "\n").compactMap {
             try? decoder.decode(Entry.self, from: Data($0.utf8))
         }
+    }
+
+    private nonisolated static func lines(in data: Data, baseOffset: UInt64) -> [TailLine] {
+        var result: [TailLine] = []
+        var lineStart = data.startIndex
+        var lineStartOffset = baseOffset
+
+        for index in data.indices {
+            guard data[index] == 0x0A else { continue }
+            if lineStart < index {
+                result.append(TailLine(data: Data(data[lineStart..<index]), byteOffset: lineStartOffset))
+            }
+            let nextIndex = data.index(after: index)
+            lineStart = nextIndex
+            let nextDistance = data.distance(from: data.startIndex, to: nextIndex)
+            lineStartOffset = baseOffset + UInt64(nextDistance)
+        }
+
+        if lineStart < data.endIndex {
+            result.append(TailLine(data: Data(data[lineStart..<data.endIndex]), byteOffset: lineStartOffset))
+        }
+
+        return result
     }
 
     private func originLabel(for url: String?) -> String {
