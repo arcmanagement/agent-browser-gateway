@@ -2,7 +2,7 @@ namespace AgentBrowserGateway.Core;
 
 public static class AbgPaths
 {
-    public const string Version = "0.4.0";
+    public const string Version = "0.4.1";
     public const int DefaultWsPort = 8765;
     public static string WsHost => "127.0.0.1";
     public static int WsPort => ResolveWsPort(Environment.GetEnvironmentVariable("ABG_PORT"));

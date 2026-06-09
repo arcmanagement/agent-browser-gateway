@@ -17,7 +17,8 @@ sidebar:
 Homebrewからインストールできます。
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway
+brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
@@ -26,6 +27,8 @@ cask はすでにインストール済みです。`brew info --cask agent-browse
 強制的に入れ直す場合だけ `brew reinstall --cask agent-browser-gateway` を使います。
 Homebrew が無関係な tap の trust warning を表示することもあります。ABG の状態は最後の install 行と
 `brew info --cask agent-browser-gateway` で確認してください。
+以前にprivate source repositoryを明示URL付きでtapしていた場合は、一度
+`brew untap arcmanagement/agent-browser-gateway` を実行してから、上のcommandでtapし直してください。
 
 [download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
 インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
@@ -48,7 +51,7 @@ winget install --id ArcManagement.AgentBrowserGateway --source winget
 
 現在の `v0.4.1` では、WinGet はまだ公開されておらず、Windows release ZIP もまだ公開されていません。
 `winget` が matching package なしと表示する場合、それは
-[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) が完了するまでの想定動作です。
+signed Windows releaseとMicrosoft indexingが完了するまでの想定動作です。
 
 現時点でWindows上で試す場合は、repositoryをcloneして次を実行します。
 

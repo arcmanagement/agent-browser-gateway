@@ -1,0 +1,51 @@
+ArcManagement Source License
+
+Copyright (c) 2026 ArcManagement, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+Agent Browser Gateway and associated documentation files (the "Software"), to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software for a Permitted Purpose, subject to the following conditions.
+
+"You" means the individual or legal entity exercising rights under this license.
+"Your Company" means any legal entity where You are an officer or employee, and
+all organizations under common control with that entity.
+
+A "Permitted Purpose" means:
+
+1. any non-commercial purpose; or
+2. commercial use for the benefit of You or Your Company, if both of the
+   following are true:
+   (a) You and Your Company together have fewer than 50 employees and
+       contractors; and
+   (b) the combined gross revenue of You and Your Company for the most recent
+       fiscal year is less than JPY 500,000,000.
+
+If Your use is not a Permitted Purpose, You need a separate commercial license
+from ArcManagement, Inc. Contact license@arcm.co.jp to discuss terms.
+
+ArcManagement grants You a copyright license to exercise all rights in the
+Software for a Permitted Purpose.
+
+ArcManagement grants You a patent license to make, use, sell, offer to sell,
+import, and otherwise exercise patent rights in the Software for a Permitted
+Purpose. If You or Your Company alleges in writing that the Software infringes,
+or contributes to the infringement of, any patent, the patent license granted to
+You and Your Company under this license terminates immediately.
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+If You or Your Company breaches this license and receives written notice of that
+breach for the first time, this license will continue if You fully comply with
+this license and take reasonable steps to cure the past breach within 30 days
+after receiving the notice. Otherwise, all licenses granted to You and Your
+Company terminate immediately.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL ARCMANAGEMENT,
+INC. OR THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -2,10 +2,10 @@ cask "agent-browser-gateway" do
   version "0.4.1"
   sha256 "243810def9b504015d8474f761fa5f7a16b05acc19848d470d1b0b4591ae121e"
 
-  url "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
+  url "https://agent-browser-gateway.com/downloads/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
   desc "Share authorized Chrome tabs with AI coding agents"
-  homepage "https://github.com/arcmanagement/agent-browser-gateway"
+  homepage "https://agent-browser-gateway.com/"
 
   depends_on macos: :sonoma
   depends_on arch: :arm64
@@ -22,7 +22,7 @@ cask "agent-browser-gateway" do
   ]
 
   caveats <<~EOS
-    Install the Chrome extension separately from the release asset:
-      https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-extension-#{version}.zip
+    Install the Chrome extension from the Chrome Web Store:
+      https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
   EOS
 end

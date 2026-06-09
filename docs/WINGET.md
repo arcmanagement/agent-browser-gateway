@@ -7,9 +7,7 @@ ArcManagement.AgentBrowserGateway
 ```
 
 Current `v0.4.1` status: ABG is not indexed by WinGet yet, and no Windows release ZIP has been
-published. The release is waiting on
-[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) to configure signed
-Windows release and WinGet submission secrets.
+published. The release is waiting on the signed Windows release and WinGet submission workflow.
 
 Once the WinGet PR for a release is merged into `microsoft/winget-pkgs`, users can install ABG with:
 
@@ -17,7 +15,7 @@ Once the WinGet PR for a release is merged into `microsoft/winget-pkgs`, users c
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-The package uses the GitHub Release setup ZIP:
+The package uses the public download setup ZIP:
 
 ```text
 agent-browser-gateway-<version>-windows-x64-setup.zip
@@ -32,7 +30,7 @@ The `Windows CI` workflow runs on GitHub Release publication and:
 
 1. Builds and tests the Windows app, gateway, CLI, and setup launcher.
 2. Requires Windows code signing for release-triggered runs.
-3. Uploads the Windows release ZIPs and SHA-256 files to the GitHub Release.
+3. Publishes the Windows release ZIPs and SHA-256 files to the public download site.
 4. Generates WinGet manifests with `scripts/update-winget-manifest.ps1`.
 5. Submits the manifests to `microsoft/winget-pkgs` with `wingetcreate`.
 
@@ -67,7 +65,7 @@ winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.1
 ```
 
 Submit or resubmit manually from GitHub Actions with the `WinGet Submission` workflow. Set
-`submit=true` only after the GitHub Release setup ZIP exists.
+`submit=true` only after the public setup ZIP exists under `https://agent-browser-gateway.com/downloads/`.
 
 ## Installer Requirements
 
