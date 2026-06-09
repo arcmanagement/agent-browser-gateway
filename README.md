@@ -797,14 +797,13 @@ In short:
 ## License
 
 Agent Browser Gateway is published with source code available under the license terms in
-[LICENSE](LICENSE). This is a public-source, non-OSI license. The controlling license text is
-Japanese; the English materials in this README and [COMMERCIAL.md](COMMERCIAL.md) are explanatory
-summaries.
+[LICENSE](LICENSE). This is a public-source, non-OSI license. [COMMERCIAL.md](COMMERCIAL.md)
+summarizes who can use ABG for free and when to contact ArcManagement for a commercial license.
 
 ```
-Copyright 2026 ArcManagement株式会社 / ArcManagement, Inc.
+Copyright (c) 2026 ArcManagement, Inc. and affiliates.
 
-Licensed under LICENSE.
+Licensed under the ArcManagement Source License.
 ```
 
 ### Transparency commitment

@@ -1,8 +1,8 @@
 # Commercial Licensing
 
 Agent Browser Gateway (ABG) is published with source code available under the license terms in
-[LICENSE](LICENSE). The controlling license text is Japanese. This page is a plain-English summary
-of who can use ABG for free and when to contact ArcManagement for a commercial license.
+[LICENSE](LICENSE). This page is a plain-English overview of who can use ABG for free and when to
+contact ArcManagement for a commercial license.
 
 ## Free use — who qualifies
 

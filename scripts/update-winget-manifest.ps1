@@ -97,7 +97,7 @@ PrivacyUrl: https://agent-browser-gateway.com/privacy/
 Author: ArcManagement
 PackageName: Agent Browser Gateway
 PackageUrl: https://agent-browser-gateway.com/
-License: ArcManagement Custom Source License
+License: ArcManagement Source License
 LicenseUrl: https://github.com/arcmanagement/agent-browser-gateway/blob/v$Version/LICENSE
 Copyright: Copyright (c) ArcManagement Inc.
 ShortDescription: Local Chrome tab gateway and CLI for coding agents.
