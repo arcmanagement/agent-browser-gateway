@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-06-09.
+Living document. Reflects current intent, not commitment. Last updated 2026-06-10.
 
-Current repo version: **v0.4.0**.
+Current repo version: **v0.4.1**.
 
 ## Shipped
+
+### v0.4.1 — Audit log performance patch (2026-06-10)
+- Changed `abg audit --lines N` to read JSONL entries from the end of the audit log instead of decoding the entire local log file.
+- Limited the Gateway Audit window to the latest 500 entries and moved reload work off the main UI path so large local audit logs no longer make the window sluggish.
+- Added regression coverage for large audit-log tail reads and zero-line tail requests.
 
 ### v0.4.0 — Public launch release and cross-platform packages (2026-06-09)
 - Published ABG as a public-source repository with counsel-reviewed license, commercial-use, contribution, notice, trademark, and patent-pending guidance.

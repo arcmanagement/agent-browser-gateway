@@ -46,19 +46,19 @@ this repository.
 Generate manifests without submitting:
 
 ```powershell
-.\scripts\update-winget-manifest.ps1 -Version 0.4.0
+.\scripts\update-winget-manifest.ps1 -Version 0.4.1
 ```
 
 The output path is:
 
 ```text
-dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.0
+dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.1
 ```
 
 Validate on Windows when `winget` is available:
 
 ```powershell
-winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.0
+winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.1
 ```
 
 Submit or resubmit manually from GitHub Actions with the `WinGet Submission` workflow. Set
