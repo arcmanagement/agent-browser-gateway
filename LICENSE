@@ -1,55 +1,51 @@
-# 使用、複製、および頒布に関する条件
+ArcManagement Source License
 
-## 1. 定義
+Copyright (c) 2026 ArcManagement, Inc. and affiliates.
 
-「本ライセンス」とは、本書1．から10．に定める利用、複製、および配布等に関する許諾を意味します。
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+Agent Browser Gateway and associated documentation files (the "Software"), to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software for a Permitted Purpose, subject to the following conditions.
 
-「ライセンサー」とは、ArcManagement株式会社を意味します。
+"You" means the individual or legal entity exercising rights under this license.
+"Your Company" means any legal entity where You are an officer or employee, and
+all organizations under common control with that entity.
 
-「本ソフトウェア」とは、ArcManagement株式会社が著作権を有し、本条件に基づき提供するAgent Browser Gateway（以下、「ABG」といいます。）を意味します。
+A "Permitted Purpose" means:
 
-「あなた」とは、本ライセンスにより付与される権利を行使する個人または法人を意味します。
+1. any non-commercial purpose; or
+2. commercial use for the benefit of You or Your Company, if both of the
+   following are true:
+   (a) You and Your Company together have fewer than 50 employees and
+       contractors; and
+   (b) the combined gross revenue of You and Your Company for the most recent
+       fiscal year is less than JPY 500,000,000.
 
-「あなたの会社」とは、あなたが役員を務めまたは勤務する法人並びにその法人と共通支配下にあるすべての組織を意味します。
+If Your use is not a Permitted Purpose, You need a separate commercial license
+from ArcManagement, Inc. Contact license@arcm.co.jp to discuss terms.
 
-「利用」とは、ライセンスを必要とする本ソフトウェアに関する一切の行為を意味します。
+ArcManagement grants You a copyright license to exercise all rights in the
+Software for a Permitted Purpose.
 
-## 2. 著作権ライセンスの付与
+ArcManagement grants You a patent license to make, use, sell, offer to sell,
+import, and otherwise exercise patent rights in the Software for a Permitted
+Purpose. If You or Your Company alleges in writing that the Software infringes,
+or contributes to the infringement of, any patent, the patent license granted to
+You and Your Company under this license terminates immediately.
 
-ライセンサーはあなたに対し、許可された目的のために行う限りにおいて、本ソフトウェアに関し、あらゆる行為を行うための著作権ライセンスを付与します。
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-## 3. 特許ライセンスの付与
+If You or Your Company breaches this license and receives written notice of that
+breach for the first time, this license will continue if You fully comply with
+this license and take reasonable steps to cure the past breach within 30 days
+after receiving the notice. Otherwise, all licenses granted to You and Your
+Company terminate immediately.
 
-ライセンサーはあなたに対し、許可された目的のために行う限りにおいて、本ソフトウェアに関する特許ライセンスの仮通常実施権または通常実施権を付与します。
-
-## 4. 非商業目的
-
-あらゆる非商業目的は、許可された目的です。
-
-## 5. 小規模企業の利用
-
-以下の(a) (b)双方の条件を満たす場合、あなた個人またはあなたの会社の利益のために行う本ソフトウェアの利用は、商業目的を含めて無償で許可されます。
-
-(a) あなた個人またはあなたの会社における従業員および業務委託先の総数が50名未満であること
-
-(b) あなた個人またはあなたの会社の前事業年度の総売上高が5億円未満であること
-
-## 6. 大規模企業の利用
-
-あなた個人またはあなたの会社が前項の条件を満たさずかつ利用が本ライセンスにより別途許可されていない場合、本ソフトウェアの利用には、ArcManagement株式会社からの別途の商業ライセンスを受けることが必要となります。その場合は、license@arcm.co.jpまでご連絡ください。条件について協議いたします。
-
-## 7. 特許防御
-
-あなたまたはあなたの会社が、本ソフトウェアが特許を侵害している、または侵害に寄与していると書面で主張した場合、本ライセンスに基づき、あなたおよびあなたの会社に付与された特許ライセンスは直ちに終了します。
-
-## 8. 違反
-
-あなたまたはあなたの会社が本ライセンスに違反した旨を書面で最初に通知された場合、通知受領後30日以内に本ライセンスに完全に適合し、かつ過去の違反を是正するための合理的な措置を講じれば、本ライセンスは継続することができます。そうでない場合、すべてのライセンスは直ちに終了します。
-
-## 9. 責任の否認
-
-法令で許される限りにおいて、本ソフトウェアは現状有姿で提供され、いかなる保証または条件も伴いません。また、ライセンサーは、本ライセンスまたは本ソフトウェアの利用若しくは性質に起因する損害について、いかなる法的請求に基づく場合であっても責任を負いません。
-
-## 10. 問い合わせ
-
-お問い合わせは、license@arcm.co.jp宛にメールしてください。
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL ARCMANAGEMENT,
+INC. OR THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
