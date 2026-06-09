@@ -129,7 +129,7 @@ cask "agent-browser-gateway" do
   desc "Share authorized Chrome tabs with AI coding agents"
   homepage "https://github.com/$GITHUB_REPOSITORY"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
   depends_on arch: :arm64
 
   app "Agent Browser Gateway.app"
