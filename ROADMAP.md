@@ -1,10 +1,16 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-05-31.
+Living document. Reflects current intent, not commitment. Last updated 2026-06-09.
 
-Current repo version: **v0.3.12**.
+Current repo version: **v0.4.0**.
 
 ## Shipped
+
+### v0.4.0 — Public launch release and cross-platform packages (2026-06-09)
+- Published ABG as a public-source repository with counsel-reviewed license, commercial-use, contribution, notice, trademark, and patent-pending guidance.
+- Refreshed the public documentation site and download surface so macOS, Windows, and Chrome extension release artifacts point to the same current version.
+- Added Windows release packaging coverage alongside the signed/notarized macOS payload and Chrome Web Store submission ZIP release asset.
+- Added release follow-through for package managers: Homebrew Cask stays aligned with the GitHub Release asset, and Windows release publication can generate and submit WinGet manifests for `ArcManagement.AgentBrowserGateway`.
 
 ### v0.3.12 — Trusted eval automation and release freshness guardrails (2026-05-31)
 - Added Trusted automation / AutoMode for eval-heavy trusted sessions, allowing already-shared tabs to skip the per-call eval approval popup only after the user opts in.

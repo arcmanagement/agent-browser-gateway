@@ -4,7 +4,13 @@ This is the native Windows implementation of ABG. It is separate from the Swift/
 
 ## Normal GUI install
 
-For regular Windows use, extract `agent-browser-gateway-0.3.12-windows-x64-setup.zip` and double-click:
+After the package is accepted by the Windows Package Manager Community Repository:
+
+```powershell
+winget install --id ArcManagement.AgentBrowserGateway --source winget
+```
+
+For regular Windows use, extract `agent-browser-gateway-0.4.0-windows-x64-setup.zip` and double-click:
 
 ```text
 AgentBrowserGatewaySetup.exe
@@ -14,6 +20,13 @@ The setup app stops the old Gateway, replaces files in `C:\Tools\AgentBrowserGat
 `AgentBrowserGatewaySetup.exe` launches the WinUI 3 setup surface from the bundled payload; the setup behavior is the same install/update flow as the script path.
 When selected, setup also writes a per-user startup entry so the tray Gateway launches when the user signs in.
 
+Silent setup is available for WinGet and scripted installs:
+
+```powershell
+.\AgentBrowserGatewaySetup.exe --silent
+.\AgentBrowserGatewaySetup.exe --silent --install-dir "C:\Tools\AgentBrowserGateway"
+```
+
 ## Developer build and install
 
 After extracting the Windows source zip, run this from the extracted repository root:
@@ -22,8 +35,8 @@ After extracting the Windows source zip, run this from the extracted repository 
 .\windows-build-install.cmd
 ```
 
-This restores packages, runs tests, builds `dist\agent-browser-gateway-0.3.12-windows-x64.zip`,
-builds `dist\agent-browser-gateway-0.3.12-windows-x64-setup.zip`, extracts the non-GUI payload,
+This restores packages, runs tests, builds `dist\agent-browser-gateway-0.4.0-windows-x64.zip`,
+builds `dist\agent-browser-gateway-0.4.0-windows-x64-setup.zip`, extracts the non-GUI payload,
 installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
 the user `PATH`, and starts the tray Gateway.
 
@@ -39,15 +52,15 @@ To skip tests during an emergency handoff:
 
 ## Manual install
 
-1. Extract `agent-browser-gateway-0.3.12-windows-x64.zip`.
+1. Extract `agent-browser-gateway-0.4.0-windows-x64.zip`.
 2. Open PowerShell in the extracted top-level directory:
 
    ```powershell
-   cd .\agent-browser-gateway-0.3.12-windows-x64
+   cd .\agent-browser-gateway-0.4.0-windows-x64
    ```
 
    If you extracted into a same-named folder, there may be one extra nested
-   `agent-browser-gateway-0.3.12-windows-x64` directory. Run `dir` and change into the folder that
+   `agent-browser-gateway-0.4.0-windows-x64` directory. Run `dir` and change into the folder that
    directly contains `Install-AgentBrowserGateway.ps1`.
 3. Run:
 
@@ -68,6 +81,10 @@ To skip tests during an emergency handoff:
    ```
 
 The installer copies files to `C:\Tools\AgentBrowserGateway` by default, updates the user `PATH`, runs `abg install-skill --target both`, and starts the tray Gateway.
+Both the GUI setup and installer script register a user-scoped Add/Remove Programs entry at
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentBrowserGateway`. The uninstall entry
+points to `Uninstall-AgentBrowserGateway.ps1`, so WinGet can uninstall and upgrade through the
+standard Windows package-manager path.
 
 ## Tray menu
 
@@ -106,11 +123,16 @@ For signed releases, configure these repository secrets before dispatching the w
 
 - `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded Authenticode signing certificate in PFX format
 - `WINDOWS_CODESIGN_PFX_PASSWORD`: PFX password
+- `WINGET_CREATE_GITHUB_TOKEN`: GitHub token that can submit PRs to `microsoft/winget-pkgs`
 
 Then run `Windows CI` with `require_code_sign=true`. The packaging script signs the staged `.exe`
 and `.dll` files before zipping, including `AgentBrowserGatewaySetup.exe`, `abg.exe`, and
 `agent-browser-gateway.exe`. If signing is required but the certificate or `signtool.exe` is
 unavailable, the workflow fails instead of publishing an unsigned final artifact.
+
+When a GitHub Release is published, `Windows CI` requires code signing, uploads both Windows ZIPs and
+their SHA-256 files to the release, generates WinGet manifests, and submits the package to
+`microsoft/winget-pkgs` when `WINGET_CREATE_GITHUB_TOKEN` is configured.
 
 SmartScreen reputation is attached to the signing certificate and observed download history, not to
 this repository alone. Early signed releases can still show SmartScreen warnings until reputation is

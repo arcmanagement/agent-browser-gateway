@@ -10,6 +10,9 @@ $ErrorActionPreference = "Stop"
 $SourceDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InstallDir = [Environment]::ExpandEnvironmentVariables($InstallDir)
 $GatewayPort = 8765
+$ProductName = "Agent Browser Gateway"
+$Publisher = "ArcManagement"
+$UninstallKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentBrowserGateway"
 if (-not [string]::IsNullOrWhiteSpace($env:ABG_PORT)) {
     $ParsedPort = 0
     if ([int]::TryParse($env:ABG_PORT, [ref]$ParsedPort) -and $ParsedPort -ge 1 -and $ParsedPort -le 65535) {
@@ -114,6 +117,42 @@ public static extern System.IntPtr SendMessageTimeout(
     [void][Win32.NativeMethods]::SendMessageTimeout($HwndBroadcast, $WmSettingChange, [System.IntPtr]::Zero, "Environment", $SmtoAbortIfHung, 5000, [ref]$Result)
 }
 
+function Quote-CommandArgument {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Register-UninstallEntry {
+    $UninstallScript = Join-Path $InstallDir "Uninstall-AgentBrowserGateway.ps1"
+    $PowerShell = Join-Path $PSHOME "powershell.exe"
+    if (-not (Test-Path $PowerShell)) {
+        $PowerShell = "powershell.exe"
+    }
+
+    $QuotedPowerShell = Quote-CommandArgument $PowerShell
+    $QuotedScript = Quote-CommandArgument $UninstallScript
+    $QuotedInstallDir = Quote-CommandArgument $InstallDir
+    $UninstallCommand = "$QuotedPowerShell -NoProfile -ExecutionPolicy Bypass -File $QuotedScript -InstallDir $QuotedInstallDir"
+    $QuietUninstallCommand = "$UninstallCommand -Silent"
+    $VersionPath = Join-Path $InstallDir "VERSION"
+    $DisplayVersion = "0.4.0"
+    if (Test-Path $VersionPath) {
+        $DisplayVersion = (Get-Content -Path $VersionPath -Raw).Trim()
+    }
+
+    New-Item -Path $UninstallKeyPath -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "DisplayName" -Value $ProductName -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "DisplayVersion" -Value $DisplayVersion -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "Publisher" -Value $Publisher -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "InstallLocation" -Value $InstallDir -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "DisplayIcon" -Value (Join-Path $InstallDir "AgentBrowserGateway.Windows.exe") -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "URLInfoAbout" -Value "https://github.com/arcmanagement/agent-browser-gateway" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "UninstallString" -Value $UninstallCommand -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "QuietUninstallString" -Value $QuietUninstallCommand -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $UninstallKeyPath -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
+}
+
 Stop-ExistingGateway
 Wait-GatewayPortFree
 
@@ -144,6 +183,8 @@ if (-not $NoPathUpdate) {
         Write-Host "PATH already contains: $InstallDir"
     }
 }
+
+Register-UninstallEntry
 
 $Abg = Join-Path $InstallDir "abg.exe"
 if (Test-Path $Abg) {

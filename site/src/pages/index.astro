@@ -80,9 +80,9 @@
             <div class="copy">
               <h2 id="download-title">Download Agent Browser Gateway.</h2>
               <p>
-                Choose the notarized macOS DMG or the Windows x64 package. The Windows ZIP includes
-                <code>agent-browser-gateway.exe</code>, <code>abg.exe</code>, and the PowerShell
-                installer script.
+                Install with Homebrew on macOS or WinGet on Windows once the package-manager entries
+                for this release are published. Manual DMG and setup ZIP downloads remain available
+                for direct verification and rollback work.
               </p>
               <p>
                 Published by ArcManagement, Inc. The site links only to the current public packages;
@@ -92,7 +92,7 @@
               <div class="download-actions">
                 <a
                   class="button"
-                  href="downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg"
+                  href="downloads/agent-browser-gateway-0.4.0-macos-arm64.dmg"
                 >
                   <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="195.6387 280.5801 54.4013 63.3652">
                     <g transform="translate(0 624.5254) scale(1 -1)">
@@ -104,7 +104,7 @@
                 </a>
                 <a
                   class="button secondary"
-                  href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip"
+                  href="https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.4.0/agent-browser-gateway-0.4.0-windows-x64-setup.zip"
                 >
                   <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
                     <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
@@ -112,7 +112,7 @@
                     <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
                     <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
                   </svg>
-                  <span>Windows x64 ZIP</span>
+                  <span>Windows setup ZIP</span>
                 </a>
                 <a
                   class="button store-button"
@@ -125,7 +125,7 @@
             </div>
             <div class="download-panel" aria-label="Download details">
               <div class="download-meta">
-                <span>macOS 0.3.12 / Windows 0.3.8</span>
+                <span>macOS 0.4.0 / Windows 0.4.0</span>
                 <span>macOS 14+ Apple Silicon</span>
                 <span>Windows 10/11 x64</span>
               </div>
@@ -140,7 +140,10 @@
                     </svg>
                     <span>macOS DMG</span>
                   </strong>
-                  <span>Installs to <code>/Applications</code> and starts after setup.</span>
+                  <span>
+                    Use <code>brew install --cask agent-browser-gateway</code>, or run the signed
+                    DMG installer.
+                  </span>
                 </div>
                 <div>
                   <strong>
@@ -150,12 +153,12 @@
                       <path d="M3 12.8h7.7V20L3 18.9v-6.1z" />
                       <path d="M12.1 12.8H21v8.4l-8.9-1.3v-7.1z" />
                     </svg>
-                    <span>Windows ZIP</span>
+                    <span>Windows WinGet / setup ZIP</span>
                   </strong>
                   <span>
-                    Extract it, <code>cd</code> into the
-                    <code>agent-browser-gateway-0.3.8-windows-x64</code> folder, then run
-                    <code>.\Install-AgentBrowserGateway.ps1</code>.
+                    Use <code>winget install --id ArcManagement.AgentBrowserGateway</code> after
+                    package indexing, or extract the setup ZIP and run
+                    <code>AgentBrowserGatewaySetup.exe</code>.
                   </span>
                 </div>
                 <div>
@@ -170,14 +173,14 @@
               <div class="checksum-list">
                 <p class="checksum">
                   <span>macOS SHA-256</span>
-                  <a href="downloads/agent-browser-gateway-0.3.12-macos-arm64.dmg.sha256.txt">
-                    <code>46694cbc4693f57f93b2fab521c75ba5651385236be595b3579449c4e305d62a</code>
+                  <a href="downloads/agent-browser-gateway-0.4.0-macos-arm64.dmg.sha256.txt">
+                    <code>e07fb3a009d13e5d8bc4e57d050cbda4f1ecec038db67f58a6236ceaf3a6bf34</code>
                   </a>
                 </p>
                 <p class="checksum">
                   <span>Windows SHA-256</span>
-                  <a href="downloads/agent-browser-gateway-0.3.8-windows-x64.zip.sha256.txt">
-                    <code>33d21cfaee94e2bae21d05e8017143758e1d267e9c7e387475ea56adae0f91fc</code>
+                  <a href="https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.4.0/agent-browser-gateway-0.4.0-windows-x64-setup.zip.sha256.txt">
+                    <code>GitHub Release checksum</code>
                   </a>
                 </p>
               </div>

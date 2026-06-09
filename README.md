@@ -76,16 +76,35 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
-2. Download the current macOS DMG from
-   [agent-browser-gateway.com](https://agent-browser-gateway.com/).
-3. Open the DMG and double-click **Install Agent Browser Gateway.app**.
+2. Install the local Gateway.
+
+   macOS:
+
+   ```bash
+   brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+   brew install --cask agent-browser-gateway
+   ```
+
+   Windows:
+
+   ```powershell
+   winget install --id ArcManagement.AgentBrowserGateway --source winget
+   ```
+
+   WinGet availability depends on the Microsoft `winget-pkgs` PR for the current release being
+   merged. Until then, use the Windows ZIP from the download page.
+
+3. For manual macOS install, download the current DMG from
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/), open it, and double-click
+   **Install Agent Browser Gateway.app**.
 
 The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows builds are published as ZIP packages from the same download page. Extract the Windows x64
-ZIP, open PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
+Windows builds are also published as ZIP packages from the same download page. Extract the Windows
+x64 setup ZIP and run `AgentBrowserGatewaySetup.exe`, or extract the non-GUI payload ZIP, open
+PowerShell in the extracted `agent-browser-gateway-<version>-windows-x64` folder, and run
 `.\Install-AgentBrowserGateway.ps1`. If you extracted into a same-named folder, run `dir` and `cd`
 into the nested folder that directly contains the installer script.
 
@@ -765,7 +784,7 @@ In short:
 
 ## Status
 
-🚧 **v0.3.12 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.4.0 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
