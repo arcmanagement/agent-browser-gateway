@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.3.12",
+    [string]$Version = "0.4.0",
     [string]$Configuration = "Release",
     [switch]$SkipWinUiApp,
     [string]$PagesOutputDir = "",
@@ -209,6 +209,7 @@ Get-ChildItem -Path (Join-Path $PublishRoot "gateway") -File |
     Copy-Item -Destination $Stage -Force
 Copy-Item -Force (Join-Path $Root "windows\README-WINDOWS.md") (Join-Path $Stage "README-WINDOWS.md")
 Copy-Item -Force (Join-Path $Root "windows\Install-AgentBrowserGateway.ps1") (Join-Path $Stage "Install-AgentBrowserGateway.ps1")
+Copy-Item -Force (Join-Path $Root "windows\Uninstall-AgentBrowserGateway.ps1") (Join-Path $Stage "Uninstall-AgentBrowserGateway.ps1")
 Set-Content -Path (Join-Path $Stage "VERSION") -Value $Version -NoNewline
 
 Write-Host "==> stage GUI setup"
@@ -226,6 +227,7 @@ Compress-Archive -Path $Stage -DestinationPath $ZipPath -Force
 Compress-Archive -Path (Join-Path $SetupStage "*") -DestinationPath $SetupZipPath -Force
 Test-ZipTopLevelLayout -Path $ZipPath -TopLevelDirectory (Split-Path -Leaf $Stage) -RequiredEntries @(
     "$(Split-Path -Leaf $Stage)/Install-AgentBrowserGateway.ps1",
+    "$(Split-Path -Leaf $Stage)/Uninstall-AgentBrowserGateway.ps1",
     "$(Split-Path -Leaf $Stage)/README-WINDOWS.md",
     "$(Split-Path -Leaf $Stage)/VERSION",
     "$(Split-Path -Leaf $Stage)/abg.exe",
@@ -234,6 +236,7 @@ Test-ZipTopLevelLayout -Path $ZipPath -TopLevelDirectory (Split-Path -Leaf $Stag
 Test-ZipRootLayout -Path $SetupZipPath -RequiredRootEntries @(
     "AgentBrowserGatewaySetup.exe",
     "payload/Install-AgentBrowserGateway.ps1",
+    "payload/Uninstall-AgentBrowserGateway.ps1",
     "payload/abg.exe",
     "payload/agent-browser-gateway.exe"
 )

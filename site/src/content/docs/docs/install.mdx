@@ -12,13 +12,17 @@ sidebar:
 - A terminal that can run the `abg` CLI.
 - For development builds: Xcode 16 or newer, `mise`, Node.js, and pnpm.
 
-Windows support is in progress. Current Windows setup notes live in the repository and release
-artifacts may lag behind macOS.
-
 ## macOS app and CLI
 
-Download the current DMG from the [download page](/#download), verify its SHA-256 checksum, open the
-DMG, and move Agent Browser Gateway to `/Applications`.
+Install with Homebrew:
+
+```bash
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew install --cask agent-browser-gateway
+```
+
+You can also download the current DMG from the [download page](/#download), verify its SHA-256
+checksum, open the DMG, and run the installer.
 
 Launch the app once so the menu bar icon appears. Then confirm the CLI can reach it:
 
@@ -26,13 +30,19 @@ Launch the app once so the menu bar icon appears. Then confirm the CLI can reach
 abg status
 ```
 
-If `abg` is not on your `PATH`, install it from the release artifact or use the Homebrew cask once
-the cask for your version is published.
+If `abg` is not on your `PATH`, install it from the release artifact or use the Homebrew cask.
 
 ## Windows
 
-Download the Windows ZIP from the [download page](/#download), extract it, and run the setup or
-installer script documented in the package.
+Install with WinGet after the current release's `microsoft/winget-pkgs` PR is merged:
+
+```powershell
+winget install --id ArcManagement.AgentBrowserGateway --source winget
+```
+
+Until WinGet has indexed the current release, download the Windows x64 setup ZIP from the
+[download page](/#download), extract it, and run `AgentBrowserGatewaySetup.exe`. The non-GUI payload
+ZIP also includes `Install-AgentBrowserGateway.ps1` for scripted install.
 
 ## Browser extension
 

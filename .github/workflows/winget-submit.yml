@@ -1,0 +1,80 @@
+name: WinGet Submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, for example 0.4.0"
+        required: true
+      submit:
+        description: "Submit a PR to microsoft/winget-pkgs"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    env:
+      PACKAGE_IDENTIFIER: ArcManagement.AgentBrowserGateway
+      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}".TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Version is required."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Generate WinGet manifests
+        shell: pwsh
+        run: |
+          ./scripts/update-winget-manifest.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Validate manifests when winget is available
+        shell: pwsh
+        run: |
+          $manifestPath = "dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\${{ steps.version.outputs.version }}"
+          $winget = Get-Command winget -ErrorAction SilentlyContinue
+          if ($winget) {
+            winget validate $manifestPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "winget validate failed with exit code $LASTEXITCODE"
+            }
+          } else {
+            Write-Host "winget is not available on this runner; skipping winget validate."
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agent-browser-gateway-winget-${{ steps.version.outputs.version }}
+          path: dist/winget/manifests/a/ArcManagement/AgentBrowserGateway/${{ steps.version.outputs.version }}
+
+      - name: Submit WinGet PR
+        shell: pwsh
+        run: |
+          $shouldSubmit = "${{ inputs.submit }}" -eq "true"
+          if (-not $shouldSubmit) {
+            Write-Host "submit=false; generated manifests only."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)) {
+            throw "WINGET_CREATE_GITHUB_TOKEN is required to submit to microsoft/winget-pkgs."
+          }
+
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          $manifestPath = "dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\${{ steps.version.outputs.version }}"
+          .\wingetcreate.exe submit $manifestPath --token $env:WINGET_CREATE_GITHUB_TOKEN
+          if ($LASTEXITCODE -ne 0) {
+            throw "wingetcreate submit failed with exit code $LASTEXITCODE"
+          }

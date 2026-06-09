@@ -5,6 +5,7 @@ using AgentBrowserGateway.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Win32;
 
 namespace AgentBrowserGateway.Windows;
 
@@ -93,6 +94,9 @@ public sealed partial class SetupWindow : Window
 
         SetStatus("Updating Claude/Codex skills...", 76);
         RunInstallSkill(targetDir);
+
+        SetStatus("Registering uninstall entry...", 82);
+        RegisterUninstallEntry(targetDir);
 
         if (startAfterInstall)
         {
@@ -243,6 +247,41 @@ public sealed partial class SetupWindow : Window
         {
             throw new InvalidOperationException($"Skill update failed.\n\n{result.Output}");
         }
+    }
+
+    private static void RegisterUninstallEntry(string installDir)
+    {
+        const string uninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentBrowserGateway";
+        var versionPath = Path.Combine(installDir, "VERSION");
+        var displayVersion = File.Exists(versionPath) ? File.ReadAllText(versionPath).Trim() : AbgPaths.Version;
+        var powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            @"WindowsPowerShell\v1.0\powershell.exe");
+        if (!File.Exists(powershell))
+        {
+            powershell = "powershell.exe";
+        }
+
+        var uninstallScript = Path.Combine(installDir, "Uninstall-AgentBrowserGateway.ps1");
+        var uninstallCommand =
+            $"{QuoteCommandArgument(powershell)} -NoProfile -ExecutionPolicy Bypass -File {QuoteCommandArgument(uninstallScript)} -InstallDir {QuoteCommandArgument(installDir)}";
+
+        using var key = Registry.CurrentUser.CreateSubKey(uninstallKeyPath);
+        key.SetValue("DisplayName", "Agent Browser Gateway", RegistryValueKind.String);
+        key.SetValue("DisplayVersion", displayVersion, RegistryValueKind.String);
+        key.SetValue("Publisher", "ArcManagement", RegistryValueKind.String);
+        key.SetValue("InstallLocation", installDir, RegistryValueKind.String);
+        key.SetValue("DisplayIcon", Path.Combine(installDir, "AgentBrowserGateway.Windows.exe"), RegistryValueKind.String);
+        key.SetValue("URLInfoAbout", "https://github.com/arcmanagement/agent-browser-gateway", RegistryValueKind.String);
+        key.SetValue("UninstallString", uninstallCommand, RegistryValueKind.String);
+        key.SetValue("QuietUninstallString", $"{uninstallCommand} -Silent", RegistryValueKind.String);
+        key.SetValue("NoModify", 1, RegistryValueKind.DWord);
+        key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+    }
+
+    private static string QuoteCommandArgument(string value)
+    {
+        return $"\"{value.Replace("\"", "\\\"")}\"";
     }
 
     private static void StartGateway(string installDir)

@@ -12,13 +12,17 @@ sidebar:
 - `abg` CLIを実行できるターミナル。
 - 開発ビルドでは Xcode 16 以上、`mise`、Node.js、pnpm。
 
-Windows対応は進行中です。Windowsのセットアップ手順とartifactは、macOSより遅れて更新される場合があります。
-
 ## macOSアプリとCLI
 
-[download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから開きます。
-`Agent Browser Gateway.app` を `/Applications` に移動し、アプリを一度起動してメニューバーに
-アイコンが出ることを確認します。
+Homebrewからインストールできます。
+
+```bash
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew install --cask agent-browser-gateway
+```
+
+[download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
+インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
 
 CLIから接続を確認します。
 
@@ -26,12 +30,19 @@ CLIから接続を確認します。
 abg status
 ```
 
-`abg` が `PATH` にない場合はrelease artifact内のCLIを配置するか、該当バージョンのHomebrew caskが
-公開されたあとにcaskからインストールします。
+`abg` が `PATH` にない場合はrelease artifact内のCLIを配置するか、Homebrew caskからインストールします。
 
 ## Windows
 
-[download page](/#download) からWindows ZIPを取得し、展開して同梱のsetupまたはinstaller scriptを実行します。
+対象releaseの `microsoft/winget-pkgs` PR がmergeされたあと、WinGetからインストールできます。
+
+```powershell
+winget install --id ArcManagement.AgentBrowserGateway --source winget
+```
+
+WinGetに現在のreleaseが反映されるまでは、[download page](/#download) からWindows x64 setup ZIPを取得し、
+展開して `AgentBrowserGatewaySetup.exe` を実行します。非GUI payload ZIPには scripted install 用の
+`Install-AgentBrowserGateway.ps1` も含まれます。
 
 ## ブラウザー拡張
 

@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.3.10.zip
+dist/agent-browser-gateway-extension-0.4.0.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
