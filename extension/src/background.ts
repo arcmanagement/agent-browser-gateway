@@ -34,7 +34,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const WS_URL = __ABG_WS_URL__;
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;

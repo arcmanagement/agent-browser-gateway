@@ -1,13 +1,13 @@
 cask "agent-browser-gateway" do
-  version "0.4.0"
-  sha256 "2bb2ebd6b88d1d59d8070869badf2ea927cb0b2317d78d9e3af7a35a4344595e"
+  version "0.4.1"
+  sha256 "243810def9b504015d8474f761fa5f7a16b05acc19848d470d1b0b4591ae121e"
 
   url "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
   desc "Share authorized Chrome tabs with AI coding agents"
   homepage "https://github.com/arcmanagement/agent-browser-gateway"
 
-  depends_on macos: :sonoma
+  depends_on macos: ">= :sonoma"
   depends_on arch: :arm64
 
   app "Agent Browser Gateway.app"

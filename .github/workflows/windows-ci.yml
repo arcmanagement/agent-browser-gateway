@@ -8,7 +8,7 @@ on:
       version:
         description: "Windows artifact version"
         required: false
-        default: "0.4.0"
+        default: "0.4.1"
       require_code_sign:
         description: "Fail unless Windows signing secrets are configured"
         required: false
@@ -37,7 +37,7 @@ jobs:
           if ("${{ github.event_name }}" -eq "release") {
             $version = "${{ github.event.release.tag_name }}".TrimStart("v")
           } else {
-            $version = "${{ inputs.version || '0.4.0' }}".TrimStart("v")
+            $version = "${{ inputs.version || '0.4.1' }}".TrimStart("v")
           }
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "Version is required."
