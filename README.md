@@ -8,7 +8,7 @@ Patent Pending: JP 2026-080620
 
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
-- 📖 **Fully open source** — Every line of code that touches your browser is auditable
+- 📖 **Public source** — Every line of code that touches your browser is auditable
 - 🚫 **Zero telemetry** — No analytics. No phone-home. No cloud dependency
 - 💻 **Local first** — Runs entirely on your machine. No account, no subscription
 - 🔐 **No vendor lock-in** — Use any AI agent you choose; switch any time
@@ -523,9 +523,10 @@ For Notion-like pages, ABG now selects the domain transform automatically when `
 
 ---
 
-## Open source verifiability
+## Source-available verifiability
 
-Closed-source extensions are not auditable. Open-source extensions distributed only as binaries are barely better. ABG aims for **end-to-end verifiability**:
+Closed-source extensions are not auditable. Source-published extensions distributed only as
+binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
 - **Reproducible builds** (target for v1.0): the Linux CLI can be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). Signed macOS artifacts remain separate because they require Apple's signing and notarization toolchain.
@@ -579,7 +580,7 @@ Use **Playwright / browser test tooling** for:
 
 | Project | Approach | What ABG offers that this doesn't |
 |---|---|---|
-| `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, OSS, per-tab consent |
+| `Claude in Chrome` (Anthropic) | First-party extension, transmits to Anthropic | Zero telemetry, multi-agent, public source, per-tab consent |
 | `hangwin/mcp-chrome` | Extension bridge, **all tabs always exposed** | Per-tab by default; optional all-tabs only after local opt-in |
 | `BrowserMCP` | Extension bridge, Playwright API | Existing Chrome sessions with per-tab default and optional all-tabs profile mode |
 | `chrome-devtools-mcp` (Google) | CDP, requires `--remote-debugging-port` | Works with your everyday Chrome profile (Chrome 136+ blocks the CDP path) |
@@ -770,7 +771,48 @@ In short:
 
 ## License
 
-License is not yet decided. The repository is published as source for the author's own use; usage by others is not yet authorised.
+Agent Browser Gateway is published with source code available under the license terms in
+[LICENSE](LICENSE). This is a public-source, non-OSI license. The controlling license text is
+Japanese; the English materials in this README and [COMMERCIAL.md](COMMERCIAL.md) are explanatory
+summaries.
+
+```
+Copyright 2026 ArcManagement株式会社 / ArcManagement, Inc.
+
+Licensed under LICENSE.
+```
+
+### Transparency commitment
+
+ArcManagement publishes the full source code of every release of ABG publicly on GitHub for **transparency and security verification**. Users and security researchers can always inspect what ABG does on their machines.
+
+### Free use — who qualifies
+
+ABG is **free** for the following uses. Within those permitted purposes, the license covers use,
+copying, modification, and distribution:
+
+- **Personal, hobby, learning, non-profit, educational, and public research** — individuals, students, charitable organizations, schools, public research institutions, government bodies
+- **Small companies** for any use including commercial — companies with **fewer than 50 employees & contractors** AND **less than JPY 500,000,000 annual revenue**
+
+No registration required for free use.
+
+### Larger organizations — let's talk
+
+If your company exceeds the free-use threshold (50 employees / JPY 500M revenue), a commercial license is the right path. Email [`license@arcm.co.jp`](mailto:license@arcm.co.jp) — pricing is case-by-case.
+
+See [COMMERCIAL.md](COMMERCIAL.md) for more.
+
+### Contributing — let's build together
+
+Contributions are welcome. By submitting a contribution, you agree it is licensed under the same terms as the project (inbound = outbound). You also grant ArcManagement, Inc. the right to relicense your contribution as part of the project — including under a commercial license for paying users — should the need arise. Sign off each commit with `git commit -s` per the [Developer Certificate of Origin](https://developercertificate.org/); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Patents
+
+ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for permitted uses; commercial license agreements include explicit patent terms.
+
+### Trademarks
+
+"ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. See [TRADEMARK.md](TRADEMARK.md).
 
 ---
 
@@ -783,7 +825,7 @@ License is not yet decided. The repository is published as source for the author
 ### コア思想
 
 1. **per-tab 明示許可がデフォルト** — 通常はタブ単位の許可。`host_permissions` は空。隔離プロファイル用 all-tabs mode のみ optional `<all_urls>` を要求
-2. **OSS / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
+2. **ソース公開 / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
 3. **CLI + Skill が primary** — MCP より先に CLI。シェルがあれば任意のエージェントから使える
 4. **失効は明示的** — オリジン遷移 / タブクローズ / 明示解除。タイムアウトはオプション
 5. **すべて監査ログに記録** — JSONL ファイル、自分でも `abg audit` で読める

@@ -1,6 +1,6 @@
 # Contributing to Agent Browser Gateway
 
-Thanks for considering a contribution. ABG is a small project with a sharp thesis (`Open source. No telemetry. Verifiable.`), so a few things up front:
+Thanks for considering a contribution. ABG is a small project with a sharp thesis (`Public source. No telemetry. Verifiable.`), so a few things up front:
 
 ## Before you start
 
@@ -38,12 +38,18 @@ swift build -c release
 
 ## Commits
 
-- Conventional-style is appreciated but not required. Reasonable English summary in 50-72 chars.
-- Sign your commits if you can (`git commit -s`). DCO is the long-term plan; not enforced yet.
+- Conventional Commits style is appreciated but not required. Use a clear English summary, 50-72 chars on the subject line.
+- **Sign off every commit** with `git commit -s`. This appends a `Signed-off-by:` trailer and certifies that you agree to the [Developer Certificate of Origin v1.1](https://developercertificate.org/). PRs without DCO sign-off cannot be merged.
 
-## CLA / Licensing
+## Licensing (inbound = outbound + relicensing grant)
 
-The license under which ABG will be released is not yet decided. While the license is undecided, external contributions are not yet being accepted. Once the license is published, prior contributors will be contacted before any retroactive change of terms.
+By submitting a contribution, you agree that your contribution is licensed to the project under the same terms as the project (see [LICENSE](LICENSE)). No separate Contributor License Agreement (CLA) is required; the DCO sign-off is your assertion that you have the right to submit the contribution under these terms.
+
+In addition, you grant ArcManagement, Inc. the right to **relicense** your contribution (alone or as part of the work) under different terms in the future, at ArcManagement's sole discretion. This includes the right to grant **commercial licenses** for the contribution as part of the project's commercial-licensing program (see [COMMERCIAL.md](COMMERCIAL.md)).
+
+You retain copyright in your contribution. The relicensing grant does not transfer copyright; it only authorizes ArcManagement to distribute your contribution under additional or alternative terms.
+
+For information on the project's licensing strategy and commercial licensing, see [COMMERCIAL.md](COMMERCIAL.md).
 
 ## Code style
 

@@ -72,7 +72,3 @@ docs/*
 assets/
 !site/assets/
 !site/assets/**
-
-# License is undecided — file kept locally but not committed yet
-LICENSE
-NOTICE
