@@ -11,9 +11,9 @@ fi
 VERSION="${VERSION#v}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CASK_PATH="${CASK_PATH:-$ROOT/Casks/agent-browser-gateway.rb}"
-GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-arcmanagement/agent-browser-gateway}"
+PUBLIC_DOWNLOAD_BASE_URL="${PUBLIC_DOWNLOAD_BASE_URL:-https://agent-browser-gateway.com/downloads}"
 ASSET_NAME="agent-browser-gateway-$VERSION-macos-arm64.zip"
-ASSET_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/$ASSET_NAME"
+ASSET_URL="$PUBLIC_DOWNLOAD_BASE_URL/$ASSET_NAME"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

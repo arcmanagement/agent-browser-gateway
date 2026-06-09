@@ -80,14 +80,13 @@
             <div class="copy">
               <h2 id="download-title">Download Agent Browser Gateway.</h2>
               <p>
-                Install with Homebrew on macOS or WinGet on Windows once the package-manager entries
-                for this release are published. Manual macOS DMG downloads remain available for
-                direct verification and rollback work.
+                The current public build is v0.4.1. Install the macOS app with Homebrew or the
+                signed DMG below; both point at the same current release payload.
               </p>
               <p>
-                Published by ArcManagement, Inc. The site links only to the current public packages;
-                older artifacts should be downloaded from GitHub Releases when needed for audit or
-                rollback work.
+                Published by ArcManagement, Inc. Public release artifacts are served from this
+                site. Windows packaging is still pending while the signed setup workflow and WinGet
+                submission are completed.
               </p>
               <div class="download-actions">
                 <a
@@ -104,7 +103,7 @@
                 </a>
                 <a
                   class="button secondary"
-                  href="https://github.com/arcmanagement/agent-browser-gateway/releases"
+                  href="docs/install/#windows"
                 >
                   <svg class="platform-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
                     <path d="M3 5.4 10.7 4.3v7.2H3V5.4z" />
@@ -141,9 +140,9 @@
                     <span>macOS DMG</span>
                   </strong>
                   <span>
-                    Tap <code>arcmanagement/agent-browser-gateway</code>, then use
-                    <code>brew install --cask agent-browser-gateway</code>, or run the signed DMG
-                    installer.
+                    Tap <code>arcmanagement/agent-browser-gateway</code>, trust the cask when
+                    Homebrew requires tap trust, then install with
+                    <code>brew install --cask agent-browser-gateway</code> or run the signed DMG.
                   </span>
                 </div>
                 <div>
@@ -158,8 +157,8 @@
                   </strong>
                   <span>
                     Use <code>winget install --id ArcManagement.AgentBrowserGateway</code> after
-                    package indexing. Versioned setup ZIPs are attached to GitHub Releases after
-                    the signed Windows release workflow completes.
+                    package indexing. The setup ZIP will be published on this site after the signed
+                    Windows release workflow completes.
                   </span>
                 </div>
                 <div>
@@ -180,9 +179,7 @@
                 </p>
                 <p class="checksum">
                   <span>Windows SHA-256</span>
-                  <a href="https://github.com/arcmanagement/agent-browser-gateway/releases">
-                    <code>Available after signed Windows release</code>
-                  </a>
+                  <span><code>Available after signed Windows release</code></span>
                 </p>
               </div>
               <div class="download-trust">

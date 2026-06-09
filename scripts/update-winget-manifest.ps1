@@ -4,6 +4,7 @@ param(
     [string]$OutputDir = "dist\winget",
     [string]$PackageIdentifier = "ArcManagement.AgentBrowserGateway",
     [string]$Repository = "arcmanagement/agent-browser-gateway",
+    [string]$PublicDownloadBaseUrl = "https://agent-browser-gateway.com/downloads",
     [string]$InstallerUrl = "",
     [string]$InstallerSha256 = "",
     [string]$ManifestVersion = "1.12.0"
@@ -13,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 $Version = $Version.TrimStart("v")
 if ([string]::IsNullOrWhiteSpace($InstallerUrl)) {
-    $InstallerUrl = "https://github.com/$Repository/releases/download/v$Version/agent-browser-gateway-$Version-windows-x64-setup.zip"
+    $InstallerUrl = "$PublicDownloadBaseUrl/agent-browser-gateway-$Version-windows-x64-setup.zip"
 }
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -45,6 +46,7 @@ $Hash = Get-InstallerHash
 New-Item -ItemType Directory -Force $ManifestDir | Out-Null
 
 $VersionManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.version.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 DefaultLocale: en-US
@@ -53,6 +55,7 @@ ManifestVersion: $ManifestVersion
 "@
 
 $InstallerManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.installer.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 MinimumOSVersion: 10.0.19041.0
@@ -87,18 +90,19 @@ ManifestVersion: $ManifestVersion
 "@
 
 $DefaultLocaleManifest = @"
+# yaml-language-server: `$schema=https://aka.ms/winget-manifest.defaultLocale.$ManifestVersion.schema.json
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 PackageLocale: en-US
 Publisher: ArcManagement
 PublisherUrl: https://arcm.co.jp/
-PublisherSupportUrl: https://github.com/arcmanagement/agent-browser-gateway/issues
+PublisherSupportUrl: https://agent-browser-gateway.com/docs/
 PrivacyUrl: https://agent-browser-gateway.com/privacy/
 Author: ArcManagement
 PackageName: Agent Browser Gateway
 PackageUrl: https://agent-browser-gateway.com/
 License: ArcManagement Source License
-LicenseUrl: https://github.com/arcmanagement/agent-browser-gateway/blob/v$Version/LICENSE
+LicenseUrl: https://agent-browser-gateway.com/LICENSE.txt
 Copyright: Copyright (c) ArcManagement Inc.
 ShortDescription: Local Chrome tab gateway and CLI for coding agents.
 Description: Agent Browser Gateway lets coding agents inspect and operate only the Chrome tabs you explicitly share through the local Gateway and browser extension.
@@ -114,7 +118,7 @@ Tags:
 Documentations:
 - DocumentLabel: Documentation
   DocumentUrl: https://agent-browser-gateway.com/docs/
-ReleaseNotesUrl: https://github.com/arcmanagement/agent-browser-gateway/releases/tag/v$Version
+ReleaseNotesUrl: https://agent-browser-gateway.com/docs/distribution/
 InstallationNotes: Install the Agent Browser Gateway Chrome extension from the Chrome Web Store, then share a tab from the extension popup and run abg status.
 ManifestType: defaultLocale
 ManifestVersion: $ManifestVersion

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.4.0",
+    [string]$Version = "0.4.1",
     [string]$InstallDir = "C:\Tools\AgentBrowserGateway",
     [switch]$SkipTests,
     [switch]$NoPathUpdate,

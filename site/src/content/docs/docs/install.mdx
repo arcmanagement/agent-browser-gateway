@@ -17,7 +17,8 @@ sidebar:
 Install with Homebrew:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway
+brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
@@ -26,6 +27,8 @@ the cask is already installed. Verify it with `brew info --cask agent-browser-ga
 run `brew reinstall --cask agent-browser-gateway` only when you want to force a fresh cask install.
 Homebrew may also print trust warnings for unrelated taps; check the final install line and
 `brew info --cask agent-browser-gateway` to confirm the ABG cask state.
+If you previously tapped the private source repository with an explicit GitHub URL, run
+`brew untap arcmanagement/agent-browser-gateway` once and tap again with the command above.
 
 You can also download the current DMG from the [download page](/#download), verify its SHA-256
 checksum, open the DMG, and run the installer.
@@ -47,8 +50,8 @@ winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
 Current `v0.4.1` status: WinGet is not indexed yet, and no Windows release ZIP is published yet. If
-`winget` reports no matching package, that is expected until
-[issue #291](https://github.com/arcmanagement/agent-browser-gateway/issues/291) is complete.
+`winget` reports no matching package, that is expected until the signed Windows release and
+Microsoft indexing are complete.
 
 For current Windows testing, clone the repository on Windows and run:
 

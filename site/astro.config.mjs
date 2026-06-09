@@ -24,7 +24,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/arcmanagement/agent-browser-gateway",
+          href: "https://github.com/arcmanagement/homebrew-agent-browser-gateway",
         },
       ],
       sidebar: [

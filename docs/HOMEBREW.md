@@ -10,12 +10,14 @@ The Chrome extension is shipped as a separate release asset and must be loaded s
 Users install from the same-repository tap:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway
+brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
-This works after the versioned macOS ZIP exists on the GitHub Release and
-`Casks/agent-browser-gateway.rb` on the default branch points at that version and SHA-256.
+This works after the versioned macOS ZIP exists under
+`https://agent-browser-gateway.com/downloads/` and the public tap cask points at that version and
+SHA-256.
 
 ## Build Release Artifacts
 
@@ -38,7 +40,7 @@ make dist VERSION="$VERSION" \
 Keep Developer ID signing local. Do not put the Developer ID private key, certificate
 password, App Store Connect credentials, or `notarytool` credentials into GitHub Actions
 secrets. CI may build and test unsigned artifacts, but signed release assets should be
-created on a trusted maintainer Mac and uploaded to GitHub Releases afterward.
+created on a trusted maintainer Mac and published to the public download site afterward.
 
 Outputs:
 
@@ -79,19 +81,17 @@ notarization, stapling, or Chrome Web Store submission.
    ```
 
 3. Create and push the release tag.
-4. Upload both zip files to the GitHub Release. Publishing the release also starts
-   the Windows release workflow, which uploads Windows assets and submits WinGet
-   manifests when its secrets are configured:
+4. Publish both zip files and their SHA-256 files under
+   `https://agent-browser-gateway.com/downloads/`. Keep the release tag for source traceability.
 
    ```bash
-   gh release create "v$VERSION" \
-     "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
-     "dist/agent-browser-gateway-extension-$VERSION.zip" \
-     --title "v$VERSION" \
-     --notes-file release-notes.md
+   cp "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" site/public/downloads/
+   cp "dist/agent-browser-gateway-extension-$VERSION.zip" site/public/downloads/
+   shasum -a 256 site/public/downloads/agent-browser-gateway-$VERSION-*.zip \
+     > site/public/downloads/SHA256SUMS.txt
    ```
 
-5. Update `Casks/agent-browser-gateway.rb` from the uploaded release asset:
+5. Update `Casks/agent-browser-gateway.rb` from the public release asset:
 
    ```bash
    bash scripts/update-homebrew-cask.sh "$VERSION"
@@ -110,16 +110,15 @@ notarization, stapling, or Chrome Web Store submission.
    git diff -- Casks/agent-browser-gateway.rb
    ```
 
-   After the GitHub Release asset is reachable from the network, run the online
-   check as well:
+   After the public download asset is reachable from the network, run the online check as well:
 
    ```bash
    brew audit --cask --strict --online --tap="$tap_name" agent-browser-gateway
    ```
 
-7. Commit and push the tap update before announcing the release as Homebrew-ready.
+7. Commit and push the public tap update before announcing the release as Homebrew-ready.
 
-For a same-repository tap, generate directly into `Casks/` after the GitHub Release asset exists:
+For the public tap, generate directly into `Casks/` after the public download asset exists:
 
 ```bash
 export VERSION=0.4.1
@@ -138,6 +137,7 @@ WinGet release flow is covered separately in [WINGET.md](WINGET.md).
 ## Install Test
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway
+brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```

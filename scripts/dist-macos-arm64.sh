@@ -29,6 +29,8 @@ EXTENSION_ZIP_NAME="agent-browser-gateway-extension-$VERSION.zip"
 EXTENSION_ZIP_PATH="$DIST_DIR/$EXTENSION_ZIP_NAME"
 CASK_OUTPUT="${CASK_OUTPUT:-$DIST_DIR/agent-browser-gateway.rb}"
 GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-arcmanagement/agent-browser-gateway}"
+PUBLIC_DOWNLOAD_BASE_URL="${PUBLIC_DOWNLOAD_BASE_URL:-https://agent-browser-gateway.com/downloads}"
+PUBLIC_HOMEPAGE_URL="${PUBLIC_HOMEPAGE_URL:-https://agent-browser-gateway.com/}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
@@ -124,10 +126,10 @@ cask "agent-browser-gateway" do
   version "$VERSION"
   sha256 "$SHA256"
 
-  url "https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
+  url "$PUBLIC_DOWNLOAD_BASE_URL/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
   desc "Share authorized Chrome tabs with AI coding agents"
-  homepage "https://github.com/$GITHUB_REPOSITORY"
+  homepage "$PUBLIC_HOMEPAGE_URL"
 
   depends_on macos: :sonoma
   depends_on arch: :arm64
@@ -144,8 +146,8 @@ cask "agent-browser-gateway" do
   ]
 
   caveats <<~EOS
-    Install the Chrome extension separately from the release asset:
-      https://github.com/$GITHUB_REPOSITORY/releases/download/v#{version}/agent-browser-gateway-extension-#{version}.zip
+    Install the Chrome extension from the Chrome Web Store:
+      https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
   EOS
 end
 EOF

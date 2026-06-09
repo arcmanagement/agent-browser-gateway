@@ -18,15 +18,17 @@ The macOS cask installs:
 Install test:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway
+brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
 If Homebrew reports that the latest version is already installed, the cask install path is working
 and no update is needed.
 
-Homebrew is ready for a release when the versioned macOS ZIP is on GitHub Releases and
-`Casks/agent-browser-gateway.rb` on the default branch points at that version and SHA-256.
+Homebrew is ready for a release when the versioned macOS ZIP is published under
+`https://agent-browser-gateway.com/downloads/`, and the public tap cask points at that version and
+SHA-256.
 
 ## WinGet
 
@@ -39,10 +41,8 @@ winget install --id ArcManagement.AgentBrowserGateway --source winget
 Current `v0.4.1` status: this package is not indexed yet, and the command above returns no matching
 package until the signed Windows release workflow and WinGet submission are completed.
 
-WinGet is ready for a release after the `microsoft/winget-pkgs` PR generated from the Windows setup
-ZIP is merged and indexed. The release-triggered `Windows CI` workflow uploads the Windows ZIPs to
-the GitHub Release, generates manifests, and submits the WinGet PR when
-`WINGET_CREATE_GITHUB_TOKEN` is configured.
+WinGet is ready for a release after the public Windows setup ZIP is available under `/downloads/`
+and the generated `microsoft/winget-pkgs` PR is merged and indexed.
 
 ## Signed local release build
 
@@ -73,4 +73,4 @@ shasum -a 256 \
 ```
 
 CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
-maintainer Mac and uploaded to GitHub Releases afterward.
+maintainer Mac and published to the public download site afterward.
