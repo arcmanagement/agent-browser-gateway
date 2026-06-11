@@ -47,14 +47,28 @@ const approvalCfg = {
   format: "iife",
 };
 
+// Recording PoC: offscreen document that runs getUserMedia + MediaRecorder.
+const offscreenCfg = {
+  ...common,
+  entryPoints: ["src/offscreen.ts"],
+  outfile: "dist/offscreen.js",
+  format: "iife",
+};
+
 if (watch) {
   const bg = await esbuild.context(bgCfg);
   const pop = await esbuild.context(popupCfg);
   const approval = await esbuild.context(approvalCfg);
-  await Promise.all([bg.watch(), pop.watch(), approval.watch()]);
+  const offscreen = await esbuild.context(offscreenCfg);
+  await Promise.all([bg.watch(), pop.watch(), approval.watch(), offscreen.watch()]);
   console.log(`watching ${target} extension... (gateway ${abgWsUrl})`);
 } else {
-  await Promise.all([esbuild.build(bgCfg), esbuild.build(popupCfg), esbuild.build(approvalCfg)]);
+  await Promise.all([
+    esbuild.build(bgCfg),
+    esbuild.build(popupCfg),
+    esbuild.build(approvalCfg),
+    esbuild.build(offscreenCfg),
+  ]);
   console.log(`built ${target} extension to dist/ (gateway ${abgWsUrl})`);
 }
 

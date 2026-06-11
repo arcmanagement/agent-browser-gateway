@@ -19,7 +19,9 @@
     "debugger",
     "downloads",
     "alarms",
-    "clipboardWrite"
+    "clipboardWrite",
+    "tabCapture",
+    "offscreen"
   ],
   "host_permissions": [],
   "optional_host_permissions": [

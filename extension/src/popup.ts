@@ -25,8 +25,11 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
 const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivElement;
 const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLButtonElement;
+const recordingPocBtn = document.getElementById("recordingPocBtn") as HTMLButtonElement | null;
+const recordingPocNote = document.getElementById("recordingPocNote") as HTMLDivElement | null;
 
 let profileLabelTimer: number | null = null;
+let lastActiveTabId: number | null = null;
 
 async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
   return (await browser.runtime.sendMessage(msg)) as BackgroundToPopup;
@@ -53,6 +56,7 @@ async function refresh(): Promise<void> {
     return;
   }
   const tabId = tab.id;
+  lastActiveTabId = tabId;
   tabInfoEl.textContent = tab.title ?? tab.url ?? "(untitled)";
   const state = await send({ type: "get_state", tabId });
   if (state.type !== "state") {
@@ -283,6 +287,48 @@ async function refresh(): Promise<void> {
   } else {
     sharedListEl.replaceChildren();
   }
+}
+
+// Recording PoC: trigger the capture pipeline from a real user gesture.
+// getMediaStreamId is called first (synchronously in the click) so the gesture
+// is still active; the resulting streamId is handed to the background worker.
+recordingPocBtn?.addEventListener("click", () => {
+  void runRecordingPoc();
+});
+
+async function runRecordingPoc(): Promise<void> {
+  if (!recordingPocBtn || !recordingPocNote) return;
+  if (lastActiveTabId == null) {
+    recordingPocNote.textContent = "✗ no active tab";
+    return;
+  }
+  recordingPocBtn.disabled = true;
+  recordingPocNote.textContent = "requesting tab capture…";
+  try {
+    const streamId = await getTabMediaStreamId(lastActiveTabId);
+    recordingPocNote.textContent = "recording 5s…";
+    const res = (await browser.runtime.sendMessage({
+      type: "recording_poc_start",
+      streamId,
+    })) as { ok: boolean; bytes?: number; micUsed?: boolean; filename?: string; error?: string };
+    recordingPocNote.textContent = res?.ok
+      ? `✓ ${res.filename} · ${Math.round((res.bytes ?? 0) / 1024)} KB · mic ${res.micUsed ? "on" : "off"}`
+      : `✗ ${res?.error ?? "failed"}`;
+  } catch (e) {
+    recordingPocNote.textContent = `✗ ${(e as Error).message}`;
+  } finally {
+    recordingPocBtn.disabled = false;
+  }
+}
+
+function getTabMediaStreamId(targetTabId: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    chrome.tabCapture.getMediaStreamId({ targetTabId }, (streamId) => {
+      const err = chrome.runtime.lastError;
+      if (err || !streamId) reject(new Error(err?.message ?? "no streamId"));
+      else resolve(streamId);
+    });
+  });
 }
 
 refresh().catch((e) => {
