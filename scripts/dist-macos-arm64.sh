@@ -33,6 +33,15 @@ PUBLIC_DOWNLOAD_BASE_URL="${PUBLIC_DOWNLOAD_BASE_URL:-https://agent-browser-gate
 PUBLIC_HOMEPAGE_URL="${PUBLIC_HOMEPAGE_URL:-https://agent-browser-gateway.com/}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+SWIFT_BUILD_FLAGS="${SWIFT_BUILD_FLAGS:--Xswiftc -file-prefix-map -Xswiftc $ROOT=. -Xcc -ffile-prefix-map=$ROOT=. -Xcc -fmacro-prefix-map=$ROOT=. -Xcxx -ffile-prefix-map=$ROOT=. -Xcxx -fmacro-prefix-map=$ROOT=.}"
+
+strip_binary() {
+    local binary="$1"
+
+    if [ -x "$binary" ]; then
+        /usr/bin/strip -S "$binary"
+    fi
+}
 
 if [[ ! "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
     echo "GITHUB_REPOSITORY must be owner/repo, got: $GITHUB_REPOSITORY" >&2
@@ -48,7 +57,7 @@ create_app_zip() {
 }
 
 echo "==> build app and CLI"
-VERSION="$VERSION" CONFIG=release ./build-app.sh
+VERSION="$VERSION" CONFIG=release SWIFT_BUILD_FLAGS="$SWIFT_BUILD_FLAGS" ./build-app.sh
 
 echo "==> build Chrome extension"
 (
@@ -66,6 +75,10 @@ if [ ! -d "$CLI_RESOURCE_BUNDLE" ]; then
     exit 1
 fi
 cp -R "$CLI_RESOURCE_BUNDLE" "$STAGING_DIR/AgentBrowserGateway_abg.bundle"
+
+echo "==> strip release binaries"
+strip_binary "$STAGING_DIR/$APP_BUNDLE/Contents/MacOS/Gateway"
+strip_binary "$STAGING_DIR/abg"
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> sign app and CLI"
