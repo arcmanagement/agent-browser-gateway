@@ -81,7 +81,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    macOS:
 
    ```bash
-   brew tap arcmanagement/agent-browser-gateway
+   brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
    brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
    brew install --cask agent-browser-gateway
    ```
@@ -91,8 +91,9 @@ CLI. Install the browser extension first, then install the local Gateway.
    `brew reinstall --cask agent-browser-gateway` only when you want to force a fresh install.
    Homebrew may also print trust warnings for unrelated taps; check the final install line and
    `brew info --cask agent-browser-gateway` to confirm the ABG cask state.
-   If you previously tapped the private source repository with an explicit GitHub URL, run
-   `brew untap arcmanagement/agent-browser-gateway` once and tap again with the command above.
+   If you previously tapped the temporary public Homebrew repository or the private source
+   repository, run `brew untap arcmanagement/agent-browser-gateway` once and tap again with the
+   explicit GitHub URL above.
 
    Windows:
 

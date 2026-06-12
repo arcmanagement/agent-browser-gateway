@@ -18,7 +18,7 @@ macOS caskは次をインストールします。
 install test:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
 brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
@@ -29,8 +29,8 @@ cask はすでにインストール済みです。ABG の状態は `brew info --
 ABG cask の install 結果とは別です。
 
 Homebrew releaseの準備完了条件は、versioned macOS ZIPが
-`https://agent-browser-gateway.com/downloads/` に公開され、public tapのcaskがそのversionとSHA-256を
-指していることです。
+`https://agent-browser-gateway.com/downloads/` に公開され、このrepositoryの
+`Casks/agent-browser-gateway.rb` がそのversionとSHA-256を指していることです。
 
 ## WinGet
 
