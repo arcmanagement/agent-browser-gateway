@@ -33,6 +33,8 @@ APP_ABG_PROFILE="${APP_ABG_PROFILE:-$DEFAULT_ABG_PROFILE}"
 APP="$APP_NAME.app"
 LEGACY_APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
+CLI_RESOURCE_BUNDLE="$BIN_DIR/AgentBrowserGateway_abg.bundle"
+CLI_RESOURCE_SOURCE="Sources/abg/Resources"
 APP_ICON_NAME="AppIcon"
 APP_ICON_FILE="$APP_ICON_NAME.icns"
 ICON_SOURCE_SVG="extension/store-assets/icon-source.svg"
@@ -53,7 +55,13 @@ render_icon_png() {
 }
 
 echo "==> swift build -c $CONFIG"
-swift build -c "$CONFIG"
+SWIFT_BUILD_ARGS=(build -c "$CONFIG")
+if [ -n "${SWIFT_BUILD_FLAGS:-}" ]; then
+    # shellcheck disable=SC2206
+    EXTRA_SWIFT_BUILD_ARGS=($SWIFT_BUILD_FLAGS)
+    SWIFT_BUILD_ARGS+=("${EXTRA_SWIFT_BUILD_ARGS[@]}")
+fi
+swift "${SWIFT_BUILD_ARGS[@]}"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
@@ -73,6 +81,11 @@ EOF
 else
     cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
 fi
+
+echo "==> bundling CLI resources"
+rm -rf "$CLI_RESOURCE_BUNDLE"
+mkdir -p "$CLI_RESOURCE_BUNDLE"
+cp "$CLI_RESOURCE_SOURCE"/*.md "$CLI_RESOURCE_BUNDLE/"
 
 echo "==> bundling app icon"
 if [ -f "$ICON_SOURCE_SVG" ] || [ -f "$ICON_SOURCE_PNG" ]; then
