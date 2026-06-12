@@ -18,7 +18,7 @@ The macOS cask installs:
 Install test:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
 brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
@@ -27,8 +27,8 @@ If Homebrew reports that the latest version is already installed, the cask insta
 and no update is needed.
 
 Homebrew is ready for a release when the versioned macOS ZIP is published under
-`https://agent-browser-gateway.com/downloads/`, and the public tap cask points at that version and
-SHA-256.
+`https://agent-browser-gateway.com/downloads/`, and this repository's
+`Casks/agent-browser-gateway.rb` points at that version and SHA-256.
 
 ## WinGet
 

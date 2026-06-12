@@ -10,14 +10,18 @@ The Chrome extension is shipped as a separate release asset and must be loaded s
 Users install from the same-repository tap:
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
 brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
 This works after the versioned macOS ZIP exists under
-`https://agent-browser-gateway.com/downloads/` and the public tap cask points at that version and
-SHA-256.
+`https://agent-browser-gateway.com/downloads/` and this repository's `Casks/agent-browser-gateway.rb`
+points at that version and SHA-256.
+
+The temporary public tap repository `arcmanagement/homebrew-agent-browser-gateway` is archived. Use
+the explicit GitHub URL above so Homebrew taps this source repository instead of applying its
+`homebrew-` repository-name shortcut.
 
 ## Build Release Artifacts
 
@@ -116,9 +120,10 @@ notarization, stapling, or Chrome Web Store submission.
    brew audit --cask --strict --online --tap="$tap_name" agent-browser-gateway
    ```
 
-7. Commit and push the public tap update before announcing the release as Homebrew-ready.
+7. Commit and push the site downloads and `Casks/agent-browser-gateway.rb` in this source
+   repository before announcing the release as Homebrew-ready.
 
-For the public tap, generate directly into `Casks/` after the public download asset exists:
+Generate the same-repository tap cask directly into `Casks/` after the public download asset exists:
 
 ```bash
 export VERSION=0.4.1
@@ -137,7 +142,8 @@ WinGet release flow is covered separately in [WINGET.md](WINGET.md).
 ## Install Test
 
 ```bash
-brew tap arcmanagement/agent-browser-gateway
+brew untap arcmanagement/agent-browser-gateway || true
+brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
 brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
