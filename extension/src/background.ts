@@ -5,6 +5,7 @@ import {
   createAuditDiff,
   detectBrowserKind,
   isShareableTabUrl,
+  normalizeUploadFiles,
   originForUrl,
 } from "./backgroundLogic.js";
 import {
@@ -1381,12 +1382,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   if (cmd.method === "upload_file") {
     const selector = cmd.params?.selector;
-    const file = cmd.params?.file;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
-    if (typeof file !== "string" || file.length === 0) throw new Error("file required");
+    const files = normalizeUploadFiles(cmd.params ?? {});
+    const firstFile = files[0] ?? "";
+    const fileIntent =
+      files.length === 1
+        ? `local file ${quoteForIntent(firstFile)}`
+        : `${files.length} local files (${quoteForIntent(firstFile)}, ...)`;
     return {
-      intent: `Attach local file ${quoteForIntent(file)} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
-      run: () => uploadFile(tabId, selector, file, frame),
+      intent: `Attach ${fileIntent} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => uploadFile(tabId, selector, files, frame),
     };
   }
   if (cmd.method === "type_text") {
@@ -5369,7 +5374,7 @@ async function replaceDom(
 async function uploadFile(
   tabId: number,
   selector: string,
-  file: string,
+  files: string[],
   frame?: string,
 ): Promise<{ ok: true; selector: string; files: number }> {
   if (frame) {
@@ -5392,7 +5397,7 @@ async function uploadFile(
   }
   const described = (await browser.debugger.sendCommand({ tabId }, "DOM.describeNode", {
     nodeId: queryResult.nodeId,
-  })) as { node: { nodeName: string; attributes?: string[] } };
+  })) as { node: { nodeName: string; attributes?: string[]; backendNodeId?: number } };
   const attrs = described.node.attributes ?? [];
   const attrMap = new Map<string, string>();
   for (let i = 0; i < attrs.length; i += 2) {
@@ -5406,10 +5411,29 @@ async function uploadFile(
   ) {
     throw new GatewayError("not_file_input", "selector does not point to input[type=file]");
   }
-  await browser.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
-    nodeId: queryResult.nodeId,
-    files: [file],
-  });
+  if (files.length > 1 && attrMap.get("multiple") === undefined) {
+    throw new GatewayError(
+      "single_file_input",
+      `selector points to a single-file input but ${files.length} files were given; the input needs the "multiple" attribute to accept more than one file`,
+    );
+  }
+  // Prefer backendNodeId: it stays valid across the getDocument/querySelector
+  // round-trip, whereas a plain nodeId can be invalidated by DOM mutation
+  // between calls — a common source of "Not allowed" from setFileInputFiles.
+  const backendNodeId = described.node.backendNodeId;
+  const target = backendNodeId !== undefined ? { backendNodeId } : { nodeId: queryResult.nodeId };
+  try {
+    await browser.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
+      ...target,
+      files,
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new GatewayError(
+      "file_attach_failed",
+      `Chrome rejected the file attachment (${detail}). This usually means the input is inside a cross-origin iframe, is hidden behind a custom upload widget, or the path is not readable by the browser. Verify the selector points to a real top-document input[type=file] and that the file paths are absolute and accessible.`,
+    );
+  }
   const [res] = await browser.scripting.executeScript({
     target: { tabId },
     func: (sel: string) => {
