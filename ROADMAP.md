@@ -12,7 +12,7 @@ Current repo version: **v0.4.1**.
 - Added regression coverage for large audit-log tail reads and zero-line tail requests.
 
 ### v0.4.0 — Public launch release and cross-platform packages (2026-06-09)
-- Published ABG as a public-source repository with counsel-reviewed license, commercial-use, contribution, notice, trademark, and patent-pending guidance.
+- Published ABG as a public-source repository with counsel-reviewed license, commercial-use, contribution, notice, trademark, and patent-status guidance.
 - Refreshed the public documentation site and download surface so macOS, Windows, and Chrome extension release artifacts point to the same current version.
 - Added Windows release packaging coverage alongside the signed/notarized macOS payload and Chrome Web Store submission ZIP release asset.
 - Added release follow-through for package managers: Homebrew Cask stays aligned with the GitHub Release asset, and Windows release publication can generate and submit WinGet manifests for `ArcManagement.AgentBrowserGateway`.

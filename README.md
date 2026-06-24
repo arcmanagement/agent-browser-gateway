@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml)
 
-Patent Pending: JP 2026-080620
+Patent allowed; registration fee paid: JP 2026-080620
 
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
@@ -834,7 +834,7 @@ Contributions are welcome. By submitting a contribution, you agree it is license
 
 ### Patents
 
-ArcManagement holds a pending Japanese patent application covering aspects of ABG. The license grants a patent license for permitted uses; commercial license agreements include explicit patent terms.
+ArcManagement has received a decision to grant Japanese patent application JP 2026-080620 covering aspects of ABG, and the registration fee has been paid. The patent right takes effect once it is entered in the Patent Register. The license grants a patent license for permitted uses; commercial license agreements include explicit patent terms.
 
 ### Trademarks
 

@@ -15,6 +15,7 @@ DEFAULT_OUT_DIR = BASE_DIR / "out" / "followup"
 SOURCE_FILES = [
     ("06-examination-request-reduced.md", "abg-examination-request-reduced.html"),
     ("07-super-early-examination-statement.md", "abg-super-early-examination-statement.html"),
+    ("08-patent-fee-payment-reduced.md", "abg-patent-fee-payment-reduced.html"),
 ]
 ASCII_TO_FULLWIDTH = str.maketrans("0123456789", "０１２３４５６７８９")
 SKIP_SECTION_PREFIXES = [
@@ -48,14 +49,32 @@ def html_line(value: str) -> str:
     return f"{html.escape(value, quote=False)}<BR>"
 
 
-def render_source(path: Path, *, filing_date: str, examination_payment_number: str | None) -> list[str]:
+def render_source(
+    path: Path,
+    *,
+    filing_date: str,
+    examination_payment_number: str | None,
+    patent_fee_payment_number: str | None,
+) -> list[str]:
     lines: list[str] = []
     skip_rest = False
+    if path.name == "08-patent-fee-payment-reduced.md":
+        in_payment_form = False
+    else:
+        in_payment_form = True
 
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line:
             continue
+        if path.name == "08-patent-fee-payment-reduced.md":
+            if line == "## 提出用記載案":
+                in_payment_form = True
+                continue
+            if in_payment_form and line.startswith("## "):
+                skip_rest = True
+            if not in_payment_form:
+                continue
         if any(line.startswith(prefix) for prefix in SKIP_SECTION_PREFIXES):
             skip_rest = True
         if skip_rest:
@@ -66,6 +85,8 @@ def render_source(path: Path, *, filing_date: str, examination_payment_number: s
             line = f"【提出日】{filing_date}"
         if path.name == "06-examination-request-reduced.md" and line.startswith("【納付番号】") and examination_payment_number:
             line = f"【納付番号】{examination_payment_number}"
+        if path.name == "08-patent-fee-payment-reduced.md" and line.startswith("【納付番号】") and patent_fee_payment_number:
+            line = f"【納付番号】{patent_fee_payment_number}"
         lines.append(html_line(line))
 
     return lines
@@ -93,6 +114,7 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--date", default=reiwa_date(), help="JPO Japanese submission date text.")
     parser.add_argument("--examination-payment-number", help="Payment number for the examination request.")
+    parser.add_argument("--patent-fee-payment-number", help="Payment number for the patent fee payment.")
     args = parser.parse_args()
 
     out_dir = args.out_dir
@@ -107,6 +129,7 @@ def main() -> int:
             source_path,
             filing_date=args.date,
             examination_payment_number=args.examination_payment_number,
+            patent_fee_payment_number=args.patent_fee_payment_number,
         )
         output_path.write_bytes(build_html(lines))
         print(f"wrote {output_path}")

@@ -41,7 +41,7 @@ We're not interested in policing every developer. If you're an individual, a stu
 
 ## Patents
 
-ArcManagement holds a pending Japanese patent application (Application No. 特願2026-080620, filed 2026-05-12) covering aspects of ABG. The license grants patent rights for permitted purposes and includes a patent-defense termination clause. Commercial license agreements include explicit patent terms.
+ArcManagement has received a decision to grant Japanese patent application JP 2026-080620, filed 2026-05-12, covering aspects of ABG, and the registration fee has been paid. The patent right takes effect once it is entered in the Patent Register. The license grants patent rights for permitted purposes and includes a patent-defense termination clause. Commercial license agreements include explicit patent terms.
 
 ## Modifications and redistribution
 
