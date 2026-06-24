@@ -11,6 +11,8 @@
 - [05-drawings.md](05-drawings.md): 図面一覧。9図の説明と提出用変換方針を記載する。
 - [06-examination-request-reduced.md](06-examination-request-reduced.md): 出願番号取得後にオンライン提出する、1/3減免前提の出願審査請求書原稿である。
 - [07-super-early-examination-statement.md](07-super-early-examination-statement.md): スーパー早期審査申請用の早期審査に関する事情説明書原稿である。
+- [08-patent-fee-payment-reduced.md](08-patent-fee-payment-reduced.md): 特許査定後にオンライン提出する、1/3減免前提の特許料納付書原稿である。
+- [09-patent-fee-payment-runbook.md](09-patent-fee-payment-runbook.md): 特許料納付番号取得、納付、オンライン送信、証憑保存の実行手順である。
 - [figures/](figures/): Mermaid 図面原稿。SVG 生成用の [build.sh](figures/build.sh) を含む。
 - [checklist.md](checklist.md): 出願前チェックリスト、自己レビュー記録、進歩性論点メモである。
 - [word-print/README.md](word-print/README.md): Word 出力による目視確認メモである。
@@ -54,7 +56,15 @@ Word 確認用 DOCX は `python3 legal/patent/scripts/build-paper-docx.py` で�
 - 出願審査請求料: 138,000円 + 請求項数 x 4,000円。請求項10項の場合は178,000円である。
 - 1/3減免後の出願審査請求料: 請求項10項の場合は59,330円である。出願審査請求書には「特許法施行令第10条第5号ロに掲げる者に該当する請求人である。減免申請書の提出を省略する。」を記載する。
 - 特許料第1年から第3年まで: 毎年4,300円 + 請求項数 x 300円。請求項10項の場合は毎年7,300円である。
-- 減免制度: 中小スタートアップ企業等を対象に審査請求料及び特許料の減免措置が設けられている。ＡｒｃＭａｎａｇｅｍｅｎｔ株式会社が対象となるかは、審査請求前に本人確認事項である。
+- 1/3減免後の特許料第1年から第3年まで: 請求項10項の場合は7,290円である。特許料納付書には「特許法施行令第10条第5号ロに掲げる者に該当する特許出願人である。減免申請書の提出を省略する。」を記載する。
+
+## 特許査定後の設定登録料納付
+
+令和8年6月24日付けで特許査定を受領した。特許権として効力を発生させるには、特許料納付書を提出し、第1年から第3年までの特許料を一時に納付して設定登録を受ける必要がある。納付期限は、特許査定の謄本が送達された日から30日以内である。
+
+本件は、審査請求時と同じく中小スタートアップ企業向けの1/3軽減を前提とする。提出書類は [08-patent-fee-payment-reduced.md](08-patent-fee-payment-reduced.md) の特許料納付書1通であり、実行手順は [09-patent-fee-payment-runbook.md](09-patent-fee-payment-runbook.md) に従う。
+
+令和8年6月24日に、7,290円の電子現金納付番号を取得して納付し、同日、この納付番号を記載した特許料納付書をオンライン送信した。受付番号は `52601377642` である。電子現金納付番号及び確認番号は repo には記載せず、Drive の証憑で管理する。
 
 ## 新規性喪失例外の留意
 
@@ -73,6 +83,7 @@ Word 確認用 DOCX は `python3 legal/patent/scripts/build-paper-docx.py` で�
 - 出願日: 日本国特許出願完了。出願番号は特願2026-080620である。
 - 出願直後: 1/3減免付き出願審査請求書をオンライン提出済みである。
 - 出願直後: 早期審査に関する事情説明書をオンライン提出し、スーパー早期審査を申請済みである。
+- 令和8年6月24日: 特許査定を受領した。第1年から第3年までの特許料について、1/3軽減後の7,290円を電子現金納付し、特許料納付書をオンライン提出した。受付番号は `52601377642` である。
 - 出願後1年以内: PCT 国際出願の要否を判断する。
 - 出願公開後: 公開番号及び公開公報の URL を追記する。
 
@@ -88,6 +99,9 @@ Word 確認用 DOCX は `python3 legal/patent/scripts/build-paper-docx.py` で�
 - JPO スーパー早期審査について: https://www.jpo.go.jp/system/patent/shinsa/soki/super_souki.html
 - JPO 特許審査に関するスタートアップ支援策: https://www.jpo.go.jp/system/patent/shinsa/soki/patent-venture-shien.html
 - JPO 中小スタートアップ企業を対象とした減免措置: https://www.jpo.go.jp/system/process/tesuryo/genmen/genmen20190401/02_04.html
+- JPO 特許査定を受け取った方へ: https://www.jpo.go.jp/system/basic/otasuke-n/tokkyo/satei/
+- JPO 権利化のための納付の流れ: https://www.jpo.go.jp/system/process/toroku/settei_nagare.html
+- JPO 減免申請手続の具体的な記載例: https://www.jpo.go.jp/system/process/tesuryo/genmen/genmen20190401/02_98.html
 - JPO 出願審査請求書の書き方ガイド: https://www.pcinfo.jpo.go.jp/guide/Content/Guide/Patent/ShinsaSeikyu/doc/P_ShinsaSeikyu.htm
 - JPO 早期審査に関する事情説明書の書き方ガイド: https://www.pcinfo.jpo.go.jp/guide/Content/Guide/Patent/SokiShinsa/doc/P_SokiJijoSetusmeiSho.htm
 - JPO 特許料等の減免制度: https://www.jpo.go.jp/system/process/tesuryo/genmen/genmensochi.html
