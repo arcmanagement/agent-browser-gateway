@@ -65,6 +65,10 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
+Internally, the CLI speaks line-delimited JSON over the platform-local IPC endpoint: Unix domain
+sockets on macOS and Linux, and named pipes on Windows. Endpoint resolution and cleanup are owned by
+ABG, so callers do not need OS-specific socket or pipe details.
+
 ## Plugins
 
 Plugins are local JavaScript modules loaded by the Gateway. They can transform browser data, add

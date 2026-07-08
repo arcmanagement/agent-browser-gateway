@@ -27,6 +27,7 @@ filesystem paths from `ABGConstants`, but should not import AppKit or SwiftUI.
 
 - A non-macOS shell should start the runtime, expose status, and provide UI/tray equivalents outside
   `GatewayCoordinator`.
-- Loopback WS/UDS transports should continue to speak through `GatewayRuntime`.
+- Loopback WebSocket and platform-local CLI IPC transports should continue to speak through
+  `GatewayRuntime`. The shared local IPC contract is documented in `LOCAL_IPC.md`.
 - Platform-specific installer/tray/status work should not add AppKit or SwiftUI dependencies to the
   runtime boundary.

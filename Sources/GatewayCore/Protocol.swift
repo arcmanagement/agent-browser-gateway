@@ -148,7 +148,7 @@ public struct GatewayCommand: Codable, Sendable {
     }
 }
 
-// MARK: - CLI <-> Gateway protocol (over Unix Domain Socket)
+// MARK: - CLI <-> Gateway protocol (over platform-local IPC)
 // Line-delimited JSON. Each line is one Request or Response.
 
 public enum CLIJSONContract {

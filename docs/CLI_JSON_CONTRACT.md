@@ -5,7 +5,10 @@ wrappers. The current contract version is `1`, defined in `CLIJSONContract.versi
 
 ## Transport Envelope
 
-The CLI talks to the local Gateway over line-delimited JSON on the Unix domain socket.
+The CLI talks to the local Gateway over line-delimited JSON on the platform-local IPC endpoint:
+Unix domain sockets on macOS and Linux, and named pipes on Windows. Endpoint selection, path or pipe
+name resolution, permissions, and cleanup are documented in `docs/LOCAL_IPC.md`; callers should use
+the `abg` CLI contract instead of reaching into OS-specific endpoints.
 
 Requests use this envelope:
 

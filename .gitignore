@@ -61,6 +61,7 @@ credentials/
 docs/*
 !docs/CLI_JSON_CONTRACT.md
 !docs/HOMEBREW.md
+!docs/LOCAL_IPC.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
 !docs/REPRODUCIBLE_DOCKER_BUILD.md

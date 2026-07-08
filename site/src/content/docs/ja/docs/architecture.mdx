@@ -63,6 +63,9 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
+内部では、CLIはplatform-local IPC endpoint上のline-delimited JSONでGatewayと通信します。macOSとLinuxではUnix domain socket、
+Windowsではnamed pipeを使います。endpoint resolutionとcleanupはABGが担うため、呼び出し側がOS固有のsocketやpipe詳細を知る必要はありません。
+
 ## プラグイン
 
 pluginはGatewayが読み込むローカルJavaScript moduleです。ブラウザーデータ変換、domain-specific Markdown抽出、
