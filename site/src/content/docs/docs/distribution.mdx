@@ -58,6 +58,19 @@ make dist VERSION="$VERSION" \
 Keep Developer ID signing local. Do not put the Developer ID private key, certificate password, App
 Store Connect credentials, or `notarytool` credentials into GitHub Actions secrets.
 
+## Reproducible build and release trust
+
+Before a v1.0 release, maintainers can run the unsigned reproducible dry run:
+
+```bash
+make reproducible-build
+```
+
+The dry run writes extension and Gateway comparison artifacts, `SHA256SUMS.txt`, `BUILD_INPUTS.txt`,
+and `agent-browser-gateway-$VERSION.spdx.json` under `dist/reproducible-build/`. The full checksum,
+signing, SBOM, provenance, and user verification plan is tracked in
+[`docs/RELEASE_ARTIFACT_TRUST.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/RELEASE_ARTIFACT_TRUST.md).
+
 ## Verify artifacts
 
 ```bash
@@ -74,3 +87,10 @@ shasum -a 256 \
 
 CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
 maintainer Mac and published to the public download site afterward.
+
+Users who download a direct artifact should also download the matching checksum file and verify it
+before installation:
+
+```bash
+shasum -a 256 -c agent-browser-gateway-$VERSION-macos-arm64.dmg.sha256.txt
+```
