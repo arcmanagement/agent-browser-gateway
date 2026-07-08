@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -8,8 +11,38 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Swift and extension tests
+  ci-policy:
+    name: CI policy
+    runs-on: ubuntu-latest
+    outputs:
+      run_swift: ${{ steps.policy.outputs.run_swift }}
+      run_extension: ${{ steps.policy.outputs.run_extension }}
+      full_verification: ${{ steps.policy.outputs.full_verification }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide checks for this ref
+        id: policy
+        env:
+          DEFAULT_BRANCH: main
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/ci-change-policy.sh
+
+      - name: Report CI policy
+        run: |
+          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ${{ steps.policy.outputs.summary }}
+          EOF
+
+  swift:
+    name: Swift verification (macOS)
+    needs: ci-policy
+    if: needs.ci-policy.outputs.run_swift == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -29,7 +62,18 @@ jobs:
         run: scripts/swift-coverage-check.sh
 
       - name: Swift release build
+        if: needs.ci-policy.outputs.full_verification == 'true'
         run: swift build -c release
+
+  extension:
+    name: Extension verification (Linux)
+    needs: ci-policy
+    if: needs.ci-policy.outputs.run_extension == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
         with:

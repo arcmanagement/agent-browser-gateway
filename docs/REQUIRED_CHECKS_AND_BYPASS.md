@@ -1,6 +1,6 @@
 # Required Checks and Emergency Bypass
 
-Captured from GitHub on 2026-06-06.
+Captured from GitHub on 2026-06-06. Revalidated on 2026-07-09 before updating the CI cost policy.
 
 ## Current Repository State
 
@@ -30,19 +30,48 @@ Because no required status-check rule is currently configured, a failing-check P
 proven blocked by GitHub branch protection. Required status checks should be enabled only after the
 CI workflows that produce them are reliable on pull requests.
 
+## CI Cost and Required-Check Policy
+
+Representative CI runs before the split used one `macos-latest` job named
+`Swift and extension tests` for both Swift and extension verification:
+
+- Run 28968522083, PR #343, completed in about 10 minutes. Swift debug build, tests, coverage gate,
+  and release build consumed nearly all of the macOS time. Extension install, typecheck, lint,
+  coverage, and build completed in under 1 minute but still ran on the macOS runner.
+- Run 28964313219, PR #342, completed in about 15 minutes. Swift debug build, tests, coverage gate,
+  and release build again dominated the job, with the extension checks taking under 1 minute.
+
+The target CI policy keeps `main` protected while reducing macOS minutes for non-main review stacks:
+
+- Pushes to `main`: run full Swift verification on macOS, including the release build, and full
+  extension verification on Linux.
+- Pull requests targeting `main`: run the same full verification as `main` pushes before merge.
+- Pull requests targeting non-`main` branches: run the always-on `CI policy` job, then run Swift
+  verification only when Swift or CI policy paths changed, and run extension verification only when
+  extension or CI policy paths changed. Extension-only non-main PRs therefore avoid macOS runner
+  time.
+- Manual dispatch: run full verification.
+
+Release-build validation belongs to full verification only: `main` pushes, PRs targeting `main`, and
+manual dispatch. Non-main PRs with Swift changes still run Swift debug build, tests, and coverage,
+but skip `swift build -c release` until the branch is proposed for `main`.
+
 ## Target Required Checks
 
-When required checks are enabled, keep the required set small and tied to stable PR-triggered jobs:
+When required checks are enabled, keep the required set small and tied to stable PR-triggered jobs
+that run on every PR targeting `main`:
 
-- macOS Swift build and `swift test`
-- extension dependency install with frozen lockfile
-- extension `pnpm run typecheck`
-- extension `pnpm run lint`
-- extension `pnpm run build`
-- extension `pnpm run test` after the Vitest test script lands
+- `CI policy`
+- `Swift verification (macOS)`, including `swift build`, `swift test --enable-code-coverage`, the
+  service coverage gate, and `swift build -c release` for full-verification paths
+- `Extension verification (Linux)`, including frozen dependency install, typecheck, lint, coverage,
+  and build
 
 Do not require release-only, tag-only, notarization, Pages deployment, or manual `workflow_dispatch`
 jobs. Those are release gates, not ordinary PR merge gates.
+
+Do not make non-main PR optimization checks the only gate for `main`. Any branch that will reach
+`main` must first open or update a PR targeting `main`, where the full required set above runs.
 
 ## Verification Runbook
 
