@@ -1,0 +1,118 @@
+---
+title: Linux
+description: Headless, CLI-first Linux strategy for the first Gateway implementation.
+sidebar:
+  order: 5
+---
+
+The first Linux target is a headless Gateway service controlled from the CLI. A desktop tray,
+settings window, or Linux toolkit UI is intentionally out of scope for the initial implementation.
+
+Linux desktop environments, packaging conventions, and notification stacks vary widely. The first
+Linux version should stay close to the shared Gateway core, avoid GTK, Qt, tray, and portal
+dependencies, and make the `abg` CLI the primary operation surface.
+
+## Package format
+
+The first Linux artifact should be a distribution-neutral
+`agent-browser-gateway-X.Y.Z-linux-x64.tar.gz` archive. A tarball avoids early assumptions about
+Debian, Fedora, Arch, desktop integration, or package repository ownership.
+
+Future package formats should be demand-driven: `.deb` first when Debian or Ubuntu users need
+managed installs, then `.rpm` if Fedora/RHEL users need it. AppImage is not the first target because
+the Linux Gateway is a headless service rather than a desktop UI app.
+
+## Install layout
+
+The tarball should contain the Gateway binary, the CLI, resources, and an optional user service
+template.
+
+| Path | Purpose |
+| --- | --- |
+| `~/.local/opt/agent-browser-gateway/` | User-owned install root for the extracted release. |
+| `~/.local/bin/abg` | Symlink or wrapper to the versioned CLI binary. |
+| `~/.config/agent-browser-gateway/` | User configuration and optional profile settings. |
+| `${XDG_RUNTIME_DIR}/agent-browser-gateway/` | Runtime Unix socket and pid files for the current login session. |
+| `~/.local/state/agent-browser-gateway/` | Audit logs and durable service metadata. |
+
+## CLI lifecycle
+
+Linux users should be able to operate the Gateway without a desktop process:
+
+```bash
+abg gateway start
+abg gateway status
+abg gateway stop
+abg gateway restart
+```
+
+`start` should create the runtime directory if needed, launch the headless Gateway, and fail with a
+clear message if another owned Gateway process is already listening. `status` should report the
+loopback host and port, connected extension count, shared tab count, audit log path, active profile,
+process id, and Unix socket path. `stop` should ask the running Gateway to exit cleanly and remove
+stale runtime files only after confirming the process is gone. `restart` should perform `stop` then
+`start`, preserving configuration and audit logs.
+
+Existing tab commands such as `abg tabs --compact`, `abg read`, and `abg screenshot` should behave
+the same as macOS and Windows once the browser extension is connected.
+
+## Optional systemd user service
+
+The tarball can include a `systemd --user` service template for machines that want ABG to start with
+the login session:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp agent-browser-gateway.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now agent-browser-gateway.service
+systemctl --user status agent-browser-gateway.service
+systemctl --user restart agent-browser-gateway.service
+systemctl --user stop agent-browser-gateway.service
+```
+
+The CLI should remain the documented first surface. The service is an optional persistence layer, not
+a separate product surface. `abg gateway status` should make it clear when the running process is
+managed by the user service and should point users at the matching `systemctl --user` command when a
+service-managed process should be restarted or stopped.
+
+## Local IPC
+
+Linux should use a Unix domain socket for CLI-to-Gateway IPC. The default path should live under
+`${XDG_RUNTIME_DIR}/agent-browser-gateway/abg.sock`, falling back to `/run/user/<uid>/` only when
+that is the resolved runtime directory for the session.
+
+Expected permissions:
+
+- Create the runtime directory with mode `0700` and owned by the current user.
+- Create the socket so only the owner can connect.
+- Refuse to use a socket path or parent directory owned by another user.
+- Refuse world-writable parent paths unless the path is the user-owned runtime directory.
+
+Cleanup expectations:
+
+- Remove the socket and pid file during a clean `abg gateway stop`.
+- Treat a socket with no live owner process as stale, remove it, and continue on `start`.
+- Leave audit logs and configuration in place unless the user runs an explicit uninstall cleanup.
+- Do not place runtime sockets in `~/.local/state/agent-browser-gateway/`; that directory is for
+  durable state, not login-session IPC.
+
+## Install and uninstall
+
+Manual install shape:
+
+```bash
+mkdir -p ~/.local/opt ~/.local/bin
+tar -xzf agent-browser-gateway-X.Y.Z-linux-x64.tar.gz -C ~/.local/opt/
+ln -sf ~/.local/opt/agent-browser-gateway-X.Y.Z/bin/abg ~/.local/bin/abg
+```
+
+Manual uninstall shape:
+
+```bash
+systemctl --user disable --now agent-browser-gateway.service
+rm -f ~/.config/systemd/user/agent-browser-gateway.service
+rm -f ~/.local/bin/abg
+rm -rf ~/.local/opt/agent-browser-gateway-X.Y.Z
+rm -rf ~/.config/agent-browser-gateway ~/.local/state/agent-browser-gateway
+```

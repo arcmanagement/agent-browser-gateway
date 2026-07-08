@@ -152,6 +152,9 @@ Current repo version: **v0.4.1**.
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
 - Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
+- Linux port as a headless, CLI-first Gateway service: `abg gateway start/status/stop/restart`,
+  optional `systemd --user` persistence, and Unix domain socket IPC under the user runtime directory.
+  A desktop tray or settings UI is out of scope for the first Linux target.
 
 ## Phase 4
 

@@ -687,6 +687,8 @@ Currently shipped:
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
+- 📋 Linux headless service target: CLI lifecycle commands, optional `systemd --user` persistence,
+  and user-owned Unix socket IPC before any desktop UI work
 - 📋 Safari / Edge / iOS / Android (Phase 3+)
 - 📋 Remote/multi-machine pairing (Phase 4)
 

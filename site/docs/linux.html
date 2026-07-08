@@ -57,12 +57,24 @@
           <a href="#layout">Install layout</a>
           <a href="#operate">Operate</a>
           <a href="#systemd">systemd user service</a>
+          <a href="#ipc">Local IPC</a>
           <a href="#uninstall">Uninstall</a>
         </aside>
 
         <article class="policy">
           <section id="format">
             <h2>1. Package format</h2>
+            <p>
+              The first Linux target is a headless Gateway service controlled from the CLI. A
+              desktop tray, settings window, or Linux toolkit UI is intentionally out of scope for
+              the initial implementation.
+            </p>
+            <p>
+              Linux desktop environments, packaging conventions, and notification stacks vary
+              widely. The first Linux version should stay close to the shared Gateway core, avoid
+              GTK, Qt, tray, and portal dependencies, and make the <code>abg</code> CLI the primary
+              operation surface.
+            </p>
             <p>
               The first Linux artifact should be a distribution-neutral
               <code>agent-browser-gateway-X.Y.Z-linux-x64.tar.gz</code> archive. A tarball avoids
@@ -102,8 +114,12 @@
                     <td>User configuration and optional profile settings.</td>
                   </tr>
                   <tr>
+                    <td><code>${XDG_RUNTIME_DIR}/agent-browser-gateway/</code></td>
+                    <td>Runtime Unix socket and pid files for the current login session.</td>
+                  </tr>
+                  <tr>
                     <td><code>~/.local/state/agent-browser-gateway/</code></td>
-                    <td>Runtime socket, state, audit logs, and service metadata.</td>
+                    <td>Audit logs and durable service metadata.</td>
                   </tr>
                 </tbody>
               </table>
@@ -124,13 +140,23 @@
               </div>
               <pre><span class="prompt">$</span> abg gateway start
 <span class="prompt">$</span> abg gateway status
-<span class="prompt">$</span> abg gateway stop</pre>
+<span class="prompt">$</span> abg gateway stop
+<span class="prompt">$</span> abg gateway restart</pre>
             </aside>
             <p>
-              <code>status</code> should report the loopback host and port, connected extension
-              count, shared tab count, audit log path, and active profile. Existing tab commands such as
-              <code>abg tabs --compact</code>, <code>abg read</code>, and <code>abg screenshot</code>
-              should behave the same as macOS and Windows once the browser extension is connected.
+              <code>start</code> should create the runtime directory if needed, launch the headless
+              Gateway, and fail with a clear message if another owned Gateway process is already
+              listening. <code>status</code> should report the loopback host and port, connected
+              extension count, shared tab count, audit log path, active profile, process id, and
+              Unix socket path. <code>stop</code> should ask the running Gateway to exit cleanly and
+              remove stale runtime files only after confirming the process is gone.
+              <code>restart</code> should perform <code>stop</code> then <code>start</code>,
+              preserving configuration and audit logs.
+            </p>
+            <p>
+              Existing tab commands such as <code>abg tabs --compact</code>, <code>abg read</code>,
+              and <code>abg screenshot</code> should behave the same as macOS and Windows once the
+              browser extension is connected.
             </p>
           </section>
 
@@ -150,12 +176,58 @@
 <span class="prompt">$</span> cp agent-browser-gateway.service ~/.config/systemd/user/
 <span class="prompt">$</span> systemctl --user daemon-reload
 <span class="prompt">$</span> systemctl --user enable --now agent-browser-gateway.service
-<span class="prompt">$</span> systemctl --user status agent-browser-gateway.service</pre>
+<span class="prompt">$</span> systemctl --user status agent-browser-gateway.service
+<span class="prompt">$</span> systemctl --user restart agent-browser-gateway.service
+<span class="prompt">$</span> systemctl --user stop agent-browser-gateway.service</pre>
             </aside>
+            <p>
+              The CLI should remain the documented first surface. The service is an optional
+              persistence layer, not a separate product surface. <code>abg gateway status</code>
+              should make it clear when the running process is managed by the user service and
+              should point users at the matching <code>systemctl --user</code> command when a
+              service-managed process should be restarted or stopped.
+            </p>
+          </section>
+
+          <section id="ipc">
+            <h2>5. Local IPC</h2>
+            <p>
+              Linux should use a Unix domain socket for CLI-to-Gateway IPC. The default path should
+              live under <code>${XDG_RUNTIME_DIR}/agent-browser-gateway/abg.sock</code>, falling
+              back to <code>/run/user/&lt;uid&gt;/</code> only when that is the resolved runtime
+              directory for the session.
+            </p>
+            <p>Expected permissions:</p>
+            <ul>
+              <li>Create the runtime directory with mode <code>0700</code> and owned by the current user.</li>
+              <li>Create the socket so only the owner can connect.</li>
+              <li>Refuse to use a socket path or parent directory owned by another user.</li>
+              <li>
+                Refuse world-writable parent paths unless the path is the user-owned runtime
+                directory.
+              </li>
+            </ul>
+            <p>Cleanup expectations:</p>
+            <ul>
+              <li>Remove the socket and pid file during a clean <code>abg gateway stop</code>.</li>
+              <li>
+                Treat a socket with no live owner process as stale, remove it, and continue on
+                <code>start</code>.
+              </li>
+              <li>
+                Leave audit logs and configuration in place unless the user runs an explicit
+                uninstall cleanup.
+              </li>
+              <li>
+                Do not place runtime sockets in
+                <code>~/.local/state/agent-browser-gateway/</code>; that directory is for durable
+                state, not login-session IPC.
+              </li>
+            </ul>
           </section>
 
           <section id="uninstall">
-            <h2>5. Install and uninstall</h2>
+            <h2>6. Install and uninstall</h2>
             <p>Manual install shape:</p>
             <aside class="terminal" aria-label="Linux install commands">
               <div class="terminal-bar" aria-hidden="true">
