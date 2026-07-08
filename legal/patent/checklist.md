@@ -108,6 +108,14 @@
 - [x] 出願後、出願審査請求及びスーパー早期審査申請をオンラインで行った。
 - [x] 出願後 README に patent status 表示を追記した。
 
+## Issue #39 claim architecture review
+
+- [x] Claim 9 was revised to state that the Gateway may load plugins as JavaScript scripts running in the same-process JavaScriptCore VM, external scripts, or executables, and may run host-API registered transforms or domain-specific transforms before returning browser content to the AI agent.
+- [x] The current claim set has claims 1 through 10 only. The Issue reference to claims 11 and 12 does not match the current numbered draft.
+- [x] Per-domain plugin behavior is currently reflected in claim 6, revised claim 9, specification paragraphs 【0061】 to 【0062】, and embodiment 2. No separate claim 11 exists in this draft.
+- [x] Annotation behavior is currently reflected in claim 8 and specification paragraphs 【0065】 to 【0072】. Replay or repeated-operation behavior is currently reflected in claim 7 and specification paragraph 【0063】. No separate claim 12 exists in this draft.
+- [x] Attorney-review handoff note: before further filing, review whether the JavaScriptCore plugin wording in claim 9 should remain in the method claim, be moved back into dependent transformation language, or be split into additional dependent claims for per-domain plugins, annotation behavior, and replay behavior.
+
 ## Pass 3 自己レビュー記録
 
 ### 1周目: 新規性
