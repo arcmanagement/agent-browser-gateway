@@ -26,6 +26,19 @@ export function originForUrl(url: string): string {
   }
 }
 
+export function richClipboardPayloadLabel(
+  mime: string | undefined,
+  contentBytes: number | undefined,
+): string {
+  if (!mime) return " current clipboard payload";
+  const byteSuffix = contentBytes === undefined ? "" : ` (${contentBytes} bytes)`;
+  return ` ${quoteForIntentLabel(mime)} clipboard payload${byteSuffix}`;
+}
+
+function quoteForIntentLabel(value: string): string {
+  return JSON.stringify(value.length > 120 ? `${value.slice(0, 117)}...` : value);
+}
+
 export type AuditDiffValue = {
   text: string;
   html?: string;
