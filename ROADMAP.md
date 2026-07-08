@@ -1,6 +1,6 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-06-10.
+Living document. Reflects current intent, not commitment. Last updated 2026-07-08.
 
 Current repo version: **v0.4.1**.
 
@@ -152,6 +152,77 @@ Current repo version: **v0.4.1**.
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
 - Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
+
+### Safari feasibility spike (#63)
+
+Recommendation: treat Safari as a constrained Phase 3 prototype, not a Chrome-equivalent port. The
+current ABG trust model can map to Safari for explicit tab sharing, read operations, and visible-tab
+screenshots, but most advanced commands must be unsupported or redesigned because Safari does not
+provide Chrome's `debugger` API / CDP bridge.
+
+Apple distribution and signing requirements:
+
+- Safari Web Extensions are implemented as app extensions bundled inside a containing macOS, iOS,
+  visionOS, or Mac Catalyst app, and Apple documents Xcode packaging plus Apple Developer Program
+  membership as the distribution path:
+  <https://developer.apple.com/documentation/safariservices/safari-web-extensions>.
+- Development can temporarily load an unsigned extension folder in macOS Safari, but Safari removes
+  temporary extensions after 24 hours or when Safari quits. Testing iOS on device and distribution
+  require an Xcode-packaged containing app:
+  <https://developer.apple.com/documentation/safariservices/running-your-safari-web-extension>.
+- App Store distribution requires joining the Apple Developer Program and submitting the containing
+  app with the extension. Outside-Mac-App-Store distribution on macOS requires Developer ID signing
+  and notarization:
+  <https://developer.apple.com/documentation/safariservices/distributing-your-safari-web-extension>.
+- The Safari packager can convert the existing extension files into an Xcode project with a
+  containing app and Safari Web Extension target, and reports unsupported manifest keys that need
+  workarounds:
+  <https://developer.apple.com/documentation/safariservices/packaging-a-web-extension-for-safari>.
+- Native bridge work needs the Safari extension target to declare `nativeMessaging` permission in
+  `manifest.json`; shared state between the containing app and native app extension needs the App
+  Groups capability/entitlement because Apple runs the app, JavaScript, and native app extension in
+  separate sandboxed environments:
+  <https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension>.
+
+ABG capability mapping:
+
+| ABG capability | Safari status | Notes |
+|---|---|---|
+| Containing Gateway app | Feasible with redesign | Safari Web Extension must live inside a containing app. The existing macOS Gateway can become that app or ship a sibling Safari app target. |
+| Extension-to-Gateway channel | Feasible but different | Safari native messaging reaches only the containing app or native app extension; Safari ignores the application id parameter. ABG should not assume Chrome-style extension-to-local-WebSocket parity. |
+| App groups / shared state | Required for native bridge state | Apple documents separate sandboxed environments for the app, JavaScript, and native app extension, with App Groups needed for shared data. |
+| Per-tab consent | Feasible, but Safari-owned | Safari permissions are granted by the user for a single use, day, or all websites. ABG can layer its own share/revoke state, but Safari's site permission UI remains authoritative. |
+| Optional all-tabs profile mode | Unclear / likely constrained | Safari permission grants can apply across profiles in Safari 17+, and optional host permission behavior is not equivalent to Chrome's removable `<all_urls>` profile mode. Treat all-tabs as a separate Safari design decision. |
+| Read / DOM extraction | Feasible for granted pages | Use `scripting.executeScript`-style paths and Safari permission prompts. Host permission and injection timing differences need adapter tests. |
+| Visible screenshot | Feasible fallback | Safari documents `tabs.captureVisibleTab`; it does not replace full-page CDP screenshot capture. |
+| Console, network, HAR, response body, dialogs, PDF, emulation, file upload, low-level input | Blocked for parity | These ABG commands depend on Chrome `debugger` / CDP domains such as Runtime, Network, Page, DOM, Emulation, and Input. Safari Web Extension compatibility docs do not provide a corresponding debugger API. |
+| Downloads metadata | Unknown / likely partial | The current Chrome manifest uses `downloads`; Safari packager warnings must be checked before committing to this feature. |
+| iOS Safari | Later than macOS | Native app-to-JavaScript messaging from an iOS containing app is not available in the same direction Apple documents for macOS, so iOS should follow a macOS Safari spike. |
+
+Chrome differences and blockers:
+
+- Current Chrome ABG relies on `activeTab`, `scripting`, `tabs`, `storage`, `debugger`, `downloads`,
+  `alarms`, `clipboardWrite`, no default `host_permissions`, and optional `<all_urls>` for sandbox
+  all-tabs mode. Safari supports WebExtension compatibility but documents manifest and API gaps,
+  including host-permission differences, `storage.session` version constraints, `tabs` needing host
+  permission, unsupported manifest keys, and several unsupported `tabs`, `scripting`, `webRequest`,
+  `windows`, and iOS menu APIs:
+  <https://developer.apple.com/documentation/safariservices/assessing-your-safari-web-extension-s-browser-compatibility>.
+- Safari permissions should be requested with least access, prioritizing `activeTab`, host
+  permissions, and optional permissions; `<all_urls>` is documented as a last resort:
+  <https://developer.apple.com/documentation/safariservices/managing-safari-web-extension-permissions>.
+- Native messaging requires `nativeMessaging` permission and only reaches the containing app/native
+  app extension. Content scripts cannot send messages to the native app extension directly; message
+  flow needs background or extension pages:
+  <https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension>.
+- The largest blocker is CDP parity. ABG should expose Safari commands by capability rather than by
+  Chrome command name, returning explicit unsupported errors for CDP-backed commands until a
+  Safari-specific implementation exists.
+
+Next action: create a macOS-only Safari prototype from `extension/dist` with
+`xcrun safari-web-extension-packager`, add a Safari adapter that supports share/revoke/read and
+`tabs.captureVisibleTab`, and document unsupported CDP-backed commands in CLI output before deciding
+whether App Store or Developer ID distribution is worth productizing.
 
 ## Phase 4
 
