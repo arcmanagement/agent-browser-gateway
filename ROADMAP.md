@@ -160,6 +160,77 @@ Current repo version: **v0.4.1**.
 - Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
 
+### WKWebView debugging support design note
+
+WKWebView support is a separate target-app integration track, not a direct result of the iOS Safari
+Web Extension port.
+
+Current platform constraints:
+
+- Safari Web Inspector is the official Apple debugging surface for Safari pages and inspectable web
+  content. It covers DOM, console, JavaScript sources, network activity, storage, graphics, layers,
+  and audits.
+- App-embedded `WKWebView` content is not automatically exposed to external tooling in release
+  builds. Starting with macOS 13.3 and iOS/iPadOS/tvOS 16.4, each app must opt in per web view by
+  setting `WKWebView.isInspectable = true`. The same opt-in model exists for `JSContext`.
+- On iOS and iPadOS devices, the user must also enable Safari Web Inspector in Settings under
+  Safari > Advanced > Web Inspector. Simulators have Web Inspector enabled by default.
+- Safari Web Extensions customize Safari browsing on iPhone, iPad, and Mac. They can read and
+  modify Safari web page content after the user enables the extension and grants permissions, but
+  that extension model does not install into arbitrary third-party app `WKWebView` instances.
+
+ABG implication:
+
+The current ABG extension model cannot attach to app-embedded `WKWebView` content by itself. ABG's
+shipped architecture depends on a browser extension running in the user's browser profile and a
+local Gateway receiving messages from that extension. A third-party native app's `WKWebView` does
+not load the ABG Chrome or Safari extension, and the app decides whether its web view is
+inspectable.
+
+Target-app integration requirements:
+
+1. The app owner opts in each supported `WKWebView` by setting `isInspectable` where the OS supports
+   it, or provides an app-specific debug bridge when Web Inspector is unavailable.
+2. The app exposes a user-visible local debugging or support mode so inspection is intentional and
+   reversible.
+3. The app provides stable web-view identity, page metadata, and lifecycle events to ABG, because
+   browser tab IDs and extension-origin messages are not available inside the app.
+4. Operations go through an app-owned consent path. A read-only DOM/screenshot bridge should come
+   before any write operation.
+5. Transport remains local or user-paired, matching ABG's no-cloud-relay and zero-telemetry
+   boundary.
+
+Implementation options:
+
+| Option | Shape | Strengths | Limits | Decision |
+|---|---|---|---|---|
+| Target-app SDK or adapter | A native app embeds a small ABG bridge around selected `WKWebView` instances and forwards approved observations/actions to the local Gateway. | Preserves explicit app-owner consent, works without private APIs, can provide stable app-specific metadata, and can start with read-only support. | Requires each target app to integrate code and ship an update. ABG cannot make arbitrary apps visible. | Recommended first implementation path after Safari/iOS extension feasibility work. |
+| Platform debugging bridge | ABG discovers inspectable WebKit targets through Safari Web Inspector or related WebKit debugging interfaces, then maps them into the Gateway protocol. | Could cover any app that opts into `isInspectable` without app-specific SDK code beyond Apple's property. Useful for diagnostics and support workflows. | Automation APIs are not equivalent to Chrome DevTools Protocol, may depend on undocumented or unstable interfaces, and still requires user/device Web Inspector enablement. | Research-only until a public, stable automation contract is confirmed. |
+| Unsupported/deferred | Treat third-party app `WKWebView` automation as outside official ABG scope, while documenting manual Safari Web Inspector workflows. | Honest product boundary, avoids fragile private tooling, and keeps roadmap focused on browser extension ports and private pairing. | Does not solve support workflows for embedded WebViews. | Keep as fallback if no target app partner or stable bridge is available. |
+
+Recommended next step:
+
+Defer general third-party `WKWebView` attachment and proceed only with an explicit target-app
+integration track. The first milestone should be a read-only proof of concept for an app owned by
+the integrator:
+
+1. App marks selected `WKWebView` instances inspectable in debug/support mode.
+2. App bridge reports web-view list, current URL/title, DOM text or HTML snapshot, console messages,
+   and screenshots to the local Gateway.
+3. ABG CLI exposes those entries separately from browser tabs, for example as `webview:` refs, so
+   users can distinguish app-owned WebViews from Safari/Chrome tabs.
+4. Write operations remain deferred until consent, audit, and App Review implications are designed.
+
+The platform debugging bridge remains a spike after the target-app proof of concept. It should only
+graduate if ABG can rely on public Apple/WebKit contracts rather than private Safari internals.
+
+References:
+
+- Apple Safari developer tools: <https://developer.apple.com/safari/tools/>
+- Apple Safari extensions overview: <https://developer.apple.com/safari/extensions/>
+- WebKit, "Enabling the Inspection of Web Content in Apps":
+  <https://webkit.org/blog/13936/enabling-the-inspection-of-web-content-in-apps/>
+
 ## Hard non-goals
 
 These will not happen, regardless of demand:
