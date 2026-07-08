@@ -31,6 +31,7 @@ Homebrew が無関係な tap の trust warning を表示することもありま
 `brew untap arcmanagement/agent-browser-gateway` を実行してから、上の明示URL付きcommandでtapし直してください。
 
 [download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
+現在のpublic DMGは `agent-browser-gateway-0.4.1-macos-arm64.dmg` です。
 インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
 
 CLIから接続を確認します。
@@ -63,6 +64,8 @@ signed Windows releaseとMicrosoft indexingが完了するまでの想定動作�
 
 通常利用ではChrome Web Storeから Agent Browser Gateway をインストールします。ローカル開発では
 repositoryで拡張をbuildし、`extension/dist/` をunpacked extensionとして読み込みます。
+
+現在の `v0.4.1` では、Chrome Web Store listing は公開済みで、extension version `0.4.1` を表示します。
 
 incognito windowで使う場合は、拡張の詳細画面で **Allow in incognito** を有効にします。通常windowだけで
 使う場合、この設定は不要です。

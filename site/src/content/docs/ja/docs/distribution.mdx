@@ -8,6 +8,12 @@ sidebar:
 ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けに公開されます。
 public download pageでは、現在のartifactを `/downloads/` 配下で提供します。
 
+現在の `v0.4.1` public release status:
+
+- macOS DMG: `/downloads/agent-browser-gateway-0.4.1-macos-arm64.dmg` で公開済み
+- Chrome extension: Chrome Web Storeでversion `0.4.1` として公開済み
+- Windows package: signed releaseとWinGet indexing待ち
+
 ## Homebrew cask
 
 macOS caskは次をインストールします。
@@ -31,6 +37,17 @@ ABG cask の install 結果とは別です。
 Homebrew releaseの準備完了条件は、versioned macOS ZIPが
 `https://agent-browser-gateway.com/downloads/` に公開され、このrepositoryの
 `Casks/agent-browser-gateway.rb` がそのversionとSHA-256を指していることです。
+
+## Chrome Web Store
+
+extensionは次のChrome Web Store listingからインストールします。
+
+```text
+https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+```
+
+release verificationでは、public listingのversionが現在のrepository releaseと一致することを確認します。
+`v0.4.1` では、listingがversion `0.4.1` を表示することを確認します。
 
 ## WinGet
 
@@ -70,6 +87,7 @@ codesign --verify --strict --verbose=2 \
 spctl --assess --type execute --verbose \
   "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
 shasum -a 256 \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
   "dist/agent-browser-gateway-extension-$VERSION.zip"
 ```

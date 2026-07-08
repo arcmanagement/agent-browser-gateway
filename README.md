@@ -76,6 +76,8 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
+   The public Chrome Web Store listing is live for the current `v0.4.1` release.
+
 2. Install the local Gateway.
 
    macOS:
@@ -111,6 +113,8 @@ CLI. Install the browser extension first, then install the local Gateway.
 The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
+The current public DMG is `agent-browser-gateway-0.4.1-macos-arm64.dmg`; verify the SHA-256 checksum
+published next to the download before opening it.
 
 Windows package-manager install and release ZIPs are pending for `v0.4.1` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run

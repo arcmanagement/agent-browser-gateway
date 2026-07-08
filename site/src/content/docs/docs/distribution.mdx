@@ -8,6 +8,12 @@ sidebar:
 ABG release artifacts are built from the repository and published for the app, CLI, and browser
 extension. The public download page keeps current artifacts available under `/downloads/`.
 
+Current public release status for `v0.4.1`:
+
+- macOS DMG: live at `/downloads/agent-browser-gateway-0.4.1-macos-arm64.dmg`
+- Chrome extension: live on the Chrome Web Store as version `0.4.1`
+- Windows package: pending signed release and WinGet indexing
+
 ## Homebrew cask
 
 The macOS cask installs:
@@ -29,6 +35,17 @@ and no update is needed.
 Homebrew is ready for a release when the versioned macOS ZIP is published under
 `https://agent-browser-gateway.com/downloads/`, and this repository's
 `Casks/agent-browser-gateway.rb` points at that version and SHA-256.
+
+## Chrome Web Store
+
+Install the extension from:
+
+```text
+https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+```
+
+For release verification, confirm the public listing version matches the current repository release.
+For `v0.4.1`, the listing should report version `0.4.1`.
 
 ## WinGet
 
@@ -68,6 +85,7 @@ codesign --verify --strict --verbose=2 \
 spctl --assess --type execute --verbose \
   "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
 shasum -a 256 \
+  "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
   "dist/agent-browser-gateway-extension-$VERSION.zip"
 ```

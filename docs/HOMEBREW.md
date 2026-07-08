@@ -80,18 +80,20 @@ notarization, stapling, or Chrome Web Store submission.
    spctl --assess --type execute --verbose \
      "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
    shasum -a 256 \
+     "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
      "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
      "dist/agent-browser-gateway-extension-$VERSION.zip"
    ```
 
 3. Create and push the release tag.
-4. Publish both zip files and their SHA-256 files under
+4. Publish the DMG, both zip files, and their SHA-256 files under
    `https://agent-browser-gateway.com/downloads/`. Keep the release tag for source traceability.
 
    ```bash
+   cp "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" site/public/downloads/
    cp "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" site/public/downloads/
    cp "dist/agent-browser-gateway-extension-$VERSION.zip" site/public/downloads/
-   shasum -a 256 site/public/downloads/agent-browser-gateway-$VERSION-*.zip \
+   shasum -a 256 site/public/downloads/agent-browser-gateway-$VERSION-* \
      > site/public/downloads/SHA256SUMS.txt
    ```
 
