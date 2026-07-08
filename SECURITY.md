@@ -43,8 +43,9 @@ The official no-cloud/no-telemetry claim applies to services operated by ABG mai
 distributed as default ABG behavior. It does not prohibit a user or organization from operating
 their own private infrastructure, as long as that boundary is explicit and auditable.
 
-- Private remote pairing over Tailnet/LAN with QR code is tracked by #71. It must use user-controlled
-  connectivity, pairing expiry, revocation, and audit entries, not an ABG-operated cloud relay.
+- Private remote pairing over Tailnet/LAN with QR code is defined in
+  [`docs/REMOTE_PAIRING.md`](docs/REMOTE_PAIRING.md). It must use user-controlled connectivity,
+  pairing expiry, revocation, and audit entries, not an ABG-operated cloud relay.
 - User/team-owned local metrics in a self-hosted deployment are allowed only when the endpoint and
   data retention are controlled by that user/team. Sending telemetry to ABG operators remains a
   non-goal.

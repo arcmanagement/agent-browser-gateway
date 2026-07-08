@@ -571,10 +571,11 @@ Official ABG will not operate a cloud relay, collect telemetry, or provide silen
 execution. Those are product boundaries, not missing roadmap items.
 
 User-controlled deployments are different. Private remote pairing over a user's Tailnet or LAN is
-tracked in [#71](https://github.com/arcmanagement/agent-browser-gateway/issues/71) and must remain
-a user-operated connection path, not an ABG-operated relay. Likewise, local or organization-owned
-metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
-configuration. They are not telemetry sent to ABG operators.
+defined in [docs/REMOTE_PAIRING.md](docs/REMOTE_PAIRING.md) and must remain a user-operated
+connection path, not an ABG-operated relay. The design requires QR or text token exchange, short
+expiry, revocation, and audit-log records. Likewise, local or organization-owned metrics can exist in
+self-hosted deployments only when the user/team controls the endpoint and the configuration. They are
+not telemetry sent to ABG operators.
 
 The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
 extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
