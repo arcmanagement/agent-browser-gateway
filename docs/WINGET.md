@@ -23,6 +23,8 @@ agent-browser-gateway-<version>-windows-x64-setup.zip
 
 The setup ZIP contains `AgentBrowserGatewaySetup.exe` at the archive root and the release payload in
 `payload/`. The WinGet manifest treats it as a ZIP installer with a nested EXE installer.
+The setup launcher and payload executables are Authenticode-signed for public releases. The release
+checksum manifest is GPG-signed as described in [Release Signing Policy](RELEASE_SIGNING.md).
 
 ## Release Workflow
 

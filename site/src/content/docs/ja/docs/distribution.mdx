@@ -8,6 +8,10 @@ sidebar:
 ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けに公開されます。
 public download pageでは、現在のartifactを `/downloads/` 配下で提供します。
 
+release tag と release checksum manifest は GPG で署名します。実行形式の payload は platform 標準の
+署名を使い、macOS は Apple Developer ID、Windows は Authenticode で検証します。署名済み checksum
+manifest は、ZIP、extension package、SBOM、release notes を横断して検証する基準です。
+
 ## Homebrew cask
 
 macOS caskは次をインストールします。
@@ -76,3 +80,19 @@ shasum -a 256 \
 
 CIではunsigned artifactのbuildとtestを実行できます。signed release assetは信頼済みmaintainer Macで作成し、
 そのあとpublic download siteへ公開します。
+
+## signed release verification
+
+```bash
+git fetch --tags https://github.com/arcmanagement/agent-browser-gateway.git
+git tag -v "v$VERSION"
+gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+shasum -a 256 -c SHA256SUMS.txt
+```
+
+platform artifact を展開したあと、macOS executable は `codesign --verify --strict` と `spctl --assess`、
+Windows executable は `Get-AuthenticodeSignature` で検証します。
+
+signing target、key ownership、maintainer procedure の詳細は
+[Release Signing Policy](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/RELEASE_SIGNING.md)
+に記載します。

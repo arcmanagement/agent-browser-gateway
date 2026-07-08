@@ -45,6 +45,8 @@ Keep Developer ID signing local. Do not put the Developer ID private key, certif
 password, App Store Connect credentials, or `notarytool` credentials into GitHub Actions
 secrets. CI may build and test unsigned artifacts, but signed release assets should be
 created on a trusted maintainer Mac and published to the public download site afterward.
+The release tag and checksum manifest signing policy is documented in
+[Release Signing Policy](RELEASE_SIGNING.md).
 
 Outputs:
 
@@ -93,6 +95,11 @@ notarization, stapling, or Chrome Web Store submission.
    cp "dist/agent-browser-gateway-extension-$VERSION.zip" site/public/downloads/
    shasum -a 256 site/public/downloads/agent-browser-gateway-$VERSION-*.zip \
      > site/public/downloads/SHA256SUMS.txt
+   gpg --armor --detach-sign \
+     --output site/public/downloads/SHA256SUMS.txt.asc \
+     site/public/downloads/SHA256SUMS.txt
+   gpg --verify site/public/downloads/SHA256SUMS.txt.asc \
+     site/public/downloads/SHA256SUMS.txt
    ```
 
 5. Update `Casks/agent-browser-gateway.rb` from the public release asset:

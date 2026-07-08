@@ -134,6 +134,11 @@ and `.dll` files before zipping, including `AgentBrowserGatewaySetup.exe`, `abg.
 `agent-browser-gateway.exe`. If signing is required but the certificate or `signtool.exe` is
 unavailable, the workflow fails instead of publishing an unsigned final artifact.
 
+This PFX-in-GitHub-Actions flow is the only accepted exception to the repository signing-key rule.
+GitHub Actions must not receive the release GPG key, Apple Developer ID private key, notary
+credentials, or other non-Windows signing credentials. The release tag and checksum manifest
+signing policy is documented in [Release Signing Policy](../docs/RELEASE_SIGNING.md).
+
 When a release is published, `Windows CI` requires code signing, uploads both Windows ZIPs and their
 SHA-256 files as workflow artifacts, generates WinGet manifests, and submits the package to
 `microsoft/winget-pkgs` when `WINGET_CREATE_GITHUB_TOKEN` is configured.

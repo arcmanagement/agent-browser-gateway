@@ -174,5 +174,5 @@ These will not happen, regardless of demand:
 - [ ] Docker image that builds the Gateway and CLI byte-for-byte deterministically
 - [ ] GitHub Actions release workflow with publicly readable build logs
 - [ ] SBOM (CycloneDX) attached to every release
-- [ ] GPG-signed release tags and binaries
-- [ ] Documented hash-verification procedure: download → verify → install
+- [ ] GPG-signed release tags and checksum manifests, with platform-native binary signing policy
+- [ ] Documented hash-verification procedure: download, verify, install

@@ -8,6 +8,11 @@ sidebar:
 ABG release artifacts are built from the repository and published for the app, CLI, and browser
 extension. The public download page keeps current artifacts available under `/downloads/`.
 
+Release tags and the release checksum manifest are GPG-signed. Executable payloads use
+platform-native signing: Apple Developer ID for macOS and Authenticode for Windows. The signed
+checksum manifest is the cross-platform integrity root for ZIP files, extension packages, SBOMs,
+and release notes.
+
 ## Homebrew cask
 
 The macOS cask installs:
@@ -74,3 +79,18 @@ shasum -a 256 \
 
 CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
 maintainer Mac and published to the public download site afterward.
+
+## Verify signed releases
+
+```bash
+git fetch --tags https://github.com/arcmanagement/agent-browser-gateway.git
+git tag -v "v$VERSION"
+gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+shasum -a 256 -c SHA256SUMS.txt
+```
+
+After unpacking platform artifacts, use `codesign --verify --strict` and `spctl --assess` for macOS
+executables, and `Get-AuthenticodeSignature` for Windows executables.
+
+The detailed signing targets, key ownership rules, and maintainer procedure are documented in
+[Release Signing Policy](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/RELEASE_SIGNING.md).
