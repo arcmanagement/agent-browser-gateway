@@ -813,10 +813,12 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     const meaningfulElement =
       initialMeaningfulElement &&
       isLikelyLayoutWrapper(initialMeaningfulElement) &&
-      rectArea(rectForElement(initialMeaningfulElement)) / Math.max(1, innerWidth * innerHeight) > 0.25
-        ? meaningfulDescendantAtPoint(state, initialMeaningfulElement, centerX, centerY) ??
-          initialMeaningfulElement
-        : meaningfulDescendantAtPoint(state, element, centerX, centerY) ?? initialMeaningfulElement;
+      rectArea(rectForElement(initialMeaningfulElement)) / Math.max(1, innerWidth * innerHeight) >
+        0.25
+        ? (meaningfulDescendantAtPoint(state, initialMeaningfulElement, centerX, centerY) ??
+          initialMeaningfulElement)
+        : (meaningfulDescendantAtPoint(state, element, centerX, centerY) ??
+          initialMeaningfulElement);
     if (!meaningfulElement || isAlwaysScreenshotElement(meaningfulElement)) return null;
 
     const candidateRect = rectForElement(meaningfulElement);
