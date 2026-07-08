@@ -674,6 +674,26 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     }
     return stableFallback;
   };
+  const meaningfulDescendantAtPoint = (
+    state: AnnotationState,
+    root: Element,
+    x: number,
+    y: number,
+  ): Element | null => {
+    const candidates = Array.from(root.querySelectorAll(meaningfulSelector))
+      .filter((candidate) => !isOverlayElement(state, candidate))
+      .map((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return { candidate, rect };
+      })
+      .filter(({ candidate, rect }) => {
+        if (rect.width < 1 || rect.height < 1) return false;
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return false;
+        return !isLikelyLayoutWrapper(candidate);
+      })
+      .sort((lhs, rhs) => lhs.rect.width * lhs.rect.height - rhs.rect.width * rhs.rect.height);
+    return candidates[0]?.candidate ?? null;
+  };
   const metadataForElement = (element: Element): NonNullable<Annotation["element"]> => {
     const html = element as HTMLElement;
     const style = getComputedStyle(element);
@@ -789,7 +809,14 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     const centerY = viewportRect.y + viewportRect.height / 2;
     const element = elementAtViewportPoint(state, centerX, centerY);
     if (!element) return null;
-    const meaningfulElement = nearestMeaningfulElement(state, element);
+    const initialMeaningfulElement = nearestMeaningfulElement(state, element);
+    const meaningfulElement =
+      initialMeaningfulElement &&
+      isLikelyLayoutWrapper(initialMeaningfulElement) &&
+      rectArea(rectForElement(initialMeaningfulElement)) / Math.max(1, innerWidth * innerHeight) > 0.25
+        ? meaningfulDescendantAtPoint(state, initialMeaningfulElement, centerX, centerY) ??
+          initialMeaningfulElement
+        : meaningfulDescendantAtPoint(state, element, centerX, centerY) ?? initialMeaningfulElement;
     if (!meaningfulElement || isAlwaysScreenshotElement(meaningfulElement)) return null;
 
     const candidateRect = rectForElement(meaningfulElement);
