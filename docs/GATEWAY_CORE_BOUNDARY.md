@@ -1,6 +1,6 @@
-# Gateway core and macOS shell boundary
+# Gateway core and OS-specific shell boundary
 
-The Gateway target is split into two layers:
+The current Swift Gateway target is split into two layers:
 
 | Layer | Files | Responsibility |
 |---|---|---|
@@ -10,6 +10,10 @@ The Gateway target is split into two layers:
 `GatewayRuntime` is the transport-facing protocol. `WSServer` and `UDSServer` depend on that protocol
 instead of the macOS `GatewayCoordinator` concrete type, so a future Windows/Linux shell can provide a
 different runtime implementation or wrap the same runtime behavior without changing the transports.
+
+The desktop OS expansion model is documented in
+[DESKTOP_OS_EXPANSION.md](DESKTOP_OS_EXPANSION.md). That document keeps Windows and Linux execution
+models separate and states the packaging, startup, logs, IPC, and security assumptions for each OS.
 
 ## macOS-specific APIs
 
@@ -30,3 +34,6 @@ filesystem paths from `ABGConstants`, but should not import AppKit or SwiftUI.
 - Loopback WS/UDS transports should continue to speak through `GatewayRuntime`.
 - Platform-specific installer/tray/status work should not add AppKit or SwiftUI dependencies to the
   runtime boundary.
+- Windows shell work should stay in the WinUI/tray, installer, named-pipe, and Windows path layers.
+- Linux shell work should stay CLI/headless-first, with optional systemd user-service integration and
+  no required desktop UI.
