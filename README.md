@@ -126,6 +126,13 @@ abg tabs
 Source builds, unpacked extension loading, and the separate dev app are covered
 in [Developer setup](#developer-setup).
 
+Release archive generation, Chrome extension packaging, and Homebrew Cask update
+steps are documented in [Homebrew Cask Distribution](docs/HOMEBREW.md). Pull
+requests run the `CI` workflow, which smoke-tests unsigned macOS archives,
+uploads the Chrome extension package, and runs dependency security checks. Tags
+matching `v*.*.*` run the `Release Artifacts` workflow to generate reviewable
+release archives and release notes.
+
 ---
 
 ## Tab access modes

@@ -59,13 +59,20 @@ dist/agent-browser-gateway.rb
 ## Tag-triggered CI artifact build
 
 The `Release Artifacts` workflow runs on tags matching `v*.*.*` and can also be
-started manually with a version input. It builds the unsigned macOS ZIP, Chrome
-extension ZIP, generated Cask, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`, then
-uploads them as a GitHub Actions artifact.
+started manually with a version input after the matching tag exists. It builds
+the unsigned macOS ZIP, Chrome extension ZIP, generated Cask, `SHA256SUMS.txt`,
+and `RELEASE_NOTES.md`, then uploads them as a GitHub Actions artifact.
 
 This workflow is for reproducible archive generation and release review. It does
 not publish a GitHub Release and does not handle Developer ID signing,
 notarization, stapling, or Chrome Web Store submission.
+
+For branch validation before tagging, run the `CI` workflow. Its release artifact
+smoke-test job builds unsigned archives with the workflow dispatch
+`release_version` input, verifies the generated Cask, and uploads the archive
+set as a workflow artifact. The same CI run also uploads a Chrome Web Store ZIP
+and runs dependency security checks, so release, packaging, and dependency
+failures are visible before a tag is created.
 
 ## Publish
 
