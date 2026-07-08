@@ -8,6 +8,11 @@ sidebar:
 ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けに公開されます。
 public download pageでは、現在のartifactを `/downloads/` 配下で提供します。
 
+ABG の初期 update delivery は利用者が明示的に実行する方式です。Gateway アプリは in-app automatic updater や
+background update check を実行しません。利用者は website、Homebrew cask、index 後の WinGet、Chrome Web Store
+の extension update flow で新しい版を確認し、必要なタイミングで更新します。この判断は repository の
+`docs/UPDATE_DELIVERY.md` に記録しています。
+
 ## Homebrew cask
 
 macOS caskは次をインストールします。
@@ -28,6 +33,13 @@ cask はすでにインストール済みです。ABG の状態は `brew info --
 `abg --help` で確認できます。無関係な tap の trust warning が表示されることもありますが、その警告は
 ABG cask の install 結果とは別です。
 
+既存の Homebrew install を更新する場合:
+
+```bash
+brew update
+brew upgrade --cask agent-browser-gateway
+```
+
 Homebrew releaseの準備完了条件は、versioned macOS ZIPが
 `https://agent-browser-gateway.com/downloads/` に公開され、このrepositoryの
 `Casks/agent-browser-gateway.rb` がそのversionとSHA-256を指していることです。
@@ -45,6 +57,17 @@ winget install --id ArcManagement.AgentBrowserGateway --source winget
 
 WinGet releaseの準備完了条件は、public Windows setup ZIPが `/downloads/` に公開され、そこから生成された
 `microsoft/winget-pkgs` PRがmergeされ、indexされることです。
+
+WinGet の index 後は、Windows 利用者は通常の WinGet upgrade flow で更新します。
+
+## 手動 macOS 更新
+
+手動で macOS に入れている場合は、public download page から現在の DMG を取得し、SHA-256 checksum を確認してから
+installer を再実行します。installer は管理対象の app と CLI を上書きし、bundled agent skill を更新します。
+settings、audit log、user plugin などの local runtime state は削除しません。
+
+ABG は初期方式として Sparkle などの automatic app updater を入れません。appcast、background update request、
+local binary の自動置換、追加の update-signing key path を増やさず、初期の trust surface を小さく保つためです。
 
 ## Signed local release build
 

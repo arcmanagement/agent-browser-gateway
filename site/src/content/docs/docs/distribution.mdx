@@ -8,6 +8,11 @@ sidebar:
 ABG release artifacts are built from the repository and published for the app, CLI, and browser
 extension. The public download page keeps current artifacts available under `/downloads/`.
 
+ABG's initial update-delivery path is user-initiated. The Gateway app does not run an in-app
+automatic updater or background update check. Users check the website, Homebrew cask, WinGet after it
+is indexed, or the Chrome Web Store extension flow and choose when to install the newer version.
+The decision is recorded in the repository at `docs/UPDATE_DELIVERY.md`.
+
 ## Homebrew cask
 
 The macOS cask installs:
@@ -26,6 +31,13 @@ brew install --cask agent-browser-gateway
 If Homebrew reports that the latest version is already installed, the cask install path is working
 and no update is needed.
 
+Update an existing Homebrew install with:
+
+```bash
+brew update
+brew upgrade --cask agent-browser-gateway
+```
+
 Homebrew is ready for a release when the versioned macOS ZIP is published under
 `https://agent-browser-gateway.com/downloads/`, and this repository's
 `Casks/agent-browser-gateway.rb` points at that version and SHA-256.
@@ -43,6 +55,19 @@ package until the signed Windows release workflow and WinGet submission are comp
 
 WinGet is ready for a release after the public Windows setup ZIP is available under `/downloads/`
 and the generated `microsoft/winget-pkgs` PR is merged and indexed.
+
+After WinGet indexing is live, Windows users receive updates through the normal WinGet upgrade flow.
+
+## Manual macOS updates
+
+For a manual macOS install, download the current DMG from the public download page, verify the
+SHA-256 checksum, and run the installer again. The installer overwrites the managed app and CLI,
+refreshes bundled agent skills, and keeps local runtime state such as settings, audit logs, and user
+plugins.
+
+ABG intentionally starts without Sparkle or another automatic app updater. That keeps the initial
+trust surface smaller: no appcast, no background update request, no automatic binary replacement
+path, and no extra update-signing key path.
 
 ## Signed local release build
 

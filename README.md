@@ -112,6 +112,13 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
+Updates are user-initiated in the initial release path. ABG does not run an in-app automatic updater
+or background update check. For Homebrew installs, use `brew update` and
+`brew upgrade --cask agent-browser-gateway`. For manual macOS installs, download the current DMG from
+the website, verify its SHA-256 checksum, and run the installer again. The Chrome extension updates
+through the Chrome Web Store, and Windows updates will use WinGet after the package is indexed.
+The update-delivery decision is tracked in [`docs/UPDATE_DELIVERY.md`](docs/UPDATE_DELIVERY.md).
+
 Windows package-manager install and release ZIPs are pending for `v0.4.1` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.

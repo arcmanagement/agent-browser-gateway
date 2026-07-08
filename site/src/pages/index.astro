@@ -88,6 +88,11 @@
                 site. Windows packaging is still pending while the signed setup workflow and WinGet
                 submission are completed.
               </p>
+              <p>
+                Updates are user-initiated for the initial release path. ABG does not run an in-app
+                automatic updater or background update check; use Homebrew, the current DMG, WinGet
+                after indexing, and the Chrome Web Store extension update flow.
+              </p>
               <div class="download-actions">
                 <a
                   class="button"
@@ -184,6 +189,11 @@
               </div>
               <div class="download-trust">
                 <p><strong>macOS trust:</strong> verify the SHA-256 checksum before opening the DMG.</p>
+                <p>
+                  <strong>Updates:</strong> run
+                  <code>brew update && brew upgrade --cask agent-browser-gateway</code> or download
+                  and run the current DMG again.
+                </p>
                 <p><strong>Extension:</strong> install Agent Browser Gateway from the Chrome Web Store.</p>
                 <p>
                   <strong>Uninstall:</strong> remove the app from <code>/Applications</code>, delete
