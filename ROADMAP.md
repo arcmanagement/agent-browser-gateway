@@ -158,7 +158,7 @@ Current repo version: **v0.4.1**.
 - iOS Safari Web Extension
 - Android Chrome
 - Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
-- Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
+- Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone; see [design note](docs/PHONE_APPROVAL_FORWARDING.md))
 
 ## Hard non-goals
 
