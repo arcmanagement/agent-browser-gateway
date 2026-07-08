@@ -7,6 +7,14 @@ final class ExtensionProtocolTests: XCTestCase {
         XCTAssertEqual(CLIJSONContract.version, 1)
         XCTAssertEqual(CLIJSONContract.requestEnvelopeKeys, ["id", "method", "params"])
         XCTAssertEqual(CLIJSONContract.responseEnvelopeKeys, ["id", "result", "error"])
+        XCTAssertEqual(CLIJSONContract.waitResultKeysByMode["sleep"], ["ok", "mode", "ms"])
+        XCTAssertEqual(CLIJSONContract.waitResultKeysByMode["selector"], ["ok", "mode", "found", "elapsedMs", "selector"])
+        XCTAssertEqual(CLIJSONContract.waitResultKeysByMode["load_then_selector"], ["ok", "mode", "phase", "load", "selector"])
+        XCTAssertEqual(CLIJSONContract.recordFlowKeys, ["tabId", "out", "name", "startedAt", "finishedAt", "match", "steps"])
+        XCTAssertEqual(CLIJSONContract.recordFlowMatchKeys, ["tabId", "url", "title", "first"])
+        XCTAssertEqual(CLIJSONContract.replayDryRunKeys, ["tabId", "steps"])
+        XCTAssertEqual(CLIJSONContract.replayResultKeys, ["ok", "tabId", "results"])
+        XCTAssertEqual(CLIJSONContract.replayResultRowKeys, ["index", "op", "result"])
         XCTAssertEqual(CLIJSONContract.errorPayloadKeys, [
             "code",
             "message",
@@ -31,6 +39,31 @@ final class ExtensionProtocolTests: XCTestCase {
             "expectedDomains",
             "candidates",
         ])
+    }
+
+    func testWorkflowJSONContractFixturesMatchCodeConstants() throws {
+        let waitFixture = try loadFixture("wait-result.schema")
+        let waitModes = try XCTUnwrap(waitFixture["modes"] as? [String: [String]])
+        XCTAssertEqual(waitModes, CLIJSONContract.waitResultKeysByMode)
+
+        let recordFixture = try loadFixture("record-flow.schema")
+        XCTAssertEqual(recordFixture["stableKeys"] as? [String], CLIJSONContract.recordFlowKeys)
+        XCTAssertEqual(recordFixture["matchKeys"] as? [String], CLIJSONContract.recordFlowMatchKeys)
+        let recordExample = try XCTUnwrap(recordFixture["example"] as? [String: Any])
+        XCTAssertFixtureKeys(recordExample, include: CLIJSONContract.recordFlowKeys)
+        XCTAssertNotNil(recordExample["steps"] as? [[String: Any]])
+
+        let replayFixture = try loadFixture("replay-result.schema")
+        XCTAssertEqual(replayFixture["dryRunKeys"] as? [String], CLIJSONContract.replayDryRunKeys)
+        XCTAssertEqual(replayFixture["resultKeys"] as? [String], CLIJSONContract.replayResultKeys)
+        XCTAssertEqual(replayFixture["resultRowKeys"] as? [String], CLIJSONContract.replayResultRowKeys)
+        let examples = try XCTUnwrap(replayFixture["examples"] as? [String: Any])
+        let dryRun = try XCTUnwrap(examples["dryRun"] as? [String: Any])
+        XCTAssertFixtureKeys(dryRun, include: CLIJSONContract.replayDryRunKeys)
+        let executed = try XCTUnwrap(examples["executed"] as? [String: Any])
+        XCTAssertFixtureKeys(executed, include: CLIJSONContract.replayResultKeys)
+        let results = try XCTUnwrap(executed["results"] as? [[String: Any]])
+        XCTAssertFixtureKeys(try XCTUnwrap(results.first), include: CLIJSONContract.replayResultRowKeys)
     }
 
     func testCLIResponseEncodesStructuredErrorPayload() throws {
@@ -79,6 +112,27 @@ final class ExtensionProtocolTests: XCTestCase {
         XCTAssertEqual(candidates.first?["title"] as? String, "Slack")
         XCTAssertEqual(candidates.first?["url"] as? String, "https://example.slack.com/")
         XCTAssertEqual(candidates.first?["accessMode"] as? String, "manual")
+    }
+
+    private func loadFixture(_ name: String) throws -> [String: Any] {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let fixtureURL = testFileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/cli-json-contract/\(name).json")
+        let data = try Data(contentsOf: fixtureURL)
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func XCTAssertFixtureKeys(
+        _ object: [String: Any],
+        include expectedKeys: [String],
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let objectKeys = Set(object.keys)
+        for key in expectedKeys {
+            XCTAssertTrue(objectKeys.contains(key), "missing key: \(key)", file: file, line: line)
+        }
     }
 
     func testPermittedTabExpirationIsOptionalAndTimeBounded() {

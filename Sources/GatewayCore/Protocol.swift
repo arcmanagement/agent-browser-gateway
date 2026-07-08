@@ -155,6 +155,29 @@ public enum CLIJSONContract {
     public static let version = 1
     public static let requestEnvelopeKeys = ["id", "method", "params"]
     public static let responseEnvelopeKeys = ["id", "result", "error"]
+    public static let waitResultKeysByMode: [String: [String]] = [
+        "sleep": ["ok", "mode", "ms"],
+        "selector": ["ok", "mode", "found", "elapsedMs", "selector"],
+        "text": ["ok", "mode", "elapsedMs"],
+        "url": ["ok", "mode", "elapsedMs"],
+        "load": ["ok", "mode", "elapsedMs"],
+        "predicate": ["ok", "mode", "elapsedMs"],
+        "timeout": ["ok", "error", "mode", "timeoutMs"],
+        "load_then_selector": ["ok", "mode", "phase", "load", "selector"],
+    ]
+    public static let recordFlowKeys = [
+        "tabId",
+        "out",
+        "name",
+        "startedAt",
+        "finishedAt",
+        "match",
+        "steps",
+    ]
+    public static let recordFlowMatchKeys = ["tabId", "url", "title", "first"]
+    public static let replayDryRunKeys = ["tabId", "steps"]
+    public static let replayResultKeys = ["ok", "tabId", "results"]
+    public static let replayResultRowKeys = ["index", "op", "result"]
     public static let errorPayloadKeys = [
         "code",
         "message",

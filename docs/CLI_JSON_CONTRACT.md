@@ -47,6 +47,44 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg plugin list` | Array of plugin objects with `name`, `source`, filesystem status, manifest metadata, and loaded command metadata when available. |
 | `abg <plugin> <command>` | JSON value returned by the plugin command handler. Command plugins should prefer stable object results such as `{ "ok": true, ... }`. |
 
+## Workflow Command Output
+
+`wait`, `record`, and `replay` are agent workflow APIs. The `abg` CLI is the source of truth for
+their JSON. MCP clients must call the `abg_cli` MCP tool with argv tokens and consume the CLI result
+from `structuredContent.json`; the MCP wrapper does not define a second schema.
+
+Fixture-backed contract samples live under
+`Tests/GatewayTests/Fixtures/cli-json-contract/`. `GatewayTests` compares those fixtures with
+`CLIJSONContract` so a renamed or removed stable key fails tests before release.
+
+### `abg wait`
+
+`abg wait` prints one JSON object. Stable keys depend on `mode`:
+
+| Mode | Stable keys |
+| --- | --- |
+| `sleep` | `ok`, `mode`, `ms` |
+| `selector` | `ok`, `mode`, `found`, `elapsedMs`, `selector` |
+| `text` | `ok`, `mode`, `elapsedMs` |
+| `url` | `ok`, `mode`, `elapsedMs` |
+| `load` | `ok`, `mode`, `elapsedMs` |
+| `predicate` | `ok`, `mode`, `elapsedMs` |
+| timeout | `ok`, `error`, `mode`, `timeoutMs` |
+| `load_then_selector` | `ok`, `mode`, `phase`, `load`, `selector` |
+
+### `abg record`
+
+`abg record <tab> --out flow.json` writes the stable flow object when the process receives SIGINT or
+SIGTERM. Stable top-level keys are `tabId`, `out`, `name`, `startedAt`, `finishedAt`, `match`, and
+`steps`. The `match` object may contain `tabId`, `url`, `title`, and `first`. Recorded `steps` are
+the CLI-originated operations replay can execute.
+
+### `abg replay`
+
+`abg replay flow.json --dry-run` prints `{ "tabId": number, "steps": [...] }` without executing
+steps. A normal replay prints `{ "ok": true, "tabId": number, "results": [...] }`; each result row
+contains `index`, `op`, and `result`, where `result` is the underlying CLI/Gateway command output.
+
 ## Error Object
 
 Gateway protocol errors use `ErrorPayload`:

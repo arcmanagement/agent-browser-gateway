@@ -1,0 +1,37 @@
+{
+  "command": "replay",
+  "contractVersion": 1,
+  "sourceOfTruth": "abg replay CLI stdout",
+  "dryRunKeys": ["tabId", "steps"],
+  "resultKeys": ["ok", "tabId", "results"],
+  "resultRowKeys": ["index", "op", "result"],
+  "examples": {
+    "dryRun": {
+      "tabId": 7,
+      "steps": [
+        {
+          "op": "wait",
+          "selector": ".ready",
+          "timeout": 10000
+        }
+      ]
+    },
+    "executed": {
+      "ok": true,
+      "tabId": 7,
+      "results": [
+        {
+          "index": 1,
+          "op": "wait",
+          "result": {
+            "ok": true,
+            "mode": "selector",
+            "found": true,
+            "elapsedMs": 42,
+            "selector": ".ready"
+          }
+        }
+      ]
+    }
+  }
+}

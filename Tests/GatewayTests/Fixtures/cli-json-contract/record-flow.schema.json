@@ -1,0 +1,26 @@
+{
+  "command": "record",
+  "contractVersion": 1,
+  "sourceOfTruth": "flow JSON written by abg record on stop",
+  "stableKeys": ["tabId", "out", "name", "startedAt", "finishedAt", "match", "steps"],
+  "matchKeys": ["tabId", "url", "title", "first"],
+  "example": {
+    "tabId": 7,
+    "out": "/tmp/abg-flow.json",
+    "name": "abg-flow",
+    "startedAt": "2026-07-08T00:00:00Z",
+    "finishedAt": "2026-07-08T00:00:01Z",
+    "match": {
+      "tabId": 7,
+      "url": "*example.test*",
+      "first": true
+    },
+    "steps": [
+      {
+        "op": "wait",
+        "selector": ".ready",
+        "timeout": 10000
+      }
+    ]
+  }
+}

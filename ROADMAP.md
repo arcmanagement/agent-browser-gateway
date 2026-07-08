@@ -126,7 +126,7 @@ Current repo version: **v0.4.1**.
 ## In progress
 
 - WS bind retry (Gateway currently does not retry if the port is already in use)
-- MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage
+- MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage, with workflow JSON contracts for `wait`, `record`, and `replay` pinned by fixtures
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
 - Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
 

@@ -258,6 +258,11 @@ one `abg_cli` tool that accepts argv tokens after `abg`, for example `{"args":["
 The wrapper launches the local CLI as a child process, so tab sharing, operation approval, audit
 logging, and plugin execution stay on the same permission boundary. Codex config:
 
+For agent workflows, keep `wait`, `record`, and `replay` integrations on the CLI JSON contract in
+`docs/CLI_JSON_CONTRACT.md`. The MCP wrapper is a thin transport adapter: call `abg_cli` and read the
+same CLI JSON from `structuredContent.json`. Do not depend on MCP response text formatting or invent
+separate MCP-only keys.
+
 ```toml
 [mcp_servers.abg]
 command = "abg"

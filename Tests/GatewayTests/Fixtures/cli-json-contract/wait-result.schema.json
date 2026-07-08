@@ -1,0 +1,47 @@
+{
+  "command": "wait",
+  "contractVersion": 1,
+  "sourceOfTruth": "abg CLI stdout",
+  "mcpWrapper": "abg_cli forwards argv to the CLI and returns the parsed stdout JSON in structuredContent.json",
+  "modes": {
+    "sleep": ["ok", "mode", "ms"],
+    "selector": ["ok", "mode", "found", "elapsedMs", "selector"],
+    "text": ["ok", "mode", "elapsedMs"],
+    "url": ["ok", "mode", "elapsedMs"],
+    "load": ["ok", "mode", "elapsedMs"],
+    "predicate": ["ok", "mode", "elapsedMs"],
+    "timeout": ["ok", "error", "mode", "timeoutMs"],
+    "load_then_selector": ["ok", "mode", "phase", "load", "selector"]
+  },
+  "examples": {
+    "sleep": {
+      "ok": true,
+      "mode": "sleep",
+      "ms": 1500
+    },
+    "selector": {
+      "ok": true,
+      "mode": "selector",
+      "found": true,
+      "elapsedMs": 42,
+      "selector": ".loaded"
+    },
+    "load_then_selector": {
+      "ok": true,
+      "mode": "load_then_selector",
+      "phase": "complete",
+      "load": {
+        "ok": true,
+        "mode": "load",
+        "elapsedMs": 0
+      },
+      "selector": {
+        "ok": true,
+        "mode": "selector",
+        "found": true,
+        "elapsedMs": 42,
+        "selector": ".ready"
+      }
+    }
+  }
+}

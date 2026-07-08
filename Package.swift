@@ -40,7 +40,8 @@ let package = Package(
         .testTarget(
             name: "GatewayTests",
             dependencies: ["Gateway", "GatewayCore"],
-            path: "Tests/GatewayTests"
+            path: "Tests/GatewayTests",
+            exclude: ["Fixtures"]
         ),
     ]
 )

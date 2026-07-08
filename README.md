@@ -158,6 +158,9 @@ per-domain policy drafts stored in `gateway-settings.json` under `~/.abg/` or `~
 The machine-readable CLI output contract is documented in
 [`docs/CLI_JSON_CONTRACT.md`](docs/CLI_JSON_CONTRACT.md). Keep scripts and agent integrations on the
 documented JSON keys rather than parsing human-oriented help text.
+For workflow automation, treat the CLI as the source of truth: `wait`, `record`, and `replay` JSON
+schemas are fixture-backed in `Tests/GatewayTests/Fixtures/cli-json-contract/`, and `abg mcp-server`
+only forwards argv to the same CLI through its `abg_cli` tool.
 
 ```bash
 # Observation (read-only)
