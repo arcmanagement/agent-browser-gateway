@@ -128,7 +128,10 @@ Current repo version: **v0.4.1**.
 - WS bind retry (Gateway currently does not retry if the port is already in use)
 - MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
-- Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
+- Gateway Settings UI for profile-local timeout defaults, approval defaults, network-body defaults,
+  and per-domain policy storage. Persistent policy lives in owner-only `gateway-settings.json` under
+  `~/.abg/` or `~/.abg-dev/`; runtime precedence is one-time decision, session policy, most specific
+  domain policy, then profile default.
 
 ## Next
 
