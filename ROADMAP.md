@@ -147,10 +147,12 @@ Current repo version: **v0.4.1**.
 ## Phase 3
 
 - Gateway runtime/macOS shell boundary for desktop OS ports
-- Shared extension browser-adapter boundary for desktop browser ports
-- Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path)
-- Safari Web Extension (App Extension, requires Apple Developer Program)
-- Edge / Brave (mostly trivial after Chrome)
+- Shared extension browser-adapter boundary for desktop browser ports, tracked in the
+  [browser support matrix](docs/BROWSER_ADAPTER.md)
+- Firefox WebExtensions implementation path with CDP-free fallbacks (#324)
+- Safari Web Extension feasibility and implementation path (#323)
+- Edge / Brave Chromium-compatible validation, blocked until those browsers are available on the
+  local validation machine and the matrix smoke test passes
 - Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
 
 ## Phase 4

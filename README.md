@@ -661,7 +661,7 @@ Currently shipped:
 
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
-- ✅ Firefox extension MVP target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md))
+- 🧪 Firefox extension feasibility target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md) and [browser support matrix](docs/BROWSER_ADAPTER.md))
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
@@ -682,12 +682,12 @@ Currently shipped:
 - ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 - ✅ Gateway runtime/macOS shell boundary for future desktop OS ports (see [docs/GATEWAY_CORE_BOUNDARY.md](docs/GATEWAY_CORE_BOUNDARY.md))
-- ✅ Extension browser-adapter boundary for future desktop browser ports (see [docs/BROWSER_ADAPTER.md](docs/BROWSER_ADAPTER.md))
+- ✅ Extension browser-adapter boundary and desktop browser support matrix (see [docs/BROWSER_ADAPTER.md](docs/BROWSER_ADAPTER.md))
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 Safari / Edge / iOS / Android (Phase 3+)
+- 📋 Safari / Edge / Brave / iOS / Android (Phase 3+; not production-ready until the matrix validation gates pass)
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---

@@ -1,7 +1,8 @@
-# Firefox extension MVP
+# Firefox extension feasibility target
 
-ABG has an initial Firefox WebExtensions target that keeps the same explicit tab-sharing model as
-Chrome.
+ABG has an initial Firefox WebExtensions target that is intended to keep the same explicit
+tab-sharing model as Chrome. It is not production-supported until the validation gates in the
+[browser support matrix](../docs/BROWSER_ADAPTER.md) pass.
 
 ## Build
 
@@ -24,7 +25,7 @@ pnpm run firefox:zip
 3. Select `extension/dist/manifest.json`.
 4. Start the Gateway, open a normal `http`, `https`, or `file` page, and share it from the popup.
 
-## MVP coverage
+## Feasibility coverage
 
 Firefox uses the `browser` WebExtensions namespace and a Manifest V3 background script. Firefox does
 not implement Chrome's `debugger` API, so this target uses fallback paths for the initial command
@@ -37,3 +38,6 @@ surface:
 
 Commands that depend on Chrome DevTools Protocol domains remain Chrome-only until Firefox-specific
 fallbacks are added.
+
+The remaining implementation and validation work is tracked in
+[#324](https://github.com/arcmanagement/agent-browser-gateway/issues/324).
