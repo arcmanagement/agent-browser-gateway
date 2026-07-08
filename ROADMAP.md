@@ -157,6 +157,11 @@ Current repo version: **v0.4.1**.
 
 - iOS Safari Web Extension
 - Android Chrome
+- Android WebView DevTools bridge design is tracked in
+  [docs/ANDROID_WEBVIEW_DEVTOOLS_BRIDGE.md](docs/ANDROID_WEBVIEW_DEVTOOLS_BRIDGE.md). The first
+  viable configuration is USB ADB with explicit WebView target sharing, local approval, and audit;
+  wireless debugging and direct network CDP endpoints remain deferred until separate consent and
+  threat-model work is complete.
 - Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
 
