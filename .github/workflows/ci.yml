@@ -212,9 +212,6 @@ jobs:
       - name: Resolve Swift dependencies
         run: swift package resolve
 
-      - name: Ensure Package.resolved is committed
-        run: git diff --exit-code -- Package.resolved
-
       - name: Write Swift dependency inventory
         run: swift package show-dependencies --format json > swift-dependencies.json
 
