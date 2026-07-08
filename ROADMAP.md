@@ -1,6 +1,6 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-06-10.
+Living document. Reflects current intent, not commitment. Last updated 2026-07-09.
 
 Current repo version: **v0.4.1**.
 
@@ -10,6 +10,15 @@ Current repo version: **v0.4.1**.
 - Changed `abg audit --lines N` to read JSONL entries from the end of the audit log instead of decoding the entire local log file.
 - Limited the Gateway Audit window to the latest 500 entries and moved reload work off the main UI path so large local audit logs no longer make the window sluggish.
 - Added regression coverage for large audit-log tail reads and zero-line tail requests.
+
+### Android browser feasibility note (2026-07-09)
+- Confirmed direct Android Chrome support is not a viable roadmap commitment while Google does not
+  document a supported Android Chrome extension surface.
+- Added `docs/ANDROID_BROWSER_FEASIBILITY.md` with the source-backed decision and alternative
+  browser assessment.
+- Moved Android mobile feasibility toward Firefox for Android first, because Mozilla documents an
+  official Android add-on path. Chromium Android forks remain experimental unless a maintained
+  browser proves the extension, permission, WebSocket, and debugger capabilities ABG needs.
 
 ### v0.4.0 — Public launch release and cross-platform packages (2026-06-09)
 - Published ABG as a public-source repository with counsel-reviewed license, commercial-use, contribution, notice, trademark, and patent-status guidance.
@@ -156,7 +165,11 @@ Current repo version: **v0.4.1**.
 ## Phase 4
 
 - iOS Safari Web Extension
-- Android Chrome
+- Android Firefox feasibility spike: validate popup consent, WebSocket pairing, WebExtensions API
+  coverage, and non-CDP fallbacks for the existing ABG command surface.
+- Android Chrome direct support is deferred until Google provides a supported Android extension
+  surface. Chromium Android forks such as Kiwi-style extension paths are experimental only unless a
+  maintained browser proves the required ABG extension and debugger capabilities.
 - Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
 

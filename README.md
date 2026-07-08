@@ -687,7 +687,8 @@ Currently shipped:
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 Safari / Edge / iOS / Android (Phase 3+)
+- 📋 Safari / Edge / iOS / Android Firefox feasibility (Phase 3+)
+- 📋 Android Chrome is deferred until Google provides a supported Android extension surface
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---

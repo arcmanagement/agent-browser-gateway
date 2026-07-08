@@ -17,6 +17,7 @@ TestResults/
 
 # Node / extension
 node_modules/
+.pnpm-store/
 extension/dist/
 extension/coverage/
 dist/
@@ -59,6 +60,7 @@ credentials/
 
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
+!docs/ANDROID_BROWSER_FEASIBILITY.md
 !docs/CLI_JSON_CONTRACT.md
 !docs/HOMEBREW.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
