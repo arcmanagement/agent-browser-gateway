@@ -13,6 +13,8 @@ the agent sees no tabs until the user shares one.
 - Per-tab sharing is the default.
 - Shares revoke when the tab closes, changes origin, or is explicitly revoked.
 - Optional all-tabs mode is for isolated profiles and sandbox machines.
+- Bookmarks and Reading List inspection require their own popup toggles and optional API permissions.
+  They are browser-owned personal data, not shared-tab page state.
 - Mutating commands can require a local approval prompt before they run.
 - General JavaScript eval is disabled by default and requires explicit opt-in.
 - Tab recording is always approval-gated. It records only an already-shared tab, shows a `REC`
@@ -34,6 +36,8 @@ Gateway operations are written to a local JSONL audit log. The log records actio
 references, selectors, approval mode, plugin command names, recording start/stop metadata, and byte
 lengths where relevant. It avoids recording sensitive payload values such as pasted text, plugin
 command argument values, and recorded media contents.
+For browser-owned personal data commands such as `bookmarks` and `reading-list`, audit entries record
+the command boundary, ids, counts, and query byte lengths, but not full saved URLs.
 
 Use:
 

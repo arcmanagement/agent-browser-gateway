@@ -113,6 +113,10 @@ export type GatewayCommand = {
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
     mime?: string;
     contentBytes?: number;
+    bookmarkId?: string;
+    includeFolders?: boolean;
+    path?: string;
+    hasBeenRead?: boolean;
     // wait_for
     wait?: boolean;
     hidden?: boolean;
@@ -164,6 +168,12 @@ export type GatewayMethod =
   | "state_inspect"
   | "framework_inspect"
   | "download_state"
+  | "bookmarks_list"
+  | "bookmarks_search"
+  | "bookmarks_get"
+  | "bookmarks_open"
+  | "reading_list_list"
+  | "reading_list_search"
   | "revoke"
   | "wait_for"
   | "eval_script"
@@ -239,6 +249,8 @@ export type ExtensionSettings = {
   trustedAutomationEnabled: boolean;
   profileLabel: string;
   allTabsAccessEnabled: boolean;
+  bookmarksAccessEnabled: boolean;
+  readingListAccessEnabled: boolean;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
@@ -267,6 +279,8 @@ export type PopupToBackground =
   | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
   | { type: "set_all_tabs_access"; value: boolean }
+  | { type: "set_bookmarks_access"; value: boolean }
+  | { type: "set_reading_list_access"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
@@ -284,6 +298,18 @@ export type BackgroundToPopup =
         active: boolean;
         shareableTabCount: number;
         skippedTabCount: number;
+      };
+      personalDataAccess: {
+        bookmarks: {
+          permissionGranted: boolean;
+          active: boolean;
+          supported: boolean;
+        };
+        readingList: {
+          permissionGranted: boolean;
+          active: boolean;
+          supported: boolean;
+        };
       };
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };

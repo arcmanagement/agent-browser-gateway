@@ -166,6 +166,12 @@ documented JSON keys rather than parsing human-oriented help text.
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg bookmarks list                              # Browser-owned personal data; requires separate Bookmarks access
+abg bookmarks search "reference"                # Search bookmark titles/URLs after explicit permission
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>                # Open an existing bookmark URL through an explicit command
+abg reading-list list                           # Chrome 120+ chrome.readingList, separate permission
+abg reading-list search "saved page"
 abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --frame @f1 --selector "<css>"
@@ -387,6 +393,13 @@ Use `state` to inspect whether cookies, `localStorage`, or `sessionStorage` cont
 for the shared tab origin. Values are redacted by default; `--values` must be explicit and the
 Gateway audit log records that full values were requested. `state` is read-only and does not expose
 write/delete operations.
+Use `bookmarks` and `reading-list` only after enabling their separate popup toggles. These are
+browser-owned personal data commands, not shared-tab page state. Bookmark support uses Chrome's
+`chrome.bookmarks` API and the optional `bookmarks` permission. Reading List support uses
+`chrome.readingList`, which Chrome documents for Chrome 120+ with the `readingList` permission;
+Chromium browsers that do not expose the API return an explicit unsupported error. Audit logs record
+the command boundary, counts, ids, and byte lengths, but do not record full bookmark or Reading List
+URLs.
 Use `framework` for read-only React, Web Vitals, and SPA navigation signals from the current shared
 tab. React inspection depends on a compatible page-exposed React DevTools hook; without one, ABG
 returns an explicit unavailable result and a bounded DOM marker summary. Web Vitals are snapshots
@@ -679,6 +692,7 @@ Currently shipped:
 - ✅ Network response wait and bounded body preview: `wait-response`, `network --wait-response`, `--body`, and `--max-bytes`
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
+- ✅ Explicit-permission browser-owned personal data inspection: `bookmarks` and Chrome `reading-list`, with URL redaction in audit logs
 - ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
 - ✅ Sandbox-only browser-owned automation controls: `sandbox`, rejected outside all-tabs profile mode
 - ✅ Operation approval mode (default ON, popup-gated)
@@ -705,7 +719,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 - macOS 14+
 - Xcode 16+ (Swift 6.1+) or Swift toolchain
 - [mise](https://mise.jdx.dev/) (manages Node.js + pnpm versions)
-- Google Chrome 116+
+- Google Chrome 120+
 
 ### Install tools
 

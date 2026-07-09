@@ -223,6 +223,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 "permittedTabCount": permittedTabs.count,
                 "tabs": tabSummaries(),
             ]))
+        case "bookmarks_list":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_list")
+        case "bookmarks_search":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_search")
+        case "bookmarks_get":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_get")
+        case "bookmarks_open":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_open")
+        case "reading_list_list":
+            return await handlePersonalDataCommand(req: req, method: "reading_list_list")
+        case "reading_list_search":
+            return await handlePersonalDataCommand(req: req, method: "reading_list_search")
         case "frames_tab":
             return await dispatch(req: req, method: "frames")
         case "read_tab":
@@ -448,6 +460,99 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 )
             )
         }
+    }
+
+    private func handlePersonalDataCommand(req: CLIRequest, method: String) async -> CLIResponse {
+        let params = (req.params?.value as? [String: Any]) ?? [:]
+        guard let extensionId = resolvePersonalDataExtensionId(params: params) else {
+            if connectedExtensionIds.isEmpty {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "extension_not_connected",
+                        message: "No browser extension is connected to the Gateway.",
+                        userMessage: "Chrome 拡張機能が Gateway に接続されていません。拡張機能を有効にしてから再実行してください。",
+                        nextCommand: "abg status"
+                    )
+                )
+            }
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "ambiguous_extension",
+                    message: "Multiple browser extensions are connected. Pass --extension-id for browser-owned personal data commands.",
+                    userMessage: "複数のブラウザ profile が接続されています。browser-owned personal data を読む profile を --extension-id で明示してください。",
+                    nextCommand: "abg status"
+                )
+            )
+        }
+
+        do {
+            let result = try await sendCommand(to: extensionId, method: method, params: AnyCodable(params))
+            await auditLog.log(
+                action: method,
+                extensionId: extensionId,
+                agent: "cli",
+                details: personalDataAuditDetails(method: method, params: params, result: result?.value)
+            )
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            await auditLog.log(
+                action: method,
+                extensionId: extensionId,
+                agent: "cli",
+                details: personalDataAuditDetails(method: method, params: params, result: nil, error: error.localizedDescription)
+            )
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
+        }
+    }
+
+    private func resolvePersonalDataExtensionId(params: [String: Any]) -> String? {
+        if let extensionId = params["extensionId"] as? String, connectedExtensionIds.contains(extensionId) {
+            return extensionId
+        }
+        if connectedExtensionIds.count == 1 {
+            return connectedExtensionIds[0]
+        }
+        return nil
+    }
+
+    private func personalDataAuditDetails(method: String, params: [String: Any], result: Any?, error: String? = nil) -> [String: AnyCodable] {
+        var details: [String: AnyCodable] = [
+            "boundary": AnyCodable("browser_owned_personal_data"),
+            "urlRedaction": AnyCodable("full_urls_not_recorded"),
+        ]
+        if let limit = params["limit"] as? Int {
+            details["limit"] = AnyCodable(limit)
+        }
+        if let query = params["query"] as? String {
+            details["queryBytes"] = AnyCodable(query.utf8.count)
+        }
+        if let bookmarkId = params["bookmarkId"] as? String {
+            details["bookmarkId"] = AnyCodable(bookmarkId)
+        }
+        if let hasBeenRead = params["hasBeenRead"] as? Bool {
+            details["hasBeenRead"] = AnyCodable(hasBeenRead)
+        }
+        if let dict = result as? [String: Any] {
+            if let count = dict["count"] as? Int {
+                details["count"] = AnyCodable(count)
+            }
+            if let ok = dict["ok"] as? Bool {
+                details["ok"] = AnyCodable(ok)
+            }
+            if method == "bookmarks_open" {
+                details["opened"] = AnyCodable((dict["opened"] as? Bool) == true)
+                if let tabId = dict["tabId"] as? Int {
+                    details["openedTabId"] = AnyCodable(tabId)
+                }
+            }
+        }
+        if let error {
+            details["ok"] = AnyCodable(false)
+            details["error"] = AnyCodable(error)
+        }
+        return details
     }
 
     private func resolvePluginCommandTabId(

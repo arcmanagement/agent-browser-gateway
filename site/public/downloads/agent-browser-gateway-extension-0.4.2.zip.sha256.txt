@@ -1,1 +1,1 @@
-75015c33f34d3451221011fcc561e5a730605f1c6e6f6b097aad0fed6ce08a03  agent-browser-gateway-extension-0.4.2.zip
+9db4766dfa0871c86b38ece6e3229a78a50a79f6e4ea84731b4281eddba2f8a7  agent-browser-gateway-extension-0.4.2.zip

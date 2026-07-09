@@ -18,6 +18,9 @@ abg inspect
 Use the returned tab reference, such as `t1`, with read-only commands:
 
 ```bash
+abg bookmarks list
+abg bookmarks search "reference"
+abg reading-list list
 abg read t1 --format markdown
 abg read t1 --selector article --format markdown
 abg frames t1
@@ -78,6 +81,26 @@ printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
 
 The audit log records selectors, action names, and byte lengths. It does not write pasted text into
 the audit log.
+
+## Browser-Owned Personal Data
+
+Bookmarks and Reading List entries are separate from shared-tab page state. Enable the Bookmarks or
+Reading List toggle in the extension popup before using:
+
+```bash
+abg bookmarks list
+abg bookmarks search "docs"
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>
+abg reading-list list
+abg reading-list search "later"
+```
+
+`bookmarks` uses Chrome's `chrome.bookmarks` API and optional `bookmarks` permission. `reading-list`
+uses `chrome.readingList`, documented by Chrome for Chrome 120+ with the optional `readingList`
+permission. Browsers that do not expose `chrome.readingList` return an explicit unsupported error.
+Audit logs store command metadata, counts, ids, and byte lengths, not full bookmark or Reading List
+URLs.
 
 ## Escape hatch
 
