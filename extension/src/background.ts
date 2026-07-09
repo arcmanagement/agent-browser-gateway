@@ -8,8 +8,11 @@ import {
   originForUrl,
 } from "./backgroundLogic.js";
 import {
+  type BrowserBookmarkTreeNode,
   type BrowserDownloadDelta,
   type BrowserDownloadItem,
+  type BrowserReadingListQueryInfo,
+  type BrowserReadingListEntry,
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
@@ -39,6 +42,8 @@ const browser = browserAdapter;
 const WS_URL = __ABG_WS_URL__;
 const VERSION = "0.4.2";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
+const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
+const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -50,6 +55,8 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   trustedAutomationEnabled: false,
   profileLabel: "",
   allTabsAccessEnabled: false,
+  bookmarksAccessEnabled: false,
+  readingListAccessEnabled: false,
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
@@ -251,6 +258,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     "trustedAutomationEnabled",
     "profileLabel",
     "allTabsAccessEnabled",
+    "bookmarksAccessEnabled",
+    "readingListAccessEnabled",
   ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
@@ -268,12 +277,22 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.allTabsAccessEnabled === "boolean"
       ? stored.allTabsAccessEnabled
       : DEFAULT_SETTINGS.allTabsAccessEnabled;
+  const bookmarksAccessEnabled =
+    typeof stored.bookmarksAccessEnabled === "boolean"
+      ? stored.bookmarksAccessEnabled
+      : DEFAULT_SETTINGS.bookmarksAccessEnabled;
+  const readingListAccessEnabled =
+    typeof stored.readingListAccessEnabled === "boolean"
+      ? stored.readingListAccessEnabled
+      : DEFAULT_SETTINGS.readingListAccessEnabled;
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
     typeof stored.trustedAutomationEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string" ||
-    typeof stored.allTabsAccessEnabled !== "boolean"
+    typeof stored.allTabsAccessEnabled !== "boolean" ||
+    typeof stored.bookmarksAccessEnabled !== "boolean" ||
+    typeof stored.readingListAccessEnabled !== "boolean"
   ) {
     await browser.storage.local.set({
       operationsRequireApproval,
@@ -281,6 +300,8 @@ async function getSettings(): Promise<ExtensionSettings> {
       trustedAutomationEnabled,
       profileLabel,
       allTabsAccessEnabled,
+      bookmarksAccessEnabled,
+      readingListAccessEnabled,
     });
   }
   return {
@@ -289,6 +310,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     trustedAutomationEnabled,
     profileLabel,
     allTabsAccessEnabled,
+    bookmarksAccessEnabled,
+    readingListAccessEnabled,
   };
 }
 
@@ -353,6 +376,38 @@ async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSetting
   return settings;
 }
 
+async function setBookmarksAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  if (value) {
+    ensureBookmarksSupported();
+    if (!(await hasBookmarksPermission())) {
+      throw new GatewayError(
+        "bookmarks_permission_required",
+        "Chrome has not granted ABG optional access to bookmarks in this profile.",
+      );
+    }
+  }
+  const settings: ExtensionSettings = { ...current, bookmarksAccessEnabled: value };
+  await browser.storage.local.set(settings);
+  return settings;
+}
+
+async function setReadingListAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  if (value) {
+    ensureReadingListSupported();
+    if (!(await hasReadingListPermission())) {
+      throw new GatewayError(
+        "reading_list_permission_required",
+        "Chrome has not granted ABG optional access to Reading List in this profile.",
+      );
+    }
+  }
+  const settings: ExtensionSettings = { ...current, readingListAccessEnabled: value };
+  await browser.storage.local.set(settings);
+  return settings;
+}
+
 async function hasAllUrlsPermission(): Promise<boolean> {
   try {
     return await browser.permissions.contains({ origins: ALL_URLS_ORIGINS });
@@ -361,9 +416,35 @@ async function hasAllUrlsPermission(): Promise<boolean> {
   }
 }
 
+async function hasBookmarksPermission(): Promise<boolean> {
+  try {
+    return await browser.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] });
+  } catch {
+    return false;
+  }
+}
+
+async function hasReadingListPermission(): Promise<boolean> {
+  try {
+    return await browser.permissions.contains({ permissions: [READING_LIST_PERMISSION] });
+  } catch {
+    return false;
+  }
+}
+
 async function isAllTabsAccessActive(): Promise<boolean> {
   const settings = await getSettings();
   return settings.allTabsAccessEnabled && (await hasAllUrlsPermission());
+}
+
+async function isBookmarksAccessActive(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.bookmarksAccessEnabled && (await hasBookmarksPermission());
+}
+
+async function isReadingListAccessActive(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.readingListAccessEnabled && (await hasReadingListPermission());
 }
 
 async function isIncognitoAccessAllowed(): Promise<boolean> {
@@ -573,6 +654,29 @@ async function allTabsAccessState(): Promise<{
     active: settings.allTabsAccessEnabled && permissionGranted,
     shareableTabCount,
     skippedTabCount,
+  };
+}
+
+async function personalDataAccessState(): Promise<{
+  bookmarks: { permissionGranted: boolean; active: boolean; supported: boolean };
+  readingList: { permissionGranted: boolean; active: boolean; supported: boolean };
+}> {
+  const [settings, bookmarksPermissionGranted, readingListPermissionGranted] = await Promise.all([
+    getSettings(),
+    hasBookmarksPermission(),
+    hasReadingListPermission(),
+  ]);
+  return {
+    bookmarks: {
+      permissionGranted: bookmarksPermissionGranted,
+      active: settings.bookmarksAccessEnabled && bookmarksPermissionGranted,
+      supported: !!browser.bookmarks,
+    },
+    readingList: {
+      permissionGranted: readingListPermissionGranted,
+      active: settings.readingListAccessEnabled && readingListPermissionGranted,
+      supported: !!browser.readingList,
+    },
   };
 }
 
@@ -1141,7 +1245,19 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
   const tabId = cmd.params?.tabId;
   try {
-    if (cmd.method === "frames") {
+    if (cmd.method === "bookmarks_list") {
+      reply(cmd.id, await listBookmarks(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_search") {
+      reply(cmd.id, await searchBookmarks(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_get") {
+      reply(cmd.id, await getBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_open") {
+      reply(cmd.id, await openBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_list") {
+      reply(cmd.id, await listReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_search") {
+      reply(cmd.id, await searchReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "frames") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await listFrames(tabId));
     } else if (cmd.method === "read_dom") {
@@ -1238,6 +1354,236 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       replyError(cmd.id, "command_failed", e instanceof Error ? e.message : String(e));
     }
   }
+}
+
+function ensureBookmarksSupported(): void {
+  if (!browser.bookmarks) {
+    throw new GatewayError(
+      "bookmarks_unsupported",
+      "This browser extension target does not expose the chrome.bookmarks API.",
+    );
+  }
+}
+
+function ensureReadingListSupported(): void {
+  if (!browser.readingList) {
+    throw new GatewayError(
+      "reading_list_unsupported",
+      "This browser extension target does not expose the chrome.readingList API. Chrome documents the API for Chrome 120+; other Chromium browsers may omit it.",
+    );
+  }
+}
+
+async function requireBookmarksAccess(): Promise<NonNullable<typeof browser.bookmarks>> {
+  ensureBookmarksSupported();
+  if (!(await isBookmarksAccessActive())) {
+    throw new GatewayError(
+      "bookmarks_permission_required",
+      "Bookmark inspection requires the separate bookmarks permission. Enable Bookmarks access in the ABG extension popup.",
+    );
+  }
+  return browser.bookmarks!;
+}
+
+async function requireReadingListAccess(): Promise<NonNullable<typeof browser.readingList>> {
+  ensureReadingListSupported();
+  if (!(await isReadingListAccessActive())) {
+    throw new GatewayError(
+      "reading_list_permission_required",
+      "Reading List inspection requires the separate Reading List permission. Enable Reading List access in the ABG extension popup.",
+    );
+  }
+  return browser.readingList!;
+}
+
+function isBookmarkNode(value: unknown): value is BrowserBookmarkTreeNode {
+  return isRecord(value) && typeof value.id === "string" && typeof value.title === "string";
+}
+
+function bookmarkPath(parents: string[], title: string): string {
+  return [...parents, title].filter(Boolean).join(" / ");
+}
+
+function publicBookmarkNode(
+  node: BrowserBookmarkTreeNode,
+  parents: string[] = [],
+): Record<string, unknown> {
+  const isFolder = !node.url;
+  const output: Record<string, unknown> = {
+    id: node.id,
+    title: node.title,
+    type: isFolder ? "folder" : "bookmark",
+    path: bookmarkPath(parents, node.title),
+  };
+  if (node.url) output.url = node.url;
+  if (node.parentId) output.parentId = node.parentId;
+  if (typeof node.index === "number") output.index = node.index;
+  if (typeof node.dateAdded === "number") output.dateAdded = node.dateAdded;
+  if (typeof node.dateGroupModified === "number") {
+    output.dateGroupModified = node.dateGroupModified;
+  }
+  const dateLastUsed = (node as BrowserBookmarkTreeNode & { dateLastUsed?: number }).dateLastUsed;
+  if (typeof dateLastUsed === "number") output.dateLastUsed = dateLastUsed;
+  const children = node.children ?? [];
+  if (children.length > 0) {
+    output.children = children.map((child) => publicBookmarkNode(child, [...parents, node.title]));
+  }
+  return output;
+}
+
+function flattenBookmarkNodes(
+  nodes: BrowserBookmarkTreeNode[],
+  parents: string[] = [],
+  includeFolders = false,
+): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const node of nodes) {
+    if (includeFolders || node.url) rows.push(publicBookmarkNode(node, parents));
+    if (node.children) {
+      rows.push(...flattenBookmarkNodes(node.children, [...parents, node.title], includeFolders));
+    }
+  }
+  return rows;
+}
+
+function findBookmarkNode(
+  nodes: BrowserBookmarkTreeNode[],
+  id: string,
+  parents: string[] = [],
+): { node: BrowserBookmarkTreeNode; parents: string[] } | null {
+  for (const node of nodes) {
+    if (node.id === id) return { node, parents };
+    if (node.children) {
+      const found = findBookmarkNode(node.children, id, [...parents, node.title]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function readLimit(params: GatewayCommand["params"], fallback: number, maximum: number): number {
+  const limit = params?.limit;
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return fallback;
+  return Math.max(1, Math.min(maximum, Math.floor(limit)));
+}
+
+async function listBookmarks(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const includeFolders = params?.includeFolders === true;
+  const tree = await api.getTree();
+  const rows = flattenBookmarkNodes(tree, [], includeFolders).slice(0, readLimit(params, 100, 1000));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    count: rows.length,
+    bookmarks: rows,
+  };
+}
+
+async function searchBookmarks(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const query = typeof params?.query === "string" ? params.query.trim() : "";
+  if (!query) throw new GatewayError("bad_params", "query is required");
+  const needle = query.toLowerCase();
+  const tree = await api.getTree();
+  const rows = flattenBookmarkNodes(tree, [], params?.includeFolders === true)
+    .filter((node) => {
+      const title = typeof node.title === "string" ? node.title : "";
+      const url = typeof node.url === "string" ? node.url : "";
+      return title.toLowerCase().includes(needle) || url.toLowerCase().includes(needle);
+    })
+    .slice(0, readLimit(params, 50, 500));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    queryBytes: query.length,
+    count: rows.length,
+    bookmarks: rows,
+  };
+}
+
+async function getBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : "";
+  if (!id) throw new GatewayError("bad_params", "bookmarkId is required");
+  const found = findBookmarkNode(await api.getTree(), id);
+  if (!found) throw new GatewayError("bookmark_not_found", `Bookmark not found: ${id}`);
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    bookmark: publicBookmarkNode(found.node, found.parents),
+  };
+}
+
+async function openBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : "";
+  if (!id) throw new GatewayError("bad_params", "bookmarkId is required");
+  const node = (await api.get(id)).find(isBookmarkNode);
+  if (!node) throw new GatewayError("bookmark_not_found", `Bookmark not found: ${id}`);
+  if (!node.url) throw new GatewayError("bookmark_is_folder", "Cannot open a bookmark folder.");
+  const tab = await browser.tabs.create({ url: node.url, active: true });
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    opened: true,
+    bookmarkId: id,
+    tabId: tab.id,
+    title: node.title,
+  };
+}
+
+function publicReadingListEntry(entry: BrowserReadingListEntry): Record<string, unknown> {
+  return {
+    title: entry.title,
+    url: entry.url,
+    hasBeenRead: entry.hasBeenRead,
+    creationTime: entry.creationTime,
+    lastUpdateTime: entry.lastUpdateTime,
+  };
+}
+
+async function listReadingList(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const query: BrowserReadingListQueryInfo = {};
+  if (typeof params?.hasBeenRead === "boolean") query.hasBeenRead = params.hasBeenRead;
+  const entries = (await api.query(query))
+    .map(publicReadingListEntry)
+    .slice(0, readLimit(params, 100, 1000));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "readingList",
+    count: entries.length,
+    entries,
+  };
+}
+
+async function searchReadingList(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const queryText = typeof params?.query === "string" ? params.query.trim() : "";
+  if (!queryText) throw new GatewayError("bad_params", "query is required");
+  const all = await api.query({});
+  const needle = queryText.toLowerCase();
+  const entries = all
+    .filter(
+      (entry) =>
+        entry.title.toLowerCase().includes(needle) || entry.url.toLowerCase().includes(needle),
+    )
+    .map(publicReadingListEntry)
+    .slice(0, readLimit(params, 50, 500));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "readingList",
+    queryBytes: queryText.length,
+    count: entries.length,
+    entries,
+  };
 }
 
 function isOperationCommand(cmd: GatewayCommand): cmd is OperationCommand {
@@ -6336,6 +6682,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       },
       sharedTabs,
       allTabsAccess,
+      personalDataAccess: await personalDataAccessState(),
       settings: await getSettings(),
       annotationState: {
         enabled: annotationState.enabled,
@@ -6369,6 +6716,14 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "set_all_tabs_access") {
     await setAllTabsAccessEnabled(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_bookmarks_access") {
+    await setBookmarksAccessEnabled(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_reading_list_access") {
+    await setReadingListAccessEnabled(msg.value);
     return { type: "ok" };
   }
   if (msg.type === "annotation_action") {
@@ -6421,6 +6776,12 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_bookmarks_access" && typeof rawMsg.value === "boolean") {
+    return { type: "set_bookmarks_access", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_reading_list_access" && typeof rawMsg.value === "boolean") {
+    return { type: "set_reading_list_access", value: rawMsg.value };
   }
   if (
     rawMsg.type === "annotation_action" &&

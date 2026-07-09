@@ -139,8 +139,10 @@ Current repo version: **v0.4.2**.
 
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
-- Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
-  explicit-permission track, separate from normal per-tab sharing.
+- Browser-owned personal data expansion under #178 continues as an explicit-permission track,
+  separate from normal per-tab sharing. #199 adds bookmark inspection and Chrome Reading List
+  inspection behind dedicated optional permissions; follow-up work should keep the same audit and
+  URL-redaction boundary.
 
 ## Later
 

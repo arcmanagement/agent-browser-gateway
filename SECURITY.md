@@ -25,6 +25,7 @@ ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased
 - **Silent surveillance by an agent.** Every operation is appended to `~/Library/Logs/AgentBrowserGateway/audit.jsonl`. There is no code path that performs an extension command without an audit-log entry.
 - **Silent audio/video capture.** `abg record start` always opens a local approval window, even when normal operation approvals are disabled or Trusted automation is enabled. The user's Allow click is also the Chrome `tabCapture` gesture; recording cannot start silently from the CLI alone.
 - **Network exfiltration by ABG itself.** Gateway binds only `127.0.0.1`. The extension declares no default `host_permissions`; optional `<all_urls>` is requested only for all-tabs profile mode. There is no analytics / crash reporter / auto-update phone-home.
+- **Browser-owned personal data leakage.** Bookmarks and Reading List entries are not part of normal per-tab sharing. They require separate optional API permissions from the extension popup, use dedicated CLI commands, and audit entries record operation metadata without full saved URLs.
 - **Malicious websites trying to connect to the local Gateway.** The Gateway WebSocket rejects connections unless the handshake `Origin` is a browser-extension origin (`chrome-extension://`, `moz-extension://`, or `safari-web-extension://`). Normal websites cannot use ABG by opening the local endpoint, such as the default `ws://127.0.0.1:8765/ws`, from page JavaScript.
 
 ### What ABG does not defend against
@@ -58,15 +59,16 @@ their own private infrastructure, as long as that boundary is explicit and audit
 If a future PR violates any of these, it should be rejected:
 
 1. The Chrome extension's manifest keeps `host_permissions` empty. `<all_urls>` may appear only in `optional_host_permissions`, and it must be requested from the popup only when the user enables all-tabs profile mode.
-2. The Gateway WebSocket / HTTP listener binds only `127.0.0.1`.
-3. The Gateway WebSocket accepts browser-extension origins only. Do not weaken the `Origin` allowlist to accept arbitrary `http://`, `https://`, `file://`, `null`, or missing origins.
-4. The CLI Unix socket is created with `chmod 0700`.
-5. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
-6. General JavaScript eval is never hidden: it must be disabled by default, require either explicit per-call approval or explicit Trusted automation / AutoMode, and write an audit entry with script source, approval mode, and result type/size summary. Prefer curated, structured, named tools whenever possible.
-7. Tab recording is never hidden: it must require a local approval window, target only a live shared tab, visibly mark the tab with `REC`, stream chunks to a local file, and audit start/stop metadata without uploading media.
-8. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
-9. The audit log records every read and every operation, with the originating agent identifier where available.
-10. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.
+2. Browser-owned personal data APIs such as `chrome.bookmarks` and `chrome.readingList` may appear only in `optional_permissions`, and each must have a separate popup toggle before the Gateway can dispatch its command surface. Reading List is supported only when the target browser exposes `chrome.readingList`; unsupported browsers must return an explicit unsupported error.
+3. The Gateway WebSocket / HTTP listener binds only `127.0.0.1`.
+4. The Gateway WebSocket accepts browser-extension origins only. Do not weaken the `Origin` allowlist to accept arbitrary `http://`, `https://`, `file://`, `null`, or missing origins.
+5. The CLI Unix socket is created with `chmod 0700`.
+6. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
+7. General JavaScript eval is never hidden: it must be disabled by default, require either explicit per-call approval or explicit Trusted automation / AutoMode, and write an audit entry with script source, approval mode, and result type/size summary. Prefer curated, structured, named tools whenever possible.
+8. Tab recording is never hidden: it must require a local approval window, target only a live shared tab, visibly mark the tab with `REC`, stream chunks to a local file, and audit start/stop metadata without uploading media.
+9. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
+10. The audit log records every read and every operation, with the originating agent identifier where available.
+11. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.
 
 ## Dependency security gates
 

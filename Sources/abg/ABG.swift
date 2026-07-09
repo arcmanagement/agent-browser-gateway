@@ -44,6 +44,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
+            Bookmarks.self, ReadingList.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
@@ -57,6 +58,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
+    "bookmarks", "reading-list",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
@@ -2196,6 +2198,141 @@ func requiredString(_ step: [String: Any], _ key: String, op: String) throws -> 
         try failWithJSON(["error": "invalid_step", "message": "\(op) step requires \(key)"])
     }
     return value
+}
+
+struct PersonalDataOptions: ParsableArguments {
+    @Option(name: .long, help: "Read browser-owned personal data from this connected extension/profile. Required when multiple extensions are connected.") var extensionId: String?
+    @Option(name: .long, help: "Maximum number of rows to return") var limit: Int?
+
+    func params() -> [String: Any] {
+        var params: [String: Any] = [:]
+        if let extensionId { params["extensionId"] = extensionId }
+        if let limit { params["limit"] = limit }
+        return params
+    }
+}
+
+struct Bookmarks: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "bookmarks",
+        abstract: "Inspect browser-owned bookmarks after separate explicit permission",
+        discussion: """
+        Bookmarks are browser-owned personal data, not shared-tab page state. These commands require
+        the separate Bookmarks access toggle in the ABG extension popup. Audit logs record the command,
+        count, ids, and byte lengths, but not full bookmark URLs.
+        """,
+        subcommands: [
+            BookmarkList.self,
+            BookmarkSearch.self,
+            BookmarkGet.self,
+            BookmarkOpen.self,
+        ]
+    )
+}
+
+struct BookmarkList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List bookmarks")
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Include bookmark folders in the output") var includeFolders: Bool = false
+
+    func run() async throws {
+        var params = options.params()
+        if includeFolders { params["includeFolders"] = true }
+        let result = try UDSClient().call(method: "bookmarks_list", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkSearch: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "search", abstract: "Search bookmarks by title or URL")
+    @Argument(help: "Search query. The query is sent to the browser extension, but audit logs store only its byte length.") var query: String
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Include matching folders in the output") var includeFolders: Bool = false
+
+    func run() async throws {
+        var params = options.params()
+        params["query"] = query
+        if includeFolders { params["includeFolders"] = true }
+        let result = try UDSClient().call(method: "bookmarks_search", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkGet: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "get", abstract: "Get one bookmark or folder subtree by id")
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["bookmarkId"] = bookmarkId
+        let result = try UDSClient().call(method: "bookmarks_get", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkOpen: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "open",
+        abstract: "Open one bookmark URL in the browser through an explicit command"
+    )
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @Option(name: .long, help: "Read browser-owned personal data from this connected extension/profile. Required when multiple extensions are connected.") var extensionId: String?
+
+    func run() async throws {
+        var params: [String: Any] = ["bookmarkId": bookmarkId]
+        if let extensionId { params["extensionId"] = extensionId }
+        let result = try UDSClient().call(method: "bookmarks_open", params: params)
+        printJSON(result)
+    }
+}
+
+struct ReadingList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "reading-list",
+        abstract: "Inspect browser-owned Reading List entries after separate explicit permission",
+        discussion: """
+        Reading List entries are browser-owned personal data, not shared-tab page state. These commands
+        require the separate Reading List access toggle in the ABG extension popup. Chrome documents
+        chrome.readingList for Chrome 120+; browsers that do not expose it return an unsupported error.
+        Audit logs record command metadata and counts, but not full entry URLs.
+        """,
+        subcommands: [
+            ReadingListList.self,
+            ReadingListSearch.self,
+        ]
+    )
+}
+
+struct ReadingListList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List Reading List entries")
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Return entries that have been read") var read: Bool = false
+    @Flag(name: .long, help: "Return entries that have not been read") var unread: Bool = false
+
+    func run() async throws {
+        if read && unread {
+            try failWithJSON(["error": "bad_params", "message": "Use only one of --read or --unread."])
+        }
+        var params = options.params()
+        if read { params["hasBeenRead"] = true }
+        if unread { params["hasBeenRead"] = false }
+        let result = try UDSClient().call(method: "reading_list_list", params: params)
+        printJSON(result)
+    }
+}
+
+struct ReadingListSearch: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "search", abstract: "Search Reading List title or URL")
+    @Argument(help: "Search query. The query is sent to the browser extension, but audit logs store only its byte length.") var query: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["query"] = query
+        let result = try UDSClient().call(method: "reading_list_search", params: params)
+        printJSON(result)
+    }
 }
 
 struct Revoke: AsyncParsableCommand {

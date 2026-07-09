@@ -105,7 +105,11 @@ async function patchManifest(target) {
     manifest.permissions = (manifest.permissions ?? []).filter(
       (perm) => perm !== "offscreen" && perm !== "tabCapture",
     );
+    // Reading List is Chrome-only in ABG's current extension target set.
     await rm("dist/offscreen.html", { force: true });
+    manifest.optional_permissions = (manifest.optional_permissions ?? []).filter(
+      (permission) => permission !== "readingList",
+    );
     manifest.description =
       "Share Firefox tabs with AI coding agents via explicit local permission.";
     manifest.background = {

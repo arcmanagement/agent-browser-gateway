@@ -77,6 +77,8 @@ Suggested permission justifications:
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
 - `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
 - `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway.
+- Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
+- Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.
 - Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs in this profile"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.
 
 Remote code declaration:
