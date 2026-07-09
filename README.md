@@ -101,7 +101,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.4.1` yet. If this command reports no matching package, that is the
+   WinGet is not live for `v0.4.2` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -112,7 +112,7 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows package-manager install and release ZIPs are pending for `v0.4.1` while the signed Windows
+Windows package-manager install and release ZIPs are pending for `v0.4.2` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.
 
@@ -145,6 +145,8 @@ For isolated Chrome profiles, test machines, or sandbox browsers, the popup also
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
+
+Tab recording is stricter than normal operations: `abg record start` always opens a local approval window, even when operation approvals or Trusted automation would skip other prompts. The **Allow** click supplies Chrome's `tabCapture` gesture, recording only the already-shared tab to a local WebM file.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
@@ -187,6 +189,9 @@ abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
+abg record start <tab|ref> [--mic] [--out x.webm] # record tab to webm (tab audio; --mic adds room audio)
+abg record stop                                  # stop and write the webm, returns its path
+abg record status                                # show the active recording (if any)
 abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
@@ -279,7 +284,8 @@ abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
 abg validate editable <tab|ref> --selection
 
 # Repeatable flows
-abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
+abg record flow <tab|ref> --out flow.json         # record CLI-originated ABG steps until Ctrl+C
+abg record <tab|ref> --out flow.json              # same (flow is the default subcommand)
 abg replay flow.json --dry-run
 abg replay flow.json --match-url "*kintone*"
 
@@ -792,7 +798,7 @@ In short:
 
 ## Status
 
-🚧 **v0.4.1 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.4.2 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 

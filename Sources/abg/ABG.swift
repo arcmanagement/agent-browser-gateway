@@ -1811,6 +1811,64 @@ func waitRecordedStep(
 
 struct Record: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
+        commandName: "record",
+        abstract: "ABG 操作の flow 記録 (既定) / タブ映像の録画 (start/stop/status)",
+        subcommands: [RecordStart.self, RecordStop.self, RecordStatus.self, RecordFlow.self],
+        defaultSubcommand: RecordFlow.self
+    )
+}
+
+struct RecordStart: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "start",
+        abstract: "共有中タブの録画を開始 (webm・タブ音声、任意でマイク)",
+        discussion: """
+        承認ウィンドウで「Allow」を押すと録画が始まる。承認のクリックが tabCapture の
+        user gesture を兼ねる。録画中はタブに REC バッジが出る。`abg record stop` で停止すると
+        Gateway が webm を書き出してパスを返す。--mic を付けると物理的な部屋の音も録音する。
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "マイク音声も録音する (物理的な部屋の音)。既定は off") var mic: Bool = false
+    @Option(name: .long, help: "出力 webm パス (省略時 $TMPDIR/abg/recordings/<tab>-<ts>.webm)") var out: String?
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "mic": mic]
+        if let out { params["outputPath"] = (out as NSString).expandingTildeInPath }
+        let result = try client.call(method: "record_start", params: params)
+        printJSON(result)
+    }
+}
+
+struct RecordStop: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "stop",
+        abstract: "録画を停止し、webm を書き出してパスを返す"
+    )
+
+    func run() async throws {
+        let result = try UDSClient().call(method: "record_stop")
+        printJSON(result)
+    }
+}
+
+struct RecordStatus: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "status",
+        abstract: "現在の録画状態を表示"
+    )
+
+    func run() async throws {
+        let result = try UDSClient().call(method: "record_status")
+        printJSON(result)
+    }
+}
+
+struct RecordFlow: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "flow",
         abstract: "CLI 由来の ABG 操作を flow JSON に記録",
         discussion: """
         別 terminal/agent から実行した click/fill/type/key/navigate/scroll/drag/upload/wait/read/screenshot を記録する。

@@ -15,6 +15,8 @@ ABGは人間が所有しているbrowser sessionを前提に設計していま�
 - all-tabs modeは隔離プロファイルやsandboxマシン向けです。
 - 変更系commandは実行前にローカル承認promptを要求できます。
 - 汎用JavaScript evalは初期状態OFFで、明示的なopt-inが必要です。
+- タブ録画は常にapproval-gatedです。共有済みタブだけを録画し、録画中は `REC` badgeを表示し、
+  WebM chunkをローカルfileへ書き出します。
 
 ## local transport
 
@@ -27,7 +29,8 @@ Gatewayはloopbackで待ち受けます。ブラウザー拡張はローカルGa
 ## 監査ログ
 
 Gateway操作はローカルJSONL監査ログに書かれます。action名、tab参照、selector、approval mode、plugin command名、
-必要に応じたbyte lengthを記録します。貼り付け本文やplugin command argument valueのようなsensitive payloadは記録しません。
+録画start/stop metadata、必要に応じたbyte lengthを記録します。貼り付け本文、plugin command argument value、
+録画media本体のようなsensitive payloadは記録しません。
 
 ```bash
 abg audit --lines 50

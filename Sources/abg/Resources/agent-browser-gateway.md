@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.4.1
+version: 0.4.2
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -63,6 +63,9 @@ abg dialog <tab|ref> --accept            # 承認して accept
 abg dialog <tab|ref> --dismiss           # 承認して dismiss
 abg dialog <tab|ref> --prompt-value "ok" # 承認して prompt text を送信
 abg screenshot --latest                 # 最後に保存したスクショパス
+abg record start <tab|ref> [--mic] [--out out.webm] # 共有中タブを webm 録画 (tab audio、--mic で部屋の音も録音)
+abg record stop                         # 録画を停止し、webm の path/bytes/duration を返す
+abg record status                       # 現在の録画状態を確認
 abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # DOM 注釈を明示追加
@@ -130,7 +133,8 @@ abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
 abg validate editable <tab|ref> --selection
 
 # 反復フロー
-abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録
+abg record flow <tab|ref> --out flow.json        # Ctrl+C まで CLI 由来操作を記録
+abg record <tab|ref> --out flow.json             # flow は default subcommand。既存互換
 abg replay flow.json --dry-run                   # 実行前プレビュー
 abg replay flow.json --match-url "*kintone*"     # flow を再生
 
@@ -149,6 +153,11 @@ abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 `abg activity` は opt-in の local-only 要約。on-device audit log から action、tab ID、origin、
 timestamp、approval outcome を集計し、貼り付け値、clipboard payload、plugin args、raw audit
 details は出さない。正確なイベント列が必要な debug / review では `abg audit` を使う。
+
+`abg record start` は通常操作の承認設定に関係なく必ず approval window を出す。タブ音声と、
+`--mic` 指定時は物理的な部屋の音も扱うため、silent auto-approval にはしない。Allow のクリックは
+Chrome の `tabCapture.getMediaStreamId` に必要な user gesture も兼ねる。録画中は対象タブに赤い
+`REC` badge が出る。詳細な設計と実機確認手順は `docs/RECORDING.md` を参照する。
 
 ## Authoring a user plugin
 

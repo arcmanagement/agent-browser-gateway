@@ -22,7 +22,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.4.1") { [weak self] method, params in
+    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.4.2") { [weak self] method, params in
         guard let self else {
             throw PluginTabAPIError.dispatcherUnavailable
         }
@@ -33,6 +33,22 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
     private var streamTabId: Int?
     private var streamExtensionId: String?
+
+    // Active tab recording (single session, mirrors the stream model).
+    private struct RecordingSession {
+        let recordingId: String
+        let tabId: Int
+        let extensionId: String
+        let outputPath: String
+        let startedAt: Date
+        var mic: Bool
+        var handle: FileHandle?
+        var bytes: Int
+        var lastSeq: Int
+    }
+    private var recording: RecordingSession?
+    private var lastFinishedRecording: [String: Any]?
+    private var recordingStopWaiters: [String: CheckedContinuation<AnyCodable, Error>] = [:]
 
     private init() {}
 
@@ -78,6 +94,11 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         extensionBrowsers.removeValue(forKey: extensionId)
         extensionVersions.removeValue(forKey: extensionId)
         permittedTabs.removeAll { $0.extensionId == extensionId }
+        // A recording owned by this extension can no longer be finalized cleanly;
+        // flush whatever was captured and fail any pending stop.
+        if let session = recording, session.extensionId == extensionId {
+            handleRecordInterrupted(recordingId: session.recordingId, reason: "extension_disconnected")
+        }
         Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
     }
 
@@ -151,6 +172,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                   let text = String(data: data, encoding: .utf8)
             else { return }
             Task { await wsServer?.broadcastRuntimeEvent(text) }
+        case .recordChunk(let recordingId, let seq, let dataBase64):
+            handleRecordChunk(recordingId: recordingId, seq: seq, dataBase64: dataBase64)
+        case .recordStopped(let recordingId, let durationMs, let mime, let micUsed, let chunkCount):
+            handleRecordStopped(recordingId: recordingId, durationMs: durationMs, mime: mime, micUsed: micUsed, chunkCount: chunkCount)
+        case .recordFailed(let recordingId, let error):
+            handleRecordFailed(recordingId: recordingId, error: error)
         case .response(let id, let result, let error):
             if let cont = inflight.removeValue(forKey: id) {
                 if let error = error {
@@ -308,6 +335,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, result: AnyCodable(streamStatus()))
         case "stream_disable":
             return await handleStreamDisable(req: req)
+        case "record_start":
+            return await handleRecordStart(req: req)
+        case "record_stop":
+            return await handleRecordStop(req: req)
+        case "record_status":
+            return CLIResponse(id: req.id, result: AnyCodable(recordStatusPayload()))
         case "revoke_tab":
             guard let tabId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
@@ -587,6 +620,269 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         ]
         if let streamTabId { status["tabId"] = streamTabId }
         return status
+    }
+
+    // MARK: - Recording
+
+    private func handleRecordStart(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
+            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        }
+        if let existing = recording {
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "already_recording",
+                message: "A recording is already active on tab \(existing.tabId).",
+                userMessage: "既に録画中です。`abg record stop` で停止してから再実行してください。",
+                nextCommand: "abg record stop"
+            ))
+        }
+        let mic = (params["mic"] as? Bool) ?? false
+        let recordingId = UUID().uuidString
+        let rawOutputPath = (params["outputPath"] as? String) ?? defaultRecordingOutputPath(tabId: tabId)
+        let outputPath = (rawOutputPath as NSString).expandingTildeInPath
+
+        // Register the session before dispatching: the extension begins streaming
+        // chunks as soon as the user approves, which can arrive while this command
+        // is still awaiting the approval round-trip.
+        recording = RecordingSession(
+            recordingId: recordingId,
+            tabId: tabId,
+            extensionId: tab.extensionId,
+            outputPath: outputPath,
+            startedAt: Date(),
+            mic: mic,
+            handle: nil,
+            bytes: 0,
+            lastSeq: -1
+        )
+
+        do {
+            let commandParams: [String: Any] = ["tabId": tabId, "mic": mic, "recordingId": recordingId]
+            // Approval can take up to ~62s; override the default 30s command timeout.
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "record_start",
+                params: AnyCodable(commandParams),
+                timeoutMs: 75_000
+            )
+            let dict = result?.value as? [String: Any] ?? [:]
+            let micUsed = (dict["mic"] as? Bool) ?? mic
+            if var session = recording, session.recordingId == recordingId {
+                session.mic = micUsed
+                recording = session
+            }
+            await auditLog.log(
+                action: "record_start",
+                extensionId: tab.extensionId,
+                tabId: tabId,
+                url: tab.url,
+                details: [
+                    "recordingId": AnyCodable(recordingId),
+                    "mic": AnyCodable(micUsed),
+                    "outputPath": AnyCodable(outputPath),
+                ]
+            )
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "ok": true,
+                "recordingId": recordingId,
+                "tabId": tabId,
+                "path": outputPath,
+                "mic": micUsed,
+                "startedAt": ISO8601DateFormatter().string(from: recording?.startedAt ?? Date()),
+            ]))
+        } catch {
+            finalizeRecordingCleanup(recordingId: recordingId, deleteFile: true)
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "record_start_failed",
+                message: error.localizedDescription,
+                userMessage: "録画を開始できませんでした。承認ウィンドウで許可したか、対象タブが録画可能か確認してください。"
+            ))
+        }
+    }
+
+    private func handleRecordStop(req: CLIRequest) async -> CLIResponse {
+        guard let session = recording else {
+            if let last = lastFinishedRecording {
+                return CLIResponse(id: req.id, result: AnyCodable(last))
+            }
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "not_recording",
+                message: "No recording is active.",
+                userMessage: "録画中のセッションがありません。",
+                nextCommand: "abg record status"
+            ))
+        }
+        let recordingId = session.recordingId
+        let extensionId = session.extensionId
+        do {
+            let payload: AnyCodable = try await withCheckedThrowingContinuation { cont in
+                recordingStopWaiters[recordingId] = cont
+                // Ask the extension to stop; the file is finalized when the
+                // record_stopped event arrives (handleRecordStopped resumes us).
+                Task {
+                    do {
+                        _ = try await sendCommand(
+                            to: extensionId,
+                            method: "record_stop",
+                            params: AnyCodable(["recordingId": recordingId]),
+                            timeoutMs: 20_000
+                        )
+                    } catch {
+                        await MainActor.run {
+                            if let waiter = self.recordingStopWaiters.removeValue(forKey: recordingId) {
+                                self.finalizeRecordingCleanup(recordingId: recordingId, deleteFile: false)
+                                waiter.resume(throwing: error)
+                            }
+                        }
+                    }
+                }
+                // Safety net: if the finalize event never arrives, return what we have.
+                Task {
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    await MainActor.run {
+                        if let waiter = self.recordingStopWaiters.removeValue(forKey: recordingId) {
+                            let partial = self.finalizeRecordingPayload(recordingId: recordingId, durationMs: nil, mime: nil, micUsed: nil, chunkCount: nil, finalized: false)
+                            self.finalizeRecordingCleanup(recordingId: recordingId, deleteFile: false)
+                            waiter.resume(returning: AnyCodable(partial ?? ["ok": false, "recordingId": recordingId, "error": "record stop timed out"]))
+                        }
+                    }
+                }
+            }
+            return CLIResponse(id: req.id, result: payload)
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "record_stop_failed", message: error.localizedDescription))
+        }
+    }
+
+    private func recordStatusPayload() -> [String: Any] {
+        guard let session = recording else {
+            var payload: [String: Any] = ["recording": false]
+            if let last = lastFinishedRecording { payload["last"] = last }
+            return payload
+        }
+        return [
+            "recording": true,
+            "recordingId": session.recordingId,
+            "tabId": session.tabId,
+            "mic": session.mic,
+            "path": session.outputPath,
+            "bytes": session.bytes,
+            "startedAt": ISO8601DateFormatter().string(from: session.startedAt),
+        ]
+    }
+
+    private func handleRecordChunk(recordingId: String, seq: Int, dataBase64: String) {
+        guard var session = recording, session.recordingId == recordingId else { return }
+        guard let data = Data(base64Encoded: dataBase64) else { return }
+        do {
+            if session.handle == nil {
+                let url = URL(fileURLWithPath: session.outputPath)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: session.outputPath, contents: nil)
+                session.handle = try FileHandle(forWritingTo: url)
+            }
+            try session.handle?.write(contentsOf: data)
+            session.bytes += data.count
+            session.lastSeq = seq
+            recording = session
+        } catch {
+            handleRecordFailed(recordingId: recordingId, error: "failed to write chunk: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleRecordStopped(recordingId: String, durationMs: Int, mime: String, micUsed: Bool, chunkCount: Int) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        let payload = finalizeRecordingPayload(
+            recordingId: recordingId,
+            durationMs: durationMs,
+            mime: mime,
+            micUsed: micUsed,
+            chunkCount: chunkCount,
+            finalized: true
+        ) ?? ["ok": true, "recordingId": recordingId]
+        let extensionId = session.extensionId
+        let tabId = session.tabId
+        let url = permittedTabs.first(where: { $0.tabId == tabId })?.url ?? ""
+        recording = nil
+        lastFinishedRecording = payload
+        Task {
+            await auditLog.log(
+                action: "record_stop",
+                extensionId: extensionId,
+                tabId: tabId,
+                url: url,
+                details: [
+                    "recordingId": AnyCodable(recordingId),
+                    "bytes": AnyCodable((payload["bytes"] as? Int) ?? 0),
+                    "durationMs": AnyCodable(durationMs),
+                    "mime": AnyCodable(mime),
+                    "mic": AnyCodable(micUsed),
+                    "chunkCount": AnyCodable(chunkCount),
+                ]
+            )
+        }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(returning: AnyCodable(payload))
+        }
+    }
+
+    private func handleRecordFailed(recordingId: String, error: String) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        try? FileManager.default.removeItem(atPath: session.outputPath)
+        recording = nil
+        Task { await auditLog.log(action: "record_failed", tabId: session.tabId, details: ["recordingId": AnyCodable(recordingId), "error": AnyCodable(error)]) }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(throwing: NSError(domain: "ABG", code: 4, userInfo: [NSLocalizedDescriptionKey: error]))
+        }
+    }
+
+    /// Extension gone mid-recording: flush what we captured and fail any waiter.
+    private func handleRecordInterrupted(recordingId: String, reason: String) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        let payload = finalizeRecordingPayload(recordingId: recordingId, durationMs: nil, mime: nil, micUsed: session.mic, chunkCount: nil, finalized: false)
+        recording = nil
+        if let payload { lastFinishedRecording = payload }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(throwing: NSError(domain: "ABG", code: 6, userInfo: [NSLocalizedDescriptionKey: "recording interrupted: \(reason)"]))
+        }
+    }
+
+    private func finalizeRecordingPayload(recordingId: String, durationMs: Int?, mime: String?, micUsed: Bool?, chunkCount: Int?, finalized: Bool) -> [String: Any]? {
+        guard let session = recording, session.recordingId == recordingId else { return nil }
+        var payload: [String: Any] = [
+            "ok": true,
+            "recordingId": recordingId,
+            "tabId": session.tabId,
+            "path": session.outputPath,
+            "bytes": session.bytes,
+            "mic": micUsed ?? session.mic,
+            "finalized": finalized,
+        ]
+        if let durationMs { payload["durationMs"] = durationMs }
+        if let mime { payload["mime"] = mime }
+        if let chunkCount { payload["chunkCount"] = chunkCount }
+        return payload
+    }
+
+    private func finalizeRecordingCleanup(recordingId: String, deleteFile: Bool) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        if deleteFile { try? FileManager.default.removeItem(atPath: session.outputPath) }
+        recording = nil
+    }
+
+    private func defaultRecordingOutputPath(tabId: Int) -> String {
+        let base = ABGConstants.recordingsDir
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return base.appendingPathComponent("tab-\(tabId)-\(formatter.string(from: Date())).webm").path
     }
 
     /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,
@@ -1238,11 +1534,11 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         )
     }
 
-    func sendCommand(to extensionId: String, method: String, params: AnyCodable?) async throws -> AnyCodable? {
+    func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
         guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
-        let timeoutMs = GatewaySettingsStore.load().defaultTimeoutMs
+        let timeoutMs = timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable?, Error>) in
             inflight[id] = cont
             Task {

@@ -1,0 +1,1 @@
+88fbde59ead9ab5edeca7f7f625f98ee520c0a92cb731fe9269fa335e80f0135  agent-browser-gateway-0.4.2-macos-arm64.dmg

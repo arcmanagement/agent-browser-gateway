@@ -20,11 +20,14 @@ import type {
   ApprovalRequest,
   ApprovalToBackground,
   BackgroundToApproval,
+  BackgroundToOffscreen,
   BackgroundToPopup,
   ConsoleEntry,
   ExtensionSettings,
   ExtToGateway,
   GatewayCommand,
+  OffscreenStartResult,
+  OffscreenStopResult,
   OperationMethod,
   PopupToBackground,
   TabAccessMode,
@@ -34,7 +37,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const WS_URL = __ABG_WS_URL__;
-const VERSION = "0.4.1";
+const VERSION = "0.4.2";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
@@ -146,6 +149,17 @@ type Point = { x: number; y: number };
 type ApprovalResolution = {
   decision: ApprovalDecision;
   message: string;
+  // Present only for record_start approvals: the tabCapture stream ID minted
+  // inside the "Allow" click gesture.
+  streamId?: string;
+};
+
+type RecordingSession = {
+  recordingId: string;
+  tabId: number;
+  mic: boolean;
+  mime: string;
+  startedAt: number;
 };
 
 type PendingApproval = {
@@ -180,6 +194,7 @@ const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
+let recordingSession: RecordingSession | null = null;
 
 let extensionId: string | null = null;
 let ws: WebSocket | null = null;
@@ -647,6 +662,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
     if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
   }
   streamingTabs.delete(tabId);
+  stopRecordingForTab(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
@@ -655,12 +671,15 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
 
 async function updateBadge(tabId: number): Promise<void> {
   const tab = permittedTabs.get(tabId);
+  const isRecording = recordingSession?.tabId === tabId;
   try {
     await browser.action.setBadgeText({
       tabId,
-      text: tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
+      text: isRecording ? "REC" : tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
     });
-    if (tab) {
+    if (isRecording) {
+      await browser.action.setBadgeBackgroundColor({ tabId, color: "#ff3b30" });
+    } else if (tab) {
       await browser.action.setBadgeBackgroundColor({
         tabId,
         color: tab.accessMode === "all_tabs" ? "#0a84ff" : "#34c759",
@@ -729,6 +748,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
       if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
     }
     streamingTabs.delete(tabId);
+    stopRecordingForTab(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
     await detachDebugger(tabId);
@@ -1198,6 +1218,13 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
       reply(cmd.id, { ok: true });
+    } else if (cmd.method === "record_start") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await recordStart(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "record_stop") {
+      reply(cmd.id, await recordStop(cmd.params ?? {}));
+    } else if (cmd.method === "record_status") {
+      reply(cmd.id, recordStatus());
     } else if (isOperationCommand(cmd)) {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await runApprovedOperation(cmd, tabId));
@@ -1838,11 +1865,12 @@ function finalizeApproval(
   return true;
 }
 
-function resolutionForDecision(decision: ApprovalDecision): ApprovalResolution {
+function resolutionForDecision(decision: ApprovalDecision, streamId?: string): ApprovalResolution {
   if (decision === "allow") {
     return {
       decision,
       message: "Operation approved.",
+      streamId,
     };
   }
   if (decision === "timeout") {
@@ -1855,6 +1883,202 @@ function resolutionForDecision(decision: ApprovalDecision): ApprovalResolution {
     decision,
     message: "Operation denied by user.",
   };
+}
+
+// ---------- Recording (tab video + audio) ----------
+//
+// Recording is always approval-gated regardless of operationsRequireApproval:
+// it captures tab audio (and optionally the microphone / physical room), which
+// is heavier than the per-tab read/operate model. The approval-window "Allow"
+// click doubles as the user gesture that mints the tabCapture stream ID, so the
+// CLI-driven start still satisfies Chrome's gesture requirement.
+
+const OFFSCREEN_URL = "offscreen.html";
+let creatingOffscreen: Promise<void> | null = null;
+
+async function recordStart(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ recordingId: string; tabId: number; mic: boolean; mime: string }> {
+  if (recordingSession) {
+    throw new GatewayError(
+      "already_recording",
+      `A recording is already active on tab ${recordingSession.tabId}. Stop it first.`,
+    );
+  }
+  const recordingId = params.recordingId ?? crypto.randomUUID();
+  const withMic = params.mic === true;
+  const intent = withMic
+    ? "Record this tab to a video file, capturing tab audio and the microphone (physical room)."
+    : "Record this tab to a video file, capturing tab audio.";
+
+  const approval = await requestOperationApproval("record_start", tabId, intent);
+  if (approval.decision !== "allow") {
+    throw new GatewayError("user_denied", approval.message);
+  }
+  if (!approval.streamId) {
+    throw new GatewayError(
+      "no_capture_stream",
+      "Approval did not yield a tab capture stream (the Allow click must mint it).",
+    );
+  }
+
+  await ensureOffscreenDocument();
+  const start = (await sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "start",
+    recordingId,
+    streamId: approval.streamId,
+    withMic,
+    timesliceMs: typeof params.timesliceMs === "number" ? params.timesliceMs : undefined,
+  })) as OffscreenStartResult | undefined;
+  if (!start?.ok) {
+    throw new GatewayError("record_start_failed", start?.error ?? "offscreen recorder failed");
+  }
+
+  recordingSession = {
+    recordingId,
+    tabId,
+    mic: start.micUsed === true,
+    mime: start.mime ?? "video/webm",
+    startedAt: Date.now(),
+  };
+  await updateBadge(tabId);
+  return {
+    recordingId,
+    tabId,
+    mic: recordingSession.mic,
+    mime: recordingSession.mime,
+  };
+}
+
+async function recordStop(
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ ok: true; recordingId: string; tabId: number }> {
+  const session = recordingSession;
+  if (!session) {
+    throw new GatewayError("not_recording", "No recording is active.");
+  }
+  if (params.recordingId && params.recordingId !== session.recordingId) {
+    throw new GatewayError(
+      "recording_mismatch",
+      "recordingId does not match the active recording.",
+    );
+  }
+  const stop = (await sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "stop",
+    recordingId: session.recordingId,
+  })) as OffscreenStopResult | undefined;
+  if (!stop?.ok) {
+    throw new GatewayError(
+      "record_stop_failed",
+      stop?.error ?? "offscreen recorder failed to stop",
+    );
+  }
+  // The offscreen streams its trailing chunk(s) then a record_stopped event,
+  // which the Gateway uses to finalize the webm file. The session is cleared
+  // when that event is forwarded (handleOffscreenEvent).
+  return { ok: true, recordingId: session.recordingId, tabId: session.tabId };
+}
+
+function recordStatus(): {
+  recording: boolean;
+  recordingId?: string;
+  tabId?: number;
+  mic?: boolean;
+  mime?: string;
+  startedAt?: number;
+} {
+  if (!recordingSession) return { recording: false };
+  return {
+    recording: true,
+    recordingId: recordingSession.recordingId,
+    tabId: recordingSession.tabId,
+    mic: recordingSession.mic,
+    mime: recordingSession.mime,
+    startedAt: recordingSession.startedAt,
+  };
+}
+
+async function ensureOffscreenDocument(): Promise<void> {
+  const offscreen = (chrome as unknown as { offscreen?: typeof chrome.offscreen }).offscreen;
+  if (!offscreen) throw new GatewayError("offscreen_unavailable", "offscreen API unavailable");
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType],
+    documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
+  });
+  if (contexts.length > 0) return;
+  if (!creatingOffscreen) {
+    creatingOffscreen = offscreen
+      .createDocument({
+        url: OFFSCREEN_URL,
+        reasons: ["USER_MEDIA" as chrome.offscreen.Reason],
+        justification: "Record a shared tab (video + audio) to a local file.",
+      })
+      .finally(() => {
+        creatingOffscreen = null;
+      });
+  }
+  await creatingOffscreen;
+}
+
+async function sendToOffscreen(msg: BackgroundToOffscreen): Promise<unknown> {
+  return chrome.runtime.sendMessage(msg);
+}
+
+function handleOffscreenEvent(rawMsg: Record<string, unknown>): void {
+  const type = rawMsg.type;
+  const recordingId = typeof rawMsg.recordingId === "string" ? rawMsg.recordingId : "";
+  if (!recordingId) return;
+  if (type === "abg_offscreen_chunk") {
+    sendWS({
+      type: "record_chunk",
+      recordingId,
+      seq: typeof rawMsg.seq === "number" ? rawMsg.seq : 0,
+      dataBase64: typeof rawMsg.dataBase64 === "string" ? rawMsg.dataBase64 : "",
+    });
+    return;
+  }
+  if (type === "abg_offscreen_stopped") {
+    sendWS({
+      type: "record_stopped",
+      recordingId,
+      durationMs: typeof rawMsg.durationMs === "number" ? rawMsg.durationMs : 0,
+      mime: typeof rawMsg.mime === "string" ? rawMsg.mime : "video/webm",
+      micUsed: rawMsg.micUsed === true,
+      chunkCount: typeof rawMsg.chunkCount === "number" ? rawMsg.chunkCount : 0,
+    });
+    void finishRecordingSession(recordingId);
+    return;
+  }
+  if (type === "abg_offscreen_error") {
+    sendWS({
+      type: "record_failed",
+      recordingId,
+      error: typeof rawMsg.error === "string" ? rawMsg.error : "recording failed",
+    });
+    void finishRecordingSession(recordingId);
+  }
+}
+
+async function finishRecordingSession(recordingId: string): Promise<void> {
+  if (recordingSession?.recordingId !== recordingId) return;
+  const tabId = recordingSession.tabId;
+  recordingSession = null;
+  await updateBadge(tabId);
+}
+
+// Best-effort: when a recording tab is revoked or closed, tell the offscreen to
+// stop so the Gateway can finalize the file. The offscreen also self-stops when
+// the tab's capture track ends, so this is belt-and-suspenders.
+function stopRecordingForTab(tabId: number): void {
+  if (recordingSession?.tabId !== tabId) return;
+  void sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "stop",
+    recordingId: recordingSession.recordingId,
+  }).catch(() => {});
 }
 
 function reply(id: string, result: unknown): void {
@@ -6055,6 +6279,15 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
       sendResponse({ type: "ok" });
       return;
     }
+    if (
+      isRecord(rawMsg) &&
+      typeof rawMsg.type === "string" &&
+      rawMsg.type.startsWith("abg_offscreen_")
+    ) {
+      handleOffscreenEvent(rawMsg);
+      sendResponse({ type: "ok" });
+      return;
+    }
     const msg = parseRuntimeMessage(rawMsg);
     if (!msg) {
       const reply: RuntimeResponse = { type: "error", message: "unknown message" };
@@ -6153,7 +6386,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     }
     return { type: "approval_request", request: pending.request };
   }
-  const resolved = finalizeApproval(msg.approvalId, resolutionForDecision(msg.decision));
+  const resolved = finalizeApproval(
+    msg.approvalId,
+    resolutionForDecision(msg.decision, msg.streamId),
+  );
   if (!resolved) {
     return { type: "error", message: "approval request not found" };
   }
@@ -6205,6 +6441,7 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
       type: "approval_decision",
       approvalId: rawMsg.approvalId,
       decision: rawMsg.decision,
+      streamId: typeof rawMsg.streamId === "string" ? rawMsg.streamId : undefined,
     };
   }
   return null;

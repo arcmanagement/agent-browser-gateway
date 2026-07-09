@@ -24,6 +24,9 @@ abg frames t1
 abg get text t1 "h1"
 abg snapshot t1 --interactive-only --compact
 abg screenshot t1 --out page.png
+abg record start t1 --out demo.webm
+abg record stop
+abg record status
 abg console t1
 abg table t1 --format markdown
 abg network t1 --url "*api*"
@@ -41,6 +44,10 @@ abg upload t1 --selector "input[type=file]" --file ./report.pdf
 abg navigate t1 "https://example.com"
 abg revoke t1
 ```
+
+Tab recording is always approval-gated. `abg record start` opens a local approval window, and the
+Allow click supplies the Chrome `tabCapture` gesture needed to start WebM recording with tab audio.
+Use `--mic` only when room audio should be mixed in.
 
 ## Targeting
 
