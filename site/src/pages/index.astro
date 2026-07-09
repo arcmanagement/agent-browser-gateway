@@ -80,13 +80,13 @@
             <div class="copy">
               <h2 id="download-title">Download Agent Browser Gateway.</h2>
               <p>
-                The current public build is v0.4.1. Install the macOS app with Homebrew or the
-                signed DMG below; both point at the same current release payload.
+                The current public build is v0.4.1. Install the macOS app with Homebrew or download
+                the signed and notarized DMG below.
               </p>
               <p>
-                Published by ArcManagement, Inc. Public release artifacts are served from this
-                site. Windows packaging is still pending while the signed setup workflow and WinGet
-                submission are completed.
+                Published by ArcManagement, Inc. Public release artifacts on this site are limited
+                to the current release and include SHA-256 checksum files. Windows packaging remains
+                pending while the signed setup workflow and WinGet submission are completed.
               </p>
               <div class="download-actions">
                 <a
@@ -124,7 +124,8 @@
             </div>
             <div class="download-panel" aria-label="Download details">
               <div class="download-meta">
-                <span>macOS 0.4.1 / Windows package pending</span>
+                <span>Current release: 0.4.1</span>
+                <span>Publisher: ArcManagement, Inc.</span>
                 <span>macOS 14+ Apple Silicon</span>
                 <span>Windows 10/11 x64</span>
               </div>
@@ -142,7 +143,8 @@
                   <span>
                     Tap <code>arcmanagement/agent-browser-gateway</code>, trust the cask when
                     Homebrew requires tap trust, then install with
-                    <code>brew install --cask agent-browser-gateway</code> or run the signed DMG.
+                    <code>brew install --cask agent-browser-gateway</code> or verify and open the
+                    signed, notarized DMG.
                   </span>
                 </div>
                 <div>
@@ -157,8 +159,8 @@
                   </strong>
                   <span>
                     Use <code>winget install --id ArcManagement.AgentBrowserGateway</code> after
-                    package indexing. The setup ZIP will be published on this site after the signed
-                    Windows release workflow completes.
+                    package indexing. No Windows download is linked here until the signed Windows
+                    release workflow completes.
                   </span>
                 </div>
                 <div>
@@ -167,24 +169,41 @@
                 </div>
                 <div>
                   <strong>Chrome extension</strong>
-                  <span>Install from the Chrome Web Store to share tabs with the local gateway.</span>
+                  <span>
+                    Install from the Chrome Web Store for normal use. The public extension ZIP is
+                    retained only for the current release artifact set.
+                  </span>
                 </div>
               </div>
               <div class="checksum-list">
                 <p class="checksum">
                   <span>macOS SHA-256</span>
                   <a href="downloads/agent-browser-gateway-0.4.1-macos-arm64.dmg.sha256.txt">
-                    <code>4d84561b88252f38592c847022101956b11172614cbb5338ad87e9be70cabafa</code>
+                    <code>c94721c5a26d81f21012f7e1a0050d1748b7d43d8aab1ec94aa0dd76c3d0cc75</code>
                   </a>
                 </p>
                 <p class="checksum">
-                  <span>Windows SHA-256</span>
-                  <span><code>Available after signed Windows release</code></span>
+                  <span>Current public download files</span>
+                  <span>
+                    <code>agent-browser-gateway-0.4.1-macos-arm64.dmg</code>
+                    <code>agent-browser-gateway-0.4.1-macos-arm64.zip</code>
+                    <code>agent-browser-gateway-extension-0.4.1.zip</code>
+                  </span>
                 </p>
               </div>
               <div class="download-trust">
-                <p><strong>macOS trust:</strong> verify the SHA-256 checksum before opening the DMG.</p>
-                <p><strong>Extension:</strong> install Agent Browser Gateway from the Chrome Web Store.</p>
+                <p>
+                  <strong>macOS trust:</strong> verify the SHA-256 checksum, then confirm macOS
+                  reports the app as signed by ArcManagement, Inc.
+                </p>
+                <p>
+                  <strong>Extension:</strong> install Agent Browser Gateway from the Chrome Web
+                  Store unless you are testing a release artifact.
+                </p>
+                <p>
+                  <strong>Downloads and crawling:</strong> HTML pages remain crawlable, while direct
+                  download URLs are excluded from crawler discovery in <code>robots.txt</code>.
+                </p>
                 <p>
                   <strong>Uninstall:</strong> remove the app from <code>/Applications</code>, delete
                   <code>abg</code> from your PATH if manually linked, and remove the Chrome extension.

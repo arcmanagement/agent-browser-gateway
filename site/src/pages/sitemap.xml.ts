@@ -2,6 +2,7 @@ export const prerender = true;
 
 const SITE = "https://agent-browser-gateway.com";
 
+// Public HTML surfaces only. Direct download artifacts are intentionally omitted.
 const pages = [
   { path: "/", priority: "1.0", changefreq: "weekly" },
   { path: "/docs/", priority: "0.9", changefreq: "weekly" },

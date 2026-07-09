@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+
+# Keep public HTML pages discoverable while avoiding crawler promotion of direct binary artifacts.
 Disallow: /downloads/
 
 Sitemap: https://agent-browser-gateway.com/sitemap.xml
