@@ -24,6 +24,12 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 abg status                              # Gateway 起動状況、接続中拡張、共有タブ数
 abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url/accessMode)
 abg inspect                             # status + tabs をまとめて確認
+abg bookmarks list                      # browser-owned personal data。別途 Bookmarks access が必要
+abg bookmarks search "reference"        # 明示許可後に bookmark title/URL を検索
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>        # 保存済み URL を明示コマンドで開く
+abg reading-list list                   # Chrome 120+ chrome.readingList。別途 Reading List access が必要
+abg reading-list search "saved page"
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
@@ -158,6 +164,12 @@ details は出さない。正確なイベント列が必要な debug / review �
 `--mic` 指定時は物理的な部屋の音も扱うため、silent auto-approval にはしない。Allow のクリックは
 Chrome の `tabCapture.getMediaStreamId` に必要な user gesture も兼ねる。録画中は対象タブに赤い
 `REC` badge が出る。詳細な設計と実機確認手順は `docs/RECORDING.md` を参照する。
+
+`abg bookmarks` と `abg reading-list` は共有タブの page state ではなく、browser-owned personal
+data を扱う。拡張 popup の `Bookmarks access` / `Reading List access` を別々に ON にした時だけ
+使う。Reading List は Chrome 120+ の `chrome.readingList` がある browser だけ対応し、非対応
+browser では明示的な unsupported error を返す。audit log は command boundary、件数、id、
+query byte length を残すが、保存済み URL 全文は残さない。
 
 ## Authoring a user plugin
 
