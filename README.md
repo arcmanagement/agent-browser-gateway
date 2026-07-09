@@ -621,8 +621,13 @@ transport, and a visible audit trail.
 
 Advanced parity features are governed by the
 [Advanced Automation Policy](docs/ADVANCED_AUTOMATION_POLICY.md). The policy classifies each
-capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or an official
-`non-goal`, with the required approval and audit behavior for each mode.
+capability as normal `per-tab`, `sandbox/all-tabs only`, `user-controlled deployment only`,
+`self-hosted only`, or an official `non-goal`, with the required approval and audit behavior for
+each mode.
+Browser-owned personal data, such as bookmarks and Reading List entries, is a separate explicit
+permission track rather than part of normal per-tab or all-tabs sharing. Shared-tab video recording
+can fit the per-tab boundary only when recording start is explicit, visible, approved, and local;
+microphone capture adds its own sensitive approval boundary.
 
 ### Feature parity for autonomous agents
 
@@ -638,6 +643,9 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
+| Bookmark / Reading List inspection | Planned explicit-permission commands | Browser bookmark/context APIs | Browser-owned personal data; separate permission, redacted audit metadata, not normal per-tab or all-tabs sharing |
+| Bookmark / Reading List mutation | Planned optional write tier | Browser bookmark/context APIs | Disabled by default; separate permission plus per-operation approval and audit; not unlocked by all-tabs mode alone |
+| Shared-tab video recording | Planned `record start/stop` webm artifact | Browser video/screencast APIs | Per-tab only after explicit start approval and visible indicator; microphone capture requires separate sensitive approval |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
 | Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |

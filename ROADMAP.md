@@ -135,12 +135,17 @@ Current repo version: **v0.4.1**.
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
 - Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
-  explicit-permission track, separate from normal per-tab sharing.
+  explicit-permission track, separate from normal per-tab and all-tabs sharing. Read-only inspection
+  needs separate browser permission; mutation needs separate permission plus per-operation approval.
+- Shared-tab video recording (#304) remains a consent-gated recording track. Tab capture may fit
+  per-tab mode only with explicit start approval, a visible recording indicator, local artifacts,
+  and audit entries; microphone capture adds a separate sensitive approval boundary.
 
 ## Later
 
 - Daily/weekly digest of agent activity (local only, opt-in)
-- `wait_for_response` and other DevTools-Protocol-flavored tools (network idle, page load, etc.)
+- Additional DevTools-Protocol-flavored tools beyond the shipped response wait/body preview work
+  where they can stay inside the policy matrix.
 - Browser-owned automation controls such as storage mutation, network mocking, init scripts,
   emulation, and tab/window management are sandbox/all-tabs profile work, not normal per-tab work.
 
