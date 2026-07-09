@@ -11,8 +11,8 @@ import {
   type BrowserBookmarkTreeNode,
   type BrowserDownloadDelta,
   type BrowserDownloadItem,
-  type BrowserReadingListQueryInfo,
   type BrowserReadingListEntry,
+  type BrowserReadingListQueryInfo,
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
@@ -1375,25 +1375,37 @@ function ensureReadingListSupported(): void {
 }
 
 async function requireBookmarksAccess(): Promise<NonNullable<typeof browser.bookmarks>> {
-  ensureBookmarksSupported();
+  const api = browser.bookmarks;
+  if (!api) {
+    throw new GatewayError(
+      "bookmarks_unsupported",
+      "This browser extension target does not expose the chrome.bookmarks API.",
+    );
+  }
   if (!(await isBookmarksAccessActive())) {
     throw new GatewayError(
       "bookmarks_permission_required",
       "Bookmark inspection requires the separate bookmarks permission. Enable Bookmarks access in the ABG extension popup.",
     );
   }
-  return browser.bookmarks!;
+  return api;
 }
 
 async function requireReadingListAccess(): Promise<NonNullable<typeof browser.readingList>> {
-  ensureReadingListSupported();
+  const api = browser.readingList;
+  if (!api) {
+    throw new GatewayError(
+      "reading_list_unsupported",
+      "This browser extension target does not expose the chrome.readingList API. Chrome documents the API for Chrome 120+; other Chromium browsers may omit it.",
+    );
+  }
   if (!(await isReadingListAccessActive())) {
     throw new GatewayError(
       "reading_list_permission_required",
       "Reading List inspection requires the separate Reading List permission. Enable Reading List access in the ABG extension popup.",
     );
   }
-  return browser.readingList!;
+  return api;
 }
 
 function isBookmarkNode(value: unknown): value is BrowserBookmarkTreeNode {
@@ -1471,7 +1483,10 @@ async function listBookmarks(params: GatewayCommand["params"]): Promise<Record<s
   const api = await requireBookmarksAccess();
   const includeFolders = params?.includeFolders === true;
   const tree = await api.getTree();
-  const rows = flattenBookmarkNodes(tree, [], includeFolders).slice(0, readLimit(params, 100, 1000));
+  const rows = flattenBookmarkNodes(tree, [], includeFolders).slice(
+    0,
+    readLimit(params, 100, 1000),
+  );
   return {
     ok: true,
     boundary: "browser_owned_personal_data",
@@ -1563,7 +1578,9 @@ async function listReadingList(params: GatewayCommand["params"]): Promise<Record
   };
 }
 
-async function searchReadingList(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+async function searchReadingList(
+  params: GatewayCommand["params"],
+): Promise<Record<string, unknown>> {
   const api = await requireReadingListAccess();
   const queryText = typeof params?.query === "string" ? params.query.trim() : "";
   if (!queryText) throw new GatewayError("bad_params", "query is required");
