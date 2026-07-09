@@ -23,6 +23,7 @@ ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased
 - **Prompt injection that tries to leak un-shared tabs.** The Gateway rejects any operation on a `tabId` that is not in the live permission list. The list is updated only by the extension on real `chrome.tabs.*` events or by explicit user action. In all-tabs profile mode, the explicit user action is the local popup toggle plus Chrome's optional permission prompt.
 - **Accidental over-sharing through navigation.** A manually permitted tab is automatically revoked when its origin changes. In all-tabs profile mode, navigation is intentionally tracked because the whole isolated profile is the selected boundary.
 - **Silent surveillance by an agent.** Every operation is appended to `~/Library/Logs/AgentBrowserGateway/audit.jsonl`. There is no code path that performs an extension command without an audit-log entry.
+- **Silent audio/video capture.** `abg record start` always opens a local approval window, even when normal operation approvals are disabled or Trusted automation is enabled. The user's Allow click is also the Chrome `tabCapture` gesture; recording cannot start silently from the CLI alone.
 - **Network exfiltration by ABG itself.** Gateway binds only `127.0.0.1`. The extension declares no default `host_permissions`; optional `<all_urls>` is requested only for all-tabs profile mode. There is no analytics / crash reporter / auto-update phone-home.
 - **Malicious websites trying to connect to the local Gateway.** The Gateway WebSocket rejects connections unless the handshake `Origin` is a browser-extension origin (`chrome-extension://`, `moz-extension://`, or `safari-web-extension://`). Normal websites cannot use ABG by opening the local endpoint, such as the default `ws://127.0.0.1:8765/ws`, from page JavaScript.
 
@@ -33,7 +34,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 - **Other Chrome extensions in the same profile.** Chrome's extension model itself is not a sandbox boundary against same-profile peers. If you load malicious extensions, they can read everything you can read.
 - **Root or same-user attackers on the host machine.** If something on your Mac can read `~/Library/Application Support/AgentBrowserGateway/gateway.sock`, it can talk to the Gateway. Same for the audit log.
 - **User-installed plugins.** Plugins under the ABG user plugin directory (`~/.abg/plugins` by default, profile-specific for dev runs) are local code loaded by the Gateway. ABG does not auto-download plugins; install only plugins you trust.
-- **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, or `navigate`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary.
+- **Operations the user explicitly authorizes.** If you share a tab and approve a write operation such as `click`, `fill`, `replace`, `upload`, `navigate`, or `record start`, that is by design. Operation approval mode is enabled by default, but the per-tab consent gate remains the primary boundary. Recording has its own approval gate and captures only an already-shared tab.
 - **Approved JavaScript eval.** `abg eval` is an explicit escape hatch, disabled by default in extension settings. When Trusted automation / AutoMode is off, every call requires `--approve` plus a local approval window showing the exact script. When AutoMode is on, the local user has explicitly opted into skipping that popup for already-shared tabs; the audit log still records the script source, approval mode, and result summary.
 - **Bugs in Chrome, Vapor, SwiftNIO, or other dependencies.** We monitor for advisories and update.
 
@@ -62,9 +63,10 @@ If a future PR violates any of these, it should be rejected:
 4. The CLI Unix socket is created with `chmod 0700`.
 5. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
 6. General JavaScript eval is never hidden: it must be disabled by default, require either explicit per-call approval or explicit Trusted automation / AutoMode, and write an audit entry with script source, approval mode, and result type/size summary. Prefer curated, structured, named tools whenever possible.
-7. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
-8. The audit log records every read and every operation, with the originating agent identifier where available.
-9. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.
+7. Tab recording is never hidden: it must require a local approval window, target only a live shared tab, visibly mark the tab with `REC`, stream chunks to a local file, and audit start/stop metadata without uploading media.
+8. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
+9. The audit log records every read and every operation, with the originating agent identifier where available.
+10. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.
 
 ## Dependency security gates
 

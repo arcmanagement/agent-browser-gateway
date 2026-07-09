@@ -31,6 +31,16 @@ export type ExtToGateway =
     }
   | { type: "tab_closed"; tabId: number }
   | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }
+  | { type: "record_chunk"; recordingId: string; seq: number; dataBase64: string }
+  | {
+      type: "record_stopped";
+      recordingId: string;
+      durationMs: number;
+      mime: string;
+      micUsed: boolean;
+      chunkCount: number;
+    }
+  | { type: "record_failed"; recordingId: string; error: string }
   | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
 
 export type GatewayCommand = {
@@ -130,6 +140,10 @@ export type GatewayCommand = {
     storageKey?: string;
     storageKind?: string;
     targetTabId?: number;
+    // record
+    mic?: boolean;
+    recordingId?: string;
+    timesliceMs?: number;
   };
 };
 
@@ -183,7 +197,10 @@ export type GatewayMethod =
   | "sandbox_action"
   | "scroll"
   | "scroll_into_view"
-  | "drag";
+  | "drag"
+  | "record_start"
+  | "record_stop"
+  | "record_status";
 
 export type OperationMethod = Extract<
   GatewayMethod,
@@ -225,7 +242,7 @@ export type ExtensionSettings = {
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
-export type ApprovalMethod = OperationMethod | "eval_script";
+export type ApprovalMethod = OperationMethod | "eval_script" | "record_start";
 
 export type ApprovalRequest = {
   id: string;
@@ -276,7 +293,14 @@ export type BackgroundToPopup =
 
 export type ApprovalToBackground =
   | { type: "get_approval_request"; approvalId: string }
-  | { type: "approval_decision"; approvalId: string; decision: ApprovalDecision };
+  | {
+      type: "approval_decision";
+      approvalId: string;
+      decision: ApprovalDecision;
+      // Present only for record_start: the tabCapture stream ID minted inside the
+      // "Allow" click so the capture gesture stays live.
+      streamId?: string;
+    };
 
 export type BackgroundToApproval =
   | { type: "approval_request"; request: ApprovalRequest }
@@ -288,3 +312,35 @@ export type ConsoleEntry = {
   level: string;
   text: string;
 };
+
+// Background <-> offscreen recorder document (chrome.runtime messaging).
+export type BackgroundToOffscreen =
+  | {
+      target: "abg-offscreen";
+      cmd: "start";
+      recordingId: string;
+      streamId: string;
+      withMic: boolean;
+      timesliceMs?: number;
+    }
+  | { target: "abg-offscreen"; cmd: "stop"; recordingId: string };
+
+export type OffscreenStartResult = {
+  ok: boolean;
+  micUsed?: boolean;
+  mime?: string;
+  error?: string;
+};
+export type OffscreenStopResult = { ok: boolean; error?: string };
+
+export type OffscreenToBackground =
+  | { type: "abg_offscreen_chunk"; recordingId: string; seq: number; dataBase64: string }
+  | {
+      type: "abg_offscreen_stopped";
+      recordingId: string;
+      durationMs: number;
+      mime: string;
+      micUsed: boolean;
+      chunkCount: number;
+    }
+  | { type: "abg_offscreen_error"; recordingId: string; error: string };

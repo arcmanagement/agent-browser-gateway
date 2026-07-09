@@ -47,14 +47,27 @@ const approvalCfg = {
   format: "iife",
 };
 
+// Recording: offscreen document that runs getUserMedia + MediaRecorder.
+// Chrome-only; the firefox target strips the offscreen assets and permissions.
+const offscreenCfg = {
+  ...common,
+  entryPoints: ["src/offscreen.ts"],
+  outfile: "dist/offscreen.js",
+  format: "iife",
+};
+
+const chromeOnlyBuilds = target === "chrome" ? [offscreenCfg] : [];
+
 if (watch) {
-  const bg = await esbuild.context(bgCfg);
-  const pop = await esbuild.context(popupCfg);
-  const approval = await esbuild.context(approvalCfg);
-  await Promise.all([bg.watch(), pop.watch(), approval.watch()]);
+  const contexts = await Promise.all(
+    [bgCfg, popupCfg, approvalCfg, ...chromeOnlyBuilds].map((cfg) => esbuild.context(cfg)),
+  );
+  await Promise.all(contexts.map((ctx) => ctx.watch()));
   console.log(`watching ${target} extension... (gateway ${abgWsUrl})`);
 } else {
-  await Promise.all([esbuild.build(bgCfg), esbuild.build(popupCfg), esbuild.build(approvalCfg)]);
+  await Promise.all(
+    [bgCfg, popupCfg, approvalCfg, ...chromeOnlyBuilds].map((cfg) => esbuild.build(cfg)),
+  );
   console.log(`built ${target} extension to dist/ (gateway ${abgWsUrl})`);
 }
 
@@ -88,6 +101,11 @@ async function patchManifest(target) {
   if (target === "firefox") {
     delete manifest.key;
     delete manifest.minimum_chrome_version;
+    // Recording relies on the Chrome-only offscreen + tabCapture APIs.
+    manifest.permissions = (manifest.permissions ?? []).filter(
+      (perm) => perm !== "offscreen" && perm !== "tabCapture",
+    );
+    await rm("dist/offscreen.html", { force: true });
     manifest.description =
       "Share Firefox tabs with AI coding agents via explicit local permission.";
     manifest.background = {

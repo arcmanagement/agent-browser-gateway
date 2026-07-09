@@ -1,10 +1,15 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-06-10.
+Living document. Reflects current intent, not commitment. Last updated 2026-07-09.
 
-Current repo version: **v0.4.1**.
+Current repo version: **v0.4.2**.
 
 ## Shipped
+
+### v0.4.2 — Tab recording with audio (2026-07-09)
+- Added `abg record start/stop/status` for approval-gated WebM recording of a shared Chrome tab, including tab audio and optional microphone mixing.
+- Kept recording behind an explicit local approval window; the Allow click mints the Chrome `tabCapture` stream ID so CLI-driven recording still satisfies the user-gesture requirement.
+- Streamed MediaRecorder chunks through the extension and Gateway to disk, added a red `REC` badge, documented manual verification in `docs/RECORDING.md`, and kept Firefox builds free of Chrome-only recording permissions.
 
 ### v0.4.1 — Audit log performance patch (2026-06-10)
 - Changed `abg audit --lines N` to read JSONL entries from the end of the audit log instead of decoding the entire local log file.

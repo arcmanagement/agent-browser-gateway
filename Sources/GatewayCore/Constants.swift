@@ -56,6 +56,13 @@ public enum ABGConstants {
         return url
     }
 
+    public static var recordingsDir: URL {
+        let url = configuredRecordingsDir(environment: ProcessInfo.processInfo.environment)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        chmod(url.path, 0o700)
+        return url
+    }
+
     public static var udsPath: String {
         supportDir.appendingPathComponent("gateway.sock").path
     }
@@ -146,6 +153,18 @@ public enum ABGConstants {
         return FileManager.default.temporaryDirectory
             .appendingPathComponent(component, isDirectory: true)
             .appendingPathComponent("screenshots", isDirectory: true)
+    }
+
+    public static func configuredRecordingsDir(environment: [String: String]) -> URL {
+        let component: String
+        if let profile = configuredProfile(environment: environment) {
+            component = "abg-\(profile)"
+        } else {
+            component = "abg"
+        }
+        return FileManager.default.temporaryDirectory
+            .appendingPathComponent(component, isDirectory: true)
+            .appendingPathComponent("recordings", isDirectory: true)
     }
 
     private static func profiledComponent(_ productionComponent: String, environment: [String: String]) -> String {
