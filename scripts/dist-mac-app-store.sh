@@ -13,7 +13,7 @@ fi
 
 APP_NAME="Agent Browser Gateway"
 APP_BUNDLE="$APP_NAME.app"
-APPSTORE_BUNDLE_ID="${APPSTORE_BUNDLE_ID:-co.arcm.AgentBrowserGateway}"
+APPSTORE_BUNDLE_ID="${APPSTORE_BUNDLE_ID:-jp.co.arcm.AgentBrowserGateway}"
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 ENTITLEMENTS="${APPSTORE_ENTITLEMENTS:-$ROOT/packaging/appstore/AgentBrowserGateway.appstore.entitlements}"
 APP_SIGN_IDENTITY="${APPSTORE_APP_SIGN_IDENTITY:-}"

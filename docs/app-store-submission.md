@@ -5,16 +5,16 @@ The Store build must be sandboxed and uploaded to App Store Connect as a signed 
 
 ## Current Decision
 
-Use the existing production bundle identifier for the initial App Store record:
+Use a Store-specific bundle identifier for the initial App Store record:
 
 ```text
-co.arcm.AgentBrowserGateway
+jp.co.arcm.AgentBrowserGateway
 ```
 
-This matches the existing production app bundle and keeps the Store listing tied to the same product
-identity. Do not upload the first App Store Connect build until this decision is intentionally
-changed or confirmed, because App Store Connect does not allow changing the Bundle ID after the
-first build upload.
+This matches the identifier style used by other ArcManagement App Store apps. The existing
+Developer ID, Homebrew, and website builds keep using `co.arcm.AgentBrowserGateway`. Do not upload
+the first App Store Connect build until this decision is intentionally changed or confirmed, because
+App Store Connect does not allow changing the Bundle ID after the first build upload.
 
 ## External Setup
 
@@ -22,17 +22,17 @@ first build upload.
 
    ```text
    Description: Agent Browser Gateway
-   Bundle ID: co.arcm.AgentBrowserGateway
+   Bundle ID: jp.co.arcm.AgentBrowserGateway
    ```
 
-2. Confirm that `co.arcm.AgentBrowserGateway` appears in the App Store Connect `New App` form.
+2. Confirm that `jp.co.arcm.AgentBrowserGateway` appears in the App Store Connect `New App` form.
 3. Create the App Store Connect app record:
 
    ```text
    Platform: macOS
    Name: Agent Browser Gateway
    Primary language: English (U.S.)
-   Bundle ID: co.arcm.AgentBrowserGateway
+   Bundle ID: jp.co.arcm.AgentBrowserGateway
    SKU: agent-browser-gateway-macos
    User Access: No access restriction
    ```
@@ -40,7 +40,7 @@ first build upload.
 4. Create or refresh Mac App Store distribution credentials on a trusted maintainer Mac:
    - Mac App Distribution signing certificate
    - Mac Installer Distribution signing certificate
-   - Mac App Store Connect provisioning profile for `co.arcm.AgentBrowserGateway`
+   - Mac App Store Connect provisioning profile for `jp.co.arcm.AgentBrowserGateway`
 
 Do not store Apple private keys, certificates, App Store Connect API keys, or passwords in GitHub
 Actions secrets.
@@ -178,7 +178,7 @@ Use this draft in App Store Connect:
 ## Final Checklist
 
 - [x] App Store bundle ID decision is recorded.
-- [ ] Bundle ID is registered in Apple Developer.
+- [x] Bundle ID is registered in Apple Developer.
 - [ ] App Store Connect app record is created.
 - [x] App Sandbox entitlements are defined.
 - [x] Local Store build/package script exists.
