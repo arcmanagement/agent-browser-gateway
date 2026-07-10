@@ -153,8 +153,9 @@ is a public key string used for deterministic extension ID generation.
 ## GitHub Actions review submission boundary
 
 The package workflow produces the submission ZIP for pull requests. The
-`Chrome Web Store Submit` workflow is a separate manual GitHub Actions workflow
-that uploads the ZIP through the Chrome Web Store API and submits it for review.
+`Chrome Web Store Submit` workflow uploads the ZIP through the Chrome Web Store
+API and submits it for review. It can be called by the unified tag release
+workflow or run manually from GitHub Actions.
 
 - `extension/public/manifest.json` contains the public manifest `"key"` value so
   CI, local builds, and unpacked builds keep the stable extension ID.
@@ -163,6 +164,9 @@ that uploads the ZIP through the Chrome Web Store API and submits it for review.
   Developer Dashboard when the listing changes.
 - The submit workflow always uses `STAGED_PUBLISH`, so final publishing remains
   a manual owner action after Chrome Web Store review approval.
+- A scheduled monthly health check refreshes the OAuth token and fetches the
+  store item status without uploading a package. This keeps the Google OAuth
+  client active and catches token or policy problems before the next release.
 
 Required GitHub Actions variables:
 
@@ -183,6 +187,8 @@ The Google Cloud project is used only to enable the Chrome Web Store API and to
 create the OAuth client and refresh token. Build, verification, ZIP upload, and
 review submission run in GitHub Actions.
 
-To submit a merged extension version for review, open GitHub Actions, run
-`Chrome Web Store Submit`, and optionally provide the expected extension version.
-Leaving the input empty uses `extension/package.json`.
+To submit a merged extension version for review, push the release tag and let
+the unified `Release` workflow call `Chrome Web Store Submit`. For a manual
+resubmission, open GitHub Actions, run `Chrome Web Store Submit`, and optionally
+provide the expected extension version. Leaving the input empty uses
+`extension/package.json`.

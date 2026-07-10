@@ -1,6 +1,15 @@
 name: Chrome Web Store Submit
 
 on:
+  schedule:
+    # Keep the Google OAuth client and refresh token active without uploading a package.
+    - cron: "17 3 1 * *"
+  workflow_call:
+    inputs:
+      extension_version:
+        description: "Extension version to submit. Leave empty to use extension/package.json."
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       extension_version:
@@ -16,8 +25,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  oauth-health:
+    name: Check OAuth client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Refresh token and fetch item status
+        env:
+          CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          CHROME_CLIENT_ID: ${{ vars.CHROME_CLIENT_ID }}
+          CHROME_CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          CHROME_REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          CWS_OUTPUT_DIR: .cws
+        run: node scripts/chrome-web-store/check-oauth-client.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: chrome-web-store-oauth-health
+          if-no-files-found: ignore
+          path: .cws/cws-oauth-health.json
+
   submit:
     name: Submit extension for review
+    if: ${{ github.event_name != 'schedule' }}
+    needs: oauth-health
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

@@ -56,9 +56,13 @@ Microsoft Store packages are built on Windows from the repository root:
 .\packaging\msix\build-msix.ps1 `
   -IdentityName "ArcManagementInc.AgentBrowserGateway" `
   -Publisher "CN=ACF7FCEE-0034-48CB-9C9C-D4EBFBE473EB" `
-  -Version "1.0.1.0" `
+  -Version "<store-version>" `
   -SignForStore
 ```
+
+Tagged release builds also create this MSIX in GitHub Actions. The Store package version is derived
+from the ABG release version as `<ABG major + 1>.<ABG minor>.<ABG patch>.0`; for example, ABG
+`0.4.3` becomes Store package version `1.4.3.0`.
 
 The Store package launches the tray Gateway process. The MSIX builder also copies the WinUI 3
 generated `.pri` and `.xbf` files into the packaged WinUI app directory so the bundled status/setup
@@ -136,8 +140,10 @@ workflow. The workflow uploads both:
 
 - `agent-browser-gateway-<version>-windows-x64.zip`
 - `agent-browser-gateway-<version>-windows-x64-setup.zip`
+- `AgentBrowserGateway_<store-version>_win-x64.msix`
 
-Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing artifact.
+Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing GitHub
+Release and WinGet artifact. The MSIX is the Microsoft Store submission package.
 
 For signed release publication and WinGet submission, configure these repository secrets before
 dispatching the workflow:

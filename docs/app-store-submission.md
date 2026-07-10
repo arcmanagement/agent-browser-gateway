@@ -50,6 +50,28 @@ durable product identifier.
 Do not store Apple private keys, certificates, App Store Connect API keys, or passwords in GitHub
 Actions secrets.
 
+## Unified Release Boundary
+
+The `Release` workflow runs on `v*.*.*` tag pushes and creates a draft GitHub Release, Windows
+release artifacts, WinGet submission, and Chrome Web Store review submission from the same tag
+version. Mac App Store upload remains a trusted maintainer Mac step because the required Apple
+private keys, App Store provisioning profile, and App Store Connect credentials stay out of GitHub
+Actions.
+
+For each tagged release, use the same tag version when building the App Store package locally:
+
+```bash
+VERSION=<tag version without v> \
+BUILD_NUMBER=<next App Store build number> \
+APPSTORE_PROVISIONING_PROFILE="$HOME/Library/MobileDevice/Provisioning Profiles/<profile>.provisionprofile" \
+APPSTORE_APP_SIGN_IDENTITY="<Mac App Store application signing identity>" \
+APPSTORE_INSTALLER_SIGN_IDENTITY="<Mac App Store installer signing identity>" \
+make appstore-pkg
+```
+
+Upload the generated `.pkg` with Transporter or `xcrun altool --upload-package` using the
+`ABG_APP_STORE_CONNECT` keychain item on the trusted maintainer Mac.
+
 ## App Store Connect Record
 
 The macOS app record is created in App Store Connect:

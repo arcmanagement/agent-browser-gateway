@@ -60,6 +60,20 @@ The Store package version must use four numeric parts, and the fourth revision p
 For the initial Store submission, use `1.0.0.0` unless Partner Center requires a different higher
 version.
 
+For tagged releases, the `Windows CI` job also builds the Store MSIX. It derives the Store package
+version from the ABG release version as:
+
+```text
+<ABG major + 1>.<ABG minor>.<ABG patch>.0
+```
+
+For example, ABG `0.4.3` becomes Store package version `1.4.3.0`. This keeps the Store version
+monotonic while preserving the ABG release version in the generated package artifacts.
+
+The workflow uploads the MSIX as the `agent-browser-gateway-<version>-msix-store` artifact. When
+signed Windows release uploads are enabled, the same MSIX is attached to the GitHub Release for
+owner download and manual Partner Center submission.
+
 ## Listing Copy
 
 Short description:

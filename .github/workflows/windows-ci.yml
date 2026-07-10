@@ -3,12 +3,47 @@ name: Windows CI
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      version:
+        description: "Windows artifact version"
+        required: true
+        type: string
+      release_tag:
+        description: "GitHub Release tag to upload assets to"
+        required: false
+        type: string
+      upload_release:
+        description: "Upload signed Windows assets to the GitHub Release"
+        required: false
+        type: boolean
+        default: false
+      submit_winget:
+        description: "Submit a WinGet PR after signed release assets are uploaded"
+        required: false
+        type: boolean
+        default: false
+      require_code_sign:
+        description: "Fail unless Windows signing secrets are configured"
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       version:
         description: "Windows artifact version"
         required: false
         default: "0.4.2"
+      upload_release:
+        description: "Upload signed Windows assets to the GitHub Release"
+        required: false
+        type: boolean
+        default: false
+      submit_winget:
+        description: "Submit a WinGet PR after signed release assets are uploaded"
+        required: false
+        type: boolean
+        default: false
       require_code_sign:
         description: "Fail unless Windows signing secrets are configured"
         required: false
@@ -36,14 +71,20 @@ jobs:
         run: |
           if ("${{ github.event_name }}" -eq "release") {
             $version = "${{ github.event.release.tag_name }}".TrimStart("v")
+            $releaseTag = "${{ github.event.release.tag_name }}"
           } else {
             $version = "${{ inputs.version || '0.4.2' }}".TrimStart("v")
+            $releaseTag = "${{ inputs.release_tag || '' }}"
+            if ([string]::IsNullOrWhiteSpace($releaseTag)) {
+              $releaseTag = "v$version"
+            }
           }
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw "Version is required."
           }
           "ABG_VERSION=$version" >> $env:GITHUB_ENV
           "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
 
       - name: Resolve Windows release gates
         id: windows_release
@@ -53,11 +94,17 @@ jobs:
             $env:HAS_WINDOWS_CODESIGN_PFX_PASSWORD -eq "true"
           $canSubmitWinget = $canSign -and
             $env:HAS_WINGET_CREATE_GITHUB_TOKEN -eq "true"
+          $shouldUploadRelease = "${{ github.event_name }}" -eq "release" -or
+            "${{ inputs.upload_release }}" -eq "true"
+          $shouldSubmitWinget = "${{ github.event_name }}" -eq "release" -or
+            "${{ inputs.submit_winget }}" -eq "true"
 
           "can_sign=$($canSign.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "can_submit_winget=$($canSubmitWinget.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "should_upload_release=$($shouldUploadRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "should_submit_winget=$($shouldSubmitWinget.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-          if ("${{ github.event_name }}" -eq "release") {
+          if ($shouldUploadRelease -or $shouldSubmitWinget) {
             if (-not $canSign) {
               Write-Warning "Windows release assets and WinGet submission are skipped because Windows signing secrets are not configured."
               @"
@@ -71,7 +118,7 @@ jobs:
           - ``WINDOWS_CODESIGN_PFX_PASSWORD``
           - ``WINGET_CREATE_GITHUB_TOKEN`` for WinGet submission
           "@ >> $env:GITHUB_STEP_SUMMARY
-            } elseif (-not $canSubmitWinget) {
+            } elseif ($shouldSubmitWinget -and -not $canSubmitWinget) {
               Write-Warning "Signed Windows release assets can be uploaded, but WinGet submission is skipped because WINGET_CREATE_GITHUB_TOKEN is not configured."
               @"
           ### Windows release packaging
@@ -122,6 +169,30 @@ jobs:
           }
           ./scripts/dist-windows-x64.ps1 -Version $env:ABG_VERSION @signArgs
 
+      - name: Resolve Microsoft Store MSIX version
+        id: msix_version
+        shell: pwsh
+        run: |
+          $parts = $env:ABG_VERSION.Split(".")
+          if ($parts.Count -lt 3) {
+            throw "ABG_VERSION must have at least major.minor.patch parts to derive a Store version."
+          }
+          $major = [int]$parts[0] + 1
+          $minor = [int]$parts[1]
+          $build = [int]$parts[2]
+          $storeVersion = "$major.$minor.$build.0"
+          "store_version=$storeVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Build Microsoft Store MSIX
+        shell: pwsh
+        run: |
+          ./packaging/msix/build-msix.ps1 `
+            -IdentityName "ArcManagementInc.AgentBrowserGateway" `
+            -Publisher "CN=ACF7FCEE-0034-48CB-9C9C-D4EBFBE473EB" `
+            -PublisherDisplayName "ArcManagement, Inc." `
+            -Version "${{ steps.msix_version.outputs.store_version }}" `
+            -SignForStore
+
       - name: Remove decoded signing certificate
         if: ${{ always() && steps.windows_release.outputs.can_sign == 'true' }}
         shell: pwsh
@@ -140,33 +211,44 @@ jobs:
             dist/agent-browser-gateway-${{ steps.version.outputs.version }}-windows-x64.zip.sha256.txt
             dist/agent-browser-gateway-${{ steps.version.outputs.version }}-windows-x64-setup.zip
             dist/agent-browser-gateway-${{ steps.version.outputs.version }}-windows-x64-setup.zip.sha256.txt
+            artifacts/msix/AgentBrowserGateway_${{ steps.msix_version.outputs.store_version }}_win-x64.msix
+
+      - name: Upload Microsoft Store MSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-browser-gateway-${{ steps.version.outputs.version }}-msix-store
+          if-no-files-found: error
+          path: artifacts/msix/AgentBrowserGateway_${{ steps.msix_version.outputs.store_version }}_win-x64.msix
 
       - name: Upload Windows assets to GitHub Release
-        if: ${{ github.event_name == 'release' && steps.windows_release.outputs.can_sign == 'true' }}
+        if: ${{ steps.windows_release.outputs.should_upload_release == 'true' && steps.windows_release.outputs.can_sign == 'true' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" `
+          gh release upload "${{ steps.version.outputs.release_tag }}" `
             "dist/agent-browser-gateway-$env:ABG_VERSION-windows-x64.zip" `
             "dist/agent-browser-gateway-$env:ABG_VERSION-windows-x64.zip.sha256.txt" `
             "dist/agent-browser-gateway-$env:ABG_VERSION-windows-x64-setup.zip" `
             "dist/agent-browser-gateway-$env:ABG_VERSION-windows-x64-setup.zip.sha256.txt" `
+            "artifacts/msix/AgentBrowserGateway_${{ steps.msix_version.outputs.store_version }}_win-x64.msix" `
             --clobber
 
       - name: Generate WinGet manifests
-        if: ${{ github.event_name == 'release' && steps.windows_release.outputs.can_submit_winget == 'true' }}
+        if: ${{ steps.windows_release.outputs.should_submit_winget == 'true' && steps.windows_release.outputs.can_submit_winget == 'true' }}
         shell: pwsh
-        run: ./scripts/update-winget-manifest.ps1 -Version $env:ABG_VERSION
+        run: |
+          $setupUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.release_tag }}/agent-browser-gateway-$env:ABG_VERSION-windows-x64-setup.zip"
+          ./scripts/update-winget-manifest.ps1 -Version $env:ABG_VERSION -InstallerUrl $setupUrl
 
       - uses: actions/upload-artifact@v7
-        if: ${{ github.event_name == 'release' && steps.windows_release.outputs.can_submit_winget == 'true' }}
+        if: ${{ steps.windows_release.outputs.should_submit_winget == 'true' && steps.windows_release.outputs.can_submit_winget == 'true' }}
         with:
           name: agent-browser-gateway-winget-${{ steps.version.outputs.version }}
           path: dist/winget/manifests/a/ArcManagement/AgentBrowserGateway/${{ steps.version.outputs.version }}
 
       - name: Submit WinGet PR
-        if: ${{ github.event_name == 'release' && steps.windows_release.outputs.can_submit_winget == 'true' }}
+        if: ${{ steps.windows_release.outputs.should_submit_winget == 'true' && steps.windows_release.outputs.can_submit_winget == 'true' }}
         shell: pwsh
         env:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
