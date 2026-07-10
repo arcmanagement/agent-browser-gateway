@@ -74,3 +74,10 @@ shasum -a 256 \
 
 CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
 maintainer Mac and published to the public download site afterward.
+
+## Mac App Store
+
+The Mac App Store path is separate from the Developer ID and Homebrew release path. Store builds
+must use App Sandbox and App Store distribution signing, then be uploaded to App Store Connect.
+
+The working checklist lives in `docs/app-store-submission.md`.

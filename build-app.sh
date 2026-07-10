@@ -5,6 +5,7 @@ set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
 VERSION="${VERSION:-0.4.2}"
+BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 APP_VARIANT="${APP_VARIANT:-prod}"
 case "$APP_VARIANT" in
     prod|production)
@@ -121,7 +122,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleIdentifier</key><string>$APP_BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>Gateway</string>
     <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
-    <key>CFBundleVersion</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>LSUIElement</key><true/>
