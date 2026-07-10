@@ -20,6 +20,7 @@ node_modules/
 extension/dist/
 extension/coverage/
 dist/
+.cws/
 .astro/
 
 # macOS

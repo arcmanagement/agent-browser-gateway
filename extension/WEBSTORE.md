@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.2.zip
+dist/agent-browser-gateway-extension-0.4.3.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,16 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.3 review notes
+
+This Chrome Web Store package bumps the extension version for review after the
+multi-file upload hardening change. The user-visible changes are:
+
+- `abg upload` now accepts repeated `--file` arguments for multi-file inputs.
+- File input attachment uses a more stable DevTools node reference.
+- File attachment errors now explain unsupported inputs and rejected paths more
+  clearly.
 
 ## Store listing fields
 
@@ -140,15 +150,39 @@ If the item ever needs to be recreated from scratch, repeat this process:
 Do not commit a private `.pem` or other signing key. The manifest `"key"` value
 is a public key string used for deterministic extension ID generation.
 
-## CI and manual submission boundary
+## GitHub Actions review submission boundary
 
-The package workflow produces the submission ZIP only. It does not upload to the
-Chrome Web Store and does not store Chrome Web Store API credentials.
+The package workflow produces the submission ZIP for pull requests. The
+`Chrome Web Store Submit` workflow is a separate manual GitHub Actions workflow
+that uploads the ZIP through the Chrome Web Store API and submits it for review.
 
 - `extension/public/manifest.json` contains the public manifest `"key"` value so
   CI, local builds, and unpacked builds keep the stable extension ID.
 - `extension/store-assets/` contains listing screenshots and promotional images.
   These assets are not included in the extension ZIP; update them manually in the
   Developer Dashboard when the listing changes.
-- A maintainer downloads the CI artifact, verifies the ZIP contents, and uploads
-  it manually to the Chrome Web Store Developer Dashboard.
+- The submit workflow always uses `STAGED_PUBLISH`, so final publishing remains
+  a manual owner action after Chrome Web Store review approval.
+
+Required GitHub Actions variables:
+
+```text
+CHROME_EXTENSION_ID
+CHROME_PUBLISHER_ID
+CHROME_CLIENT_ID
+```
+
+Required GitHub Actions secrets:
+
+```text
+CHROME_CLIENT_SECRET
+CHROME_REFRESH_TOKEN
+```
+
+The Google Cloud project is used only to enable the Chrome Web Store API and to
+create the OAuth client and refresh token. Build, verification, ZIP upload, and
+review submission run in GitHub Actions.
+
+To submit a merged extension version for review, open GitHub Actions, run
+`Chrome Web Store Submit`, and optionally provide the expected extension version.
+Leaving the input empty uses `extension/package.json`.
