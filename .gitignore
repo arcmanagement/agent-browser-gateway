@@ -66,10 +66,13 @@ docs/*
 !docs/RECORDING.md
 !docs/REPRODUCIBLE_DOCKER_BUILD.md
 !docs/REQUIRED_CHECKS_AND_BYPASS.md
+!docs/store-submission.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 !docs/TESTING_INVENTORY.md
 
 # Brand experiments — final design TBD, not committed yet
 assets/
+!packaging/msix/Assets/
+!packaging/msix/Assets/**
 !site/assets/
 !site/assets/**
