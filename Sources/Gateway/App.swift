@@ -123,7 +123,7 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItemAutosaveName: NSStatusItem.AutosaveName {
         let profile = ABGConstants.runtimeProfile ?? "prod"
-        return "co.arcm.AgentBrowserGateway.\(profile).statusItem.v2"
+        return "jp.co.arcm.AgentBrowserGateway.\(profile).statusItem.v2"
     }
 
     private var windowTitle: String {

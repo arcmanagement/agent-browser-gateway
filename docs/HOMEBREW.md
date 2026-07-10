@@ -138,6 +138,10 @@ for a manually supplied version, audits the Cask, and uploads the updated Cask a
 an artifact. It does not push commits automatically.
 
 WinGet release flow is covered separately in [WINGET.md](WINGET.md).
+Mac App Store submission is covered separately in
+[app-store-submission.md](app-store-submission.md). Keep that path distinct from
+the Developer ID signed Homebrew/DMG release flow because the Store build must be
+sandboxed and uploaded through App Store Connect.
 
 ## Install Test
 

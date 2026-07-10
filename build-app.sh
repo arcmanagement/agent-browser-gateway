@@ -5,19 +5,20 @@ set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
 VERSION="${VERSION:-0.4.2}"
+BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 APP_VARIANT="${APP_VARIANT:-prod}"
 case "$APP_VARIANT" in
     prod|production)
         APP_VARIANT="prod"
         DEFAULT_APP_NAME="Agent Browser Gateway"
-        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway"
+        DEFAULT_BUNDLE_ID="jp.co.arcm.AgentBrowserGateway"
         DEFAULT_ABG_PORT=""
         DEFAULT_ABG_PROFILE=""
         ;;
     dev|development)
         APP_VARIANT="dev"
         DEFAULT_APP_NAME="Agent Browser Gateway Dev"
-        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway.dev"
+        DEFAULT_BUNDLE_ID="jp.co.arcm.AgentBrowserGateway.dev"
         DEFAULT_ABG_PORT="8766"
         DEFAULT_ABG_PROFILE="dev"
         ;;
@@ -121,13 +122,15 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleIdentifier</key><string>$APP_BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>Gateway</string>
     <key>CFBundleIconFile</key><string>$APP_ICON_NAME</string>
-    <key>CFBundleVersion</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>LSUIElement</key><true/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict>
 </plist>
 EOF

@@ -82,7 +82,7 @@ cat > "$INSTALLER_RESOURCES/install-agent-browser-gateway.sh" <<'INSTALL_COMMAND
 set -euo pipefail
 
 APP_NAME="Agent Browser Gateway.app"
-APP_ID="co.arcm.AgentBrowserGateway"
+APP_ID="jp.co.arcm.AgentBrowserGateway"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PAYLOAD_DIR="$SCRIPT_DIR/payload"
 TOOLS_DIR="$PAYLOAD_DIR/Command Line Tools"

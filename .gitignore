@@ -60,6 +60,7 @@ credentials/
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
 !docs/CLI_JSON_CONTRACT.md
+!docs/app-store-submission.md
 !docs/HOMEBREW.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
