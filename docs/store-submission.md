@@ -150,11 +150,12 @@ Required before final submission:
 
 Use screenshot size `1366 x 768` PNG for consistency with the previous Store submission workflow.
 
-## Prepared Submission
+## Submitted Submission
 
-Partner Center draft submission `1152921505701396217` was prepared on July 10, 2026.
+Partner Center submission `1152921505701396217` was prepared and submitted for certification on
+July 10, 2026.
 
-- Product status: `In draft`
+- Product status: `In certification`
 - MSIX uploaded: `AgentBrowserGateway_1.0.0.0_win-x64.msix`
 - MSIX SHA-256:
   `2238b71e0bd3889c5cfcf79ecbc6aa7ded1ac7e10e39efbe0afb21b89b7b20b1`
@@ -162,10 +163,11 @@ Partner Center draft submission `1152921505701396217` was prepared on July 10, 2
 - Desktop screenshots: `1`
 - Age rating result: IARC `3+`, ESRB `Everyone`, PEGI `3+`
 - Submission options: publishing is held until the owner selects `Publish now`
-- Partner Center overview shows all submission sections as `Complete` and `Submit for certification`
-  enabled.
+- Partner Center overview shows the submission in certification, with pre-processing,
+  certification, and publishing steps.
 
-The owner must review the Partner Center draft before clicking `Submit for certification`.
+After certification passes, the owner must review the result and select `Publish now` before the
+app is published to the Store.
 
 ## Final Submission Checklist
 
@@ -177,8 +179,10 @@ The owner must review the Partner Center draft before clicking `Submit for certi
 - [x] The package is uploaded to Partner Center.
 - [x] Listing copy, privacy policy URL, license terms, and certification notes are saved.
 - [x] Screenshots and Store logo are uploaded.
-- [ ] Owner reviews the final submission page.
-- [ ] Owner clicks `Submit for certification`.
+- [x] Owner reviews the final submission page.
+- [x] Owner clicks `Submit for certification`.
+- [ ] Certification result is recorded after Microsoft review.
+- [ ] Store URL and deep link are recorded after the app is publishable.
 
 ## References
 
