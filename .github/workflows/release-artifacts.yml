@@ -1,4 +1,4 @@
-name: Release Artifacts
+name: Release
 
 on:
   push:
@@ -9,13 +9,27 @@ on:
       version:
         description: "Release version without the leading v, for example 0.4.1"
         required: true
+      submit_chrome_web_store:
+        description: "Submit the Chrome extension for Chrome Web Store review"
+        required: false
+        type: boolean
+        default: true
+      build_windows:
+        description: "Build Windows release artifacts"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   macos-artifacts:
+    name: macOS, extension, and GitHub Release
     runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -109,7 +123,24 @@ jobs:
             echo "- agent-browser-gateway-${{ steps.version.outputs.version }}.spdx.json"
             echo "- agent-browser-gateway-${{ steps.version.outputs.version }}.cyclonedx.json"
             echo "- SHA256SUMS.txt"
+            echo
+            echo "Release boundary:"
+            echo
+            echo "- This GitHub Release is created as a draft from CI."
+            echo "- Chrome Web Store submission uses STAGED_PUBLISH, so final publishing stays manual."
+            echo "- Microsoft Store submission remains a Partner Center action."
+            echo "- Mac App Store upload remains a trusted maintainer Mac action."
+            echo "- WinGet submission runs after this draft release is published and its setup ZIP URL is public."
           } > "$notes_path"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NOTES_PATH: dist/RELEASE_NOTES.md
+          GITHUB_RELEASE_DRAFT: "true"
+        run: scripts/release/upload-github-release-assets.sh
 
       - uses: actions/upload-artifact@v7
         with:
@@ -122,3 +153,59 @@ jobs:
             dist/agent-browser-gateway-${{ steps.version.outputs.version }}.cyclonedx.json
             dist/SHA256SUMS.txt
             dist/RELEASE_NOTES.md
+
+  chrome-web-store:
+    name: Chrome Web Store review submission
+    needs: macos-artifacts
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.submit_chrome_web_store) }}
+    uses: ./.github/workflows/chrome-web-store-submit.yml
+    with:
+      extension_version: ${{ needs.macos-artifacts.outputs.version }}
+    secrets: inherit
+
+  windows:
+    name: Windows release artifacts and WinGet
+    needs: macos-artifacts
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.build_windows) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows-ci.yml
+    with:
+      version: ${{ needs.macos-artifacts.outputs.version }}
+      release_tag: ${{ needs.macos-artifacts.outputs.tag }}
+      upload_release: true
+      submit_winget: false
+      require_code_sign: false
+    secrets: inherit
+
+  mac-app-store:
+    name: Mac App Store upload boundary
+    needs: macos-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write App Store upload instructions
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Mac App Store
+
+          This tag resolved to version `${{ needs.macos-artifacts.outputs.version }}`.
+
+          The Mac App Store upload remains a trusted maintainer Mac step because this repository
+          does not put Apple private keys, provisioning profiles, App Store Connect API keys, or
+          app-specific passwords in GitHub Actions.
+
+          Use the same tag version locally:
+
+          ```bash
+          VERSION=${{ needs.macos-artifacts.outputs.version }} \
+          BUILD_NUMBER=<next App Store build number> \
+          APPSTORE_PROVISIONING_PROFILE="$HOME/Library/MobileDevice/Provisioning Profiles/<profile>.provisionprofile" \
+          APPSTORE_APP_SIGN_IDENTITY="<Mac App Store application signing identity>" \
+          APPSTORE_INSTALLER_SIGN_IDENTITY="<Mac App Store installer signing identity>" \
+          make appstore-pkg
+
+          xcrun altool --upload-package dist/agent-browser-gateway-${{ needs.macos-artifacts.outputs.version }}-mac-app-store.pkg \
+            -u "akihiro.masuda@ringomax.jp" \
+            -p "@keychain:ABG_APP_STORE_CONNECT"
+          ```
+          EOF

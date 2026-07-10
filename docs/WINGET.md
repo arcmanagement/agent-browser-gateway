@@ -26,23 +26,33 @@ The setup ZIP contains `AgentBrowserGatewaySetup.exe` at the archive root and th
 
 ## Release Workflow
 
-The `Windows CI` workflow runs on GitHub Release publication and:
+The unified `Release` workflow runs on `v*.*.*` tag pushes, creates a draft
+GitHub Release, and calls `Windows CI` with the same tag version. The Windows job:
 
 1. Builds and tests the Windows app, gateway, CLI, and setup launcher.
-2. Requires Windows code signing for release-triggered runs.
-3. Publishes the Windows release ZIPs and SHA-256 files to the public download site.
-4. Generates WinGet manifests with `scripts/update-winget-manifest.ps1`.
-5. Submits the manifests to `microsoft/winget-pkgs` with `wingetcreate`.
+2. Publishes signed Windows release ZIPs and SHA-256 files to the GitHub Release
+   when Windows signing secrets are configured.
+3. Generates WinGet manifests with `scripts/update-winget-manifest.ps1`.
+4. Submits the manifests to `microsoft/winget-pkgs` with `wingetcreate` after
+   the draft GitHub Release is published and the setup ZIP URL is public.
 
-Set this repository secret before publishing a release:
+Set these repository secrets before expecting signed Windows release assets or
+WinGet submission:
 
 ```text
+WINDOWS_CODESIGN_PFX_BASE64
+WINDOWS_CODESIGN_PFX_PASSWORD
 WINGET_CREATE_GITHUB_TOKEN
 ```
 
 Use a GitHub personal access token that can create a fork and PR against the public
 `microsoft/winget-pkgs` repository. The default `GITHUB_TOKEN` cannot do that because it is scoped to
 this repository.
+
+If Windows signing secrets are not configured, the workflow still builds and
+uploads CI artifacts, but it skips GitHub Release upload and WinGet submission.
+If the GitHub Release is still a draft, WinGet submission is deferred until the
+release is published.
 
 ## Manual Dry Run
 
@@ -65,7 +75,8 @@ winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.2
 ```
 
 Submit or resubmit manually from GitHub Actions with the `WinGet Submission` workflow. Set
-`submit=true` only after the public setup ZIP exists under `https://agent-browser-gateway.com/downloads/`.
+`submit=true` only after the public setup ZIP exists in the GitHub Release or under the configured
+public download URL.
 
 ## Installer Requirements
 

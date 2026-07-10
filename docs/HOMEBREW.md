@@ -56,16 +56,20 @@ dist/agent-browser-gateway.rb
 
 `dist/agent-browser-gateway.rb` contains the calculated `sha256` for the Homebrew cask.
 
-## Tag-triggered CI artifact build
+## Tag-triggered release workflow
 
-The `Release Artifacts` workflow runs on tags matching `v*.*.*` and can also be
-started manually with a version input. It builds the unsigned macOS ZIP, Chrome
-extension ZIP, generated Cask, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`, then
-uploads them as a GitHub Actions artifact.
+The unified `Release` workflow runs on tags matching `v*.*.*` and can also be
+started manually with a version input. It builds the macOS ZIP, Chrome extension
+ZIP, generated Cask, SBOMs, `SHA256SUMS.txt`, and `RELEASE_NOTES.md`, then
+creates or updates the GitHub Release and uploads those assets.
 
-This workflow is for reproducible archive generation and release review. It does
-not publish a GitHub Release and does not handle Developer ID signing,
-notarization, stapling, or Chrome Web Store submission.
+The same workflow also calls the Chrome Web Store review-submission workflow and
+the Windows release workflow. The GitHub Release is created as a draft so the
+owner can review release assets before publication. Final store publishing also
+remains owner-controlled: Chrome Web Store uses `STAGED_PUBLISH`, Microsoft
+Store submission remains a Partner Center action, and Mac App Store upload stays
+on the trusted maintainer Mac. WinGet submission is deferred until the draft
+GitHub Release is published and the setup ZIP URL is public.
 
 ## Publish
 
