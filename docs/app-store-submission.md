@@ -83,9 +83,15 @@ com.apple.security.network.client = true
 com.apple.security.network.server = true
 ```
 
-The app Info.plist declares that the app does not use non-exempt encryption:
+For signed App Store upload builds, `scripts/dist-mac-app-store.sh` copies the App Store
+provisioning profile's team identifier, application identifier, and keychain access groups into the
+codesign entitlements so the app signature matches the embedded profile.
+
+The app Info.plist declares the App Store category and that the app does not use non-exempt
+encryption:
 
 ```text
+LSApplicationCategoryType = public.app-category.developer-tools
 ITSAppUsesNonExemptEncryption = false
 ```
 
@@ -98,16 +104,28 @@ VERSION=0.4.2 make appstore-pkg
 Current local verification:
 
 ```text
-VERSION=0.4.2 make appstore-pkg
+VERSION=0.4.2 BUILD_NUMBER=42 ... make appstore-pkg
 codesign --verify --strict --verbose=2 dist/app-store/agent-browser-gateway-0.4.2/Agent Browser Gateway.app
+pkgutil --check-signature dist/agent-browser-gateway-0.4.2-mac-app-store.pkg
+PlistBuddy :LSApplicationCategoryType = public.app-category.developer-tools
 PlistBuddy :ITSAppUsesNonExemptEncryption = false
 PlistBuddy :CFBundleIdentifier = jp.co.arcm.AgentBrowserGateway
 PlistBuddy :CFBundleShortVersionString = 0.4.2
-codesign entitlements include app-sandbox, network.client, and network.server
+PlistBuddy :CFBundleVersion = 42
+codesign entitlements include app-sandbox, network.client, network.server,
+com.apple.application-identifier, com.apple.developer.team-identifier, and keychain-access-groups
+xattr scan found no com.apple.quarantine attributes in the staged app bundle
 ```
 
-The local build is ad-hoc signed until the Mac App Store certificate and provisioning profile are
-available. Runtime smoke under the sandboxed Store build is still required before upload.
+Apple validation/upload status:
+
+```text
+xcrun altool --validate-app dist/agent-browser-gateway-0.4.2-mac-app-store.pkg ... = VERIFY SUCCEEDED
+xcrun altool --upload-package dist/agent-browser-gateway-0.4.2-mac-app-store.pkg ... = UPLOAD SUCCEEDED
+xcrun altool --build-status ... = VALID_BINARY, IMPORT-STATUS: VALID, APP_STORE_ELIGIBLE
+```
+
+Runtime smoke under the sandboxed Store build is still required before final App Review submission.
 
 Upload package build on a trusted maintainer Mac:
 
@@ -225,7 +243,7 @@ Use this draft in App Store Connect:
 - [x] App Sandbox entitlements are defined.
 - [x] Local Store build/package script exists.
 - [ ] Sandboxed Store build is smoke-tested locally.
-- [ ] App Store signed package is uploaded.
+- [x] App Store signed package is uploaded.
 - [x] Listing metadata, screenshots, privacy information, and review notes are saved.
 - [ ] Owner reviews the final submission page and submits for App Review.
 - [ ] Review result, Store URL, and release state are recorded.

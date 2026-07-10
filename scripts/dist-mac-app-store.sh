@@ -23,6 +23,7 @@ DIST_DIR="$ROOT/dist"
 STAGING_DIR="$DIST_DIR/app-store/agent-browser-gateway-$VERSION"
 APP_STAGE="$STAGING_DIR/$APP_BUNDLE"
 PKG_PATH="$DIST_DIR/agent-browser-gateway-$VERSION-mac-app-store.pkg"
+SIGN_ENTITLEMENTS="$ENTITLEMENTS"
 
 if [ ! -f "$ENTITLEMENTS" ]; then
     echo "Missing entitlements file: $ENTITLEMENTS" >&2
@@ -49,9 +50,42 @@ if [ -n "$PROVISIONING_PROFILE" ]; then
     fi
     echo "==> embed provisioning profile"
     /usr/bin/install -m 644 "$PROVISIONING_PROFILE" "$APP_STAGE/Contents/embedded.provisionprofile"
+
+    if [ -n "$APP_SIGN_IDENTITY" ]; then
+        echo "==> prepare App Store signing entitlements"
+        PROFILE_PLIST="$STAGING_DIR/provisioning-profile.plist"
+        SIGN_ENTITLEMENTS="$STAGING_DIR/appstore-signing.entitlements"
+        /usr/bin/security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST"
+        /bin/cp "$ENTITLEMENTS" "$SIGN_ENTITLEMENTS"
+
+        app_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$PROFILE_PLIST" 2>/dev/null || true)"
+        team_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.team-identifier" "$PROFILE_PLIST" 2>/dev/null || true)"
+
+        if [ -n "$app_identifier" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :com.apple.application-identifier" "$SIGN_ENTITLEMENTS" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $app_identifier" "$SIGN_ENTITLEMENTS"
+        fi
+        if [ -n "$team_identifier" ]; then
+            /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.team-identifier" "$SIGN_ENTITLEMENTS" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string $team_identifier" "$SIGN_ENTITLEMENTS"
+        fi
+
+        if /usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$PROFILE_PLIST" >/dev/null 2>&1; then
+            /usr/libexec/PlistBuddy -c "Delete :keychain-access-groups" "$SIGN_ENTITLEMENTS" >/dev/null 2>&1 || true
+            /usr/libexec/PlistBuddy -c "Add :keychain-access-groups array" "$SIGN_ENTITLEMENTS"
+            keychain_group_index=0
+            while keychain_group="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups:$keychain_group_index" "$PROFILE_PLIST" 2>/dev/null)"; do
+                /usr/libexec/PlistBuddy -c "Add :keychain-access-groups:$keychain_group_index string $keychain_group" "$SIGN_ENTITLEMENTS"
+                keychain_group_index=$((keychain_group_index + 1))
+            done
+        fi
+    fi
 else
     echo "==> skip provisioning profile embed (set APPSTORE_PROVISIONING_PROFILE for upload builds)"
 fi
+
+echo "==> clear App Store package extended attributes"
+/usr/bin/xattr -cr "$APP_STAGE"
 
 echo "==> strip app executable"
 /usr/bin/strip -S "$APP_STAGE/Contents/MacOS/Gateway"
@@ -59,11 +93,11 @@ echo "==> strip app executable"
 if [ -n "$APP_SIGN_IDENTITY" ]; then
     echo "==> sign app for App Store"
     /usr/bin/codesign --force --options runtime --timestamp \
-        --entitlements "$ENTITLEMENTS" \
+        --entitlements "$SIGN_ENTITLEMENTS" \
         --sign "$APP_SIGN_IDENTITY" \
         "$APP_STAGE/Contents/MacOS/Gateway"
     /usr/bin/codesign --force --options runtime --timestamp \
-        --entitlements "$ENTITLEMENTS" \
+        --entitlements "$SIGN_ENTITLEMENTS" \
         --sign "$APP_SIGN_IDENTITY" \
         "$APP_STAGE"
 else

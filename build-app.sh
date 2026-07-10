@@ -125,6 +125,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>LSUIElement</key><true/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
