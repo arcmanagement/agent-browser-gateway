@@ -1612,25 +1612,36 @@ struct Upload: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "input[type=file] にローカルファイルを添付")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の input[type=file] CSS selector") var selector: String
-    @Option(name: .long, help: "添付するローカルファイル") var file: String
+    @Option(name: .long, help: "添付するローカルファイル。複数添付するには --file を繰り返す（input に multiple 属性が必要）") var file: [String]
     @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        let expanded = (file as NSString).expandingTildeInPath
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), !isDir.boolValue else {
+        guard !file.isEmpty else {
             try failWithJSON([
-                "error": "file_not_found",
-                "message": "File does not exist: \(expanded)",
-                "userMessage": "指定されたファイルが見つかりません。パスを確認してから再実行してください。",
+                "error": "file_required",
+                "message": "No --file provided",
+                "userMessage": "添付するファイルを --file で1つ以上指定してください。",
             ])
+        }
+        var expandedFiles: [String] = []
+        for path in file {
+            let expanded = (path as NSString).expandingTildeInPath
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), !isDir.boolValue else {
+                try failWithJSON([
+                    "error": "file_not_found",
+                    "message": "File does not exist: \(expanded)",
+                    "userMessage": "指定されたファイルが見つかりません。パスを確認してから再実行してください。",
+                ])
+            }
+            expandedFiles.append(expanded)
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        var params: [String: Any] = ["tabId": tabId, "selector": selector, "file": expanded]
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "files": expandedFiles]
         if let frame { params["frame"] = frame }
         let result = try client.call(method: "upload_tab", params: params)
-        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "file": expanded]
+        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "files": expandedFiles]
         if let frame { step["frame"] = frame }
         appendRecordedStep(step)
         printJSON(result)
@@ -2146,7 +2157,14 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         return try client.call(method: "drag_tab", params: params)
     case "upload":
         params["selector"] = try requiredString(step, "selector", op: op)
-        params["file"] = try requiredString(step, "file", op: op)
+        if let files = step["files"] as? [String], !files.isEmpty {
+            params["files"] = files
+        } else if let file = step["file"] as? String, !file.isEmpty {
+            // Legacy single-file recorded step.
+            params["files"] = [file]
+        } else {
+            params["files"] = [try requiredString(step, "files", op: op)]
+        }
         return try client.call(method: "upload_tab", params: params)
     case "wait":
         params["timeoutMs"] = intValue(step, "timeout") ?? 10_000

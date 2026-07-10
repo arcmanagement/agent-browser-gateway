@@ -101,6 +101,9 @@ export type GatewayCommand = {
     toX?: number;
     toY?: number;
     steps?: number;
+    // upload_file: canonical `files` (array of absolute paths); `file` accepted
+    // as a legacy single-path alias.
+    files?: string[];
     file?: string;
     // scroll (mouseWheel)
     deltaX?: number;

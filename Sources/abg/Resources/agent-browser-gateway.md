@@ -108,6 +108,7 @@ abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapp
 abg clear <tab|ref> --selector "<css>"           # Clear an editable target before paste
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # 現在のタブ上で一時的に DOM 差し替え
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
+abg upload <tab|ref> --selector "input[type=file]" --file a.png --file b.png  # 複数ファイル (input に multiple 属性が必要)
 abg type <tab|ref> "<text>"              # 現在フォーカスにテキスト送信 (Sheets セル等)
 abg key <tab|ref> <key> [--modifiers ctrl,shift] # キー入力 (Enter/Space/ArrowDown/a 等)
 abg keydown <tab|ref> Shift              # keyDown のみ。hold-key 操作用
@@ -486,6 +487,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
   - 例: Sheets の D1 チェックボックス ON → describe/screenshot で D1 の座標確認 → `abg click <tab> --x N --y M`
   - もしくは Sheets のキーボードナビ: `abg key <tab> Space` で選択中セルのチェック切替 (要事前にセル選択)
 - 操作系 (`click` / `fill` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag`) を呼ぶ前に、必ず screenshot/read/describe で**現状を確認**する。盲目的に操作しない
+- **ファイル添付は `abg upload` を使う**。`eval` で `DataTransfer` / `DragEvent` を合成してドロップする hack は避ける（巨大な `--script-file` は重い環境で command timeout になりやすい）。複数画像は `--file` を繰り返して 1 回の `upload` で渡す（input に `multiple` 属性が必要）。selector は top-document の `input[type=file]` を指すこと。cross-origin iframe 内や custom upload widget の場合は `file_attach_failed` で明示的に失敗する
 - `replace` は外部ページを永続変更しない。一時的な DOM 差し替えで、承認付き write operation として扱う。注釈コメントが「このロゴを変えて」のような DOM 見た目変更なら、注釈の `selector` / `element.selector` を使って `abg replace <ref> --selector ... --html ...` を使える
 - ページ遷移後など要素出現を待つときは `abg wait <tabId> --selector "..."` を使う。`sleep` を bash で書かない
 - read は出力が大きいので、可能なら `--selector` で絞るか `--format markdown` / `--format text` で圧縮する。token 効率に直結

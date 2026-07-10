@@ -253,6 +253,7 @@ abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapp
 abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
+abg upload <tab|ref> --selector "input[type=file]" --file a.png --file b.png  # multiple files (input needs `multiple`)
 abg type <tab|ref> "<text>"                       # Send text to current focus
 abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
 abg keydown <tab|ref> Shift
