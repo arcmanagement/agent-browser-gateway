@@ -169,6 +169,24 @@ July 10, 2026.
 After certification passes, the owner must review the result and select `Publish now` before the
 app is published to the Store.
 
+## Store Launch Fix Update
+
+Partner Center submission `1152921505701397503` was submitted for certification on July 10, 2026 to
+fix the Microsoft Store app launch failure observed in the initial Store package.
+
+- Product status: `Update in certification`
+- MSIX uploaded: `AgentBrowserGateway_1.0.1.0_win-x64.msix`
+- MSIX SHA-256:
+  `ab5cf5e86cc704332e100bb56681f3a01aa8932a8e7f120eb9100212169abff1`
+- Package status before submission: `Validated`
+- Changed package behavior: the Store app launches the tray Gateway executable instead of the WinUI
+  status executable.
+- Publishing remains manual: Partner Center says the product will start publishing when the owner
+  selects `Publish now`.
+
+After certification passes, the owner must review the result and select `Publish now` before the
+updated package is published to the Store.
+
 ## Final Submission Checklist
 
 - [x] Product name is reserved in Partner Center.

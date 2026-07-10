@@ -91,11 +91,36 @@ function Copy-PublishedFiles {
         }
 }
 
+function Copy-WinUiGeneratedResources {
+    param(
+        [string]$BuildOutputDir,
+        [string]$DestinationDir
+    )
+
+    $requiredFiles = @(
+        "AgentBrowserGateway.Windows.pri",
+        "App.xbf",
+        "MainWindow.xbf",
+        "SetupWindow.xbf",
+        "StatusWindow.xbf"
+    )
+
+    foreach ($file in $requiredFiles) {
+        $source = Join-Path $BuildOutputDir $file
+        if (-not (Test-Path $source)) {
+            throw "WinUI generated resource was not found: $source"
+        }
+        Copy-Item $source (Join-Path $DestinationDir $file) -Force
+    }
+}
+
 Assert-StoreVersion $Version
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $template = Join-Path $PSScriptRoot "AppxManifest.xml.template"
 $assetSource = Join-Path $PSScriptRoot "Assets"
+$winUiTargetFramework = "net8.0-windows10.0.19041.0"
+$winUiBuildOutput = Join-Path $repoRoot "windows\AgentBrowserGateway.Windows\bin\x64\$Configuration\$winUiTargetFramework\$RuntimeIdentifier"
 
 if (-not $OutputRoot) {
     $OutputRoot = Join-Path $repoRoot "artifacts\msix"
@@ -145,6 +170,7 @@ Assert-LastExitCode "dotnet publish tray Gateway"
 
 Write-Host "==> stage package root"
 Copy-PublishedFiles -SourceDir (Join-Path $publishRoot "app") -DestinationDir $appDir
+Copy-WinUiGeneratedResources -BuildOutputDir $winUiBuildOutput -DestinationDir $appDir
 Copy-PublishedFiles -SourceDir (Join-Path $publishRoot "cli") -DestinationDir $cliDir
 Copy-PublishedFiles -SourceDir (Join-Path $publishRoot "gateway") -DestinationDir $gatewayDir
 

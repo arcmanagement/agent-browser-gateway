@@ -30,7 +30,7 @@
   <Applications>
     <Application
       Id="App"
-      Executable="AgentBrowserGateway.Windows\AgentBrowserGateway.Windows.exe"
+      Executable="AgentBrowserGateway.Gateway\agent-browser-gateway.exe"
       EntryPoint="Windows.FullTrustApplication"
       uap10:RuntimeBehavior="packagedClassicApp"
       uap10:TrustLevel="mediumIL">

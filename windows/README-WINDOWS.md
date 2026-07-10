@@ -48,6 +48,22 @@ WinUI 3 publish must run on Windows or GitHub Actions `windows-latest`. macOS ca
 changes and non-WinUI artifacts, but it cannot publish the WinUI app because `XamlCompiler.exe` is
 provided by the Windows toolchain.
 
+## Microsoft Store MSIX
+
+Microsoft Store packages are built on Windows from the repository root:
+
+```powershell
+.\packaging\msix\build-msix.ps1 `
+  -IdentityName "ArcManagementInc.AgentBrowserGateway" `
+  -Publisher "CN=ACF7FCEE-0034-48CB-9C9C-D4EBFBE473EB" `
+  -Version "1.0.1.0" `
+  -SignForStore
+```
+
+The Store package launches the tray Gateway process. The MSIX builder also copies the WinUI 3
+generated `.pri` and `.xbf` files into the packaged WinUI app directory so the bundled status/setup
+surfaces have their generated resources available.
+
 To skip tests during an emergency handoff:
 
 ```powershell
