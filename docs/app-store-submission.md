@@ -16,6 +16,10 @@ website, and Mac App Store builds use the same production Bundle ID. Do not uplo
 Store Connect build until this decision is intentionally changed or confirmed, because App Store
 Connect does not allow changing the Bundle ID after the first build upload.
 
+Use the platform-neutral SKU `agent-browser-gateway`, without a `-macos` suffix. The product may add
+an iOS platform later, so the Store record should not make the initial macOS platform part of the
+durable product identifier.
+
 ## External Setup
 
 1. In Apple Developer Certificates, Identifiers & Profiles, register an explicit macOS App ID:
@@ -33,7 +37,8 @@ Connect does not allow changing the Bundle ID after the first build upload.
    Name: Agent Browser Gateway
    Primary language: English (U.S.)
    Bundle ID: jp.co.arcm.AgentBrowserGateway
-   SKU: agent-browser-gateway-macos
+   SKU: agent-browser-gateway
+   Apple ID: 6789562058
    User Access: No access restriction
    ```
 
@@ -44,6 +49,23 @@ Connect does not allow changing the Bundle ID after the first build upload.
 
 Do not store Apple private keys, certificates, App Store Connect API keys, or passwords in GitHub
 Actions secrets.
+
+## App Store Connect Record
+
+The macOS app record is created in App Store Connect:
+
+```text
+Apple ID: 6789562058
+Version: 0.4.2
+SKU: agent-browser-gateway
+Price: Free
+Availability: 175 countries or regions
+Release: Manual release after App Review approval
+Privacy: Data Not Collected
+```
+
+Saved listing details include one macOS screenshot, the listing copy below, support and marketing
+URLs, privacy policy URL, Developer Tools category, 4+ age rating, and App Review notes.
 
 ## Store Build
 
@@ -61,11 +83,31 @@ com.apple.security.network.client = true
 com.apple.security.network.server = true
 ```
 
+The app Info.plist declares that the app does not use non-exempt encryption:
+
+```text
+ITSAppUsesNonExemptEncryption = false
+```
+
 Local sandbox smoke build:
 
 ```bash
 VERSION=0.4.2 make appstore-pkg
 ```
+
+Current local verification:
+
+```text
+VERSION=0.4.2 make appstore-pkg
+codesign --verify --strict --verbose=2 dist/app-store/agent-browser-gateway-0.4.2/Agent Browser Gateway.app
+PlistBuddy :ITSAppUsesNonExemptEncryption = false
+PlistBuddy :CFBundleIdentifier = jp.co.arcm.AgentBrowserGateway
+PlistBuddy :CFBundleShortVersionString = 0.4.2
+codesign entitlements include app-sandbox, network.client, and network.server
+```
+
+The local build is ad-hoc signed until the Mac App Store certificate and provisioning profile are
+available. Runtime smoke under the sandboxed Store build is still required before upload.
 
 Upload package build on a trusted maintainer Mac:
 
@@ -179,12 +221,12 @@ Use this draft in App Store Connect:
 
 - [x] App Store bundle ID decision is recorded.
 - [x] Bundle ID is registered in Apple Developer.
-- [ ] App Store Connect app record is created.
+- [x] App Store Connect app record is created.
 - [x] App Sandbox entitlements are defined.
 - [x] Local Store build/package script exists.
 - [ ] Sandboxed Store build is smoke-tested locally.
 - [ ] App Store signed package is uploaded.
-- [ ] Listing metadata, screenshots, privacy information, and review notes are saved.
+- [x] Listing metadata, screenshots, privacy information, and review notes are saved.
 - [ ] Owner reviews the final submission page and submits for App Review.
 - [ ] Review result, Store URL, and release state are recorded.
 
@@ -192,4 +234,5 @@ Use this draft in App Store Connect:
 
 - https://developer.apple.com/macos/distribution/
 - https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/
+- https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption
 - https://help.apple.com/xcode/mac/current/en.lproj/dev91fe7130a.html
