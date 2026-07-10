@@ -28,11 +28,11 @@ Partner Center `Apps and games` MSIX app name reservation or MSIX package upload
 
 After the product is reserved, record the values from Partner Center product identity:
 
-- Store ID: `TODO`
-- Package/Identity/Name: `TODO`
-- Package/Identity/Publisher: `TODO`
+- Store ID: `9PNWPL4VZB0S`
+- Package/Identity/Name: `ArcManagementInc.AgentBrowserGateway`
+- Package/Identity/Publisher: `CN=ACF7FCEE-0034-48CB-9C9C-D4EBFBE473EB`
 - Package/Properties/PublisherDisplayName: `ArcManagement, Inc.`
-- Package Family Name: `TODO`
+- Package Family Name: `ArcManagementInc.AgentBrowserGateway_gzna8nh1ncvga`
 
 Use those identity values when building the Store package. The values are case-sensitive.
 
@@ -150,16 +150,33 @@ Required before final submission:
 
 Use screenshot size `1366 x 768` PNG for consistency with the previous Store submission workflow.
 
+## Prepared Submission
+
+Partner Center draft submission `1152921505701396217` was prepared on July 10, 2026.
+
+- Product status: `In draft`
+- MSIX uploaded: `AgentBrowserGateway_1.0.0.0_win-x64.msix`
+- MSIX SHA-256:
+  `2238b71e0bd3889c5cfcf79ecbc6aa7ded1ac7e10e39efbe0afb21b89b7b20b1`
+- Store listing language: `English (United States)`
+- Desktop screenshots: `1`
+- Age rating result: IARC `3+`, ESRB `Everyone`, PEGI `3+`
+- Submission options: publishing is held until the owner selects `Publish now`
+- Partner Center overview shows all submission sections as `Complete` and `Submit for certification`
+  enabled.
+
+The owner must review the Partner Center draft before clicking `Submit for certification`.
+
 ## Final Submission Checklist
 
-- [ ] Product name is reserved in Partner Center.
-- [ ] Partner Center identity values are recorded in this file.
-- [ ] The MSIX is built from the current release source on Windows.
-- [ ] The generated `AppxManifest.xml` has the Partner Center identity values.
-- [ ] The package version uses four numeric parts and revision `0`.
-- [ ] The package is uploaded to Partner Center.
-- [ ] Listing copy, privacy policy URL, license terms, and certification notes are saved.
-- [ ] Screenshots and Store logo are uploaded.
+- [x] Product name is reserved in Partner Center.
+- [x] Partner Center identity values are recorded in this file.
+- [x] The MSIX is built from the current release source on Windows.
+- [x] The generated `AppxManifest.xml` has the Partner Center identity values.
+- [x] The package version uses four numeric parts and revision `0`.
+- [x] The package is uploaded to Partner Center.
+- [x] Listing copy, privacy policy URL, license terms, and certification notes are saved.
+- [x] Screenshots and Store logo are uploaded.
 - [ ] Owner reviews the final submission page.
 - [ ] Owner clicks `Submit for certification`.
 
