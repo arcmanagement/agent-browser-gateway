@@ -34,7 +34,7 @@ first build upload.
    Primary language: English (U.S.)
    Bundle ID: co.arcm.AgentBrowserGateway
    SKU: agent-browser-gateway-macos
-   User Access: Full Access
+   User Access: No access restriction
    ```
 
 4. Create or refresh Mac App Store distribution credentials on a trusted maintainer Mac:
@@ -69,12 +69,15 @@ VERSION=0.4.2 make appstore-pkg
 
 Upload package build on a trusted maintainer Mac:
 
+Use `security find-identity -v -p codesigning` to confirm the exact local signing identity names
+before running the upload build.
+
 ```bash
 VERSION=0.4.2 \
 BUILD_NUMBER=42 \
 APPSTORE_PROVISIONING_PROFILE="$HOME/Library/MobileDevice/Provisioning Profiles/<profile>.provisionprofile" \
-APPSTORE_APP_SIGN_IDENTITY="3rd Party Mac Developer Application: ArcManagement Inc (M46W5MVAQP)" \
-APPSTORE_INSTALLER_SIGN_IDENTITY="3rd Party Mac Developer Installer: ArcManagement Inc (M46W5MVAQP)" \
+APPSTORE_APP_SIGN_IDENTITY="<Mac App Store application signing identity>" \
+APPSTORE_INSTALLER_SIGN_IDENTITY="<Mac App Store installer signing identity>" \
 make appstore-pkg
 ```
 
