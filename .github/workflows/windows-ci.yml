@@ -22,9 +22,9 @@ jobs:
   verify:
     runs-on: windows-latest
     env:
-      WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-      WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
-      WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+      HAS_WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 != '' }}
+      HAS_WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD != '' }}
+      HAS_WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,10 +49,10 @@ jobs:
         id: windows_release
         shell: pwsh
         run: |
-          $canSign = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_BASE64) -and
-            -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_PASSWORD)
+          $canSign = $env:HAS_WINDOWS_CODESIGN_PFX_BASE64 -eq "true" -and
+            $env:HAS_WINDOWS_CODESIGN_PFX_PASSWORD -eq "true"
           $canSubmitWinget = $canSign -and
-            -not [string]::IsNullOrWhiteSpace($env:WINGET_CREATE_GITHUB_TOKEN)
+            $env:HAS_WINGET_CREATE_GITHUB_TOKEN -eq "true"
 
           "can_sign=$($canSign.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "can_submit_winget=$($canSubmitWinget.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
@@ -100,6 +100,8 @@ jobs:
       - name: Decode Windows signing certificate
         if: ${{ steps.windows_release.outputs.can_sign == 'true' }}
         shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
         run: |
           $pfxPath = Join-Path $env:RUNNER_TEMP "abg-windows-codesign.pfx"
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
@@ -107,6 +109,8 @@ jobs:
 
       - name: Package Windows zip
         shell: pwsh
+        env:
+          WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
         run: |
           $signArgs = @{}
           if ($env:WINDOWS_CODESIGN_PFX) {
@@ -117,6 +121,14 @@ jobs:
             $signArgs["RequireCodeSign"] = $true
           }
           ./scripts/dist-windows-x64.ps1 -Version $env:ABG_VERSION @signArgs
+
+      - name: Remove decoded signing certificate
+        if: ${{ always() && steps.windows_release.outputs.can_sign == 'true' }}
+        shell: pwsh
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX) -and (Test-Path $env:WINDOWS_CODESIGN_PFX)) {
+            Remove-Item $env:WINDOWS_CODESIGN_PFX -Force
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v6
@@ -156,6 +168,8 @@ jobs:
       - name: Submit WinGet PR
         if: ${{ github.event_name == 'release' && steps.windows_release.outputs.can_submit_winget == 'true' }}
         shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
         run: |
           Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
           $manifestPath = "dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\$env:ABG_VERSION"
