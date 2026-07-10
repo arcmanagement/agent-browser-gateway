@@ -2,7 +2,7 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
-Current `v0.4.1` release status: WinGet install and Windows release ZIPs are pending while the
+Current `v0.4.2` release status: WinGet install and Windows release ZIPs are pending while the
 signed Windows release workflow and WinGet submission setup are completed.
 
 ## Normal GUI install
@@ -123,20 +123,24 @@ workflow. The workflow uploads both:
 
 Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing artifact.
 
-For signed releases, configure these repository secrets before dispatching the workflow:
+For signed release publication and WinGet submission, configure these repository secrets before
+dispatching the workflow:
 
 - `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded Authenticode signing certificate in PFX format
 - `WINDOWS_CODESIGN_PFX_PASSWORD`: PFX password
 - `WINGET_CREATE_GITHUB_TOKEN`: GitHub token that can submit PRs to `microsoft/winget-pkgs`
 
-Then run `Windows CI` with `require_code_sign=true`. The packaging script signs the staged `.exe`
-and `.dll` files before zipping, including `AgentBrowserGatewaySetup.exe`, `abg.exe`, and
-`agent-browser-gateway.exe`. If signing is required but the certificate or `signtool.exe` is
-unavailable, the workflow fails instead of publishing an unsigned final artifact.
+Then run `Windows CI` with `require_code_sign=true` when the goal is to prove signing is configured.
+The packaging script signs the staged `.exe` and `.dll` files before zipping, including
+`AgentBrowserGatewaySetup.exe`, `abg.exe`, and `agent-browser-gateway.exe`. If signing is explicitly
+required but the certificate or `signtool.exe` is unavailable, the workflow fails instead of
+publishing an unsigned final artifact.
 
-When a release is published, `Windows CI` requires code signing, uploads both Windows ZIPs and their
-SHA-256 files as workflow artifacts, generates WinGet manifests, and submits the package to
-`microsoft/winget-pkgs` when `WINGET_CREATE_GITHUB_TOKEN` is configured.
+When a release is published, `Windows CI` always runs build/test/package and uploads both Windows
+ZIPs and their SHA-256 files as workflow artifacts. GitHub Release asset upload is gated on the
+Windows signing secrets being configured, so an unsigned package is not published as an official
+release asset. WinGet manifest generation and submission run only when both signing secrets and
+`WINGET_CREATE_GITHUB_TOKEN` are configured.
 
 SmartScreen reputation is attached to the signing certificate and observed download history, not to
 this repository alone. Early signed releases can still show SmartScreen warnings until reputation is
