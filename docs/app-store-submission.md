@@ -125,7 +125,16 @@ xcrun altool --upload-package dist/agent-browser-gateway-0.4.2-mac-app-store.pkg
 xcrun altool --build-status ... = VALID_BINARY, IMPORT-STATUS: VALID, APP_STORE_ELIGIBLE
 ```
 
-Runtime smoke under the sandboxed Store build is still required before final App Review submission.
+App Review submission status:
+
+```text
+App Store Connect macOS 0.4.2 = Waiting for Review
+Submitted items draft count = 0
+Submitted item = macOS app 0.4.2 with build 0.4.2 (42)
+```
+
+Runtime smoke under the sandboxed Store build remains useful for review follow-up and release
+readiness.
 
 Upload package build on a trusted maintainer Mac:
 
@@ -152,8 +161,8 @@ Upload the `.pkg` with Transporter or App Store Connect's supported command-line
 
 ## Store-Specific Constraints
 
-The Mac App Store app is sandboxed. Before submitting for review, validate these surfaces under the
-Store build, not only under the Developer ID build:
+The Mac App Store app is sandboxed. Validate these surfaces under the Store build, not only under
+the Developer ID build, before follow-up review responses or final release:
 
 - The Gateway launches and shows local status.
 - The local WebSocket server can listen on `127.0.0.1`.
@@ -245,7 +254,7 @@ Use this draft in App Store Connect:
 - [ ] Sandboxed Store build is smoke-tested locally.
 - [x] App Store signed package is uploaded.
 - [x] Listing metadata, screenshots, privacy information, and review notes are saved.
-- [ ] Owner reviews the final submission page and submits for App Review.
+- [x] Owner reviews the final submission page and submits for App Review.
 - [ ] Review result, Store URL, and release state are recorded.
 
 ## References
