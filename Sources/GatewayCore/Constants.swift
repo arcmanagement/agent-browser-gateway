@@ -6,7 +6,7 @@ import Glibc
 #endif
 
 public enum ABGConstants {
-    public static let bundleId = "co.arcm.AgentBrowserGateway"
+    public static let bundleId = "jp.co.arcm.AgentBrowserGateway"
     public static let defaultWsPort: Int = 8765
     public static let wsHost = "127.0.0.1"
     public static var wsPort: Int {

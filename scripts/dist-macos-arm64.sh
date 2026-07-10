@@ -151,7 +151,7 @@ cask "agent-browser-gateway" do
   binary "abg"
   artifact "AgentBrowserGateway_abg.bundle", target: "#{HOMEBREW_PREFIX}/bin/AgentBrowserGateway_abg.bundle"
 
-  uninstall quit: "co.arcm.AgentBrowserGateway"
+  uninstall quit: "jp.co.arcm.AgentBrowserGateway"
 
   zap trash: [
     "~/Library/Application Support/AgentBrowserGateway",

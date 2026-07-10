@@ -11,14 +11,14 @@ case "$APP_VARIANT" in
     prod|production)
         APP_VARIANT="prod"
         DEFAULT_APP_NAME="Agent Browser Gateway"
-        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway"
+        DEFAULT_BUNDLE_ID="jp.co.arcm.AgentBrowserGateway"
         DEFAULT_ABG_PORT=""
         DEFAULT_ABG_PROFILE=""
         ;;
     dev|development)
         APP_VARIANT="dev"
         DEFAULT_APP_NAME="Agent Browser Gateway Dev"
-        DEFAULT_BUNDLE_ID="co.arcm.AgentBrowserGateway.dev"
+        DEFAULT_BUNDLE_ID="jp.co.arcm.AgentBrowserGateway.dev"
         DEFAULT_ABG_PORT="8766"
         DEFAULT_ABG_PROFILE="dev"
         ;;

@@ -5,16 +5,16 @@ The Store build must be sandboxed and uploaded to App Store Connect as a signed 
 
 ## Current Decision
 
-Use a Store-specific bundle identifier for the initial App Store record:
+Use the ArcManagement production Bundle ID for the initial App Store record:
 
 ```text
 jp.co.arcm.AgentBrowserGateway
 ```
 
-This matches the identifier style used by other ArcManagement App Store apps. The existing
-Developer ID, Homebrew, and website builds keep using `co.arcm.AgentBrowserGateway`. Do not upload
-the first App Store Connect build until this decision is intentionally changed or confirmed, because
-App Store Connect does not allow changing the Bundle ID after the first build upload.
+This matches the identifier style used by other ArcManagement apps. Developer ID, Homebrew,
+website, and Mac App Store builds use the same production Bundle ID. Do not upload the first App
+Store Connect build until this decision is intentionally changed or confirmed, because App Store
+Connect does not allow changing the Bundle ID after the first build upload.
 
 ## External Setup
 
