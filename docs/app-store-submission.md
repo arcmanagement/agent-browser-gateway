@@ -150,13 +150,17 @@ xcrun altool --build-status ... = VALID_BINARY, IMPORT-STATUS: VALID, APP_STORE_
 App Review submission status:
 
 ```text
-App Store Connect macOS 0.4.2 = Rejected (2026-07-15)
+App Store Connect macOS 0.4.2 = Approved, Pending Developer Release (2026-07-16)
 Submission ID = 14025e93-6eb6-40c2-89dc-d7b8f320b4e5
 Submitted item = macOS app 0.4.2 with build 0.4.2 (42)
-Rejection reasons:
-  - Guideline 2.1.0 Performance: App Completeness (Information Needed, new app)
-  - Guideline 2.4.5 Performance: Hardware Compatibility (automated flag on
-    com.apple.security.network.server "no matching functionality")
+History:
+  - 2026-07-10 submitted for review
+  - 2026-07-15 rejected:
+    - Guideline 2.1.0 Performance: App Completeness (Information Needed, new app)
+    - Guideline 2.4.5 Performance: Hardware Compatibility (automated flag on
+      com.apple.security.network.server "no matching functionality")
+  - 2026-07-16 12:49 JST replied with requested information and screen recording
+  - 2026-07-16 approved same day; release is manual per the App Store Connect record
 ```
 
 Rejection response (sent 2026-07-16): replied in the App Store Connect message thread with
@@ -349,7 +353,9 @@ has no supported `abg` CLI path (see Store-Specific Constraints).
 - [x] Rejection reply is sent (2026-07-16 12:49 JST, with a 35-second physical-device screen
       recording attached; the disabled "Resubmit to App Review" button is expected because the
       reply, not a resubmission, is the requested action for an information request).
-- [ ] Store URL and release state are recorded.
+- [x] Release state is recorded (0.4.2 approved 2026-07-16, Pending Developer Release; the
+      reply alone resolved both rejection reasons the same day).
+- [ ] Store URL is recorded after the owner releases the version.
 
 ## References
 
