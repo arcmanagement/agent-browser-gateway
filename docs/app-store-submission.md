@@ -150,10 +150,30 @@ xcrun altool --build-status ... = VALID_BINARY, IMPORT-STATUS: VALID, APP_STORE_
 App Review submission status:
 
 ```text
-App Store Connect macOS 0.4.2 = Waiting for Review
-Submitted items draft count = 0
+App Store Connect macOS 0.4.2 = Rejected (2026-07-15)
+Submission ID = 14025e93-6eb6-40c2-89dc-d7b8f320b4e5
 Submitted item = macOS app 0.4.2 with build 0.4.2 (42)
+Rejection reasons:
+  - Guideline 2.1.0 Performance: App Completeness (Information Needed, new app)
+  - Guideline 2.4.5 Performance: Hardware Compatibility (automated flag on
+    com.apple.security.network.server "no matching functionality")
 ```
+
+Rejection response (sent 2026-07-16): replied in the App Store Connect message thread with
+the requested information (physical-device screen recording, tested devices, purpose/audience,
+setup steps, external services, regional consistency, regulated-content N/A) and the
+justification for `com.apple.security.network.server` (the app is a local gateway server; the
+listener binds exclusively to loopback 127.0.0.1:8765 for the browser extension). The same
+content was saved to the App Review Information notes field. No new binary was required.
+
+Review findings that shaped the response:
+
+- The Store app is `LSUIElement` (menu bar only): first launch shows no window and no Dock
+  icon, so review steps must direct the reviewer to the menu bar shield icon first.
+- The Mac App Store app bundle does not contain the `abg` CLI, and the CLI's Unix domain
+  socket path (`~/Library/Application Support/AgentBrowserGateway/gateway.sock`) is remapped
+  into the app sandbox container for the Store build, so CLI-based review steps are not
+  possible against the Store app. Review steps must be app + extension only.
 
 Runtime smoke under the sandboxed Store build remains useful for review follow-up and release
 readiness.
@@ -189,7 +209,13 @@ the Developer ID build, before follow-up review responses or final release:
 - The Gateway launches and shows local status.
 - The local WebSocket server can listen on `127.0.0.1`.
 - The Chrome extension can connect to the sandboxed Gateway.
-- `abg status` and `abg tabs --compact` have a supported user path.
+- `abg status` and `abg tabs --compact` have **no supported user path in the Store build**: the
+  CLI is not bundled in the app, and the sandboxed Gateway's Unix domain socket path
+  (`~/Library/Containers/jp.co.arcm.AgentBrowserGateway/Data/Library/Application Support/AgentBrowserGateway/gateway.sock`)
+  is 125 bytes, which exceeds the macOS `sun_path` limit (104 bytes), so the socket cannot be
+  bound at all under the sandbox container — the CLI reports `socket path too long` even with an
+  `ABG_STATE_DIR` override. CLI support for the Store build requires moving the socket to a
+  shorter path first. Review steps and Store listing copy must not depend on the CLI.
 - Features that write to arbitrary filesystem paths are either supported through allowed locations
   or documented as unavailable in the Store build.
 - User plugin installation and plugin storage work under the sandbox container model, or are
@@ -246,25 +272,64 @@ Developer Tools
 
 ## App Review Notes
 
-Use this draft in App Store Connect:
+The notes below are saved in the App Store Connect App Review Information notes field
+(updated 2026-07-16 after the 0.4.2 rejection). Do not reintroduce CLI steps: the Store build
+has no supported `abg` CLI path (see Store-Specific Constraints).
 
-> Agent Browser Gateway is a local-first developer utility. It does not create or manage an online
-> account, and there are no publisher-issued test credentials. The app can be launched and evaluated
-> without signing in.
+> LAUNCH NOTE: Agent Browser Gateway is a menu bar utility (LSUIElement). On first launch it
+> does not open a window or add a Dock icon. A shield icon labeled "ABG" appears at the right
+> side of the macOS menu bar. Click it to open the status popover. Launching the app again from
+> Applications (or clicking "Plugins" in the popover) opens the full dashboard window.
 >
-> Primary review steps:
-> 1. Install and launch Agent Browser Gateway.
-> 2. Confirm the app opens and shows the local gateway status.
-> 3. Install the Agent Browser Gateway browser extension from the Chrome Web Store:
+> PURPOSE AND AUDIENCE: A developer utility for software developers who use local AI coding
+> agents. It lets the user explicitly share individual browser tabs with their own local tools
+> through a gateway that runs entirely on the Mac. Nothing is shared by default; each tab
+> requires an explicit user grant that can be revoked at any time; operations are recorded in a
+> local audit log.
+>
+> NO ACCOUNT: The app has no account registration, login, or account deletion, no purchases or
+> subscriptions, no user-generated content, and no publisher-issued credentials. It can be fully
+> launched and evaluated without signing in. It does not request access to location, contacts,
+> camera, microphone, or tracking.
+>
+> REVIEW STEPS (app only):
+> 1. Launch Agent Browser Gateway from Applications.
+> 2. Click the shield "ABG" menu bar icon. The popover shows the local gateway status
+>    ("Local only - 127.0.0.1:8765"), shared tabs (initially none), and connected extensions
+>    ("No extension connected").
+> 3. Launch the app again from Applications (or click "Plugins" in the popover) to open the full
+>    dashboard window (Plugins, Audit, Settings, Shared Tabs).
+>
+> REVIEW STEPS (optional full tab-sharing flow):
+> 4. In Google Chrome, install the free companion extension "Agent Browser Gateway" from the
+>    Chrome Web Store:
 >    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
-> 4. Open a normal web page in Chrome, click the extension icon, and share the current tab.
-> 5. From Terminal, run `abg status` and `abg tabs --compact`.
-> 6. Confirm the shared tab appears in the CLI output.
+> 5. Open any normal web page, click the extension icon, and share the current tab.
+> 6. The shared tab appears in the app's popover and dashboard and can be revoked from either
+>    side. If the extension is not installed, the app still launches and reports that no
+>    extension is connected.
 >
-> The app listens only on loopback for the local browser extension and local CLI. It does not operate
-> a cloud relay, analytics endpoint, crash reporter, or hosted account service. If the reviewer does
-> not install the browser extension, the app should still launch and report that no extension is
-> connected.
+> NETWORK SERVER ENTITLEMENT: com.apple.security.network.server is required for core
+> functionality. The app is a local gateway server: it listens for incoming WebSocket
+> connections from the user's browser extension. The listener binds exclusively to loopback
+> (127.0.0.1:8765) and is never reachable from other devices. Without this entitlement the
+> extension cannot connect and the app's primary feature is impossible.
+> com.apple.security.network.client alone is not sufficient because the app is the listening
+> side.
+>
+> EXTERNAL SERVICES: None required for core functionality. No backend of ours, no data
+> providers, no authentication services, no payment processors, no analytics or crash
+> reporting, and the app does not call any AI services itself. The optional companion extension
+> is distributed through the Chrome Web Store. An optional developer command-line companion is
+> distributed separately and is not part of this app.
+>
+> REGIONS: The app functions identically in all regions.
+>
+> REGULATED CONTENT: Not applicable. No regulated industry, no protected third-party material;
+> original software.
+>
+> TESTED ON: MacBook Pro (MacBookPro18,2, Apple M1 Max), macOS 26.5.2, sandboxed Mac App Store
+> build.
 
 ## Final Checklist
 
@@ -273,11 +338,18 @@ Use this draft in App Store Connect:
 - [x] App Store Connect app record is created.
 - [x] App Sandbox entitlements are defined.
 - [x] Local Store build/package script exists.
-- [ ] Sandboxed Store build is smoke-tested locally.
+- [x] Sandboxed Store build is smoke-tested locally (2026-07-16: sandbox container created,
+      loopback WS server bound on 127.0.0.1:8765, Chrome extension reconnected and re-announced
+      a shared tab, audit log written in the container; CLI socket bind impossible — see
+      Store-Specific Constraints).
 - [x] App Store signed package is uploaded.
 - [x] Listing metadata, screenshots, privacy information, and review notes are saved.
 - [x] Owner reviews the final submission page and submits for App Review.
-- [ ] Review result, Store URL, and release state are recorded.
+- [x] Review result is recorded (0.4.2 rejected 2026-07-15: Guideline 2.1.0 + 2.4.5).
+- [x] Rejection reply is sent (2026-07-16 12:49 JST, with a 35-second physical-device screen
+      recording attached; the disabled "Resubmit to App Review" button is expected because the
+      reply, not a resubmission, is the requested action for an information request).
+- [ ] Store URL and release state are recorded.
 
 ## References
 
