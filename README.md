@@ -300,7 +300,6 @@ abg replay flow.json --match-url "*kintone*"
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg activity --period day|week          # Local daily/weekly activity digest
-abg install-skill                       # Install/update Claude Code + Codex Skills
 abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
 
@@ -450,7 +449,7 @@ it has unique advantages:
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
-- **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
+- **Skill ergonomics** — Claude Code and Codex skills installed by `npx skills add arcmanagement/agent-browser-gateway -g` teach the agent the CLI in context, including the `agent-browser-gateway` and `abg-plugin-creator` skills
 
 For MCP clients, ABG also ships `abg mcp-server`, a stdio MCP wrapper that exposes a single
 `abg_cli` tool. The tool accepts argv tokens after `abg` and launches the local CLI as a child
@@ -766,7 +765,7 @@ Chrome disables extension access to incognito windows by default; normal tabs do
 ### Hand it to Claude Code or Codex
 
 ```bash
-abg install-skill                       # places/updates ~/.claude/skills/ and ~/.codex/skills/
+npx skills add arcmanagement/agent-browser-gateway -g   # installs the ABG skills into ~/.claude/skills/ etc.
 ```
 
 Claude Code or Codex will now invoke `abg` automatically when the conversation references tabs you have shared.

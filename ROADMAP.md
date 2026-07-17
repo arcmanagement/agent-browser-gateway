@@ -94,7 +94,7 @@ Current repo version: **v0.4.2**.
 - `table`, `describe`, and `network` observation tools for compact page inspection
 - `upload` via Chrome DevTools Protocol `DOM.setFileInputFiles`
 - `record` / `replay` for repeatable CLI-originated agent flows
-- `install-skill` installs the bundled guidance into both Claude Code and Codex skill directories
+- `install-skill` installs the bundled guidance into both Claude Code and Codex skill directories (replaced by `npx skills add` in 0.4.4)
 - Homebrew-style release artifacts: macOS app/CLI zip, Chrome extension zip, and generated cask
 
 ### v0.3.0 — annotation mode (2026-05-03)

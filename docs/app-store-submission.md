@@ -216,21 +216,25 @@ the Developer ID build, before follow-up review responses or final release:
 - The Gateway launches and shows local status.
 - The local WebSocket server can listen on `127.0.0.1`.
 - The Chrome extension can connect to the sandboxed Gateway.
-- `abg status` and `abg tabs --compact` have **no supported user path in the Store build**: the
-  CLI is not bundled in the app, and the sandboxed Gateway's Unix domain socket path
-  (`~/Library/Containers/jp.co.arcm.AgentBrowserGateway/Data/Library/Application Support/AgentBrowserGateway/gateway.sock`)
-  is 125 bytes, which exceeds the macOS `sun_path` limit (104 bytes), so the socket cannot be
-  bound at all under the sandbox container — the CLI reports `socket path too long` even with an
-  `ABG_STATE_DIR` override. CLI support for the Store build requires moving the socket to a
-  shorter path first. Review steps and Store listing copy must not depend on the CLI.
+- `abg status` and `abg tabs --compact` work in the Store build since 0.4.4: the sandboxed CLI is
+  bundled at `Contents/MacOS/abg`, and the gateway and CLI rendezvous through the app-group
+  container `~/Library/Group Containers/M46W5MVAQP.jp.co.arcm.abg/` — a Unix socket when the path
+  fits the 104-byte `sun_path` limit, otherwise the token-authenticated loopback WebSocket `/cli`
+  route. (Until 0.4.2 the Store build had no CLI path at all: the CLI was not bundled, and the
+  container socket path was 125 bytes > 104, so the socket could not be bound — issue #361.)
+- The bundled CLI is itself sandboxed (`app-sandbox`, `network.client`, and the app group; signed
+  with identifier `jp.co.arcm.AgentBrowserGateway.abg` and an embedded Info.plist so the sandbox
+  can create its container). Host-file reads (`upload --file`, `--script-file`, `--text-file`)
+  report `sandbox_unsupported`; `--stdin` variants work.
 - Features that write to arbitrary filesystem paths are either supported through allowed locations
-  or documented as unavailable in the Store build.
+  or documented as unavailable in the Store build. Screenshots/recordings from sandboxed processes
+  land in the app-group container instead of `$TMPDIR`.
 - User plugin installation and plugin storage work under the sandbox container model, or are
   disabled/documented for the Store build.
 
-The existing DMG installer writes `/usr/local/bin/abg` and
-`/usr/local/bin/AgentBrowserGateway_abg.bundle`. That install flow is not used for the Mac App Store
-package.
+The existing DMG installer writes `/usr/local/bin/abg`. That install flow is not used for the Mac
+App Store package; Store users symlink the bundled CLI onto `PATH` instead (see
+`docs/MACOS_INSTALL_UPDATE_UNINSTALL.md`).
 
 ## Listing Copy
 
@@ -279,9 +283,10 @@ Developer Tools
 
 ## App Review Notes
 
-The notes below are saved in the App Store Connect App Review Information notes field
-(updated 2026-07-16 after the 0.4.2 rejection). Do not reintroduce CLI steps: the Store build
-has no supported `abg` CLI path (see Store-Specific Constraints).
+The notes below are the draft for the 0.4.4 submission (the notes saved in App Store Connect on
+2026-07-16 for 0.4.2 were the same minus the BUNDLED CLI paragraph and CLI review steps — 0.4.2
+shipped without a CLI path). 0.4.4 bundles a sandboxed CLI, so the notes explain it up front to
+preempt automated entitlement questions like the 2.4.5 flag we answered for 0.4.2.
 
 > LAUNCH NOTE: Agent Browser Gateway is a menu bar utility (LSUIElement). On first launch it
 > does not open a window or add a Dock icon. A shield icon labeled "ABG" appears at the right
@@ -316,6 +321,19 @@ has no supported `abg` CLI path (see Store-Specific Constraints).
 >    side. If the extension is not installed, the app still launches and reports that no
 >    extension is connected.
 >
+> REVIEW STEPS (optional developer CLI):
+> 7. In Terminal, run: "/Applications/Agent Browser Gateway.app/Contents/MacOS/abg" status
+> 8. The command prints local gateway status JSON. With a tab shared (steps 4-6), running
+>    ".../Contents/MacOS/abg" tabs --compact lists it.
+>
+> BUNDLED CLI: The app bundle includes a developer command-line helper at
+> Contents/MacOS/abg. It is sandboxed (App Sandbox plus network.client only), is never
+> installed or copied outside the app bundle (users may create a symlink themselves), and
+> communicates only with this app on the same Mac: via a Unix socket in the app-group
+> container, or the same loopback listener (127.0.0.1:8765) described below. Both the app and
+> the helper declare the app group M46W5MVAQP.jp.co.arcm.abg to share that rendezvous
+> directory. The helper makes no external network connections.
+>
 > NETWORK SERVER ENTITLEMENT: com.apple.security.network.server is required for core
 > functionality. The app is a local gateway server: it listens for incoming WebSocket
 > connections from the user's browser extension. The listener binds exclusively to loopback
@@ -327,8 +345,7 @@ has no supported `abg` CLI path (see Store-Specific Constraints).
 > EXTERNAL SERVICES: None required for core functionality. No backend of ours, no data
 > providers, no authentication services, no payment processors, no analytics or crash
 > reporting, and the app does not call any AI services itself. The optional companion extension
-> is distributed through the Chrome Web Store. An optional developer command-line companion is
-> distributed separately and is not part of this app.
+> is distributed through the Chrome Web Store.
 >
 > REGIONS: The app functions identically in all regions.
 >
