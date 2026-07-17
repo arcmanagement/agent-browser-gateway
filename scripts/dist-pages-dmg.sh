@@ -42,11 +42,6 @@ if [ ! -x "$STAGING_DIR/abg" ]; then
     exit 1
 fi
 
-if [ ! -d "$STAGING_DIR/AgentBrowserGateway_abg.bundle" ]; then
-    echo "Missing CLI resource bundle: $STAGING_DIR/AgentBrowserGateway_abg.bundle" >&2
-    exit 1
-fi
-
 echo "==> stage DMG root"
 rm -rf "$DMG_ROOT"
 mkdir -p "$DMG_ROOT"
@@ -69,8 +64,6 @@ APPLESCRIPT
 mkdir -p "$INSTALLER_RESOURCES/payload/Command Line Tools"
 /usr/bin/ditto "$STAGING_DIR/$APP_BUNDLE" "$INSTALLER_RESOURCES/payload/$APP_BUNDLE"
 /usr/bin/install -m 755 "$STAGING_DIR/abg" "$INSTALLER_RESOURCES/payload/Command Line Tools/abg"
-/usr/bin/ditto "$STAGING_DIR/AgentBrowserGateway_abg.bundle" \
-    "$INSTALLER_RESOURCES/payload/Command Line Tools/AgentBrowserGateway_abg.bundle"
 
 if [ -f "$STAGING_DIR/$APP_BUNDLE/Contents/Resources/AppIcon.icns" ]; then
     cp "$STAGING_DIR/$APP_BUNDLE/Contents/Resources/AppIcon.icns" \
@@ -88,10 +81,9 @@ PAYLOAD_DIR="$SCRIPT_DIR/payload"
 TOOLS_DIR="$PAYLOAD_DIR/Command Line Tools"
 APP_SRC="$PAYLOAD_DIR/$APP_NAME"
 CLI_SRC="$TOOLS_DIR/abg"
-BUNDLE_SRC="$TOOLS_DIR/AgentBrowserGateway_abg.bundle"
 APP_DST="/Applications/$APP_NAME"
 BIN_DIR="/usr/local/bin"
-BUNDLE_DST="$BIN_DIR/AgentBrowserGateway_abg.bundle"
+LEGACY_BUNDLE_DST="$BIN_DIR/AgentBrowserGateway_abg.bundle"
 
 if [ ! -d "$APP_SRC" ]; then
     echo "App bundle not found: $APP_SRC" >&2
@@ -100,11 +92,6 @@ fi
 
 if [ ! -x "$CLI_SRC" ]; then
     echo "CLI binary not found: $CLI_SRC" >&2
-    exit 1
-fi
-
-if [ ! -d "$BUNDLE_SRC" ]; then
-    echo "CLI resource bundle not found: $BUNDLE_SRC" >&2
     exit 1
 fi
 
@@ -117,27 +104,21 @@ echo "Installing Agent Browser Gateway..."
 /bin/mkdir -p "$BIN_DIR"
 /usr/bin/install -m 755 "$CLI_SRC" "$BIN_DIR/abg"
 
-/bin/rm -rf "$BUNDLE_DST"
-/usr/bin/ditto "$BUNDLE_SRC" "$BUNDLE_DST"
+# The CLI resource bundle shipped until 0.4.3; skills now install via npx skills add.
+/bin/rm -rf "$LEGACY_BUNDLE_DST"
 
 CONSOLE_USER="$(/usr/bin/stat -f %Su /dev/console || true)"
 if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ] && /usr/bin/id "$CONSOLE_USER" >/dev/null 2>&1; then
     CONSOLE_UID="$(/usr/bin/id -u "$CONSOLE_USER")"
-    CONSOLE_HOME="$(/usr/bin/dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | /usr/bin/awk '{print $2}')"
-    if [ -n "$CONSOLE_HOME" ]; then
-        /usr/bin/sudo -u "$CONSOLE_USER" /usr/bin/env HOME="$CONSOLE_HOME" "$BIN_DIR/abg" install-skill
-    else
-        "$BIN_DIR/abg" install-skill
-    fi
     /bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open "$APP_DST" >/dev/null 2>&1 || /usr/bin/open "$APP_DST"
 else
-    "$BIN_DIR/abg" install-skill
     /usr/bin/open "$APP_DST"
 fi
 
 echo "Installed successfully."
 echo "App: $APP_DST"
 echo "CLI: $BIN_DIR/abg"
+echo "Agent skills: npx skills add arcmanagement/agent-browser-gateway -g"
 INSTALL_COMMAND
 /bin/chmod 755 "$INSTALLER_RESOURCES/install-agent-browser-gateway.sh"
 
@@ -158,10 +139,11 @@ Double-click "Install Agent Browser Gateway.app" to install:
 
 - /Applications/Agent Browser Gateway.app
 - /usr/local/bin/abg
-- /usr/local/bin/AgentBrowserGateway_abg.bundle
-- Claude Code and Codex skills via "abg install-skill"
 
 The installer starts the menu bar app after installation.
+
+To install the Claude Code / Codex agent skills, run:
+  npx skills add arcmanagement/agent-browser-gateway -g
 EOF
 
 echo "==> create DMG"

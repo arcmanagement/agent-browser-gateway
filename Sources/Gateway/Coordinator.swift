@@ -22,7 +22,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.4.2") { [weak self] method, params in
+    /// Whether the Unix socket transport is serving the CLI (false = WS /cli only).
+    @Published private(set) var cliSocketActive = false
+    private(set) lazy var pluginHost = PluginHost(abgVersion: ABGConstants.version) { [weak self] method, params in
         guard let self else {
             throw PluginTabAPIError.dispatcherUnavailable
         }
@@ -56,7 +58,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
         refreshPluginSummaries()
 
-        let ws = WSServer(runtime: self)
+        // Rendezvous for the CLI's WS fallback: rotate the token on every launch and
+        // publish {token, port} where both unsandboxed and bundled sandboxed CLIs look.
+        let cliToken = CLIEndpoint.generateToken()
+        CLIEndpoint.write(token: cliToken, port: ABGConstants.wsPort)
+
+        let ws = WSServer(runtime: self, cliToken: cliToken)
         wsServer = ws
         Task.detached { [self] in
             do {
@@ -66,14 +73,25 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             }
         }
 
-        let uds = UDSServer()
-        udsServer = uds
-        Task.detached { [self] in
-            do {
-                try await uds.start(runtime: self)
-            } catch {
-                await self.setStatus("UDS error: \(error.localizedDescription)")
+        // The socket path can exceed the 104-byte sun_path limit (long usernames,
+        // relocated homes). That leaves the WS /cli fallback as the CLI transport —
+        // a degraded-but-working state, not a startup error.
+        let socketPath = ABGConstants.configuredCLISocketPath()
+        if ABGConstants.fitsUnixSocketPath(socketPath) {
+            cliSocketActive = true
+            let uds = UDSServer()
+            udsServer = uds
+            Task.detached { [self] in
+                do {
+                    try await uds.start(runtime: self)
+                } catch {
+                    await MainActor.run { self.cliSocketActive = false }
+                    await self.setStatus("UDS error: \(error.localizedDescription) — CLI stays available over loopback WS")
+                }
             }
+        } else {
+            cliSocketActive = false
+            print("[ABG] CLI socket path exceeds the sun_path limit (\(socketPath.utf8.count) bytes); CLI served over loopback WS only")
         }
 
         statusMessage = "Running on \(ABGConstants.wsHost):\(ABGConstants.wsPort) (\(ABGConstants.runtimeProfileLabel))"
@@ -197,12 +215,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             let extDetails = extensionDetails()
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "version": ABGConstants.version,
                 "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
                 "stateDir": ABGConstants.supportDir.path,
                 "userDir": ABGConstants.abgUserDir.path,
                 "auditLogPath": ABGConstants.auditLogPath,
+                "cliSocketPath": ABGConstants.configuredCLISocketPath(),
+                "cliTransports": cliSocketActive ? ["uds", "ws"] : ["ws"],
+                "sandboxed": ABGConstants.isSandboxed,
                 "extensions": extDetails,
                 "extensionCount": extDetails.count,
                 "permittedTabCount": permittedTabs.count,
@@ -212,12 +234,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         case "inspect":
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "version": ABGConstants.version,
                 "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
                 "stateDir": ABGConstants.supportDir.path,
                 "userDir": ABGConstants.abgUserDir.path,
                 "auditLogPath": ABGConstants.auditLogPath,
+                "cliSocketPath": ABGConstants.configuredCLISocketPath(),
+                "cliTransports": cliSocketActive ? ["uds", "ws"] : ["ws"],
+                "sandboxed": ABGConstants.isSandboxed,
                 "extensions": extensionDetails(),
                 "extensionCount": connectedExtensionIds.count,
                 "permittedTabCount": permittedTabs.count,

@@ -917,7 +917,7 @@ struct Eval: AsyncParsableCommand {
         }
         if let script { return script }
         if let scriptFile {
-            return try String(contentsOfFile: (scriptFile as NSString).expandingTildeInPath, encoding: .utf8)
+            return try readHostTextFile((scriptFile as NSString).expandingTildeInPath, option: "--script-file")
         }
         let data = FileHandle.standardInput.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
@@ -1179,7 +1179,7 @@ struct ReplaceEditable: AsyncParsableCommand {
         if let value {
             text = value
         } else if let textFile {
-            text = try String(contentsOfFile: (textFile as NSString).expandingTildeInPath, encoding: .utf8)
+            text = try readHostTextFile((textFile as NSString).expandingTildeInPath, option: "--text-file")
         } else {
             let data = FileHandle.standardInput.readDataToEndOfFile()
             text = String(data: data, encoding: .utf8) ?? ""
@@ -1628,6 +1628,9 @@ struct Upload: AsyncParsableCommand {
             let expanded = (path as NSString).expandingTildeInPath
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), !isDir.boolValue else {
+                if ABGConstants.isSandboxed {
+                    try failWithJSON(sandboxUnsupportedError(option: "--file", path: expanded))
+                }
                 try failWithJSON([
                     "error": "file_not_found",
                     "message": "File does not exist: \(expanded)",
@@ -2794,7 +2797,7 @@ struct ABGMCPStdioServer {
                 ],
                 "serverInfo": [
                     "name": "agent-browser-gateway",
-                    "version": SkillBundle.version,
+                    "version": ABGConstants.version,
                 ],
             ])
         case "ping":
@@ -2988,86 +2991,19 @@ struct ABGCLIExecutionResult {
 struct InstallSkill: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install-skill",
-        abstract: "Claude Code / Codex 用 Skill を ~/.claude/skills/ と ~/.codex/skills/ にインストール (デフォルトで両方、ABG バージョンに追従)"
+        abstract: "廃止されました。skills CLI (npx skills add) でインストールしてください",
+        shouldDisplay: false
     )
-    @Flag(name: .long, help: "古いバージョンでも上書きしない (通常は不要)") var noUpgrade: Bool = false
-    @Option(name: .long, help: "インストール先 (claude / codex / both, デフォルト both)") var target: String = "both"
+    @Flag(name: .long, help: .hidden) var noUpgrade: Bool = false
+    @Option(name: .long, help: .hidden) var target: String = "both"
 
     func run() async throws {
-        let dirs: [URL]
-        switch target {
-        case "claude": dirs = [ABGConstants.claudeSkillsDir]
-        case "codex":  dirs = [ABGConstants.codexSkillsDir]
-        case "both":   dirs = [ABGConstants.claudeSkillsDir, ABGConstants.codexSkillsDir]
-        default:
-            print("error: --target は claude / codex / both のいずれか")
-            throw ExitCode.failure
-        }
-
-        for base in dirs {
-            try installOne(
-                into: base,
-                skillName: "agent-browser-gateway",
-                markdown: SkillBundle.markdown,
-                version: SkillBundle.version
-            )
-            try installOne(
-                into: base,
-                skillName: "abg-plugin-creator",
-                markdown: SkillBundle.pluginCreatorMarkdown,
-                version: SkillBundle.pluginCreatorVersion
-            )
-        }
-
-        // Migrate away from the legacy single-file install path.
-        let legacy = ABGConstants.claudeSkillsDir.appendingPathComponent("agent-browser-gateway.md")
-        if FileManager.default.fileExists(atPath: legacy.path) {
-            try? FileManager.default.removeItem(at: legacy)
-            print("removed legacy: \(legacy.path)")
-        }
-    }
-
-    private func installOne(into base: URL, skillName: String, markdown: String, version: String) throws {
-        let skillDir = base.appendingPathComponent(skillName, isDirectory: true)
-        try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
-        let dest = skillDir.appendingPathComponent("SKILL.md")
-        let installedVersion = readInstalledVersion(at: dest)
-        let installedMarkdown = (try? String(contentsOf: dest, encoding: .utf8))
-
-        if let installed = installedVersion, installed == version, installedMarkdown == markdown {
-            print("up-to-date: \(dest.path) (v\(version))")
-            return
-        }
-
-        if let installed = installedVersion, installed != version, noUpgrade {
-            print("skipped: installed v\(installed), bundled v\(version) at \(dest.path). Re-run without --no-upgrade to overwrite.")
-            return
-        }
-
-        try markdown.write(to: dest, atomically: true, encoding: .utf8)
-        if let installed = installedVersion {
-            if installed == version {
-                print("updated: content changed at \(dest.path) (v\(version))")
-            } else {
-                print("upgraded: v\(installed) -> v\(version) at \(dest.path)")
-            }
-        } else {
-            print("installed: v\(version) at \(dest.path)")
-        }
-    }
-
-    /// Look at the YAML frontmatter for `version: <x>` so we can compare upgrades.
-    /// Returns nil if no installed file or no version found.
-    private func readInstalledVersion(at url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .utf8) else { return nil }
-        let lines = text.split(separator: "\n").prefix(20)
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let range = trimmed.range(of: "version:") {
-                return String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
+        printErrorJSON([
+            "error": "command_removed",
+            "message": "abg install-skill was removed in 0.4.4. Skills are now installed with the skills CLI.",
+            "userMessage": "install-skill は廃止されました。npx skills add で ABG スキルをインストールしてください。",
+            "nextCommand": "npx skills add arcmanagement/agent-browser-gateway -g",
+        ])
+        throw ExitCode.failure
     }
 }

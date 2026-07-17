@@ -69,13 +69,13 @@ incognito windowで使う場合は、拡張の詳細画面で **Allow in incogni
 
 ## エージェントスキル
 
-GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillをインストールまたは更新します。
+GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillを [skills CLI](https://github.com/vercel-labs/skills) でインストールまたは更新します。
 
 ```bash
-abg install-skill --target both
+npx skills add arcmanagement/agent-browser-gateway -g
 ```
 
-片方だけ入れる場合は `--target claude` または `--target codex` を使います。
+片方だけ入れる場合は `-a claude-code` または `-a codex` を使います。更新は `npx skills update -g` です。
 
 ## 開発版アプリ
 

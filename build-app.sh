@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.4.2}"
+VERSION="${VERSION:-0.4.4}"
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 APP_VARIANT="${APP_VARIANT:-prod}"
 case "$APP_VARIANT" in
@@ -34,8 +34,6 @@ APP_ABG_PROFILE="${APP_ABG_PROFILE:-$DEFAULT_ABG_PROFILE}"
 APP="$APP_NAME.app"
 LEGACY_APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
-CLI_RESOURCE_BUNDLE="$BIN_DIR/AgentBrowserGateway_abg.bundle"
-CLI_RESOURCE_SOURCE="Sources/abg/Resources"
 APP_ICON_NAME="AppIcon"
 APP_ICON_FILE="$APP_ICON_NAME.icns"
 ICON_SOURCE_SVG="extension/store-assets/icon-source.svg"
@@ -83,10 +81,10 @@ else
     cp "$BIN_DIR/Gateway" "$APP/Contents/MacOS/Gateway"
 fi
 
-echo "==> bundling CLI resources"
-rm -rf "$CLI_RESOURCE_BUNDLE"
-mkdir -p "$CLI_RESOURCE_BUNDLE"
-cp "$CLI_RESOURCE_SOURCE"/*.md "$CLI_RESOURCE_BUNDLE/"
+# Bundle the CLI so every channel (including the Mac App Store package, which cannot
+# install to /usr/local/bin) ships it at a stable path users can symlink onto PATH.
+echo "==> bundling abg CLI"
+cp "$BIN_DIR/abg" "$APP/Contents/MacOS/abg"
 
 echo "==> bundling app icon"
 if [ -f "$ICON_SOURCE_SVG" ] || [ -f "$ICON_SOURCE_PNG" ]; then

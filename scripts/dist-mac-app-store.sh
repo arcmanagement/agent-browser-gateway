@@ -16,6 +16,8 @@ APP_BUNDLE="$APP_NAME.app"
 APPSTORE_BUNDLE_ID="${APPSTORE_BUNDLE_ID:-jp.co.arcm.AgentBrowserGateway}"
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 ENTITLEMENTS="${APPSTORE_ENTITLEMENTS:-$ROOT/packaging/appstore/AgentBrowserGateway.appstore.entitlements}"
+CLI_ENTITLEMENTS="${APPSTORE_CLI_ENTITLEMENTS:-$ROOT/packaging/appstore/abg.appstore.entitlements}"
+CLI_IDENTIFIER="jp.co.arcm.AgentBrowserGateway.abg"
 APP_SIGN_IDENTITY="${APPSTORE_APP_SIGN_IDENTITY:-}"
 INSTALLER_SIGN_IDENTITY="${APPSTORE_INSTALLER_SIGN_IDENTITY:-}"
 PROVISIONING_PROFILE="${APPSTORE_PROVISIONING_PROFILE:-}"
@@ -27,6 +29,11 @@ SIGN_ENTITLEMENTS="$ENTITLEMENTS"
 
 if [ ! -f "$ENTITLEMENTS" ]; then
     echo "Missing entitlements file: $ENTITLEMENTS" >&2
+    exit 1
+fi
+
+if [ ! -f "$CLI_ENTITLEMENTS" ]; then
+    echo "Missing CLI entitlements file: $CLI_ENTITLEMENTS" >&2
     exit 1
 fi
 
@@ -87,11 +94,21 @@ fi
 echo "==> clear App Store package extended attributes"
 /usr/bin/xattr -cr "$APP_STAGE"
 
-echo "==> strip app executable"
+echo "==> strip app executables"
+/usr/bin/strip -S "$APP_STAGE/Contents/MacOS/abg"
 /usr/bin/strip -S "$APP_STAGE/Contents/MacOS/Gateway"
 
+# The bundled CLI is signed first (nested code before the enclosing bundle) with its
+# own entitlements — exactly app-sandbox, network.client, and the app group. It gets
+# no application-identifier/team-identifier injection and no provisioning profile:
+# TeamID-prefixed app groups are authorized by the signing team alone.
 if [ -n "$APP_SIGN_IDENTITY" ]; then
     echo "==> sign app for App Store"
+    /usr/bin/codesign --force --options runtime --timestamp \
+        --entitlements "$CLI_ENTITLEMENTS" \
+        --identifier "$CLI_IDENTIFIER" \
+        --sign "$APP_SIGN_IDENTITY" \
+        "$APP_STAGE/Contents/MacOS/abg"
     /usr/bin/codesign --force --options runtime --timestamp \
         --entitlements "$SIGN_ENTITLEMENTS" \
         --sign "$APP_SIGN_IDENTITY" \
@@ -102,7 +119,17 @@ if [ -n "$APP_SIGN_IDENTITY" ]; then
         "$APP_STAGE"
 else
     echo "==> ad-hoc sign app for local sandbox smoke validation"
-    /usr/bin/codesign --force --deep \
+    # --deep does not propagate per-binary entitlements: sign the CLI explicitly first.
+    /usr/bin/codesign --force \
+        --entitlements "$CLI_ENTITLEMENTS" \
+        --identifier "$CLI_IDENTIFIER" \
+        --sign - \
+        "$APP_STAGE/Contents/MacOS/abg"
+    /usr/bin/codesign --force \
+        --entitlements "$ENTITLEMENTS" \
+        --sign - \
+        "$APP_STAGE/Contents/MacOS/Gateway"
+    /usr/bin/codesign --force \
         --entitlements "$ENTITLEMENTS" \
         --sign - \
         "$APP_STAGE"
@@ -111,6 +138,8 @@ fi
 echo "==> verify app signature"
 /usr/bin/codesign --verify --strict --verbose=2 "$APP_STAGE"
 /usr/bin/codesign -d --entitlements :- "$APP_STAGE" >/dev/null
+/usr/bin/codesign --verify --strict --verbose=2 "$APP_STAGE/Contents/MacOS/abg"
+/usr/bin/codesign -d --entitlements :- "$APP_STAGE/Contents/MacOS/abg" >/dev/null
 
 if [ -n "$INSTALLER_SIGN_IDENTITY" ]; then
     echo "==> create signed App Store package"

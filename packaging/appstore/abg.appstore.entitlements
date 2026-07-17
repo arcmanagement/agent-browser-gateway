@@ -6,8 +6,6 @@
     <true/>
     <key>com.apple.security.network.client</key>
     <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
     <key>com.apple.security.application-groups</key>
     <array>
         <string>M46W5MVAQP.jp.co.arcm.abg</string>

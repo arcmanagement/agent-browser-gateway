@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.4.2
+version: 0.4.4
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -149,7 +149,6 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
 abg activity --period day|week          # ローカルの日次/週次 activity digest
-abg install-skill                       # Claude Code / Codex skills を更新
 abg mcp-server                          # 同じ abg CLI を包む stdio MCP server
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
@@ -272,8 +271,8 @@ abg plugin list
 abg plugin reload hello
 ```
 
-`abg install-skill` installs or updates both bundled skills: `agent-browser-gateway` for ABG usage and
-`abg-plugin-creator` for scaffolding ABG plugins.
+Both ABG skills (`agent-browser-gateway` for ABG usage and `abg-plugin-creator` for scaffolding ABG
+plugins) are installed and updated with the skills CLI: `npx skills add arcmanagement/agent-browser-gateway -g`.
 
 `abg mcp-server` starts a stdio MCP server for Codex, Claude Code, and other MCP clients. It exposes
 one `abg_cli` tool that accepts argv tokens after `abg`, for example `{"args":["tabs","--compact"]}`.
