@@ -41,7 +41,7 @@ After installation, the Gateway may create local runtime data:
 ~/Library/Logs/AgentBrowserGateway/
 ~/.abg/
 $TMPDIR/abg/screenshots/
-~/Library/Group Containers/M46W5MVAQP.jp.co.arcm.abg/
+~/Library/Group Containers/group.jp.co.arcm.abg/
 ```
 
 Development profiles use profile-specific variants such as
@@ -65,7 +65,7 @@ or call it by full path:
 ```
 
 The Store gateway and CLI rendezvous through the shared app-group container
-(`~/Library/Group Containers/M46W5MVAQP.jp.co.arcm.abg/`) — a Unix socket when the
+(`~/Library/Group Containers/group.jp.co.arcm.abg/`) — a Unix socket when the
 path fits the macOS socket-path limit, otherwise a token-authenticated loopback
 WebSocket. This is automatic; `abg status` reports the active transports.
 
@@ -112,7 +112,7 @@ rm -rf "$HOME/Library/Application Support/AgentBrowserGateway"
 rm -rf "$HOME/Library/Logs/AgentBrowserGateway"
 rm -rf "$HOME/.abg"
 rm -rf "${TMPDIR:-/tmp}/abg"
-rm -rf "$HOME/Library/Group Containers/M46W5MVAQP.jp.co.arcm.abg"
+rm -rf "$HOME/Library/Group Containers/group.jp.co.arcm.abg"
 ```
 
 Remove the installed agent skills only if you no longer want agents to discover ABG:
