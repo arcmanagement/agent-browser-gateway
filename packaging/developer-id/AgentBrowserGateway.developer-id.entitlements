@@ -4,7 +4,7 @@
 <dict>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>M46W5MVAQP.jp.co.arcm.abg</string>
+        <string>group.jp.co.arcm.abg</string>
     </array>
 </dict>
 </plist>

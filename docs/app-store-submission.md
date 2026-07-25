@@ -185,6 +185,11 @@ Review findings that shaped the response:
 Runtime smoke under the sandboxed Store build remains useful for review follow-up and release
 readiness.
 
+Upload-signed App Store packages are not a reliable local launch smoke target. A production
+provisioning profile can validate for App Store Connect upload while macOS rejects direct local
+execution with `No matching profile found`. Use App Store Connect validation/upload and
+processed-build or review surfaces for distribution-signed verification.
+
 Upload package build on a trusted maintainer Mac:
 
 Use `security find-identity -v -p codesigning` to confirm the exact local signing identity names
@@ -218,7 +223,7 @@ the Developer ID build, before follow-up review responses or final release:
 - The Chrome extension can connect to the sandboxed Gateway.
 - `abg status` and `abg tabs --compact` work in the Store build since 0.4.4: the sandboxed CLI is
   bundled at `Contents/MacOS/abg`, and the gateway and CLI rendezvous through the app-group
-  container `~/Library/Group Containers/M46W5MVAQP.jp.co.arcm.abg/` — a Unix socket when the path
+  container `~/Library/Group Containers/group.jp.co.arcm.abg/` — a Unix socket when the path
   fits the 104-byte `sun_path` limit, otherwise the token-authenticated loopback WebSocket `/cli`
   route. (Until 0.4.2 the Store build had no CLI path at all: the CLI was not bundled, and the
   container socket path was 125 bytes > 104, so the socket could not be bound — issue #361.)
@@ -331,7 +336,7 @@ preempt automated entitlement questions like the 2.4.5 flag we answered for 0.4.
 > installed or copied outside the app bundle (users may create a symlink themselves), and
 > communicates only with this app on the same Mac: via a Unix socket in the app-group
 > container, or the same loopback listener (127.0.0.1:8765) described below. Both the app and
-> the helper declare the app group M46W5MVAQP.jp.co.arcm.abg to share that rendezvous
+> the helper declare the app group group.jp.co.arcm.abg to share that rendezvous
 > directory. The helper makes no external network connections.
 >
 > NETWORK SERVER ENTITLEMENT: com.apple.security.network.server is required for core

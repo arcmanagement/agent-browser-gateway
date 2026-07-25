@@ -100,8 +100,7 @@ echo "==> strip app executables"
 
 # The bundled CLI is signed first (nested code before the enclosing bundle) with its
 # own entitlements — exactly app-sandbox, network.client, and the app group. It gets
-# no application-identifier/team-identifier injection and no provisioning profile:
-# TeamID-prefixed app groups are authorized by the signing team alone.
+# no application-identifier/team-identifier injection and no provisioning profile.
 if [ -n "$APP_SIGN_IDENTITY" ]; then
     echo "==> sign app for App Store"
     /usr/bin/codesign --force --options runtime --timestamp \

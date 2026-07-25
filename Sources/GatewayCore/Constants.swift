@@ -8,10 +8,8 @@ import Glibc
 public enum ABGConstants {
     public static let bundleId = "jp.co.arcm.AgentBrowserGateway"
     public static let version = "0.4.4"
-    // TeamID-prefixed app group: requires no portal registration and no provisioning
-    // profile backing, unlike "group.*"-style identifiers. Shared rendezvous between the
-    // sandboxed Store gateway and the bundled sandboxed CLI.
-    public static let appGroupId = "M46W5MVAQP.jp.co.arcm.abg"
+    // Shared rendezvous between the sandboxed Store gateway and bundled sandboxed CLI.
+    public static let appGroupId = "group.jp.co.arcm.abg"
     public static let defaultWsPort: Int = 8765
     public static let wsHost = "127.0.0.1"
     // sockaddr_un.sun_path is 104 bytes on Darwin including the NUL terminator.
