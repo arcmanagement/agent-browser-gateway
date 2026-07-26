@@ -1315,11 +1315,11 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         GatewaySettingsStore.load().policy(for: tab.url)?.timeoutMs ?? GatewaySettingsStore.load().defaultTimeoutMs
     }
 
-    func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs: Int? = nil) async throws -> AnyCodable? {
+    func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
         guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
-        let timeoutMs = GatewaySettings.clampedTimeout(timeoutMs ?? GatewaySettingsStore.load().defaultTimeoutMs)
+        let timeoutMs = GatewaySettings.clampedTimeout(timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs)
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable?, Error>) in
             inflight[id] = cont
             Task {
