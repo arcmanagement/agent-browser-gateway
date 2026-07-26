@@ -63,8 +63,10 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
-内部では、CLIはplatform-local IPC endpoint上のline-delimited JSONでGatewayと通信します。macOSとLinuxではUnix domain socket、
-Windowsではnamed pipeを使います。endpoint resolutionとcleanupはABGが担うため、呼び出し側がOS固有のsocketやpipe詳細を知る必要はありません。
+内部では、CLI は OS ごとのローカル IPC 上で共通の JSON 契約を使います。macOS と Linux
+では Unix ドメインソケット、Windows では名前付きパイプを使います。macOS ではサンドボックス
+やパス長の制約でソケットを使えない場合、トークン認証付きのループバック WebSocket に切り替えます。
+接続先の解決と後始末は ABG が担うため、呼び出し側が OS 固有の通信方式を知る必要はありません。
 
 ## プラグイン
 

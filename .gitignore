@@ -20,6 +20,7 @@ node_modules/
 extension/dist/
 extension/coverage/
 dist/
+.cws/
 .astro/
 
 # macOS
@@ -60,16 +61,21 @@ credentials/
 # Internal handoff / design history (kept locally, not yet ready for OSS)
 docs/*
 !docs/CLI_JSON_CONTRACT.md
+!docs/app-store-submission.md
 !docs/HOMEBREW.md
 !docs/LOCAL_IPC.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
 !docs/PLUGINS.md
+!docs/RECORDING.md
 !docs/REPRODUCIBLE_DOCKER_BUILD.md
 !docs/REQUIRED_CHECKS_AND_BYPASS.md
+!docs/store-submission.md
 !docs/TEMPORARY_ZIP_INSTALL.md
 !docs/TESTING_INVENTORY.md
 
 # Brand experiments — final design TBD, not committed yet
 assets/
+!packaging/msix/Assets/
+!packaging/msix/Assets/**
 !site/assets/
 !site/assets/**

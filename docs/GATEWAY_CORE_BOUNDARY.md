@@ -7,7 +7,7 @@ The Gateway target is split into two layers:
 | Runtime boundary | `GatewayRuntime.swift`, `Coordinator.swift`, `WSServer.swift`, `UDSServer.swift`, `AuditLog.swift`, `PluginHost.swift` | Local protocol handling, extension state, CLI dispatch, audit logging, plugin execution, and loopback transports. |
 | macOS shell | `App.swift`, `MenuBar.swift`, `GatewayWindowView.swift` | SwiftUI/AppKit lifecycle, menu bar item, dashboard window, Finder/pasteboard actions, and visual presentation. |
 
-`GatewayRuntime` is the transport-facing protocol. `WSServer` and `UDSServer` depend on that protocol
+`GatewayRuntime` is the transport-facing protocol. `WSServer` (extension `/ws`, runtime `/stream`, and the token-authenticated CLI `/cli` route) and `UDSServer` depend on that protocol
 instead of the macOS `GatewayCoordinator` concrete type, so a future Windows/Linux shell can provide a
 different runtime implementation or wrap the same runtime behavior without changing the transports.
 

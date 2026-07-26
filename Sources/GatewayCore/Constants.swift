@@ -6,9 +6,14 @@ import Glibc
 #endif
 
 public enum ABGConstants {
-    public static let bundleId = "co.arcm.AgentBrowserGateway"
+    public static let bundleId = "jp.co.arcm.AgentBrowserGateway"
+    public static let version = "0.4.4"
+    // Shared rendezvous between the sandboxed Store gateway and bundled sandboxed CLI.
+    public static let appGroupId = "group.jp.co.arcm.abg"
     public static let defaultWsPort: Int = 8765
     public static let wsHost = "127.0.0.1"
+    // sockaddr_un.sun_path is 104 bytes on Darwin including the NUL terminator.
+    public static let maxUnixSocketPathBytes = 103
     public static var wsPort: Int {
         configuredWsPort(environment: ProcessInfo.processInfo.environment)
     }
@@ -56,6 +61,13 @@ public enum ABGConstants {
         return url
     }
 
+    public static var recordingsDir: URL {
+        let url = configuredRecordingsDir(environment: ProcessInfo.processInfo.environment)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        chmod(url.path, 0o700)
+        return url
+    }
+
     public static var udsPath: String {
         supportDir.appendingPathComponent("gateway.sock").path
     }
@@ -64,21 +76,99 @@ public enum ABGConstants {
         logsDir.appendingPathComponent("audit.jsonl").path
     }
 
-    public static var claudeSkillsDir: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/skills", isDirectory: true)
+    // MARK: - CLI transport rendezvous
+
+    public static var isSandboxed: Bool {
+        isSandboxed(environment: ProcessInfo.processInfo.environment)
     }
 
-    public static var codexSkillsDir: URL {
-        let home: URL
-        if let env = ProcessInfo.processInfo.environment["CODEX_HOME"], !env.isEmpty {
-            let expanded = (env as NSString).expandingTildeInPath
-            home = URL(fileURLWithPath: expanded, isDirectory: true)
-        } else {
-            home = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".codex", isDirectory: true)
+    public static func isSandboxed(environment: [String: String]) -> Bool {
+        environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    /// Shared app-group directory readable by the sandboxed gateway, the bundled
+    /// sandboxed CLI, and unsandboxed clients. Not profile-suffixed; per-profile
+    /// artifacts inside it carry the profile in their filename instead.
+    public static func groupContainerDir(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
+        if let override = configuredDirectoryOverride("ABG_GROUP_DIR", environment: environment) {
+            return override
         }
-        return home.appendingPathComponent("skills", isDirectory: true)
+        #if os(macOS)
+        if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) {
+            return url
+        }
+        #endif
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Group Containers", isDirectory: true)
+            .appendingPathComponent(appGroupId, isDirectory: true)
+    }
+
+    /// The socket path the gateway should bind. The sandboxed (Mac App Store) gateway
+    /// cannot use `udsPath`: its container-relative form exceeds the sun_path limit and
+    /// unsandboxed clients resolve a different directory anyway. ABG_STATE_DIR keeps
+    /// winning so dev/test setups pin both sides to one location.
+    public static func configuredCLISocketPath(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        if configuredDirectoryOverride("ABG_STATE_DIR", environment: environment) != nil {
+            return configuredSupportDir(environment: environment)
+                .appendingPathComponent("gateway.sock").path
+        }
+        if isSandboxed(environment: environment) {
+            return groupContainerDir(environment: environment)
+                .appendingPathComponent(groupSocketName(environment: environment)).path
+        }
+        return configuredSupportDir(environment: environment)
+            .appendingPathComponent("gateway.sock").path
+    }
+
+    /// Ordered socket paths a CLI should probe. The standard path resolves inside the
+    /// probing process's own view of Application Support, so a sandboxed CLI simply
+    /// gets a harmless ENOENT there before moving on to the group container. The
+    /// gateway's own app container is intentionally never probed: sandboxed CLIs are
+    /// denied access and unsandboxed ones would trip Sonoma+ container-protection
+    /// prompts.
+    public static func cliSocketCandidates(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+        if configuredDirectoryOverride("ABG_STATE_DIR", environment: environment) != nil {
+            return [configuredSupportDir(environment: environment)
+                .appendingPathComponent("gateway.sock").path]
+        }
+        return [
+            configuredSupportDir(environment: environment)
+                .appendingPathComponent("gateway.sock").path,
+            groupContainerDir(environment: environment)
+                .appendingPathComponent(groupSocketName(environment: environment)).path,
+        ]
+    }
+
+    /// Ordered `cli-endpoint` JSON candidates ({token, port}) for the WS fallback.
+    public static func cliEndpointCandidates(environment: [String: String] = ProcessInfo.processInfo.environment) -> [String] {
+        if configuredDirectoryOverride("ABG_STATE_DIR", environment: environment) != nil {
+            return [configuredSupportDir(environment: environment)
+                .appendingPathComponent(cliEndpointFileName(environment: environment)).path]
+        }
+        return [
+            configuredSupportDir(environment: environment)
+                .appendingPathComponent(cliEndpointFileName(environment: environment)).path,
+            groupContainerDir(environment: environment)
+                .appendingPathComponent(cliEndpointFileName(environment: environment)).path,
+        ]
+    }
+
+    public static func cliEndpointFileName(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
+        if let profile = configuredProfile(environment: environment) {
+            return "cli-endpoint-\(profile).json"
+        }
+        return "cli-endpoint.json"
+    }
+
+    public static func fitsUnixSocketPath(_ path: String) -> Bool {
+        path.utf8.count <= maxUnixSocketPathBytes
+    }
+
+    private static func groupSocketName(environment: [String: String]) -> String {
+        if let profile = configuredProfile(environment: environment) {
+            return "abg-\(profile).sock"
+        }
+        return "abg.sock"
     }
 
     public static func configuredWsPort(environment: [String: String]) -> Int {
@@ -137,15 +227,32 @@ public enum ABGConstants {
     }
 
     public static func configuredScreenshotsDir(environment: [String: String]) -> URL {
+        mediaOutputBaseDir(environment: environment)
+            .appendingPathComponent("screenshots", isDirectory: true)
+    }
+
+    public static func configuredRecordingsDir(environment: [String: String]) -> URL {
+        mediaOutputBaseDir(environment: environment)
+            .appendingPathComponent("recordings", isDirectory: true)
+    }
+
+    /// Media written by a sandboxed process must land in the shared group container:
+    /// paths inside the process's own container are invisible to the other side of a
+    /// share and trip Sonoma+ container-protection prompts when third parties read
+    /// them. Unsandboxed builds keep using the user temp dir.
+    private static func mediaOutputBaseDir(environment: [String: String]) -> URL {
         let component: String
         if let profile = configuredProfile(environment: environment) {
             component = "abg-\(profile)"
         } else {
             component = "abg"
         }
+        if isSandboxed(environment: environment) {
+            return groupContainerDir(environment: environment)
+                .appendingPathComponent(component, isDirectory: true)
+        }
         return FileManager.default.temporaryDirectory
             .appendingPathComponent(component, isDirectory: true)
-            .appendingPathComponent("screenshots", isDirectory: true)
     }
 
     private static func profiledComponent(_ productionComponent: String, environment: [String: String]) -> String {

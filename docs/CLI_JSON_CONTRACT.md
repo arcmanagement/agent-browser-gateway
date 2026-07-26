@@ -5,10 +5,13 @@ wrappers. The current contract version is `1`, defined in `CLIJSONContract.versi
 
 ## Transport Envelope
 
-The CLI talks to the local Gateway over line-delimited JSON on the platform-local IPC endpoint:
-Unix domain sockets on macOS and Linux, and named pipes on Windows. Endpoint selection, path or pipe
-name resolution, permissions, and cleanup are documented in `docs/LOCAL_IPC.md`; callers should use
-the `abg` CLI contract instead of reaching into OS-specific endpoints.
+The CLI talks to the local Gateway through the platform-local IPC abstraction: Unix domain sockets
+on macOS and Linux, and named pipes on Windows. On macOS, the CLI probes the standard state
+directory socket and then the app-group container socket used by the sandboxed Mac App Store
+gateway. When neither socket is reachable, it falls back to a token-authenticated loopback
+WebSocket. The envelopes below are identical across transports. Endpoint resolution, permissions,
+fallback behavior, and cleanup are documented in `docs/LOCAL_IPC.md`; callers should use the `abg`
+CLI contract instead of reaching into OS-specific endpoints.
 
 Requests use this envelope:
 
@@ -46,6 +49,7 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg get` | Object or scalar result for the requested getter. Getter names and primitive JSON types are part of the command contract. |
 | `abg snapshot` | Object or array containing inspectable element rows with refs, text, roles, and selector/geometry metadata when available. |
 | `abg screenshot` | Object with local output path and capture metadata. `abg screenshot --latest` returns the latest saved screenshot path object or a normalized error. |
+| `abg record start` | Object `{ ok, recordingId, tabId, path, mic, startedAt }` after the user approves. `abg record stop` returns `{ ok, path, bytes, durationMs, mime, mic }`; `abg record status` returns `{ recording, ... }`. See `docs/RECORDING.md`. |
 | `abg audit` | Array of recent audit log rows. Rows are append-only JSON objects; sensitive operation payload values remain omitted or summarized. |
 | `abg plugin list` | Array of plugin objects with `name`, `source`, filesystem status, manifest metadata, and loaded command metadata when available. |
 | `abg <plugin> <command>` | JSON value returned by the plugin command handler. Command plugins should prefer stable object results such as `{ "ok": true, ... }`. |

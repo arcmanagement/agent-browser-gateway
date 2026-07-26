@@ -23,10 +23,17 @@ enum CLIError: Error, LocalizedError {
     }
 }
 
-struct UDSClient {
-    let path: String
+/// Gateway client for the CLI. Tries the Unix socket rendezvous points in order
+/// (standard state dir, then the app-group container used by the sandboxed Store
+/// gateway) and falls back to the token-authenticated loopback WebSocket `/cli`
+/// route when no socket is reachable.
+typealias UDSClient = GatewayClient
 
-    init(path: String = ABGConstants.udsPath) {
+struct GatewayClient {
+    /// Explicit socket path override; when set, only that socket is tried.
+    let path: String?
+
+    init(path: String? = nil) {
         self.path = path
     }
 
@@ -69,6 +76,45 @@ struct UDSClient {
     }
 
     private func sendAndReceive(_ payload: Data) throws -> Data {
+        if let explicit = path {
+            return try udsSendAndReceive(payload, socketPath: explicit)
+        }
+
+        var attempts: [String] = []
+        for candidate in ABGConstants.cliSocketCandidates() {
+            guard ABGConstants.fitsUnixSocketPath(candidate) else {
+                attempts.append("\(candidate): socket path too long")
+                continue
+            }
+            guard FileManager.default.fileExists(atPath: candidate) else {
+                attempts.append("\(candidate): no socket")
+                continue
+            }
+            do {
+                return try udsSendAndReceive(payload, socketPath: candidate)
+            } catch CLIError.gatewayNotRunning(let message) {
+                attempts.append(message)
+            }
+        }
+
+        #if os(macOS)
+        if let endpoint = Self.readCLIEndpoint() {
+            do {
+                return try wsSendAndReceive(payload, endpoint: endpoint)
+            } catch CLIError.gatewayNotRunning(let message) {
+                attempts.append(message)
+            }
+        } else {
+            attempts.append("no cli-endpoint file for the ws fallback")
+        }
+        #endif
+
+        throw CLIError.gatewayNotRunning(attempts.joined(separator: "; "))
+    }
+
+    // MARK: - Unix socket transport
+
+    private func udsSendAndReceive(_ payload: Data, socketPath: String) throws -> Data {
         #if canImport(Glibc)
         let sock = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
         #else
@@ -79,7 +125,7 @@ struct UDSClient {
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
-        let cstr = path.cString(using: .utf8)!
+        let cstr = socketPath.cString(using: .utf8)!
         let cap = MemoryLayout.size(ofValue: addr.sun_path)
         guard cstr.count <= cap else { throw CLIError.ioError("socket path too long") }
         withUnsafeMutablePointer(to: &addr.sun_path) { tuplePtr in
@@ -95,7 +141,7 @@ struct UDSClient {
         }
         guard connResult == 0 else {
             let err = String(cString: strerror(errno))
-            throw CLIError.gatewayNotRunning("\(path): \(err)")
+            throw CLIError.gatewayNotRunning("\(socketPath): \(err)")
         }
 
         // Send: payload + newline
@@ -128,6 +174,106 @@ struct UDSClient {
         }
         return out
     }
+
+    // MARK: - Loopback WebSocket transport (URLSession only; no server-side deps)
+
+    #if os(macOS)
+    struct CLIEndpoint: Codable {
+        let token: String
+        let port: Int
+    }
+
+    /// Reads the freshest `{token, port}` rendezvous file the gateway published.
+    static func readCLIEndpoint() -> CLIEndpoint? {
+        for path in ABGConstants.cliEndpointCandidates() {
+            guard let data = FileManager.default.contents(atPath: path),
+                  let endpoint = try? JSONDecoder().decode(CLIEndpoint.self, from: data) else {
+                continue
+            }
+            return endpoint
+        }
+        return nil
+    }
+
+    private func wsSendAndReceive(_ payload: Data, endpoint: CLIEndpoint) throws -> Data {
+        guard let text = String(data: payload, encoding: .utf8),
+              let url = URL(string: "ws://\(ABGConstants.wsHost):\(endpoint.port)/cli") else {
+            throw CLIError.ioError("invalid CLI request payload")
+        }
+        var request = URLRequest(url: url)
+        request.setValue(endpoint.token, forHTTPHeaderField: "x-abg-token")
+
+        let config = URLSessionConfiguration.ephemeral
+        // Long-running commands (wait/eval with generous timeouts) are bounded by the
+        // gateway, not by the transport.
+        config.timeoutIntervalForRequest = 3600
+        config.timeoutIntervalForResource = 7200
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+
+        let task = session.webSocketTask(with: request)
+        // Default is 1 MiB, which truncates screenshot/read payloads; match the
+        // server-side 256 MiB frame budget.
+        task.maximumMessageSize = 256 * 1024 * 1024
+        task.resume()
+
+        let sendSemaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var sendError: Error?
+        task.send(.string(text)) { error in
+            sendError = error
+            sendSemaphore.signal()
+        }
+        sendSemaphore.wait()
+        if let sendError {
+            task.cancel(with: .abnormalClosure, reason: nil)
+            throw CLIError.gatewayNotRunning("\(url.absoluteString): \(sendError.localizedDescription)")
+        }
+
+        let receiveSemaphore = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var received: Result<URLSessionWebSocketTask.Message, Error>?
+        task.receive { result in
+            received = result
+            receiveSemaphore.signal()
+        }
+        receiveSemaphore.wait()
+        task.cancel(with: .normalClosure, reason: nil)
+
+        switch received {
+        case .success(.string(let response)):
+            return Data(response.utf8)
+        case .success(.data(let data)):
+            return data
+        case .success:
+            throw CLIError.decodeError("unexpected WebSocket message type")
+        case .failure(let error):
+            throw CLIError.gatewayNotRunning("\(url.absoluteString): \(error.localizedDescription)")
+        case nil:
+            throw CLIError.ioError("WebSocket receive returned nothing")
+        }
+    }
+    #endif
+}
+
+/// Reads a user-supplied host file, converting sandbox denials in the App Store CLI
+/// into an explicit error instead of a misleading read failure.
+func readHostTextFile(_ path: String, option: String) throws -> String {
+    do {
+        return try String(contentsOfFile: path, encoding: .utf8)
+    } catch {
+        if ABGConstants.isSandboxed, !FileManager.default.isReadableFile(atPath: path) {
+            printErrorJSON(sandboxUnsupportedError(option: option, path: path))
+            throw ExitCode.failure
+        }
+        throw error
+    }
+}
+
+func sandboxUnsupportedError(option: String, path: String) -> [String: Any] {
+    [
+        "error": "sandbox_unsupported",
+        "message": "The App Store abg CLI is sandboxed and cannot read host files (\(option): \(path)).",
+        "userMessage": "App Store 版の abg CLI はサンドボックスのためローカルファイルを読めません。--stdin を使うか、Homebrew 版 CLI を利用してください。",
+    ]
 }
 
 private func gatewayStartCommand() -> String {
