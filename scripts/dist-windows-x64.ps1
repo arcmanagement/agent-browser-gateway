@@ -151,6 +151,29 @@ function Test-ZipRootLayout {
     }
 }
 
+function Copy-WinUiGeneratedResources {
+    param(
+        [string]$BuildOutputDir,
+        [string]$DestinationDir
+    )
+
+    $requiredFiles = @(
+        "AgentBrowserGateway.Windows.pri",
+        "App.xbf",
+        "MainWindow.xbf",
+        "SetupWindow.xbf",
+        "StatusWindow.xbf"
+    )
+
+    foreach ($file in $requiredFiles) {
+        $source = Join-Path $BuildOutputDir $file
+        if (-not (Test-Path $source)) {
+            throw "WinUI generated resource was not found: $source"
+        }
+        Copy-Item $source (Join-Path $DestinationDir $file) -Force
+    }
+}
+
 Write-Host "==> clean"
 Remove-Item -Recurse -Force $PublishRoot, $Stage, $ZipPath, $SetupStage, $SetupZipPath -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $PublishRoot, $Stage, $SetupStage | Out-Null
@@ -202,6 +225,8 @@ Assert-LastExitCode "dotnet publish GUI installer"
 Write-Host "==> stage"
 if (Test-Path (Join-Path $PublishRoot "app")) {
     Copy-Item -Recurse -Force (Join-Path $PublishRoot "app\*") $Stage
+    $winUiBuildOutput = Join-Path $Root "windows\AgentBrowserGateway.Windows\bin\x64\$Configuration\net8.0-windows10.0.19041.0\win-x64"
+    Copy-WinUiGeneratedResources -BuildOutputDir $winUiBuildOutput -DestinationDir $Stage
 }
 Copy-Item -Force (Join-Path $PublishRoot "cli\abg.exe") (Join-Path $Stage "abg.exe")
 Get-ChildItem -Path (Join-Path $PublishRoot "gateway") -File |
