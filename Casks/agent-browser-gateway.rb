@@ -1,6 +1,6 @@
 cask "agent-browser-gateway" do
-  version "0.4.1"
-  sha256 "2ca012a5f6b6e35aeed59504cfd95a74fae660333abbaf887cbee119fedbf00e"
+  version "0.4.2"
+  sha256 "fe7ae6c3265a5cbffe9edc2c6bcb6a8b23545ce90120ff56b5d65059f815900c"
 
   url "https://agent-browser-gateway.com/downloads/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
@@ -12,9 +12,8 @@ cask "agent-browser-gateway" do
 
   app "Agent Browser Gateway.app"
   binary "abg"
-  artifact "AgentBrowserGateway_abg.bundle", target: "#{HOMEBREW_PREFIX}/bin/AgentBrowserGateway_abg.bundle"
 
-  uninstall quit: "co.arcm.AgentBrowserGateway"
+  uninstall quit: "jp.co.arcm.AgentBrowserGateway"
 
   zap trash: [
     "~/Library/Application Support/AgentBrowserGateway",

@@ -14,4 +14,4 @@ Run any of these against a tab you've shared via the extension popup. None of th
 
 ## Skill ergonomics
 
-Claude Code's Skill loader (after `abg install-skill`) will reach these examples when relevant. If you build your own Skill for another agent, point it at this directory.
+Claude Code's Skill loader (after `npx skills add arcmanagement/agent-browser-gateway -g`) will reach these examples when relevant. If you build your own Skill for another agent, point it at this directory.

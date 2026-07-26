@@ -44,6 +44,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self,
+            Bookmarks.self, ReadingList.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
@@ -57,6 +58,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect",
+    "bookmarks", "reading-list",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",
@@ -915,7 +917,7 @@ struct Eval: AsyncParsableCommand {
         }
         if let script { return script }
         if let scriptFile {
-            return try String(contentsOfFile: (scriptFile as NSString).expandingTildeInPath, encoding: .utf8)
+            return try readHostTextFile((scriptFile as NSString).expandingTildeInPath, option: "--script-file")
         }
         let data = FileHandle.standardInput.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
@@ -1177,7 +1179,7 @@ struct ReplaceEditable: AsyncParsableCommand {
         if let value {
             text = value
         } else if let textFile {
-            text = try String(contentsOfFile: (textFile as NSString).expandingTildeInPath, encoding: .utf8)
+            text = try readHostTextFile((textFile as NSString).expandingTildeInPath, option: "--text-file")
         } else {
             let data = FileHandle.standardInput.readDataToEndOfFile()
             text = String(data: data, encoding: .utf8) ?? ""
@@ -1610,25 +1612,39 @@ struct Upload: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "input[type=file] にローカルファイルを添付")
     @OptionGroup var target: TabTarget
     @Option(name: .long, help: "対象の input[type=file] CSS selector") var selector: String
-    @Option(name: .long, help: "添付するローカルファイル") var file: String
+    @Option(name: .long, help: "添付するローカルファイル。複数添付するには --file を繰り返す（input に multiple 属性が必要）") var file: [String]
     @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector") var frame: String?
 
     func run() async throws {
-        let expanded = (file as NSString).expandingTildeInPath
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), !isDir.boolValue else {
+        guard !file.isEmpty else {
             try failWithJSON([
-                "error": "file_not_found",
-                "message": "File does not exist: \(expanded)",
-                "userMessage": "指定されたファイルが見つかりません。パスを確認してから再実行してください。",
+                "error": "file_required",
+                "message": "No --file provided",
+                "userMessage": "添付するファイルを --file で1つ以上指定してください。",
             ])
+        }
+        var expandedFiles: [String] = []
+        for path in file {
+            let expanded = (path as NSString).expandingTildeInPath
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), !isDir.boolValue else {
+                if ABGConstants.isSandboxed {
+                    try failWithJSON(sandboxUnsupportedError(option: "--file", path: expanded))
+                }
+                try failWithJSON([
+                    "error": "file_not_found",
+                    "message": "File does not exist: \(expanded)",
+                    "userMessage": "指定されたファイルが見つかりません。パスを確認してから再実行してください。",
+                ])
+            }
+            expandedFiles.append(expanded)
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
-        var params: [String: Any] = ["tabId": tabId, "selector": selector, "file": expanded]
+        var params: [String: Any] = ["tabId": tabId, "selector": selector, "files": expandedFiles]
         if let frame { params["frame"] = frame }
         let result = try client.call(method: "upload_tab", params: params)
-        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "file": expanded]
+        var step: [String: Any] = ["op": "upload", "tabId": tabId, "selector": selector, "files": expandedFiles]
         if let frame { step["frame"] = frame }
         appendRecordedStep(step)
         printJSON(result)
@@ -1811,6 +1827,64 @@ func waitRecordedStep(
 
 struct Record: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
+        commandName: "record",
+        abstract: "ABG 操作の flow 記録 (既定) / タブ映像の録画 (start/stop/status)",
+        subcommands: [RecordStart.self, RecordStop.self, RecordStatus.self, RecordFlow.self],
+        defaultSubcommand: RecordFlow.self
+    )
+}
+
+struct RecordStart: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "start",
+        abstract: "共有中タブの録画を開始 (webm・タブ音声、任意でマイク)",
+        discussion: """
+        承認ウィンドウで「Allow」を押すと録画が始まる。承認のクリックが tabCapture の
+        user gesture を兼ねる。録画中はタブに REC バッジが出る。`abg record stop` で停止すると
+        Gateway が webm を書き出してパスを返す。--mic を付けると物理的な部屋の音も録音する。
+        """
+    )
+    @OptionGroup var target: TabTarget
+    @Flag(name: .long, help: "マイク音声も録音する (物理的な部屋の音)。既定は off") var mic: Bool = false
+    @Option(name: .long, help: "出力 webm パス (省略時 $TMPDIR/abg/recordings/<tab>-<ts>.webm)") var out: String?
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        var params: [String: Any] = ["tabId": tabId, "mic": mic]
+        if let out { params["outputPath"] = (out as NSString).expandingTildeInPath }
+        let result = try client.call(method: "record_start", params: params)
+        printJSON(result)
+    }
+}
+
+struct RecordStop: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "stop",
+        abstract: "録画を停止し、webm を書き出してパスを返す"
+    )
+
+    func run() async throws {
+        let result = try UDSClient().call(method: "record_stop")
+        printJSON(result)
+    }
+}
+
+struct RecordStatus: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "status",
+        abstract: "現在の録画状態を表示"
+    )
+
+    func run() async throws {
+        let result = try UDSClient().call(method: "record_status")
+        printJSON(result)
+    }
+}
+
+struct RecordFlow: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "flow",
         abstract: "CLI 由来の ABG 操作を flow JSON に記録",
         discussion: """
         別 terminal/agent から実行した click/fill/type/key/navigate/scroll/drag/upload/wait/read/screenshot を記録する。
@@ -2086,7 +2160,14 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         return try client.call(method: "drag_tab", params: params)
     case "upload":
         params["selector"] = try requiredString(step, "selector", op: op)
-        params["file"] = try requiredString(step, "file", op: op)
+        if let files = step["files"] as? [String], !files.isEmpty {
+            params["files"] = files
+        } else if let file = step["file"] as? String, !file.isEmpty {
+            // Legacy single-file recorded step.
+            params["files"] = [file]
+        } else {
+            params["files"] = [try requiredString(step, "files", op: op)]
+        }
         return try client.call(method: "upload_tab", params: params)
     case "wait":
         params["timeoutMs"] = intValue(step, "timeout") ?? 10_000
@@ -2138,6 +2219,141 @@ func requiredString(_ step: [String: Any], _ key: String, op: String) throws -> 
         try failWithJSON(["error": "invalid_step", "message": "\(op) step requires \(key)"])
     }
     return value
+}
+
+struct PersonalDataOptions: ParsableArguments {
+    @Option(name: .long, help: "Read browser-owned personal data from this connected extension/profile. Required when multiple extensions are connected.") var extensionId: String?
+    @Option(name: .long, help: "Maximum number of rows to return") var limit: Int?
+
+    func params() -> [String: Any] {
+        var params: [String: Any] = [:]
+        if let extensionId { params["extensionId"] = extensionId }
+        if let limit { params["limit"] = limit }
+        return params
+    }
+}
+
+struct Bookmarks: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "bookmarks",
+        abstract: "Inspect browser-owned bookmarks after separate explicit permission",
+        discussion: """
+        Bookmarks are browser-owned personal data, not shared-tab page state. These commands require
+        the separate Bookmarks access toggle in the ABG extension popup. Audit logs record the command,
+        count, ids, and byte lengths, but not full bookmark URLs.
+        """,
+        subcommands: [
+            BookmarkList.self,
+            BookmarkSearch.self,
+            BookmarkGet.self,
+            BookmarkOpen.self,
+        ]
+    )
+}
+
+struct BookmarkList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List bookmarks")
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Include bookmark folders in the output") var includeFolders: Bool = false
+
+    func run() async throws {
+        var params = options.params()
+        if includeFolders { params["includeFolders"] = true }
+        let result = try UDSClient().call(method: "bookmarks_list", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkSearch: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "search", abstract: "Search bookmarks by title or URL")
+    @Argument(help: "Search query. The query is sent to the browser extension, but audit logs store only its byte length.") var query: String
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Include matching folders in the output") var includeFolders: Bool = false
+
+    func run() async throws {
+        var params = options.params()
+        params["query"] = query
+        if includeFolders { params["includeFolders"] = true }
+        let result = try UDSClient().call(method: "bookmarks_search", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkGet: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "get", abstract: "Get one bookmark or folder subtree by id")
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["bookmarkId"] = bookmarkId
+        let result = try UDSClient().call(method: "bookmarks_get", params: params)
+        printJSON(result)
+    }
+}
+
+struct BookmarkOpen: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "open",
+        abstract: "Open one bookmark URL in the browser through an explicit command"
+    )
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @Option(name: .long, help: "Read browser-owned personal data from this connected extension/profile. Required when multiple extensions are connected.") var extensionId: String?
+
+    func run() async throws {
+        var params: [String: Any] = ["bookmarkId": bookmarkId]
+        if let extensionId { params["extensionId"] = extensionId }
+        let result = try UDSClient().call(method: "bookmarks_open", params: params)
+        printJSON(result)
+    }
+}
+
+struct ReadingList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "reading-list",
+        abstract: "Inspect browser-owned Reading List entries after separate explicit permission",
+        discussion: """
+        Reading List entries are browser-owned personal data, not shared-tab page state. These commands
+        require the separate Reading List access toggle in the ABG extension popup. Chrome documents
+        chrome.readingList for Chrome 120+; browsers that do not expose it return an unsupported error.
+        Audit logs record command metadata and counts, but not full entry URLs.
+        """,
+        subcommands: [
+            ReadingListList.self,
+            ReadingListSearch.self,
+        ]
+    )
+}
+
+struct ReadingListList: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List Reading List entries")
+    @OptionGroup var options: PersonalDataOptions
+    @Flag(name: .long, help: "Return entries that have been read") var read: Bool = false
+    @Flag(name: .long, help: "Return entries that have not been read") var unread: Bool = false
+
+    func run() async throws {
+        if read && unread {
+            try failWithJSON(["error": "bad_params", "message": "Use only one of --read or --unread."])
+        }
+        var params = options.params()
+        if read { params["hasBeenRead"] = true }
+        if unread { params["hasBeenRead"] = false }
+        let result = try UDSClient().call(method: "reading_list_list", params: params)
+        printJSON(result)
+    }
+}
+
+struct ReadingListSearch: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "search", abstract: "Search Reading List title or URL")
+    @Argument(help: "Search query. The query is sent to the browser extension, but audit logs store only its byte length.") var query: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["query"] = query
+        let result = try UDSClient().call(method: "reading_list_search", params: params)
+        printJSON(result)
+    }
 }
 
 struct Revoke: AsyncParsableCommand {
@@ -2581,7 +2797,7 @@ struct ABGMCPStdioServer {
                 ],
                 "serverInfo": [
                     "name": "agent-browser-gateway",
-                    "version": SkillBundle.version,
+                    "version": ABGConstants.version,
                 ],
             ])
         case "ping":
@@ -2775,86 +2991,19 @@ struct ABGCLIExecutionResult {
 struct InstallSkill: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install-skill",
-        abstract: "Claude Code / Codex 用 Skill を ~/.claude/skills/ と ~/.codex/skills/ にインストール (デフォルトで両方、ABG バージョンに追従)"
+        abstract: "廃止されました。skills CLI (npx skills add) でインストールしてください",
+        shouldDisplay: false
     )
-    @Flag(name: .long, help: "古いバージョンでも上書きしない (通常は不要)") var noUpgrade: Bool = false
-    @Option(name: .long, help: "インストール先 (claude / codex / both, デフォルト both)") var target: String = "both"
+    @Flag(name: .long, help: .hidden) var noUpgrade: Bool = false
+    @Option(name: .long, help: .hidden) var target: String = "both"
 
     func run() async throws {
-        let dirs: [URL]
-        switch target {
-        case "claude": dirs = [ABGConstants.claudeSkillsDir]
-        case "codex":  dirs = [ABGConstants.codexSkillsDir]
-        case "both":   dirs = [ABGConstants.claudeSkillsDir, ABGConstants.codexSkillsDir]
-        default:
-            print("error: --target は claude / codex / both のいずれか")
-            throw ExitCode.failure
-        }
-
-        for base in dirs {
-            try installOne(
-                into: base,
-                skillName: "agent-browser-gateway",
-                markdown: SkillBundle.markdown,
-                version: SkillBundle.version
-            )
-            try installOne(
-                into: base,
-                skillName: "abg-plugin-creator",
-                markdown: SkillBundle.pluginCreatorMarkdown,
-                version: SkillBundle.pluginCreatorVersion
-            )
-        }
-
-        // Migrate away from the legacy single-file install path.
-        let legacy = ABGConstants.claudeSkillsDir.appendingPathComponent("agent-browser-gateway.md")
-        if FileManager.default.fileExists(atPath: legacy.path) {
-            try? FileManager.default.removeItem(at: legacy)
-            print("removed legacy: \(legacy.path)")
-        }
-    }
-
-    private func installOne(into base: URL, skillName: String, markdown: String, version: String) throws {
-        let skillDir = base.appendingPathComponent(skillName, isDirectory: true)
-        try FileManager.default.createDirectory(at: skillDir, withIntermediateDirectories: true)
-        let dest = skillDir.appendingPathComponent("SKILL.md")
-        let installedVersion = readInstalledVersion(at: dest)
-        let installedMarkdown = (try? String(contentsOf: dest, encoding: .utf8))
-
-        if let installed = installedVersion, installed == version, installedMarkdown == markdown {
-            print("up-to-date: \(dest.path) (v\(version))")
-            return
-        }
-
-        if let installed = installedVersion, installed != version, noUpgrade {
-            print("skipped: installed v\(installed), bundled v\(version) at \(dest.path). Re-run without --no-upgrade to overwrite.")
-            return
-        }
-
-        try markdown.write(to: dest, atomically: true, encoding: .utf8)
-        if let installed = installedVersion {
-            if installed == version {
-                print("updated: content changed at \(dest.path) (v\(version))")
-            } else {
-                print("upgraded: v\(installed) -> v\(version) at \(dest.path)")
-            }
-        } else {
-            print("installed: v\(version) at \(dest.path)")
-        }
-    }
-
-    /// Look at the YAML frontmatter for `version: <x>` so we can compare upgrades.
-    /// Returns nil if no installed file or no version found.
-    private func readInstalledVersion(at url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .utf8) else { return nil }
-        let lines = text.split(separator: "\n").prefix(20)
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let range = trimmed.range(of: "version:") {
-                return String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
+        printErrorJSON([
+            "error": "command_removed",
+            "message": "abg install-skill was removed in 0.4.4. Skills are now installed with the skills CLI.",
+            "userMessage": "install-skill は廃止されました。npx skills add で ABG スキルをインストールしてください。",
+            "nextCommand": "npx skills add arcmanagement/agent-browser-gateway -g",
+        ])
+        throw ExitCode.failure
     }
 }

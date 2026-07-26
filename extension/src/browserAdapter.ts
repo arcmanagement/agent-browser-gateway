@@ -3,6 +3,24 @@ export type BrowserKind = "chrome" | "firefox";
 export type BrowserTab = chrome.tabs.Tab;
 export type BrowserDownloadDelta = chrome.downloads.DownloadDelta;
 export type BrowserDownloadItem = chrome.downloads.DownloadItem;
+export type BrowserBookmarkTreeNode = chrome.bookmarks.BookmarkTreeNode;
+export type BrowserReadingListEntry = {
+  title: string;
+  url: string;
+  hasBeenRead: boolean;
+  creationTime: number;
+  lastUpdateTime: number;
+};
+
+export type BrowserReadingListQueryInfo = {
+  title?: string;
+  url?: string;
+  hasBeenRead?: boolean;
+};
+
+type BrowserReadingListAPI = {
+  query(info: BrowserReadingListQueryInfo): Promise<BrowserReadingListEntry[]>;
+};
 
 declare const __ABG_BROWSER_TARGET__: BrowserKind | undefined;
 
@@ -24,6 +42,10 @@ export type BrowserAdapter = {
     "attach" | "detach" | "onDetach" | "onEvent" | "sendCommand"
   >;
   readonly downloads: Pick<typeof chrome.downloads, "onChanged" | "onCreated" | "search">;
+  readonly bookmarks?: Pick<
+    typeof chrome.bookmarks,
+    "get" | "getChildren" | "getRecent" | "getSubTree" | "getTree" | "search"
+  >;
   readonly extension: Pick<typeof chrome.extension, "isAllowedIncognitoAccess">;
   readonly permissions: Pick<typeof chrome.permissions, "contains" | "remove" | "request">;
   readonly runtime: Pick<
@@ -49,10 +71,12 @@ export type BrowserAdapter = {
     | "update"
   >;
   readonly windows: Pick<typeof chrome.windows, "create" | "onRemoved" | "remove">;
+  readonly readingList?: BrowserReadingListAPI;
 };
 
 type RuntimeBrowser = typeof chrome & {
   browser?: never;
+  readingList?: BrowserReadingListAPI;
 };
 
 function runtimeBrowser(): RuntimeBrowser {
@@ -118,6 +142,9 @@ function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAd
     get downloads() {
       return api.downloads;
     },
+    get bookmarks() {
+      return api.bookmarks;
+    },
     get extension() {
       return extensionApi;
     },
@@ -138,6 +165,9 @@ function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAd
     },
     get windows() {
       return api.windows;
+    },
+    get readingList() {
+      return api.readingList;
     },
   };
 }
@@ -165,6 +195,9 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
     get downloads() {
       return runtimeBrowser().downloads;
     },
+    get bookmarks() {
+      return runtimeBrowser().bookmarks;
+    },
     get extension() {
       return (
         runtimeBrowser().extension ?? {
@@ -189,6 +222,9 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
     },
     get windows() {
       return runtimeBrowser().windows;
+    },
+    get readingList() {
+      return runtimeBrowser().readingList;
     },
   };
 }

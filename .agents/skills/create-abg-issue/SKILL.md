@@ -1,6 +1,8 @@
 ---
 name: create-abg-issue
 description: Use in the Agent Browser Gateway repository when creating, updating, triaging, or linking Issues so ABG-specific assignees, labels, Issue Type, project fields, milestones, parent/sub-issue relationships, development links, and English wording are set accurately.
+metadata:
+  internal: true
 ---
 
 # Create ABG Issue
