@@ -708,6 +708,8 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
 - 📋 Safari / Edge / iOS / Android (Phase 3+)
+- 📋 iOS Safari is blocked research, not MVP scope, until a native iOS companion and reduced
+  Safari-compatible command surface are designed.
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---
