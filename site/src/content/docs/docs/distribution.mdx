@@ -8,11 +8,14 @@ sidebar:
 ABG release artifacts are built from the repository and published for the app, CLI, and browser
 extension. The public download page keeps current artifacts available under `/downloads/`.
 
-Current public release status for `v0.4.1`:
+Current public distribution state:
 
-- macOS DMG: live at `/downloads/agent-browser-gateway-0.4.1-macos-arm64.dmg`
-- Chrome extension: live on the Chrome Web Store as version `0.4.1`
+- macOS app: signed and notarized `v0.4.2` DMG on the download page and GitHub Releases
+- Chrome extension: `v0.4.3` on the Chrome Web Store, updated July 11, 2026
 - Windows package: pending signed release and WinGet indexing
+
+The app and extension versions can differ while Chrome Web Store review and signed app publication
+complete independently.
 
 ## Homebrew cask
 
@@ -38,14 +41,12 @@ Homebrew is ready for a release when the versioned macOS ZIP is published under
 
 ## Chrome Web Store
 
-Install the extension from:
+Install the extension from the
+[public Chrome Web Store listing](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi).
 
-```text
-https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
-```
-
-For release verification, confirm the public listing version matches the current repository release.
-For `v0.4.1`, the listing should report version `0.4.1`.
+For release verification, confirm that the public listing is available, then record its displayed
+version and update date separately from the latest macOS release. The current listing reports
+version `0.4.3`, updated July 11, 2026.
 
 ## WinGet
 
@@ -55,7 +56,7 @@ The Windows package identifier is:
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-Current `v0.4.1` status: this package is not indexed yet, and the command above returns no matching
+Current `v0.4.2` status: this package is not indexed yet, and the command above returns no matching
 package until the signed Windows release workflow and WinGet submission are completed.
 
 WinGet is ready for a release after the public Windows setup ZIP is available under `/downloads/`
@@ -66,7 +67,7 @@ and the generated `microsoft/winget-pkgs` PR is merged and indexed.
 Maintainer release builds are created on a trusted Mac:
 
 ```bash
-export VERSION=0.4.1
+export VERSION=0.4.2
 make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
@@ -85,10 +86,16 @@ codesign --verify --strict --verbose=2 \
 spctl --assess --type execute --verbose \
   "dist/agent-browser-gateway-$VERSION-macos-arm64/Agent Browser Gateway.app"
 shasum -a 256 \
-  "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
   "dist/agent-browser-gateway-extension-$VERSION.zip"
 ```
 
 CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
 maintainer Mac and published to the public download site afterward.
+
+## Mac App Store
+
+The Mac App Store path is separate from the Developer ID and Homebrew release path. Store builds
+must use App Sandbox and App Store distribution signing, then be uploaded to App Store Connect.
+
+The working checklist lives in `docs/app-store-submission.md`.

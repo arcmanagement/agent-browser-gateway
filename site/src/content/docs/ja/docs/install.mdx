@@ -8,7 +8,7 @@ sidebar:
 ## 必要なもの
 
 - 現行Gatewayアプリは macOS 14 以上。
-- Chrome拡張は Google Chrome 116 以上。
+- Chrome拡張は Google Chrome 120 以上。
 - `abg` CLIを実行できるターミナル。
 - 開発ビルドでは Xcode 16 以上、`mise`、Node.js、pnpm。
 
@@ -31,7 +31,6 @@ Homebrew が無関係な tap の trust warning を表示することもありま
 `brew untap arcmanagement/agent-browser-gateway` を実行してから、上の明示URL付きcommandでtapし直してください。
 
 [download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
-現在のpublic DMGは `agent-browser-gateway-0.4.1-macos-arm64.dmg` です。
 インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
 
 CLIから接続を確認します。
@@ -50,7 +49,7 @@ abg status
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-現在の `v0.4.1` では、WinGet はまだ公開されておらず、Windows release ZIP もまだ公開されていません。
+現在の `v0.4.2` では、WinGet はまだ公開されておらず、Windows release ZIP もまだ公開されていません。
 `winget` が matching package なしと表示する場合、それは
 signed Windows releaseとMicrosoft indexingが完了するまでの想定動作です。
 
@@ -62,23 +61,23 @@ signed Windows releaseとMicrosoft indexingが完了するまでの想定動作�
 
 ## ブラウザー拡張
 
-通常利用ではChrome Web Storeから Agent Browser Gateway をインストールします。ローカル開発では
-repositoryで拡張をbuildし、`extension/dist/` をunpacked extensionとして読み込みます。
-
-現在の `v0.4.1` では、Chrome Web Store listing は公開済みで、extension version `0.4.1` を表示します。
+通常利用では
+[Chrome Web Store](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi)
+から Agent Browser Gateway をインストールします。public listingでは現在extension `v0.4.3`を提供しています。
+ローカル開発ではrepositoryで拡張をbuildし、`extension/dist/` をunpacked extensionとして読み込みます。
 
 incognito windowで使う場合は、拡張の詳細画面で **Allow in incognito** を有効にします。通常windowだけで
 使う場合、この設定は不要です。
 
 ## エージェントスキル
 
-GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillをインストールまたは更新します。
+GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillを [skills CLI](https://github.com/vercel-labs/skills) でインストールまたは更新します。
 
 ```bash
-abg install-skill --target both
+npx skills add arcmanagement/agent-browser-gateway -g
 ```
 
-片方だけ入れる場合は `--target claude` または `--target codex` を使います。
+片方だけ入れる場合は `-a claude-code` または `-a codex` を使います。更新は `npx skills update -g` です。
 
 ## 開発版アプリ
 
