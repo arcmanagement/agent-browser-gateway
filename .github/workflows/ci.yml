@@ -24,6 +24,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Test CI policy
+        run: scripts/ci-change-policy-test.sh
+
       - name: Decide checks for this ref
         id: policy
         env:
@@ -32,12 +35,6 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: scripts/ci-change-policy.sh
-
-      - name: Report CI policy
-        run: |
-          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          ${{ steps.policy.outputs.summary }}
-          EOF
 
   swift:
     name: Swift verification (macOS)

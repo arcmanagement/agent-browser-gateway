@@ -25,21 +25,6 @@ write_output() {
   fi
 }
 
-write_multiline_output() {
-  local key="$1"
-  local value="$2"
-
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    {
-      printf '%s<<EOF\n' "$key"
-      printf '%s\n' "$value"
-      printf 'EOF\n'
-    } >> "$GITHUB_OUTPUT"
-  else
-    printf '%s<<EOF\n%s\nEOF\n' "$key" "$value"
-  fi
-}
-
 mark_changed_areas() {
   local file
 
@@ -47,7 +32,7 @@ mark_changed_areas() {
     [ -n "$file" ] || continue
 
     case "$file" in
-      .github/workflows/ci.yml|scripts/ci-change-policy.sh)
+      .github/workflows/ci.yml|scripts/ci-change-policy.sh|scripts/ci-change-policy-test.sh)
         run_swift=true
         run_extension=true
         ;;
@@ -115,6 +100,9 @@ fi
 write_output "run_swift" "$run_swift"
 write_output "run_extension" "$run_extension"
 write_output "full_verification" "$full_verification"
-write_multiline_output "summary" "$summary"
 
 printf '%s\n' "$summary"
+
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  printf '%s\n' "$summary" >> "$GITHUB_STEP_SUMMARY"
+fi

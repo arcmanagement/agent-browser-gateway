@@ -1,6 +1,6 @@
 # Required Checks and Emergency Bypass
 
-Captured from GitHub on 2026-06-06. Revalidated on 2026-07-09 before updating the CI cost policy.
+Captured from GitHub on 2026-06-06. Revalidated on 2026-07-27 before updating the CI cost policy.
 
 ## Current Repository State
 
@@ -35,11 +35,13 @@ CI workflows that produce them are reliable on pull requests.
 Representative CI runs before the split used one `macos-latest` job named
 `Swift and extension tests` for both Swift and extension verification:
 
-- Run 28968522083, PR #343, completed in about 10 minutes. Swift debug build, tests, coverage gate,
-  and release build consumed nearly all of the macOS time. Extension install, typecheck, lint,
-  coverage, and build completed in under 1 minute but still ran on the macOS runner.
-- Run 28964313219, PR #342, completed in about 15 minutes. Swift debug build, tests, coverage gate,
-  and release build again dominated the job, with the extension checks taking under 1 minute.
+- [Run 28968522083](https://github.com/arcmanagement/agent-browser-gateway/actions/runs/28968522083),
+  PR #343, completed in about 10 minutes. Swift debug build, tests, coverage gate, and release build
+  consumed nearly all of the macOS time. Extension install, typecheck, lint, coverage, and build
+  completed in under 1 minute but still ran on the macOS runner.
+- [Run 28964313219](https://github.com/arcmanagement/agent-browser-gateway/actions/runs/28964313219),
+  PR #342, completed in about 15 minutes. Swift debug build, tests, coverage gate, and release build
+  again dominated the job, with the extension checks taking under 1 minute.
 
 The target CI policy keeps `main` protected while reducing macOS minutes for non-main review stacks:
 
