@@ -640,8 +640,9 @@ transport, and a visible audit trail.
 
 Advanced parity features are governed by the
 [Advanced Automation Policy](docs/ADVANCED_AUTOMATION_POLICY.md). The policy classifies each
-capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or an official
-`non-goal`, with the required approval and audit behavior for each mode.
+capability as normal `per-tab`, `sandbox/all-tabs only`, `user-controlled deployment only`,
+`self-hosted only`, or an official `non-goal`, with the required approval and audit behavior for
+each mode.
 
 ### Feature parity for autonomous agents
 
@@ -657,11 +658,14 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
+| Bookmark / Reading List inspection | `bookmarks list/search/get/open`, `reading-list list/search` | Browser bookmark/context APIs | Separate explicit browser permission; not unlocked by per-tab or all-tabs sharing; redacted audit metadata |
+| Bookmark / Reading List mutation | Not provided by official ABG | Browser bookmark/context APIs | Official non-goal because profile-wide writes and deletes exceed tab consent; a user-controlled plugin or fork requires a new policy decision |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
 | Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
+| Shared-tab video recording | `record start/stop` webm artifact | Browser video/screencast APIs | Explicit start approval, visible recording state, local output, and separate microphone disclosure |
 | JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
 | General JavaScript eval | `eval` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval unless Trusted automation / AutoMode is enabled, exact script audit, result size cap |
