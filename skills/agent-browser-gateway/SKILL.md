@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.4.1
+version: 0.4.4
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -24,6 +24,12 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 abg status                              # Gateway 起動状況、接続中拡張、共有タブ数
 abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url/accessMode)
 abg inspect                             # status + tabs をまとめて確認
+abg bookmarks list                      # browser-owned personal data。別途 Bookmarks access が必要
+abg bookmarks search "reference"        # 明示許可後に bookmark title/URL を検索
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>        # 保存済み URL を明示コマンドで開く
+abg reading-list list                   # Chrome 120+ chrome.readingList。別途 Reading List access が必要
+abg reading-list search "saved page"
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"          # text/html/value/attr/title/url/count/box/styles
@@ -63,6 +69,9 @@ abg dialog <tab|ref> --accept            # 承認して accept
 abg dialog <tab|ref> --dismiss           # 承認して dismiss
 abg dialog <tab|ref> --prompt-value "ok" # 承認して prompt text を送信
 abg screenshot --latest                 # 最後に保存したスクショパス
+abg record start <tab|ref> [--mic] [--out out.webm] # 共有中タブを webm 録画 (tab audio、--mic で部屋の音も録音)
+abg record stop                         # 録画を停止し、webm の path/bytes/duration を返す
+abg record status                       # 現在の録画状態を確認
 abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # DOM 注釈を明示追加
@@ -99,6 +108,7 @@ abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapp
 abg clear <tab|ref> --selector "<css>"           # Clear an editable target before paste
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # 現在のタブ上で一時的に DOM 差し替え
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
+abg upload <tab|ref> --selector "input[type=file]" --file a.png --file b.png  # 複数ファイル (input に multiple 属性が必要)
 abg type <tab|ref> "<text>"              # 現在フォーカスにテキスト送信 (Sheets セル等)
 abg key <tab|ref> <key> [--modifiers ctrl,shift] # キー入力 (Enter/Space/ArrowDown/a 等)
 abg keydown <tab|ref> Shift              # keyDown のみ。hold-key 操作用
@@ -130,7 +140,8 @@ abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
 abg validate editable <tab|ref> --selection
 
 # 反復フロー
-abg record <tab|ref> --out flow.json             # Ctrl+C まで CLI 由来操作を記録
+abg record flow <tab|ref> --out flow.json        # Ctrl+C まで CLI 由来操作を記録
+abg record <tab|ref> --out flow.json             # flow は default subcommand。既存互換
 abg replay flow.json --dry-run                   # 実行前プレビュー
 abg replay flow.json --match-url "*kintone*"     # flow を再生
 
@@ -138,7 +149,6 @@ abg replay flow.json --match-url "*kintone*"     # flow を再生
 abg revoke <tab|ref>                    # タブの共有を解除
 abg audit [--lines 50]                  # 監査ログ閲覧
 abg activity --period day|week          # ローカルの日次/週次 activity digest
-abg install-skill                       # Claude Code / Codex skills を更新
 abg mcp-server                          # 同じ abg CLI を包む stdio MCP server
 abg plugin list                         # plugin 一覧
 abg plugin install user/repo --yes      # repo URL / user/repo から user plugin を追加
@@ -149,6 +159,17 @@ abg <plugin> <command> [--key value | --flag | --stdin | --json '{"...":"..."}']
 `abg activity` は opt-in の local-only 要約。on-device audit log から action、tab ID、origin、
 timestamp、approval outcome を集計し、貼り付け値、clipboard payload、plugin args、raw audit
 details は出さない。正確なイベント列が必要な debug / review では `abg audit` を使う。
+
+`abg record start` は通常操作の承認設定に関係なく必ず approval window を出す。タブ音声と、
+`--mic` 指定時は物理的な部屋の音も扱うため、silent auto-approval にはしない。Allow のクリックは
+Chrome の `tabCapture.getMediaStreamId` に必要な user gesture も兼ねる。録画中は対象タブに赤い
+`REC` badge が出る。詳細な設計と実機確認手順は `docs/RECORDING.md` を参照する。
+
+`abg bookmarks` と `abg reading-list` は共有タブの page state ではなく、browser-owned personal
+data を扱う。拡張 popup の `Bookmarks access` / `Reading List access` を別々に ON にした時だけ
+使う。Reading List は Chrome 120+ の `chrome.readingList` がある browser だけ対応し、非対応
+browser では明示的な unsupported error を返す。audit log は command boundary、件数、id、
+query byte length を残すが、保存済み URL 全文は残さない。
 
 ## Authoring a user plugin
 
@@ -250,8 +271,8 @@ abg plugin list
 abg plugin reload hello
 ```
 
-`abg install-skill` installs or updates both bundled skills: `agent-browser-gateway` for ABG usage and
-`abg-plugin-creator` for scaffolding ABG plugins.
+Both ABG skills (`agent-browser-gateway` for ABG usage and `abg-plugin-creator` for scaffolding ABG
+plugins) are installed and updated with the skills CLI: `npx skills add arcmanagement/agent-browser-gateway -g`.
 
 `abg mcp-server` starts a stdio MCP server for Codex, Claude Code, and other MCP clients. It exposes
 one `abg_cli` tool that accepts argv tokens after `abg`, for example `{"args":["tabs","--compact"]}`.
@@ -465,6 +486,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
   - 例: Sheets の D1 チェックボックス ON → describe/screenshot で D1 の座標確認 → `abg click <tab> --x N --y M`
   - もしくは Sheets のキーボードナビ: `abg key <tab> Space` で選択中セルのチェック切替 (要事前にセル選択)
 - 操作系 (`click` / `fill` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag`) を呼ぶ前に、必ず screenshot/read/describe で**現状を確認**する。盲目的に操作しない
+- **ファイル添付は `abg upload` を使う**。`eval` で `DataTransfer` / `DragEvent` を合成してドロップする hack は避ける（巨大な `--script-file` は重い環境で command timeout になりやすい）。複数画像は `--file` を繰り返して 1 回の `upload` で渡す（input に `multiple` 属性が必要）。selector は top-document の `input[type=file]` を指すこと。cross-origin iframe 内や custom upload widget の場合は `file_attach_failed` で明示的に失敗する
 - `replace` は外部ページを永続変更しない。一時的な DOM 差し替えで、承認付き write operation として扱う。注釈コメントが「このロゴを変えて」のような DOM 見た目変更なら、注釈の `selector` / `element.selector` を使って `abg replace <ref> --selector ... --html ...` を使える
 - ページ遷移後など要素出現を待つときは `abg wait <tabId> --selector "..."` を使う。`sleep` を bash で書かない
 - read は出力が大きいので、可能なら `--selector` で絞るか `--format markdown` / `--format text` で圧縮する。token 効率に直結

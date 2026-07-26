@@ -258,7 +258,7 @@ struct MenuBarView: View {
                 }
 
                 ToolButton(title: "Socket", symbol: "point.3.connected.trianglepath.dotted") {
-                    copy(ABGConstants.udsPath)
+                    copy(ABGConstants.configuredCLISocketPath())
                 }
             }
 
