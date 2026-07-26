@@ -23,6 +23,7 @@ personal browser profile.
 | Redacted HAR export | `per-tab` | No write approval; artifact generation must be explicit | Log tab, filters, redaction mode, byte size, and local path | Local filesystem only; no ABG cloud storage. |
 | Cookie / Web Storage reads | `per-tab` | No write approval; full values require explicit `--values` | Log kind, filters, counts, and whether values were requested | Values are redacted by default. |
 | Framework and Web Vitals reads | `per-tab` | No write approval | Log read command and tab | Hook-dependent, bounded, no component mutation. |
+| Raise an already-shared tab and its existing window | `per-tab` | The explicit CLI invocation is sufficient; no second popup | Log command, extension, shared tab, and shared URL | The extension must reject unshared or expired tabs. No tab/window discovery, creation, closing, or navigation. |
 | Cookie / storage write or delete | `sandbox/all-tabs only` | Required per operation | Log key/name, scope, action, and value byte count, never raw secret values | Not allowed for normal personal-profile per-tab sharing. |
 | Network route/mock/mutation | `sandbox/all-tabs only` | Required before enabling each rule and before mutation when practical | Log rule id, URL scope, method/status changes, byte counts | No silent request/response rewriting in normal mode. |
 | Init scripts / pre-page-load instrumentation | `sandbox/all-tabs only` | Required before installing/enabling script | Log script hash/source summary, URL scope, enable/disable time | Needed before navigation, so it does not fit normal per-tab consent. |
@@ -44,6 +45,8 @@ personal browser profile.
   the first supported controls are viewport emulation, Web Storage set/delete, and sandbox tab
   create/close.
 - #188 documents the official non-goals versus user-controlled/self-hosted extensions.
+- #309 allows raising an already-shared tab in `per-tab` mode while keeping arbitrary URL and
+  new-window opening outside normal personal profiles.
 
 ## Implementation Checklist
 

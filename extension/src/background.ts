@@ -7,6 +7,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  raisePermittedBrowserTab,
 } from "./backgroundLogic.js";
 import {
   type BrowserBookmarkTreeNode,
@@ -1258,6 +1259,9 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, await listReadingList(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_search") {
       reply(cmd.id, await searchReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "raise_tab") {
+      if (!tabId) throw new Error("tab not permitted");
+      reply(cmd.id, await raisePermittedBrowserTab(browser, permittedTabs, tabId));
     } else if (cmd.method === "frames") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await listFrames(tabId));

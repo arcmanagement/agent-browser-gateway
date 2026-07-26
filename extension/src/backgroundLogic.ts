@@ -26,6 +26,55 @@ export function originForUrl(url: string): string {
   }
 }
 
+type RaiseTabBrowser = {
+  tabs: {
+    get(tabId: number): Promise<{ windowId?: number }>;
+    update(tabId: number, properties: { active: boolean }): Promise<unknown>;
+  };
+  windows: {
+    update(windowId: number, properties: { focused: boolean }): Promise<unknown>;
+  };
+};
+
+export type RaiseTabResult = {
+  ok: true;
+  tabId: number;
+  windowId: number;
+  active: true;
+  windowFocused: true;
+};
+
+export async function raiseBrowserTab(
+  browser: RaiseTabBrowser,
+  tabId: number,
+): Promise<RaiseTabResult> {
+  const tab = await browser.tabs.get(tabId);
+  if (!Number.isInteger(tab.windowId) || (tab.windowId ?? -1) < 0) {
+    throw new Error("tab window unavailable");
+  }
+  const windowId = tab.windowId as number;
+  await browser.tabs.update(tabId, { active: true });
+  await browser.windows.update(windowId, { focused: true });
+  return {
+    ok: true,
+    tabId,
+    windowId,
+    active: true,
+    windowFocused: true,
+  };
+}
+
+export async function raisePermittedBrowserTab(
+  browser: RaiseTabBrowser,
+  permittedTabs: { has(tabId: number): boolean },
+  tabId: number,
+): Promise<RaiseTabResult> {
+  if (!permittedTabs.has(tabId)) {
+    throw new Error("tab not permitted");
+  }
+  return raiseBrowserTab(browser, tabId);
+}
+
 // Normalize the file list for an upload_file command. Accepts `files` (array of
 // absolute paths, the canonical form) or the legacy single `file` string, and
 // returns a non-empty array of strings. Throws on malformed input so the

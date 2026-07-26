@@ -253,6 +253,10 @@ export function createChromeMock() {
       create: vi.fn(async () => ({ id: 1 })),
       onRemoved: createChromeEvent<[number]>(),
       remove: vi.fn(async () => undefined),
+      update: vi.fn(async (windowId: number, properties: { focused?: boolean }) => ({
+        id: windowId,
+        ...properties,
+      })),
     },
   };
 }

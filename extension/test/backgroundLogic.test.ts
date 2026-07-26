@@ -1,11 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAuditDiff,
   detectBrowserKind,
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  raiseBrowserTab,
+  raisePermittedBrowserTab,
 } from "../src/backgroundLogic.js";
+import { installChromeMock } from "./chromeMock.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("normalizeUploadFiles", () => {
   it("accepts a files array of absolute paths", () => {
@@ -61,6 +68,52 @@ describe("backgroundLogic", () => {
     expect(originForUrl("https://example.com/path?q=1")).toBe("https://example.com");
     expect(originForUrl("file:///tmp/report.html")).toBe("null");
     expect(originForUrl("not a url")).toBe("");
+  });
+
+  it("activates a shared target tab before focusing its existing window", async () => {
+    const chrome = installChromeMock();
+    const tab = await chrome.tabs.create({
+      active: false,
+      url: "https://example.test",
+      windowId: 7,
+    });
+
+    await expect(raisePermittedBrowserTab(chrome, new Set([tab.id]), tab.id)).resolves.toEqual({
+      ok: true,
+      tabId: tab.id,
+      windowId: 7,
+      active: true,
+      windowFocused: true,
+    });
+    expect(chrome.tabs.update).toHaveBeenCalledWith(tab.id, { active: true });
+    expect(chrome.windows.update).toHaveBeenCalledWith(7, { focused: true });
+    const tabUpdateOrder = chrome.tabs.update.mock.invocationCallOrder[0];
+    const windowUpdateOrder = chrome.windows.update.mock.invocationCallOrder[0];
+    if (tabUpdateOrder === undefined || windowUpdateOrder === undefined) {
+      throw new Error("expected both activation calls");
+    }
+    expect(tabUpdateOrder).toBeLessThan(windowUpdateOrder);
+  });
+
+  it("does not focus any window when the target tab has no owning window", async () => {
+    const chrome = installChromeMock();
+    const tab = await chrome.tabs.create({ active: false, url: "https://example.test" });
+    chrome.tabs.get.mockResolvedValueOnce({ ...tab, windowId: undefined });
+
+    await expect(raiseBrowserTab(chrome, tab.id)).rejects.toThrow("tab window unavailable");
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unshared tab before reading or focusing browser state", async () => {
+    const chrome = installChromeMock();
+
+    await expect(raisePermittedBrowserTab(chrome, new Set([7]), 8)).rejects.toThrow(
+      "tab not permitted",
+    );
+    expect(chrome.tabs.get).not.toHaveBeenCalled();
+    expect(chrome.tabs.update).not.toHaveBeenCalled();
+    expect(chrome.windows.update).not.toHaveBeenCalled();
   });
 
   it("captures text-only audit diffs with hashes and compact previews", () => {
