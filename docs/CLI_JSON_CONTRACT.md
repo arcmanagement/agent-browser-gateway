@@ -44,7 +44,7 @@ These shapes are stable for automation. New optional keys may be added without a
 | Command | Result shape |
 | --- | --- |
 | `abg status` | Object with Gateway state, including running/connection counters and extension metadata. |
-| `abg tabs` | Array of tab objects with stable tab identity and sharing metadata. Compact mode preserves `ref`, `tabId`, `title`, `url`, and `accessMode`. |
+| `abg tabs` | Array of tab objects with stable tab identity and sharing metadata. Compact mode preserves stable `ref`, profile-qualified `targetId`, Chrome `tabId`, `title`, `url`, `accessMode`, and profile/browser labels when available. |
 | `abg inspect` | Object combining `status`-style fields with `extensionCount`, `permittedTabCount`, `tabs`, and optional recovery guidance when no tabs are shared. |
 | `abg read` | Object containing tab metadata and the requested content format, such as `text`, `html`, `markdown`, or structured JSON. |
 | `abg get` | Object or scalar result for the requested getter. Getter names and primitive JSON types are part of the command contract. |
@@ -96,6 +96,16 @@ CLI stderr normalizes `code` to `error` for user-facing command failures:
 Error codes are stable snake_case identifiers. `message` is short technical English for logs and
 scripts. `userMessage` is optional user-recovery copy and should be included when the caller can take
 a clear local action. `nextCommand` must be a safe local command that helps recover or inspect state.
+
+Tab refs are stable for the lifetime of the running Gateway and route by browser profile plus Chrome
+tab ID. `ambiguous_tab_id` means the same raw positive Chrome tab ID exists in multiple connected
+profiles; retry with a ref from `abg tabs --compact`. `script_too_large` is returned before dispatch
+when eval source exceeds 262144 bytes. `command_timeout` reports an eval that exceeded its effective
+timeout after dispatch. `file_access_required` means Chrome's explicit **Allow access to file URLs**
+grant is off; Chrome applies that local-file grant to debugger attachment on HTTP and HTTPS pages too.
+Other debugger-side attachment failures use `file_attach_failed` with selector, frame, and path
+recovery guidance. ABG v0.4.3 and later use a stable CDP backend node for upload, avoiding a separate
+class of failures caused by transient frontend node handles.
 
 The stable optional error fields are:
 

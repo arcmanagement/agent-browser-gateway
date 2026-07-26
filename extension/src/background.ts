@@ -3,6 +3,7 @@ import {
   type AuditDiffPayload,
   type AuditDiffValue,
   createAuditDiff,
+  describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
   normalizeUploadFiles,
@@ -5970,6 +5971,10 @@ async function uploadFile(
       "upload currently supports top-document input[type=file] only; use a top-document selector or file a frame upload follow-up",
     );
   }
+  if (!(await browser.extension.isAllowedFileSchemeAccess())) {
+    const failure = describeFileAttachFailure("Not allowed");
+    throw new GatewayError(failure.code, failure.message);
+  }
   await attachDebugger(tabId);
   const documentNode = (await browser.debugger.sendCommand({ tabId }, "DOM.getDocument", {
     depth: -1,
@@ -6016,10 +6021,8 @@ async function uploadFile(
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    throw new GatewayError(
-      "file_attach_failed",
-      `Chrome rejected the file attachment (${detail}). This usually means the input is inside a cross-origin iframe, is hidden behind a custom upload widget, or the path is not readable by the browser. Verify the selector points to a real top-document input[type=file] and that the file paths are absolute and accessible.`,
-    );
+    const failure = describeFileAttachFailure(detail);
+    throw new GatewayError(failure.code, failure.message);
   }
   const [res] = await browser.scripting.executeScript({
     target: { tabId },
