@@ -35,7 +35,20 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/abg",
-            exclude: ["Resources"]
+            linkerSettings: [
+                // A standalone sandboxed executable (the Mac App Store bundled CLI) needs
+                // a bundle identifier for libsecinit to create its container; without an
+                // embedded Info.plist it crashes at launch. Harmless for other channels.
+                .unsafeFlags(
+                    [
+                        "-Xlinker", "-sectcreate",
+                        "-Xlinker", "__TEXT",
+                        "-Xlinker", "__info_plist",
+                        "-Xlinker", "packaging/appstore/abg-info.plist",
+                    ],
+                    .when(platforms: [.macOS])
+                ),
+            ]
         ),
         .testTarget(
             name: "GatewayTests",

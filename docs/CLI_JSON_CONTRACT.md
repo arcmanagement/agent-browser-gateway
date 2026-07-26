@@ -5,7 +5,14 @@ wrappers. The current contract version is `1`, defined in `CLIJSONContract.versi
 
 ## Transport Envelope
 
-The CLI talks to the local Gateway over line-delimited JSON on the Unix domain socket.
+The CLI talks to the local Gateway over line-delimited JSON on a Unix domain socket. The CLI
+probes the standard state dir socket first, then the app-group container socket used by the
+sandboxed Mac App Store gateway (`~/Library/Group Containers/group.jp.co.arcm.abg/`).
+When no socket is reachable (for example, the socket path exceeds the macOS `sun_path` limit),
+the CLI falls back to a loopback WebSocket at `ws://127.0.0.1:<port>/cli`, authenticating with
+the `x-abg-token` header read from the gateway's `cli-endpoint.json` (`{token, port}`, `0600`,
+rotated every gateway launch). Over WebSocket, one text message carries one request or response
+without the trailing newline. The envelopes below are identical on both transports.
 
 Requests use this envelope:
 
@@ -43,6 +50,7 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg get` | Object or scalar result for the requested getter. Getter names and primitive JSON types are part of the command contract. |
 | `abg snapshot` | Object or array containing inspectable element rows with refs, text, roles, and selector/geometry metadata when available. |
 | `abg screenshot` | Object with local output path and capture metadata. `abg screenshot --latest` returns the latest saved screenshot path object or a normalized error. |
+| `abg record start` | Object `{ ok, recordingId, tabId, path, mic, startedAt }` after the user approves. `abg record stop` returns `{ ok, path, bytes, durationMs, mime, mic }`; `abg record status` returns `{ recording, ... }`. See `docs/RECORDING.md`. |
 | `abg audit` | Array of recent audit log rows. Rows are append-only JSON objects; sensitive operation payload values remain omitted or summarized. |
 | `abg plugin list` | Array of plugin objects with `name`, `source`, filesystem status, manifest metadata, and loaded command metadata when available. |
 | `abg <plugin> <command>` | JSON value returned by the plugin command handler. Command plugins should prefer stable object results such as `{ "ok": true, ... }`. |

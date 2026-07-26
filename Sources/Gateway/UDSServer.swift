@@ -8,7 +8,10 @@ final class UDSServer: @unchecked Sendable {
     private let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
     func start(runtime: any GatewayRuntime) async throws {
-        let path = ABGConstants.udsPath
+        let path = ABGConstants.configuredCLISocketPath()
+        let dir = (path as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        chmod(dir, 0o700)
         try? FileManager.default.removeItem(atPath: path)
 
         // Hold the runtime weakly inside the long-lived bootstrap closure so the transport

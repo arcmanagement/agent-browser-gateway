@@ -31,6 +31,16 @@ export type ExtToGateway =
     }
   | { type: "tab_closed"; tabId: number }
   | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }
+  | { type: "record_chunk"; recordingId: string; seq: number; dataBase64: string }
+  | {
+      type: "record_stopped";
+      recordingId: string;
+      durationMs: number;
+      mime: string;
+      micUsed: boolean;
+      chunkCount: number;
+    }
+  | { type: "record_failed"; recordingId: string; error: string }
   | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
 
 export type GatewayCommand = {
@@ -91,6 +101,9 @@ export type GatewayCommand = {
     toX?: number;
     toY?: number;
     steps?: number;
+    // upload_file: canonical `files` (array of absolute paths); `file` accepted
+    // as a legacy single-path alias.
+    files?: string[];
     file?: string;
     // scroll (mouseWheel)
     deltaX?: number;
@@ -103,6 +116,10 @@ export type GatewayCommand = {
     modifiers?: string[]; // any of: alt, ctrl, cmd, shift
     mime?: string;
     contentBytes?: number;
+    bookmarkId?: string;
+    includeFolders?: boolean;
+    path?: string;
+    hasBeenRead?: boolean;
     // wait_for
     wait?: boolean;
     hidden?: boolean;
@@ -130,6 +147,10 @@ export type GatewayCommand = {
     storageKey?: string;
     storageKind?: string;
     targetTabId?: number;
+    // record
+    mic?: boolean;
+    recordingId?: string;
+    timesliceMs?: number;
   };
 };
 
@@ -150,6 +171,12 @@ export type GatewayMethod =
   | "state_inspect"
   | "framework_inspect"
   | "download_state"
+  | "bookmarks_list"
+  | "bookmarks_search"
+  | "bookmarks_get"
+  | "bookmarks_open"
+  | "reading_list_list"
+  | "reading_list_search"
   | "revoke"
   | "wait_for"
   | "eval_script"
@@ -183,7 +210,10 @@ export type GatewayMethod =
   | "sandbox_action"
   | "scroll"
   | "scroll_into_view"
-  | "drag";
+  | "drag"
+  | "record_start"
+  | "record_stop"
+  | "record_status";
 
 export type OperationMethod = Extract<
   GatewayMethod,
@@ -222,10 +252,12 @@ export type ExtensionSettings = {
   trustedAutomationEnabled: boolean;
   profileLabel: string;
   allTabsAccessEnabled: boolean;
+  bookmarksAccessEnabled: boolean;
+  readingListAccessEnabled: boolean;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
-export type ApprovalMethod = OperationMethod | "eval_script";
+export type ApprovalMethod = OperationMethod | "eval_script" | "record_start";
 
 export type ApprovalRequest = {
   id: string;
@@ -250,6 +282,8 @@ export type PopupToBackground =
   | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
   | { type: "set_all_tabs_access"; value: boolean }
+  | { type: "set_bookmarks_access"; value: boolean }
+  | { type: "set_reading_list_access"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
@@ -268,6 +302,18 @@ export type BackgroundToPopup =
         shareableTabCount: number;
         skippedTabCount: number;
       };
+      personalDataAccess: {
+        bookmarks: {
+          permissionGranted: boolean;
+          active: boolean;
+          supported: boolean;
+        };
+        readingList: {
+          permissionGranted: boolean;
+          active: boolean;
+          supported: boolean;
+        };
+      };
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };
     }
@@ -276,7 +322,14 @@ export type BackgroundToPopup =
 
 export type ApprovalToBackground =
   | { type: "get_approval_request"; approvalId: string }
-  | { type: "approval_decision"; approvalId: string; decision: ApprovalDecision };
+  | {
+      type: "approval_decision";
+      approvalId: string;
+      decision: ApprovalDecision;
+      // Present only for record_start: the tabCapture stream ID minted inside the
+      // "Allow" click so the capture gesture stays live.
+      streamId?: string;
+    };
 
 export type BackgroundToApproval =
   | { type: "approval_request"; request: ApprovalRequest }
@@ -288,3 +341,35 @@ export type ConsoleEntry = {
   level: string;
   text: string;
 };
+
+// Background <-> offscreen recorder document (chrome.runtime messaging).
+export type BackgroundToOffscreen =
+  | {
+      target: "abg-offscreen";
+      cmd: "start";
+      recordingId: string;
+      streamId: string;
+      withMic: boolean;
+      timesliceMs?: number;
+    }
+  | { target: "abg-offscreen"; cmd: "stop"; recordingId: string };
+
+export type OffscreenStartResult = {
+  ok: boolean;
+  micUsed?: boolean;
+  mime?: string;
+  error?: string;
+};
+export type OffscreenStopResult = { ok: boolean; error?: string };
+
+export type OffscreenToBackground =
+  | { type: "abg_offscreen_chunk"; recordingId: string; seq: number; dataBase64: string }
+  | {
+      type: "abg_offscreen_stopped";
+      recordingId: string;
+      durationMs: number;
+      mime: string;
+      micUsed: boolean;
+      chunkCount: number;
+    }
+  | { type: "abg_offscreen_error"; recordingId: string; error: string };
