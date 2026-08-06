@@ -1,10 +1,16 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-07-08.
+Living document. Reflects current intent, not commitment. Last updated 2026-07-09.
 
-Current repo version: **v0.4.1**.
+Current repo version: **v0.4.2**.
 
 ## Shipped
+
+### v0.4.2 — Tab recording and explicit personal data inspection (2026-07-09)
+- Added `abg record start/stop/status` for approval-gated WebM recording of a shared Chrome tab, including tab audio and optional microphone mixing.
+- Kept recording behind an explicit local approval window; the Allow click mints the Chrome `tabCapture` stream ID so CLI-driven recording still satisfies the user-gesture requirement.
+- Streamed MediaRecorder chunks through the extension and Gateway to disk, added a red `REC` badge, documented manual verification in `docs/RECORDING.md`, and kept Firefox builds free of Chrome-only recording permissions.
+- Added `abg bookmarks list/search/get/open` and `abg reading-list list/search` behind separate popup toggles and Chrome optional permissions, with audit metadata that avoids storing full saved URLs.
 
 ### v0.4.1 — Audit log performance patch (2026-06-10)
 - Changed `abg audit --lines N` to read JSONL entries from the end of the audit log instead of decoding the entire local log file.
@@ -88,7 +94,7 @@ Current repo version: **v0.4.1**.
 - `table`, `describe`, and `network` observation tools for compact page inspection
 - `upload` via Chrome DevTools Protocol `DOM.setFileInputFiles`
 - `record` / `replay` for repeatable CLI-originated agent flows
-- `install-skill` installs the bundled guidance into both Claude Code and Codex skill directories
+- `install-skill` installs the bundled guidance into both Claude Code and Codex skill directories (replaced by `npx skills add` in 0.4.4)
 - Homebrew-style release artifacts: macOS app/CLI zip, Chrome extension zip, and generated cask
 
 ### v0.3.0 — annotation mode (2026-05-03)
@@ -134,8 +140,10 @@ Current repo version: **v0.4.1**.
 
 - Audit log viewer in the Gateway UI
 - Multiple Chrome profile UX polish
-- Browser-owned personal data access for bookmarks and Reading List (#199/#200) remains a later
-  explicit-permission track, separate from normal per-tab sharing.
+- Browser-owned personal data expansion under #178 continues as an explicit-permission track,
+  separate from normal per-tab sharing. #199 adds bookmark inspection and Chrome Reading List
+  inspection behind dedicated optional permissions; follow-up work should keep the same audit and
+  URL-redaction boundary.
 
 ## Later
 

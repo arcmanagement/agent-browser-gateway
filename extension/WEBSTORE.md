@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.1.zip
+dist/agent-browser-gateway-extension-0.4.3.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,16 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.3 review notes
+
+This Chrome Web Store package bumps the extension version for review after the
+multi-file upload hardening change. The user-visible changes are:
+
+- `abg upload` now accepts repeated `--file` arguments for multi-file inputs.
+- File input attachment uses a more stable DevTools node reference.
+- File attachment errors now explain unsupported inputs and rejected paths more
+  clearly.
 
 ## Store listing fields
 
@@ -75,6 +85,10 @@ Suggested permission justifications:
 - `storage`: Store local settings and session-scoped tab sharing state.
 - `debugger`: Capture screenshots, console messages, network information, file uploads, and input operations for a user-shared tab.
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
+- `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
+- `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway.
+- Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
+- Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.
 - Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs in this profile"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.
 
 Remote code declaration:
@@ -136,15 +150,45 @@ If the item ever needs to be recreated from scratch, repeat this process:
 Do not commit a private `.pem` or other signing key. The manifest `"key"` value
 is a public key string used for deterministic extension ID generation.
 
-## CI and manual submission boundary
+## GitHub Actions review submission boundary
 
-The package workflow produces the submission ZIP only. It does not upload to the
-Chrome Web Store and does not store Chrome Web Store API credentials.
+The package workflow produces the submission ZIP for pull requests. The
+`Chrome Web Store Submit` workflow uploads the ZIP through the Chrome Web Store
+API and submits it for review. It can be called by the unified tag release
+workflow or run manually from GitHub Actions.
 
 - `extension/public/manifest.json` contains the public manifest `"key"` value so
   CI, local builds, and unpacked builds keep the stable extension ID.
 - `extension/store-assets/` contains listing screenshots and promotional images.
   These assets are not included in the extension ZIP; update them manually in the
   Developer Dashboard when the listing changes.
-- A maintainer downloads the CI artifact, verifies the ZIP contents, and uploads
-  it manually to the Chrome Web Store Developer Dashboard.
+- The submit workflow always uses `STAGED_PUBLISH`, so final publishing remains
+  a manual owner action after Chrome Web Store review approval.
+- A scheduled monthly health check refreshes the OAuth token and fetches the
+  store item status without uploading a package. This keeps the Google OAuth
+  client active and catches token or policy problems before the next release.
+
+Required GitHub Actions variables:
+
+```text
+CHROME_EXTENSION_ID
+CHROME_PUBLISHER_ID
+CHROME_CLIENT_ID
+```
+
+Required GitHub Actions secrets:
+
+```text
+CHROME_CLIENT_SECRET
+CHROME_REFRESH_TOKEN
+```
+
+The Google Cloud project is used only to enable the Chrome Web Store API and to
+create the OAuth client and refresh token. Build, verification, ZIP upload, and
+review submission run in GitHub Actions.
+
+To submit a merged extension version for review, push the release tag and let
+the unified `Release` workflow call `Chrome Web Store Submit`. For a manual
+resubmission, open GitHub Actions, run `Chrome Web Store Submit`, and optionally
+provide the expected extension version. Leaving the input empty uses
+`extension/package.json`.

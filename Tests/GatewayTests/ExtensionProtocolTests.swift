@@ -152,6 +152,84 @@ final class ExtensionProtocolTests: XCTestCase {
         XCTAssertEqual(reason, "unknown")
     }
 
+    func testDecodesRecordChunk() throws {
+        let json = """
+        {
+          "type": "record_chunk",
+          "recordingId": "rec-1",
+          "seq": 3,
+          "dataBase64": "AAECAw=="
+        }
+        """.data(using: .utf8)!
+
+        let message = try JSONDecoder().decode(ExtensionMessage.self, from: json)
+
+        guard case .recordChunk(let recordingId, let seq, let dataBase64) = message else {
+            return XCTFail("expected record_chunk")
+        }
+        XCTAssertEqual(recordingId, "rec-1")
+        XCTAssertEqual(seq, 3)
+        XCTAssertEqual(dataBase64, "AAECAw==")
+    }
+
+    func testDecodesRecordStopped() throws {
+        let json = """
+        {
+          "type": "record_stopped",
+          "recordingId": "rec-2",
+          "durationMs": 5000,
+          "mime": "video/webm;codecs=vp9,opus",
+          "micUsed": true,
+          "chunkCount": 5
+        }
+        """.data(using: .utf8)!
+
+        let message = try JSONDecoder().decode(ExtensionMessage.self, from: json)
+
+        guard case .recordStopped(let recordingId, let durationMs, let mime, let micUsed, let chunkCount) = message else {
+            return XCTFail("expected record_stopped")
+        }
+        XCTAssertEqual(recordingId, "rec-2")
+        XCTAssertEqual(durationMs, 5000)
+        XCTAssertEqual(mime, "video/webm;codecs=vp9,opus")
+        XCTAssertTrue(micUsed)
+        XCTAssertEqual(chunkCount, 5)
+    }
+
+    func testDecodesRecordFailedWithFallbackMessage() throws {
+        let json = """
+        {
+          "type": "record_failed",
+          "recordingId": "rec-3"
+        }
+        """.data(using: .utf8)!
+
+        let message = try JSONDecoder().decode(ExtensionMessage.self, from: json)
+
+        guard case .recordFailed(let recordingId, let error) = message else {
+            return XCTFail("expected record_failed")
+        }
+        XCTAssertEqual(recordingId, "rec-3")
+        XCTAssertEqual(error, "recording failed")
+    }
+
+    func testRecordChunkRoundTripsThroughWireType() throws {
+        let message = ExtensionMessage.recordChunk(recordingId: "rec-4", seq: 0, dataBase64: "Zm9v")
+        let data = try JSONEncoder().encode(message)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["type"] as? String, "record_chunk")
+        XCTAssertEqual(object["recordingId"] as? String, "rec-4")
+        XCTAssertEqual(object["seq"] as? Int, 0)
+        XCTAssertEqual(object["dataBase64"] as? String, "Zm9v")
+
+        let decoded = try JSONDecoder().decode(ExtensionMessage.self, from: data)
+        guard case .recordChunk(let recordingId, _, let dataBase64) = decoded else {
+            return XCTFail("expected record_chunk")
+        }
+        XCTAssertEqual(recordingId, "rec-4")
+        XCTAssertEqual(dataBase64, "Zm9v")
+    }
+
     func testGatewayCommandRoundTripsStructuredParams() throws {
         let command = GatewayCommand(
             id: "cmd-1",
