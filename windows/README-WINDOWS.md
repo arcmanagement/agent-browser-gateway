@@ -2,7 +2,7 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
-Current `v0.4.1` release status: WinGet install and Windows release ZIPs are pending while the
+Current `v0.4.2` release status: WinGet install and Windows release ZIPs are pending while the
 signed Windows release workflow and WinGet submission setup are completed.
 
 ## Normal GUI install
@@ -47,6 +47,26 @@ the user `PATH`, and starts the tray Gateway.
 WinUI 3 publish must run on Windows or GitHub Actions `windows-latest`. macOS can prepare source
 changes and non-WinUI artifacts, but it cannot publish the WinUI app because `XamlCompiler.exe` is
 provided by the Windows toolchain.
+
+## Microsoft Store MSIX
+
+Microsoft Store packages are built on Windows from the repository root:
+
+```powershell
+.\packaging\msix\build-msix.ps1 `
+  -IdentityName "ArcManagementInc.AgentBrowserGateway" `
+  -Publisher "CN=ACF7FCEE-0034-48CB-9C9C-D4EBFBE473EB" `
+  -Version "<store-version>" `
+  -SignForStore
+```
+
+Tagged release builds also create this MSIX in GitHub Actions. The Store package version is derived
+from the ABG release version as `<ABG major + 1>.<ABG minor>.<ABG patch>.0`; for example, ABG
+`0.4.3` becomes Store package version `1.4.3.0`.
+
+The Store package launches the tray Gateway process. The MSIX builder also copies the WinUI 3
+generated `.pri` and `.xbf` files into the packaged WinUI app directory so the bundled status/setup
+surfaces have their generated resources available.
 
 To skip tests during an emergency handoff:
 
@@ -120,28 +140,34 @@ workflow. The workflow uploads both:
 
 - `agent-browser-gateway-<version>-windows-x64.zip`
 - `agent-browser-gateway-<version>-windows-x64-setup.zip`
+- `AgentBrowserGateway_<store-version>_win-x64.msix`
 
-Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing artifact.
+Each zip is accompanied by a `.sha256.txt` file. The setup zip is the normal user-facing GitHub
+Release and WinGet artifact. The MSIX is the Microsoft Store submission package.
 
-For signed releases, configure these repository secrets before dispatching the workflow:
+For signed release publication and WinGet submission, configure these repository secrets before
+dispatching the workflow:
 
 - `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded Authenticode signing certificate in PFX format
 - `WINDOWS_CODESIGN_PFX_PASSWORD`: PFX password
 - `WINGET_CREATE_GITHUB_TOKEN`: GitHub token that can submit PRs to `microsoft/winget-pkgs`
 
-Then run `Windows CI` with `require_code_sign=true`. The packaging script signs the staged `.exe`
-and `.dll` files before zipping, including `AgentBrowserGatewaySetup.exe`, `abg.exe`, and
-`agent-browser-gateway.exe`. If signing is required but the certificate or `signtool.exe` is
-unavailable, the workflow fails instead of publishing an unsigned final artifact.
+Then run `Windows CI` with `require_code_sign=true` when the goal is to prove signing is configured.
+The packaging script signs the staged `.exe` and `.dll` files before zipping, including
+`AgentBrowserGatewaySetup.exe`, `abg.exe`, and `agent-browser-gateway.exe`. If signing is explicitly
+required but the certificate or `signtool.exe` is unavailable, the workflow fails instead of
+publishing an unsigned final artifact.
 
 This PFX-in-GitHub-Actions flow is the only accepted exception to the repository signing-key rule.
 GitHub Actions must not receive the release GPG key, Apple Developer ID private key, notary
 credentials, or other non-Windows signing credentials. The release tag and checksum manifest
 signing policy is documented in [Release Signing Policy](../docs/RELEASE_SIGNING.md).
 
-When a release is published, `Windows CI` requires code signing, uploads both Windows ZIPs and their
-SHA-256 files as workflow artifacts, generates WinGet manifests, and submits the package to
-`microsoft/winget-pkgs` when `WINGET_CREATE_GITHUB_TOKEN` is configured.
+When a release is published, `Windows CI` always runs build/test/package and uploads both Windows
+ZIPs and their SHA-256 files as workflow artifacts. GitHub Release asset upload is gated on the
+Windows signing secrets being configured, so an unsigned package is not published as an official
+release asset. WinGet manifest generation and submission run only when both signing secrets and
+`WINGET_CREATE_GITHUB_TOKEN` are configured.
 
 SmartScreen reputation is attached to the signing certificate and observed download history, not to
 this repository alone. Early signed releases can still show SmartScreen warnings until reputation is

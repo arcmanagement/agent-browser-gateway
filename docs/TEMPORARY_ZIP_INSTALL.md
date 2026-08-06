@@ -13,32 +13,31 @@
 以下の 2 つを送ります。
 
 ```text
-agent-browser-gateway-0.4.1-macos-arm64.zip
-agent-browser-gateway-extension-0.4.1.zip
+agent-browser-gateway-0.4.4-macos-arm64.zip
+agent-browser-gateway-extension-0.4.4.zip
 ```
 
-チェックサム:
+チェックサム (リリース時に `make dist` の出力で更新):
 
 ```text
-243810def9b504015d8474f761fa5f7a16b05acc19848d470d1b0b4591ae121e  agent-browser-gateway-0.4.1-macos-arm64.zip
-b8b9c6a18bbb87cbb69d440cd131e9d9bd222a0cfdb04a42a5176aeda85a0975  agent-browser-gateway-extension-0.4.1.zip
+TBD  agent-browser-gateway-0.4.4-macos-arm64.zip
+TBD  agent-browser-gateway-extension-0.4.4.zip
 ```
 
-`agent-browser-gateway-0.4.1-macos-arm64.zip` の中身:
+`agent-browser-gateway-0.4.4-macos-arm64.zip` の中身:
 
 ```text
 Agent Browser Gateway.app
 abg
-AgentBrowserGateway_abg.bundle
 ```
 
-`Agent Browser Gateway.app` はメニューバーアプリです。`abg` は CLI です。`AgentBrowserGateway_abg.bundle` は `abg install-skill` が読む CLI 用リソースです。アプリを起動しても `abg` コマンドは自動インストールされないので、CLI と bundle も配置します。
+`Agent Browser Gateway.app` はメニューバーアプリです。`abg` は CLI です。アプリを起動しても `abg` コマンドは自動インストールされないので、CLI も配置します。Claude Code / Codex 用スキルは `npx skills add arcmanagement/agent-browser-gateway -g` でインストールします。
 
 `Agent Browser Gateway.app` と `abg` は Developer ID 署名済みです。`Agent Browser Gateway.app` は notarization ticket を staple 済みです。
 
 ## アプリと CLI をインストール
 
-`agent-browser-gateway-0.4.1-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
+`agent-browser-gateway-0.4.4-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -46,24 +45,23 @@ sudo mkdir -p /usr/local/bin
 sudo rm -rf "/Applications/Agent Browser Gateway.app"
 sudo ditto "Agent Browser Gateway.app" "/Applications/Agent Browser Gateway.app"
 sudo install -m 755 abg /usr/local/bin/abg
-sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle
-sudo ditto AgentBrowserGateway_abg.bundle /usr/local/bin/AgentBrowserGateway_abg.bundle
+sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle  # 0.4.3 以前の残骸を掃除
 
 open "/Applications/Agent Browser Gateway.app"
 abg status
-abg install-skill
+npx skills add arcmanagement/agent-browser-gateway -g
 ```
 
 `/usr/local/bin` が shell の `PATH` に入っていない場合は、`PATH` に追加するか、既に `PATH` に入っている別ディレクトリへ `abg` を配置してください。
 
 ## Chrome 拡張をインストール
 
-`agent-browser-gateway-extension-0.4.1.zip` を、消さない場所へ展開します。
+`agent-browser-gateway-extension-0.4.4.zip` を、消さない場所へ展開します。
 
 ```bash
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 mkdir -p "$HOME/Applications/Agent Browser Gateway Extension"
-unzip agent-browser-gateway-extension-0.4.1.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
+unzip agent-browser-gateway-extension-0.4.4.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
 Chrome で以下を行います。
@@ -111,6 +109,6 @@ Chrome 側でも `chrome://extensions` から `Agent Browser Gateway` を削除�
 1. `Agent Browser Gateway` を終了する
 2. `/Applications/Agent Browser Gateway.app` を差し替える
 3. `/usr/local/bin/abg` を差し替える
-4. `/usr/local/bin/AgentBrowserGateway_abg.bundle` を差し替える
-5. 展開済み Chrome 拡張フォルダを差し替える
-6. `chrome://extensions` で拡張の reload ボタンを押す
+4. 展開済み Chrome 拡張フォルダを差し替える
+5. `chrome://extensions` で拡張の reload ボタンを押す
+6. `npx skills update -g` でスキルを更新する
