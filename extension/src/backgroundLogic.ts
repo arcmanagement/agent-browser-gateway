@@ -26,6 +26,23 @@ export function originForUrl(url: string): string {
   }
 }
 
+// Normalize the file list for an upload_file command. Accepts `files` (array of
+// absolute paths, the canonical form) or the legacy single `file` string, and
+// returns a non-empty array of strings. Throws on malformed input so the
+// extension surfaces a clear error before touching the debugger.
+export function normalizeUploadFiles(params: { files?: unknown; file?: unknown }): string[] {
+  const raw = params.files ?? params.file;
+  const list = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
+  if (list.length === 0) {
+    throw new Error("file required: provide at least one file path");
+  }
+  const files = list.filter((f): f is string => typeof f === "string" && f.length > 0);
+  if (files.length !== list.length) {
+    throw new Error("file required: every file path must be a non-empty string");
+  }
+  return files;
+}
+
 export type AuditDiffValue = {
   text: string;
   html?: string;

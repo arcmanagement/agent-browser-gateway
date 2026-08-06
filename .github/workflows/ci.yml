@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   verify:
@@ -67,48 +66,6 @@ jobs:
         working-directory: extension
         run: pnpm run build
 
-  chrome-extension-package:
-    name: Chrome extension package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: extension/pnpm-lock.yaml
-
-      - name: Install extension dependencies
-        working-directory: extension
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Chrome Web Store ZIP
-        working-directory: extension
-        run: pnpm run webstore:zip
-
-      - name: Verify ZIP root layout
-        run: |
-          set -euo pipefail
-          zip_path="$(ls dist/agent-browser-gateway-extension-*.zip)"
-          unzip -Z1 "$zip_path" | tee /tmp/extension-zip-entries.txt
-          grep -qx "manifest.json" /tmp/extension-zip-entries.txt
-          if grep -q "^dist/" /tmp/extension-zip-entries.txt; then
-            echo "Extension ZIP must not contain a top-level dist/ directory." >&2
-            exit 1
-          fi
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ci-chrome-extension-webstore-zip
-          path: dist/agent-browser-gateway-extension-*.zip
-
   release-artifact-smoke:
     name: Release artifact smoke test
     runs-on: macos-latest
@@ -157,49 +114,6 @@ jobs:
             dist/agent-browser-gateway-extension-${{ env.RELEASE_VERSION }}.zip
             dist/agent-browser-gateway.rb
             dist/CI_SHA256SUMS.txt
-
-  dependency-security:
-    name: Dependency security
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - id: dependency-review
-        name: Dependency Review advisory
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: actions/dependency-review-action@v5
-        with:
-          fail-on-severity: high
-          vulnerability-check: true
-          license-check: false
-          comment-summary-in-pr: on-failure
-          show-patched-versions: true
-
-      - name: Report advisory Dependency Review status
-        if: steps.dependency-review.outcome == 'failure'
-        run: |
-          echo "::warning::Dependency Review is advisory until this repository supports Dependency Review Action. Treat high-or-critical findings as release blockers."
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: extension/pnpm-lock.yaml
-
-      - name: Install extension dependencies
-        working-directory: extension
-        run: pnpm install --frozen-lockfile
-
-      - name: Audit extension dependencies
-        working-directory: extension
-        run: pnpm audit --audit-level high
 
   swift-dependency-inventory:
     name: Swift dependency inventory

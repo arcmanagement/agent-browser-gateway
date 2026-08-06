@@ -21,6 +21,14 @@ final class RuntimeEnvironmentTests: XCTestCase {
         XCTAssertEqual(ABGConstants.configuredLogsDir(environment: env).lastPathComponent, "AgentBrowserGateway-dev")
         XCTAssertEqual(ABGConstants.configuredUserDir(environment: env).lastPathComponent, ".abg-dev")
         XCTAssertEqual(ABGConstants.configuredScreenshotsDir(environment: env).deletingLastPathComponent().lastPathComponent, "abg-dev")
+        XCTAssertEqual(ABGConstants.configuredRecordingsDir(environment: env).lastPathComponent, "recordings")
+        XCTAssertEqual(ABGConstants.configuredRecordingsDir(environment: env).deletingLastPathComponent().lastPathComponent, "abg-dev")
+    }
+
+    func testRecordingsDirDefaultsToProductionComponent() {
+        let env: [String: String] = [:]
+        XCTAssertEqual(ABGConstants.configuredRecordingsDir(environment: env).lastPathComponent, "recordings")
+        XCTAssertEqual(ABGConstants.configuredRecordingsDir(environment: env).deletingLastPathComponent().lastPathComponent, "abg")
     }
 
     func testExplicitProductionProfileKeepsProductionStateWithCustomPort() {

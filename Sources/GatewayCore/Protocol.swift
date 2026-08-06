@@ -38,10 +38,13 @@ public enum ExtensionMessage: Codable, Sendable {
     case tabUpdated(tabId: Int, url: String, title: String, origin: String, accessMode: String?)
     case tabClosed(tabId: Int)
     case runtimeEvent(tabId: Int, event: AnyCodable)
+    case recordChunk(recordingId: String, seq: Int, dataBase64: String)
+    case recordStopped(recordingId: String, durationMs: Int, mime: String, micUsed: Bool, chunkCount: Int)
+    case recordFailed(recordingId: String, error: String)
     case response(id: String, result: AnyCodable?, error: ErrorPayload?)
 
-    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error }
-    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", response }
+    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error, recordingId, seq, dataBase64, durationMs, mime, micUsed, chunkCount }
+    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", recordChunk = "record_chunk", recordStopped = "record_stopped", recordFailed = "record_failed", response }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -82,6 +85,25 @@ public enum ExtensionMessage: Codable, Sendable {
             self = .runtimeEvent(
                 tabId: try c.decode(Int.self, forKey: .tabId),
                 event: try c.decode(AnyCodable.self, forKey: .event)
+            )
+        case .recordChunk:
+            self = .recordChunk(
+                recordingId: try c.decode(String.self, forKey: .recordingId),
+                seq: try c.decode(Int.self, forKey: .seq),
+                dataBase64: try c.decode(String.self, forKey: .dataBase64)
+            )
+        case .recordStopped:
+            self = .recordStopped(
+                recordingId: try c.decode(String.self, forKey: .recordingId),
+                durationMs: try c.decode(Int.self, forKey: .durationMs),
+                mime: try c.decode(String.self, forKey: .mime),
+                micUsed: try c.decode(Bool.self, forKey: .micUsed),
+                chunkCount: try c.decode(Int.self, forKey: .chunkCount)
+            )
+        case .recordFailed:
+            self = .recordFailed(
+                recordingId: try c.decode(String.self, forKey: .recordingId),
+                error: try c.decodeIfPresent(String.self, forKey: .error) ?? "recording failed"
             )
         case .response:
             self = .response(
@@ -127,6 +149,22 @@ public enum ExtensionMessage: Codable, Sendable {
             try c.encode(MsgType.runtimeEvent, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(event, forKey: .event)
+        case .recordChunk(let recordingId, let seq, let dataBase64):
+            try c.encode(MsgType.recordChunk, forKey: .type)
+            try c.encode(recordingId, forKey: .recordingId)
+            try c.encode(seq, forKey: .seq)
+            try c.encode(dataBase64, forKey: .dataBase64)
+        case .recordStopped(let recordingId, let durationMs, let mime, let micUsed, let chunkCount):
+            try c.encode(MsgType.recordStopped, forKey: .type)
+            try c.encode(recordingId, forKey: .recordingId)
+            try c.encode(durationMs, forKey: .durationMs)
+            try c.encode(mime, forKey: .mime)
+            try c.encode(micUsed, forKey: .micUsed)
+            try c.encode(chunkCount, forKey: .chunkCount)
+        case .recordFailed(let recordingId, let error):
+            try c.encode(MsgType.recordFailed, forKey: .type)
+            try c.encode(recordingId, forKey: .recordingId)
+            try c.encode(error, forKey: .error)
         case .response(let id, let result, let error):
             try c.encode(MsgType.response, forKey: .type)
             try c.encode(id, forKey: .id)
