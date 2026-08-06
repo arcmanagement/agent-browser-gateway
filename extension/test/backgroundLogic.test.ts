@@ -3,9 +3,41 @@ import {
   createAuditDiff,
   detectBrowserKind,
   isShareableTabUrl,
+  normalizeUploadFiles,
   originForUrl,
   richClipboardPayloadLabel,
 } from "../src/backgroundLogic.js";
+
+describe("normalizeUploadFiles", () => {
+  it("accepts a files array of absolute paths", () => {
+    expect(normalizeUploadFiles({ files: ["/tmp/a.png", "/tmp/b.png"] })).toEqual([
+      "/tmp/a.png",
+      "/tmp/b.png",
+    ]);
+  });
+
+  it("accepts a legacy single file string", () => {
+    expect(normalizeUploadFiles({ file: "/tmp/a.png" })).toEqual(["/tmp/a.png"]);
+  });
+
+  it("prefers files over the legacy file alias", () => {
+    expect(normalizeUploadFiles({ files: ["/tmp/a.png"], file: "/tmp/legacy.png" })).toEqual([
+      "/tmp/a.png",
+    ]);
+  });
+
+  it("throws when no file is provided", () => {
+    expect(() => normalizeUploadFiles({})).toThrow(/file required/);
+    expect(() => normalizeUploadFiles({ files: [] })).toThrow(/file required/);
+  });
+
+  it("throws when any entry is not a non-empty string", () => {
+    expect(() => normalizeUploadFiles({ files: ["/tmp/a.png", ""] })).toThrow(/file required/);
+    expect(() => normalizeUploadFiles({ files: ["/tmp/a.png", 123 as unknown as string] })).toThrow(
+      /file required/,
+    );
+  });
+});
 
 describe("backgroundLogic", () => {
   it("detects browser labels from user agents without making security decisions", () => {

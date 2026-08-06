@@ -1,6 +1,8 @@
 ---
 name: bump-abg
 description: Agent Browser Gateway リポジトリの ABG アプリをバージョン bump し、拡張・Swift app・CLI resource・docs・Homebrew Cask・WinGet・一時配布 zip 手順を揃えて、必要に応じて signed/notarized build、commit、push、GitHub Release まで行うための専用 workflow。
+metadata:
+  internal: true
 ---
 
 # Bump ABG
@@ -21,8 +23,9 @@ Use this skill only in the Agent Browser Gateway repository when the user asks t
 For each bump, update all version-bearing files that currently reference the previous version:
 
 ```text
-Sources/Gateway/Coordinator.swift
-Sources/abg/Resources/agent-browser-gateway.md
+Sources/GatewayCore/Constants.swift   (ABGConstants.version — feeds abg status, mcp-server, PluginHost)
+skills/agent-browser-gateway/SKILL.md
+packaging/appstore/abg-info.plist
 build-app.sh
 extension/package.json
 extension/public/manifest.json
@@ -47,12 +50,12 @@ ROADMAP.md
 SECURITY.md
 docs/
 site/
-Sources/abg/Resources/agent-browser-gateway.md
+skills/agent-browser-gateway/SKILL.md
 windows/AgentBrowserGateway.Cli/Resources/agent-browser-gateway.windows.md
 .agents/skills/
 ```
 
-`Sources/abg/Resources/agent-browser-gateway.md` is the bundled Claude/Codex skill resource shipped with the CLI. `.claude/skills` is a symlink to `.agents/skills`, so update `.agents/skills` as the source of truth.
+`skills/agent-browser-gateway/SKILL.md` (and `skills/abg-plugin-creator/SKILL.md`) are the end-user Claude/Codex skills installed via `npx skills add arcmanagement/agent-browser-gateway -g`. `.claude/skills` is a symlink to `.agents/skills` (repo-internal dev skills, marked `metadata.internal: true`), so update `.agents/skills` as the source of truth for those.
 
 Do not continue to signing, notarization, tags, or GitHub Release publication while these surfaces still describe the previous version, omit the release's user-visible behavior, or contradict the current security/consent boundary.
 
@@ -187,10 +190,7 @@ sudo ditto \
 sudo install -m 755 \
   "dist/agent-browser-gateway-$VERSION-macos-arm64/abg" \
   /usr/local/bin/abg
-sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle
-sudo ditto \
-  "dist/agent-browser-gateway-$VERSION-macos-arm64/AgentBrowserGateway_abg.bundle" \
-  /usr/local/bin/AgentBrowserGateway_abg.bundle
+sudo rm -rf /usr/local/bin/AgentBrowserGateway_abg.bundle  # legacy, shipped until 0.4.3
 open "/Applications/Agent Browser Gateway.app"
 ```
 

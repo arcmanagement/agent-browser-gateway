@@ -1,6 +1,8 @@
 ---
 name: create-abg-pull-request
 description: Use in the Agent Browser Gateway repository when creating, publishing, updating, or metadata-fixing Pull Requests so linked Issues, close/reference semantics, labels, milestones, assignees, draft/open state, base/head branches, validation, and ABG English wording are handled accurately.
+metadata:
+  internal: true
 ---
 
 # Create ABG Pull Request

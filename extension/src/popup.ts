@@ -20,6 +20,10 @@ const trustedAutomationToggleEl = document.getElementById(
 const trustedAutomationNoteEl = document.getElementById("trustedAutomationNote") as HTMLDivElement;
 const allTabsToggleEl = document.getElementById("allTabsToggle") as HTMLInputElement;
 const allTabsNoteEl = document.getElementById("allTabsNote") as HTMLDivElement;
+const bookmarksToggleEl = document.getElementById("bookmarksToggle") as HTMLInputElement;
+const bookmarksNoteEl = document.getElementById("bookmarksNote") as HTMLDivElement;
+const readingListToggleEl = document.getElementById("readingListToggle") as HTMLInputElement;
+const readingListNoteEl = document.getElementById("readingListNote") as HTMLDivElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
@@ -43,6 +47,16 @@ async function requestAllTabsPermission(): Promise<boolean> {
 
 async function removeAllTabsPermission(): Promise<void> {
   await browser.permissions.remove({ origins: ["<all_urls>"] }).catch(() => false);
+}
+
+async function requestApiPermission(permission: string): Promise<boolean> {
+  const permissionName = permission as unknown as chrome.runtime.ManifestPermissions;
+  return await browser.permissions.request({ permissions: [permissionName] });
+}
+
+async function removeApiPermission(permission: string): Promise<void> {
+  const permissionName = permission as unknown as chrome.runtime.ManifestPermissions;
+  await browser.permissions.remove({ permissions: [permissionName] }).catch(() => false);
 }
 
 async function refresh(): Promise<void> {
@@ -139,6 +153,68 @@ async function refresh(): Promise<void> {
       await removeAllTabsPermission();
     }
     allTabsToggleEl.disabled = false;
+    await refresh();
+  };
+
+  bookmarksToggleEl.checked = state.personalDataAccess.bookmarks.active;
+  bookmarksToggleEl.disabled = !state.personalDataAccess.bookmarks.supported;
+  bookmarksNoteEl.textContent = state.personalDataAccess.bookmarks.supported
+    ? "Separate browser-owned personal data permission. URLs are returned only by bookmark commands and are not shared-tab state."
+    : "This browser target does not expose the bookmarks extension API.";
+  bookmarksToggleEl.onchange = async () => {
+    const nextValue = bookmarksToggleEl.checked;
+    bookmarksToggleEl.disabled = true;
+    if (nextValue) {
+      const granted = await requestApiPermission("bookmarks");
+      if (!granted) {
+        bookmarksToggleEl.checked = false;
+        bookmarksNoteEl.textContent = "Bookmarks permission was not granted.";
+        bookmarksToggleEl.disabled = false;
+        return;
+      }
+    }
+    const response = await send({ type: "set_bookmarks_access", value: nextValue });
+    if (response.type === "error") {
+      bookmarksToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+      if (nextValue) await removeApiPermission("bookmarks");
+      bookmarksToggleEl.disabled = false;
+      return;
+    } else if (!nextValue) {
+      await removeApiPermission("bookmarks");
+    }
+    bookmarksToggleEl.disabled = false;
+    await refresh();
+  };
+
+  readingListToggleEl.checked = state.personalDataAccess.readingList.active;
+  readingListToggleEl.disabled = !state.personalDataAccess.readingList.supported;
+  readingListNoteEl.textContent = state.personalDataAccess.readingList.supported
+    ? "Separate browser-owned personal data permission for saved Reading List entries."
+    : "This browser target does not expose chrome.readingList. Chrome documents it for Chrome 120+.";
+  readingListToggleEl.onchange = async () => {
+    const nextValue = readingListToggleEl.checked;
+    readingListToggleEl.disabled = true;
+    if (nextValue) {
+      const granted = await requestApiPermission("readingList");
+      if (!granted) {
+        readingListToggleEl.checked = false;
+        readingListNoteEl.textContent = "Reading List permission was not granted.";
+        readingListToggleEl.disabled = false;
+        return;
+      }
+    }
+    const response = await send({ type: "set_reading_list_access", value: nextValue });
+    if (response.type === "error") {
+      readingListToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+      if (nextValue) await removeApiPermission("readingList");
+      readingListToggleEl.disabled = false;
+      return;
+    } else if (!nextValue) {
+      await removeApiPermission("readingList");
+    }
+    readingListToggleEl.disabled = false;
     await refresh();
   };
 

@@ -18,12 +18,18 @@ abg inspect
 Use the returned tab reference, such as `t1`, with read-only commands:
 
 ```bash
+abg bookmarks list
+abg bookmarks search "reference"
+abg reading-list list
 abg read t1 --format markdown
 abg read t1 --selector article --format markdown
 abg frames t1
 abg get text t1 "h1"
 abg snapshot t1 --interactive-only --compact
 abg screenshot t1 --out page.png
+abg record start t1 --out demo.webm
+abg record stop
+abg record status
 abg console t1
 abg table t1 --format markdown
 abg network t1 --url "*api*"
@@ -41,6 +47,10 @@ abg upload t1 --selector "input[type=file]" --file ./report.pdf
 abg navigate t1 "https://example.com"
 abg revoke t1
 ```
+
+Tab recording is always approval-gated. `abg record start` opens a local approval window, and the
+Allow click supplies the Chrome `tabCapture` gesture needed to start WebM recording with tab audio.
+Use `--mic` only when room audio should be mixed in.
 
 ## Targeting
 
@@ -71,6 +81,26 @@ printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
 
 The audit log records selectors, action names, and byte lengths. It does not write pasted text into
 the audit log.
+
+## Browser-Owned Personal Data
+
+Bookmarks and Reading List entries are separate from shared-tab page state. Enable the Bookmarks or
+Reading List toggle in the extension popup before using:
+
+```bash
+abg bookmarks list
+abg bookmarks search "docs"
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>
+abg reading-list list
+abg reading-list search "later"
+```
+
+`bookmarks` uses Chrome's `chrome.bookmarks` API and optional `bookmarks` permission. `reading-list`
+uses `chrome.readingList`, documented by Chrome for Chrome 120+ with the optional `readingList`
+permission. Browsers that do not expose `chrome.readingList` return an explicit unsupported error.
+Audit logs store command metadata, counts, ids, and byte lengths, not full bookmark or Reading List
+URLs.
 
 ## Escape hatch
 
