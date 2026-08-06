@@ -101,7 +101,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.4.1` yet. If this command reports no matching package, that is the
+   WinGet is not live for `v0.4.2` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -112,7 +112,7 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows package-manager install and release ZIPs are pending for `v0.4.1` while the signed Windows
+Windows package-manager install and release ZIPs are pending for `v0.4.2` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.
 
@@ -146,6 +146,8 @@ Operation approval mode adds a second local checkpoint for write operations. By 
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
+Tab recording is stricter than normal operations: `abg record start` always opens a local approval window, even when operation approvals or Trusted automation would skip other prompts. The **Allow** click supplies Chrome's `tabCapture` gesture, recording only the already-shared tab to a local WebM file.
+
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
 The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
 The Gateway window also has Settings for profile-local timeout defaults, approval defaults, and
@@ -164,6 +166,12 @@ documented JSON keys rather than parsing human-oriented help text.
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg bookmarks list                              # Browser-owned personal data; requires separate Bookmarks access
+abg bookmarks search "reference"                # Search bookmark titles/URLs after explicit permission
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>                # Open an existing bookmark URL through an explicit command
+abg reading-list list                           # Chrome 120+ chrome.readingList, separate permission
+abg reading-list search "saved page"
 abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --frame @f1 --selector "<css>"
@@ -187,6 +195,9 @@ abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>]          # defaults to $TMPDIR/abg/screenshots/
 abg pdf <tab|ref> --out page.pdf                 # Page.printToPDF capture
 abg screenshot --latest                          # latest screenshot path
+abg record start <tab|ref> [--mic] [--out x.webm] # record tab to webm (tab audio; --mic adds room audio)
+abg record stop                                  # stop and write the webm, returns its path
+abg record status                                # show the active recording (if any)
 abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
@@ -242,6 +253,7 @@ abg paste-rich <tab|ref> --mime "application/x-vnd.google-docs-sheets-clip+wrapp
 abg clear <tab|ref> --selector "<css>"           # Select all content in an editable target and delete it
 abg replace <tab|ref> --selector "<css>" --html "<span>...</span>"  # Temporary DOM replacement
 abg upload <tab|ref> --selector "input[type=file]" --file "/path/to/file.zip"
+abg upload <tab|ref> --selector "input[type=file]" --file a.png --file b.png  # multiple files (input needs `multiple`)
 abg type <tab|ref> "<text>"                       # Send text to current focus
 abg key <tab|ref> <key> [--modifiers ctrl,shift]  # Enter / Space / ArrowDown / etc.
 abg keydown <tab|ref> Shift
@@ -279,7 +291,8 @@ abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes
 abg validate editable <tab|ref> --selection
 
 # Repeatable flows
-abg record <tab|ref> --out flow.json              # record CLI-originated ABG steps until Ctrl+C
+abg record flow <tab|ref> --out flow.json         # record CLI-originated ABG steps until Ctrl+C
+abg record <tab|ref> --out flow.json              # same (flow is the default subcommand)
 abg replay flow.json --dry-run
 abg replay flow.json --match-url "*kintone*"
 
@@ -287,7 +300,6 @@ abg replay flow.json --match-url "*kintone*"
 abg revoke <tab|ref>                    # Stop sharing
 abg audit [--lines 50]                  # Local audit log
 abg activity --period day|week          # Local daily/weekly activity digest
-abg install-skill                       # Install/update Claude Code + Codex Skills
 abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
 
@@ -381,6 +393,13 @@ Use `state` to inspect whether cookies, `localStorage`, or `sessionStorage` cont
 for the shared tab origin. Values are redacted by default; `--values` must be explicit and the
 Gateway audit log records that full values were requested. `state` is read-only and does not expose
 write/delete operations.
+Use `bookmarks` and `reading-list` only after enabling their separate popup toggles. These are
+browser-owned personal data commands, not shared-tab page state. Bookmark support uses Chrome's
+`chrome.bookmarks` API and the optional `bookmarks` permission. Reading List support uses
+`chrome.readingList`, which Chrome documents for Chrome 120+ with the `readingList` permission;
+Chromium browsers that do not expose the API return an explicit unsupported error. Audit logs record
+the command boundary, counts, ids, and byte lengths, but do not record full bookmark or Reading List
+URLs.
 Use `framework` for read-only React, Web Vitals, and SPA navigation signals from the current shared
 tab. React inspection depends on a compatible page-exposed React DevTools hook; without one, ABG
 returns an explicit unavailable result and a bounded DOM marker summary. Web Vitals are snapshots
@@ -430,7 +449,7 @@ it has unique advantages:
 - **No HTTP/MCP client required** — any agent that can run a shell command works
 - **Trivially debuggable** — run `abg screenshot 445` yourself and see exactly what the agent sees
 - **Agent-agnostic** — Claude Code, Codex, Cursor, Cline, your own scripts
-- **Skill ergonomics** — Claude Code and Codex skills installed by `abg install-skill` teach the agent the CLI in context, including the bundled `agent-browser-gateway` and `abg-plugin-creator` skills
+- **Skill ergonomics** — Claude Code and Codex skills installed by `npx skills add arcmanagement/agent-browser-gateway -g` teach the agent the CLI in context, including the `agent-browser-gateway` and `abg-plugin-creator` skills
 
 For MCP clients, ABG also ships `abg mcp-server`, a stdio MCP wrapper that exposes a single
 `abg_cli` tool. The tool accepts argv tokens after `abg` and launches the local CLI as a child
@@ -673,6 +692,7 @@ Currently shipped:
 - ✅ Network response wait and bounded body preview: `wait-response`, `network --wait-response`, `--body`, and `--max-bytes`
 - ✅ Redacted local HAR export: `har --out file.har` writes bounded metadata-only HAR artifacts without cloud services
 - ✅ Read-only cookie and Web Storage inspection: `state`, with values redacted by default and audited `--values`
+- ✅ Explicit-permission browser-owned personal data inspection: `bookmarks` and Chrome `reading-list`, with URL redaction in audit logs
 - ✅ Read-only framework and Web Vitals snapshots: `framework --kind react/web-vitals/spa`, bounded and hook-dependent
 - ✅ Sandbox-only browser-owned automation controls: `sandbox`, rejected outside all-tabs profile mode
 - ✅ Operation approval mode (default ON, popup-gated)
@@ -699,7 +719,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 - macOS 14+
 - Xcode 16+ (Swift 6.1+) or Swift toolchain
 - [mise](https://mise.jdx.dev/) (manages Node.js + pnpm versions)
-- Google Chrome 116+
+- Google Chrome 120+
 
 ### Install tools
 
@@ -745,7 +765,7 @@ Chrome disables extension access to incognito windows by default; normal tabs do
 ### Hand it to Claude Code or Codex
 
 ```bash
-abg install-skill                       # places/updates ~/.claude/skills/ and ~/.codex/skills/
+npx skills add arcmanagement/agent-browser-gateway -g   # installs the ABG skills into ~/.claude/skills/ etc.
 ```
 
 Claude Code or Codex will now invoke `abg` automatically when the conversation references tabs you have shared.
@@ -793,7 +813,7 @@ In short:
 
 ## Status
 
-🚧 **v0.4.1 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.4.2 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 

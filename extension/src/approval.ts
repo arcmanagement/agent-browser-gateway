@@ -14,12 +14,14 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const approvalId = new URLSearchParams(window.location.search).get("id");
 let submitted = false;
 let timeoutId: number | null = null;
+let currentMethod: string | null = null;
+let currentTabId: number | null = null;
 
 async function send(msg: ApprovalToBackground): Promise<BackgroundToApproval> {
   return (await browser.runtime.sendMessage(msg)) as BackgroundToApproval;
 }
 
-async function decide(decision: ApprovalDecision): Promise<void> {
+async function decide(decision: ApprovalDecision, streamId?: string): Promise<void> {
   if (!approvalId || submitted) return;
   submitted = true;
   if (timeoutId !== null) {
@@ -30,10 +32,23 @@ async function decide(decision: ApprovalDecision): Promise<void> {
   denyBtn.disabled = true;
   statusEl.textContent = "Submitting decision...";
   try {
-    await send({ type: "approval_decision", approvalId, decision });
+    await send({ type: "approval_decision", approvalId, decision, streamId });
   } finally {
     window.close();
   }
+}
+
+// record_start needs a tabCapture stream ID minted inside the user gesture.
+// getMediaStreamId is called synchronously in the "Allow" click so the gesture
+// stays active; the resulting ID travels with the approval decision.
+function getTabStreamId(targetTabId: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    chrome.tabCapture.getMediaStreamId({ targetTabId }, (streamId) => {
+      const err = chrome.runtime.lastError;
+      if (err || !streamId) reject(new Error(err?.message ?? "could not start tab capture"));
+      else resolve(streamId);
+    });
+  });
 }
 
 async function load(): Promise<void> {
@@ -49,6 +64,8 @@ async function load(): Promise<void> {
   }
 
   const { request } = response;
+  currentMethod = request.method;
+  currentTabId = request.tab.tabId;
   intentEl.textContent = request.intent;
   tabTitleEl.textContent = request.tab.title || "(untitled)";
   tabUrlEl.textContent = request.tab.url || "(no URL)";
@@ -79,6 +96,20 @@ function showError(message: string): void {
 }
 
 allowBtn.onclick = () => {
+  if (currentMethod === "record_start" && currentTabId !== null) {
+    // Mint the capture stream ID synchronously inside the gesture, then submit.
+    let streamIdPromise: Promise<string>;
+    try {
+      streamIdPromise = getTabStreamId(currentTabId);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    streamIdPromise
+      .then((streamId) => decide("allow", streamId))
+      .catch((e) => showError(e instanceof Error ? e.message : String(e)));
+    return;
+  }
   decide("allow").catch((e) => {
     showError(e instanceof Error ? e.message : String(e));
   });

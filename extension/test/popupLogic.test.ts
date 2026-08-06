@@ -13,6 +13,8 @@ const baseSettings: ExtensionSettings = {
   operationsRequireApproval: true,
   profileLabel: "",
   trustedAutomationEnabled: false,
+  bookmarksAccessEnabled: false,
+  readingListAccessEnabled: false,
 };
 
 describe("popupLogic", () => {

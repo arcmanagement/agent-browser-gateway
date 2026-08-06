@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway gateway-dev extension all clean test lint format dist reproducible-build docker-repro pages-dmg windows-dist pages-windows release verify
+.PHONY: help install gateway gateway-dev extension all clean test lint format dist reproducible-build appstore-pkg docker-repro pages-dmg windows-dist pages-windows release verify
 
 PAGES_OUTPUT_DIR ?= site/downloads
 
@@ -18,6 +18,7 @@ help:
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
 	@printf "  make reproducible-build build unsigned pinned artifacts, SBOM, and checksums\n"
+	@printf "  make appstore-pkg build sandboxed Mac App Store package candidate (requires VERSION=x.y.z)\n"
 	@printf "  make docker-repro build reproducible Linux abg CLI artifacts through Docker\n"
 	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
 	@printf "  make windows-dist build Windows x64 zip (run from Windows with dotnet)\n"
@@ -69,6 +70,12 @@ endif
 
 reproducible-build:
 	bash scripts/reproducible-build.sh
+
+appstore-pkg:
+ifndef VERSION
+	$(error VERSION is required, e.g. make appstore-pkg VERSION=0.4.2)
+endif
+	VERSION="$(VERSION)" BUILD_NUMBER="$(BUILD_NUMBER)" APPSTORE_BUNDLE_ID="$(APPSTORE_BUNDLE_ID)" APPSTORE_PROVISIONING_PROFILE="$(APPSTORE_PROVISIONING_PROFILE)" APPSTORE_APP_SIGN_IDENTITY="$(APPSTORE_APP_SIGN_IDENTITY)" APPSTORE_INSTALLER_SIGN_IDENTITY="$(APPSTORE_INSTALLER_SIGN_IDENTITY)" bash scripts/dist-mac-app-store.sh
 
 docker-repro:
 	bash scripts/repro-docker-build.sh

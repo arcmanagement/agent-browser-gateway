@@ -8,9 +8,11 @@ actor WSServer {
     private var sockets: [String: WebSocket] = [:]
     private var extensionIdBySocket: [ObjectIdentifier: String] = [:]
     private var runtimeStreamSockets: [ObjectIdentifier: WebSocket] = [:]
+    private let cliToken: String
 
-    init(runtime: any GatewayRuntime) {
+    init(runtime: any GatewayRuntime, cliToken: String) {
         self.runtime = runtime
+        self.cliToken = cliToken
     }
 
     func start() async throws {
@@ -85,7 +87,60 @@ actor WSServer {
             }
         }
 
+        // CLI transport fallback for gateways whose Unix socket is unavailable (the
+        // sandboxed Store build). Same frame budget as /ws so screenshot/read payloads
+        // fit. shouldUpgrade rejects unauthorized requests before the connection is
+        // ever upgraded.
+        let cliToken = self.cliToken
+        app.webSocket(
+            "cli",
+            maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024),
+            shouldUpgrade: { req in
+                let authorized = Self.isAuthorizedCLIUpgrade(
+                    origin: req.headers.first(name: .origin),
+                    token: req.headers.first(name: "x-abg-token"),
+                    expectedToken: cliToken
+                )
+                if !authorized {
+                    req.logger.warning("Rejected /cli WebSocket upgrade (bad token or Origin present)")
+                }
+                return req.eventLoop.makeSucceededFuture(authorized ? HTTPHeaders() : nil)
+            },
+            onUpgrade: { _, ws in
+                ws.onText { ws, text in
+                    Task { await self.handleCLIText(ws: ws, text: text) }
+                }
+            }
+        )
+
         try await app.execute()
+    }
+
+    /// Browsers always attach an Origin header to WebSocket upgrades and cannot set
+    /// custom headers, so requiring x-abg-token while rejecting any Origin-bearing
+    /// request excludes web content twice over. The token (0600 on disk) is what keeps
+    /// other local users out — loopback TCP, unlike the 0700 Unix socket, is reachable
+    /// from every account on the machine.
+    static func isAuthorizedCLIUpgrade(origin: String?, token: String?, expectedToken: String) -> Bool {
+        guard origin == nil else { return false }
+        guard let token, !expectedToken.isEmpty else { return false }
+        return CLIEndpoint.constantTimeEquals(token, expectedToken)
+    }
+
+    private func handleCLIText(ws: WebSocket, text: String) async {
+        let encoder = JSONEncoder()
+        func send(_ resp: CLIResponse) async {
+            guard let out = try? encoder.encode(resp),
+                  let s = String(data: out, encoding: .utf8) else { return }
+            try? await ws.send(s)
+        }
+        guard let data = text.data(using: .utf8),
+              let req = try? JSONDecoder().decode(CLIRequest.self, from: data) else {
+            await send(CLIResponse(id: "?", error: ErrorPayload(code: "decode_failed", message: "invalid CLI request")))
+            return
+        }
+        guard let runtime else { return }
+        await send(await runtime.handleCLIRequest(req))
     }
 
     static func isAllowedWebSocketOrigin(_ origin: String?) -> Bool {
