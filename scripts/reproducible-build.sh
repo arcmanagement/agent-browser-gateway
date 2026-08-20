@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 export MISE_DATA_DIR="${MISE_DATA_DIR:-${repo_root}/.build/mise-data}"
@@ -25,11 +25,16 @@ if [[ "${ABG_REPRO_USE_SYSTEM_TOOLS:-0}" != "1" ]]; then
 fi
 
 run_tool() {
-  "${tool_runner[@]}" "$@"
+  if [[ ${#tool_runner[@]} -gt 0 ]]; then
+    "${tool_runner[@]}" "$@"
+  else
+    "$@"
+  fi
 }
 
+requested_out_dir="${ABG_REPRO_OUT:-${repo_root}/dist/reproducible-build}"
+out_dir="$(run_tool node scripts/resolve-reproducible-output.mjs "${repo_root}" "${requested_out_dir}")"
 version="${VERSION:-$(run_tool node -e 'console.log(JSON.parse(require("fs").readFileSync("extension/package.json", "utf8")).version)')}"
-out_dir="${ABG_REPRO_OUT:-${repo_root}/dist/reproducible-build}"
 source_date_epoch="${SOURCE_DATE_EPOCH:-$(git -C "${repo_root}" log -1 --format=%ct)}"
 swift_flags="${SWIFT_BUILD_FLAGS:--Xswiftc -file-prefix-map -Xswiftc ${repo_root}=. -Xcc -ffile-prefix-map=${repo_root}=. -Xcc -fmacro-prefix-map=${repo_root}=. -Xcxx -ffile-prefix-map=${repo_root}=. -Xcxx -fmacro-prefix-map=${repo_root}=.}"
 
@@ -106,7 +111,7 @@ CI=true run_tool pnpm \
   --frozen-lockfile
 (
   cd extension
-  SOURCE_DATE_EPOCH="${source_date_epoch}" "${tool_runner[@]}" pnpm run build
+  SOURCE_DATE_EPOCH="${source_date_epoch}" run_tool pnpm run build
 )
 normalize_tree_mtime "${repo_root}/extension/dist"
 zip_dir_deterministic "${repo_root}/extension/dist" "${out_dir}/agent-browser-gateway-extension-${version}.zip"

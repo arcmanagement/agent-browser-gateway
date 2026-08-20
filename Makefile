@@ -58,6 +58,7 @@ test:
 
 verify:
 	cd extension && pnpm run typecheck && pnpm run lint
+	node --test scripts/resolve-reproducible-output.test.mjs
 	swift test
 	swift build -c release
 	cd extension && pnpm run build
