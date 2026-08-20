@@ -50,7 +50,7 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 │  - Permission Manager        │
 │  - Audit Log (JSONL)         │
 └────────┬─────────────────────┘
-         │ Unix Domain Socket
+         │ local IPC
          ↓
 ┌──────────────────────────────┐
 │ abg CLI                      │

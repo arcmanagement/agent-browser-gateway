@@ -65,6 +65,11 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
+Internally, the CLI uses one JSON contract over platform-local IPC: Unix domain sockets on macOS and
+Linux, and named pipes on Windows. macOS can fall back to a token-authenticated loopback WebSocket
+when sandbox or path-length constraints prevent a usable socket. Endpoint resolution and cleanup
+are owned by ABG, so callers do not need OS-specific transport details.
+
 ## Plugins
 
 Plugins are local JavaScript modules loaded by the Gateway. They can transform browser data, add
