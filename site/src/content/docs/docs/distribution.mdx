@@ -10,7 +10,7 @@ extension. The public download page keeps current artifacts available under `/do
 
 Current public distribution state:
 
-- macOS app: signed and notarized `v0.4.2` DMG on the download page and GitHub Releases
+- macOS app: signed and notarized `v0.4.4` DMG on the download page and GitHub Releases
 - Chrome extension: `v0.4.3` on the Chrome Web Store, updated July 11, 2026
 - Windows package: pending signed release and WinGet indexing
 
@@ -56,7 +56,7 @@ The Windows package identifier is:
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-Current `v0.4.2` status: this package is not indexed yet, and the command above returns no matching
+Current `v0.4.4` status: this package is not indexed yet, and the command above returns no matching
 package until the signed Windows release workflow and WinGet submission are completed.
 
 WinGet is ready for a release after the public Windows setup ZIP is available under `/downloads/`
@@ -67,7 +67,7 @@ and the generated `microsoft/winget-pkgs` PR is merged and indexed.
 Maintainer release builds are created on a trusted Mac:
 
 ```bash
-export VERSION=0.4.2
+export VERSION=0.4.4
 make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"

@@ -2,7 +2,7 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
-Current `v0.4.2` release status: WinGet install and Windows release ZIPs are pending while the
+Current `v0.4.4` release status: WinGet install and Windows release ZIPs are pending while the
 signed Windows release workflow and WinGet submission setup are completed.
 
 ## Normal GUI install
