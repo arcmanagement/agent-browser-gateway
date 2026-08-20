@@ -1,10 +1,21 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-07-27.
+Living document. Reflects current intent, not commitment. Last updated 2026-08-21.
 
-Current repo version: **v0.4.2**.
+Current repo version: **v0.4.4**.
 
 ## Shipped
+
+### v0.4.4 — Release trust, Gateway routing, and operator controls (2026-08-21)
+- Added a reproducible release entry point, dependency inventory checks, SBOM guidance, and explicit checksum, signing, and provenance responsibilities.
+- Added a configurable developer Gateway endpoint in the extension popup while keeping loopback as the default and preserving per-tab consent.
+- Added shared-tab and browser-window foreground activation with `abg raise`, and stabilized all-tabs routing across tab churn.
+- Moved agent skill installation to `npx skills add`, added the Mac App Store-compatible CLI transport, and aligned release packaging across the app, extension, CLI, Homebrew, and Windows paths.
+- Added rich clipboard audit coverage, platform feasibility guidance, and persisted per-domain policy settings for the Gateway.
+
+### v0.4.3 — Extension upload and recording release (2026-07-10)
+- Hardened multi-file upload with stable DevTools node references and clearer file-access errors.
+- Published Chrome extension `v0.4.3` and prepared matching GitHub release assets.
 
 ### v0.4.2 — Tab recording and explicit personal data inspection (2026-07-09)
 - Added `abg record start/stop/status` for approval-gated WebM recording of a shared Chrome tab, including tab audio and optional microphone mixing.

@@ -20,8 +20,8 @@ agent-browser-gateway-extension-0.4.4.zip
 チェックサム (リリース時に `make dist` の出力で更新):
 
 ```text
-TBD  agent-browser-gateway-0.4.4-macos-arm64.zip
-TBD  agent-browser-gateway-extension-0.4.4.zip
+f183fcc88433c5da07b098369fa29fe07300c9e809f490b1ceb9ec2e86d608ee  agent-browser-gateway-0.4.4-macos-arm64.zip
+314093e6e922a8a58147128f8c06ed8438ee536b882d092c6e6cd415a3f09f89  agent-browser-gateway-extension-0.4.4.zip
 ```
 
 `agent-browser-gateway-0.4.4-macos-arm64.zip` の中身:

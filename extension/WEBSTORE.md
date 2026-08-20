@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.3.zip
+dist/agent-browser-gateway-extension-0.4.4.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,18 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.4 review notes
+
+This Chrome Web Store package keeps the existing permission boundary and adds:
+
+- A popup setting for selecting and persisting a developer-controlled Gateway WebSocket endpoint.
+- Shared-tab and browser-window foreground activation through an explicit `raise` command.
+- Stable all-tabs routing when other tabs open or close, with clearer evaluation size errors.
+- Updated package and release guidance for the local Gateway and agent skills.
+
+The default endpoint remains `ws://127.0.0.1:8765/ws`. No new extension permissions or default host
+permissions are added.
 
 ## 0.4.3 review notes
 

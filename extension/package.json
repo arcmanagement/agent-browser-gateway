@@ -1,6 +1,6 @@
 {
   "name": "agent-browser-gateway-extension",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,6 +27,11 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "esbuild@<0.28.1": ">=0.28.1",
+      "nanoid@<3.3.18": ">=3.3.18",
+      "postcss@<=8.5.22": ">=8.5.23"
+    }
   }
 }
