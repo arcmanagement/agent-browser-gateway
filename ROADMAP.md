@@ -246,6 +246,9 @@ whether App Store or Developer ID distribution is worth productizing.
 - Android Chrome
 - Remote pairing: connect to a Gateway running on another machine on the same Tailnet / LAN, with QR-code pairing (#71). This is a user-controlled private path, not an ABG-operated relay.
 - Approval forwarding from a phone (review what the agent wants to do on your laptop, from your phone)
+- iOS companion pairing design: QR/manual-code pairing, desktop Gateway receive endpoints,
+  revocation scope, and audit events are defined in
+  [docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md) (#67).
 
 ## Hard non-goals
 

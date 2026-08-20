@@ -598,6 +598,11 @@ a user-operated connection path, not an ABG-operated relay. Likewise, local or o
 metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
 configuration. They are not telemetry sent to ABG operators.
 
+The initial iOS companion pairing design is documented in
+[docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md). It defines QR/manual-code pairing,
+the desktop Gateway receiving surface, revocation behavior, and the audit events that must be
+written before an implementation is considered complete.
+
 The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
 extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
 and a local approval window are required on every call. With AutoMode on, the user has opted into
