@@ -812,6 +812,15 @@ make verify                             # CI-style local verification
 make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
 
+Pull requests run the `CI` workflow's `Swift and extension tests` job. The GitHub check name used by
+branch protection is `CI / Swift and extension tests`. That job runs the following test gates:
+
+```bash
+swift test --enable-code-coverage
+scripts/swift-coverage-check.sh
+cd extension && pnpm run test:coverage
+```
+
 Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
 Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
 
