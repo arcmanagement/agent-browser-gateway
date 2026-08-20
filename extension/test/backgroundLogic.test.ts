@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createAuditDiff,
+  describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
   normalizeUploadFiles,
@@ -36,6 +37,22 @@ describe("normalizeUploadFiles", () => {
     expect(() => normalizeUploadFiles({ files: ["/tmp/a.png", 123 as unknown as string] })).toThrow(
       /file required/,
     );
+  });
+});
+
+describe("describeFileAttachFailure", () => {
+  it("explains the explicit Chrome local-file grant for Not allowed", () => {
+    expect(describeFileAttachFailure('{"code":-32000,"message":"Not allowed"}')).toEqual({
+      code: "file_access_required",
+      message: expect.stringContaining("Allow access to file URLs"),
+    });
+  });
+
+  it("preserves the generic attachment guidance for other debugger errors", () => {
+    const failure = describeFileAttachFailure("Could not find node");
+    expect(failure.code).toBe("file_attach_failed");
+    expect(failure.message).toContain("top-document input[type=file]");
+    expect(failure.message).toContain("Could not find node");
   });
 });
 

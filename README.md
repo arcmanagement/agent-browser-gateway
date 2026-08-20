@@ -153,6 +153,13 @@ The core security model:
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
+Short refs from `abg tabs --compact` are the pin-equivalent for a running Gateway session. A ref is
+bound to the pair of browser profile and Chrome tab ID, so adding/removing other tabs does not
+renumber it, and the same ref can be reused across a multi-step flow. Prefer refs over raw positive
+`tabId` values when multiple profiles are connected; Chrome can assign the same tab ID in different
+profiles, and ABG returns `ambiguous_tab_id` rather than routing to the wrong profile. Re-resolve the
+ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross-origin navigation.
+
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
@@ -291,6 +298,7 @@ abg wait <tab|ref> --fn "window.ready === true"
 
 # Escape hatch
 abg eval <tab|ref> --script "document.title" --approve  # --approve required unless AutoMode is enabled
+abg eval <tab|ref> --script-file task.js --timeout 120000 --approve
 
 # Runtime stream
 abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
@@ -313,6 +321,50 @@ abg audit [--lines 50]                  # Local audit log
 abg activity --period day|week          # Local daily/weekly activity digest
 abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
+
+### Stable multi-step tab targeting
+
+Run `abg tabs --compact` once, select the target by `profile`, `url`, and `title`, then keep using its
+`ref` for the flow:
+
+```bash
+abg read t12 --selector "main" --format text
+abg fill t12 --selector "textarea" --value "Hello"
+abg read t12 --selector "textarea" --editable-value
+```
+
+The `targetId` in compact JSON is the Gateway's profile-qualified routing handle. It is intended for
+machine consumers; scripts should normally retain the human-readable `ref`. Raw `tabId` remains
+accepted when it is unique across connected profiles.
+
+### File attachment
+
+`abg upload` is the canonical route in ABG v0.4.3 and later. It works when Chrome's **Allow access to
+file URLs** setting is enabled for the Agent Browser Gateway extension, the selector resolves to a
+top-document `<input type="file">`, and the supplied paths are absolute and readable. Chrome applies
+that explicit local-file access grant to debugger file attachment even when the target page uses
+HTTP or HTTPS. Repeat `--file` only when the input has the `multiple` attribute. ABG resolves the
+input to a stable CDP backend node before calling `DOM.setFileInputFiles`.
+
+If the site exposes a custom upload button, inspect the page for its underlying file input and target
+that input. Cross-origin iframe inputs and widgets that do not expose a top-document file input are
+not supported; use the site's manual attachment UI instead. Do not synthesize `DataTransfer` or
+`DragEvent` through `eval`.
+
+When local-file access is off, ABG returns `file_access_required` with the exact recovery step instead
+of exposing Chrome's raw `{"code":-32000,"message":"Not allowed"}` debugger error. Current versions
+also use the stable CDP backend node ID so DOM lookup and attachment do not depend on a transient
+frontend node ID. Other Chrome rejections return `file_attach_failed` with selector, frame, and path
+guidance. If local-file access cannot be enabled, use the site's manual attachment UI.
+
+### Eval script size and timeout
+
+`eval` defaults to 75 seconds, or a higher profile default, so the local approval window can finish.
+`--timeout` is clamped to 1–300 seconds. Keep script source at or below 64 KiB. The hard limit is
+256 KiB; larger `--script-file` input fails locally with `script_too_large` before it reaches the
+browser. A timed-out accepted script returns `command_timeout` with the effective timeout and script
+size in the message. Split large work or replace it with named primitives, `upload`, `wait --fn`, or
+a local plugin command.
 
 Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
 replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids

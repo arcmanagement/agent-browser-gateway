@@ -56,6 +56,25 @@ export function normalizeUploadFiles(params: { files?: unknown; file?: unknown }
   return files;
 }
 
+export type FileAttachFailure = {
+  code: "file_access_required" | "file_attach_failed";
+  message: string;
+};
+
+export function describeFileAttachFailure(detail: string): FileAttachFailure {
+  if (/\bNot allowed\b/i.test(detail)) {
+    return {
+      code: "file_access_required",
+      message:
+        'Chrome blocked access to the local file path. Open chrome://extensions, open Agent Browser Gateway details, enable "Allow access to file URLs", then retry. Chrome applies this explicit local-file grant to debugger attachment on HTTP and HTTPS pages too.',
+    };
+  }
+  return {
+    code: "file_attach_failed",
+    message: `Chrome rejected the file attachment (${detail}). This usually means the input is inside a cross-origin iframe, is hidden behind a custom upload widget, or the path is not readable by the browser. Verify the selector points to a real top-document input[type=file] and that the file paths are absolute and accessible.`,
+  };
+}
+
 export type AuditDiffValue = {
   text: string;
   html?: string;
