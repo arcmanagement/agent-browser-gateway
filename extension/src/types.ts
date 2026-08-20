@@ -251,6 +251,7 @@ export type ExtensionSettings = {
   evalEnabled: boolean;
   trustedAutomationEnabled: boolean;
   profileLabel: string;
+  gatewayWebSocketUrl: string;
   allTabsAccessEnabled: boolean;
   bookmarksAccessEnabled: boolean;
   readingListAccessEnabled: boolean;
@@ -281,6 +282,7 @@ export type PopupToBackground =
   | { type: "set_eval_enabled"; value: boolean }
   | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
+  | { type: "set_gateway_websocket_url"; value: string }
   | { type: "set_all_tabs_access"; value: boolean }
   | { type: "set_bookmarks_access"; value: boolean }
   | { type: "set_reading_list_access"; value: boolean }

@@ -17,6 +17,11 @@ import {
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
+import {
+  normalizeGatewayWebSocketUrl,
+  resolveStoredGatewayWebSocketUrl,
+} from "./gatewayEndpoint.js";
+import { GatewayWebSocketConnection } from "./gatewayWebSocketConnection.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -40,7 +45,7 @@ import type {
 declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
-const WS_URL = __ABG_WS_URL__;
+const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
 const VERSION = "0.4.3";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
@@ -55,6 +60,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   evalEnabled: false,
   trustedAutomationEnabled: false,
   profileLabel: "",
+  gatewayWebSocketUrl: DEFAULT_GATEWAY_WEBSOCKET_URL,
   allTabsAccessEnabled: false,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
@@ -205,15 +211,46 @@ const pendingApprovals = new Map<string, PendingApproval>();
 let recordingSession: RecordingSession | null = null;
 
 let extensionId: string | null = null;
-let ws: WebSocket | null = null;
 let wsConnected = false;
-let reconnectTimer: number | null = null;
+const gatewayWebSocketConnection = new GatewayWebSocketConnection({
+  endpoint: DEFAULT_GATEWAY_WEBSOCKET_URL,
+  createSocket: (endpoint) => new WebSocket(endpoint),
+  onConnectionChange: (connected) => {
+    wsConnected = connected;
+  },
+  onOpen: async () => {
+    const { profileLabel } = await getSettings();
+    sendWS({
+      type: "hello",
+      extensionId: extensionId ?? "?",
+      version: VERSION,
+      profileLabel: profileLabel || undefined,
+      browserKind: await detectCurrentBrowserKind(),
+    });
+    await reconcileAllTabsAccess({ emit: false });
+    for (const [tabId, permittedTab] of permittedTabs) {
+      sendTabPermitted(tabId, permittedTab);
+    }
+  },
+  onMessage: (event) => {
+    try {
+      const command = JSON.parse(event.data) as GatewayCommand;
+      handleGatewayCommand(command);
+    } catch (error) {
+      console.warn("[ABG] WS message parse error", error);
+    }
+  },
+  onWarning: (message, error) => {
+    console.warn(message, error);
+  },
+});
 
 // ---------- Bootstrap ----------
 
 (async () => {
   extensionId = await getOrCreateExtensionId();
-  await ensureSettingsStored();
+  const settings = await ensureSettingsStored();
+  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
   await restoreState();
   await reconcileAllTabsAccess();
   ensureWS();
@@ -226,7 +263,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
 browser.runtime.onStartup.addListener(async () => {
   extensionId = await getOrCreateExtensionId();
-  await ensureSettingsStored();
+  const settings = await ensureSettingsStored();
+  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
   await restoreState();
   await reconcileAllTabsAccess();
   ensureWS();
@@ -258,6 +296,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     "evalEnabled",
     "trustedAutomationEnabled",
     "profileLabel",
+    "gatewayWebSocketUrl",
     "allTabsAccessEnabled",
     "bookmarksAccessEnabled",
     "readingListAccessEnabled",
@@ -274,6 +313,10 @@ async function getSettings(): Promise<ExtensionSettings> {
       : DEFAULT_SETTINGS.trustedAutomationEnabled;
   const profileLabel =
     typeof stored.profileLabel === "string" ? stored.profileLabel : DEFAULT_SETTINGS.profileLabel;
+  const gatewayWebSocketUrl = resolveStoredGatewayWebSocketUrl(
+    stored.gatewayWebSocketUrl,
+    DEFAULT_SETTINGS.gatewayWebSocketUrl,
+  );
   const allTabsAccessEnabled =
     typeof stored.allTabsAccessEnabled === "boolean"
       ? stored.allTabsAccessEnabled
@@ -291,6 +334,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.evalEnabled !== "boolean" ||
     typeof stored.trustedAutomationEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string" ||
+    gatewayWebSocketUrl.shouldPersist ||
     typeof stored.allTabsAccessEnabled !== "boolean" ||
     typeof stored.bookmarksAccessEnabled !== "boolean" ||
     typeof stored.readingListAccessEnabled !== "boolean"
@@ -300,6 +344,7 @@ async function getSettings(): Promise<ExtensionSettings> {
       evalEnabled,
       trustedAutomationEnabled,
       profileLabel,
+      gatewayWebSocketUrl: gatewayWebSocketUrl.url,
       allTabsAccessEnabled,
       bookmarksAccessEnabled,
       readingListAccessEnabled,
@@ -310,14 +355,15 @@ async function getSettings(): Promise<ExtensionSettings> {
     evalEnabled,
     trustedAutomationEnabled,
     profileLabel,
+    gatewayWebSocketUrl: gatewayWebSocketUrl.url,
     allTabsAccessEnabled,
     bookmarksAccessEnabled,
     readingListAccessEnabled,
   };
 }
 
-async function ensureSettingsStored(): Promise<void> {
-  await getSettings();
+async function ensureSettingsStored(): Promise<ExtensionSettings> {
+  return await getSettings();
 }
 
 async function setOperationsRequireApproval(value: boolean): Promise<ExtensionSettings> {
@@ -356,6 +402,15 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       browserKind: await detectCurrentBrowserKind(),
     });
   }
+  return settings;
+}
+
+async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings> {
+  const normalizedUrl = normalizeGatewayWebSocketUrl(value);
+  const current = await getSettings();
+  const settings: ExtensionSettings = { ...current, gatewayWebSocketUrl: normalizedUrl };
+  await browser.storage.local.set(settings);
+  gatewayWebSocketConnection.reconnect(normalizedUrl);
   return settings;
 }
 
@@ -495,64 +550,11 @@ async function restoreState(): Promise<void> {
 // ---------- WebSocket ----------
 
 function ensureWS(): void {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-  try {
-    ws = new WebSocket(WS_URL);
-  } catch (e) {
-    console.warn("[ABG] WS construct failed", e);
-    scheduleReconnect();
-    return;
-  }
-  ws.addEventListener("open", async () => {
-    wsConnected = true;
-    const { profileLabel } = await getSettings();
-    sendWS({
-      type: "hello",
-      extensionId: extensionId ?? "?",
-      version: VERSION,
-      profileLabel: profileLabel || undefined,
-      browserKind: await detectCurrentBrowserKind(),
-    });
-    await reconcileAllTabsAccess({ emit: false });
-    // Re-send all currently permitted tabs so Gateway is in sync
-    for (const [tabId, p] of permittedTabs) {
-      sendTabPermitted(tabId, p);
-    }
-  });
-  ws.addEventListener("message", (ev) => {
-    try {
-      const cmd = JSON.parse(ev.data) as GatewayCommand;
-      handleGatewayCommand(cmd);
-    } catch (e) {
-      console.warn("[ABG] WS message parse error", e);
-    }
-  });
-  ws.addEventListener("close", () => {
-    wsConnected = false;
-    ws = null;
-    scheduleReconnect();
-  });
-  ws.addEventListener("error", () => {
-    wsConnected = false;
-    try {
-      ws?.close();
-    } catch {}
-    ws = null;
-    scheduleReconnect();
-  });
-}
-
-function scheduleReconnect(): void {
-  if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    ensureWS();
-  }, 3000) as unknown as number;
+  gatewayWebSocketConnection.ensureConnected();
 }
 
 function sendWS(msg: ExtToGateway): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify(msg));
+  gatewayWebSocketConnection.send(JSON.stringify(msg));
 }
 
 function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
@@ -6755,6 +6757,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     await setProfileLabel(msg.value);
     return { type: "ok" };
   }
+  if (msg.type === "set_gateway_websocket_url") {
+    await setGatewayWebSocketUrl(msg.value);
+    return { type: "ok" };
+  }
   if (msg.type === "set_all_tabs_access") {
     await setAllTabsAccessEnabled(msg.value);
     return { type: "ok" };
@@ -6814,6 +6820,9 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_gateway_websocket_url" && typeof rawMsg.value === "string") {
+    return { type: "set_gateway_websocket_url", value: rawMsg.value };
   }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };
