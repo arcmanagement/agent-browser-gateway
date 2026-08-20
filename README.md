@@ -50,7 +50,7 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 │  - Permission Manager        │
 │  - Audit Log (JSONL)         │
 └────────┬─────────────────────┘
-         │ Unix Domain Socket
+         │ local IPC
          ↓
 ┌──────────────────────────────┐
 │ abg CLI                      │
@@ -75,6 +75,9 @@ CLI. Install the browser extension first, then install the local Gateway.
 1. Install Agent Browser Gateway from the Chrome Web Store:
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
+
+   The public listing currently serves extension `v0.4.3`. The Chrome extension and macOS app can
+   advance independently while store review and signed app publication complete.
 
 2. Install the local Gateway.
 
@@ -105,8 +108,8 @@ CLI. Install the browser extension first, then install the local Gateway.
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
-   [agent-browser-gateway.com](https://agent-browser-gateway.com/), open it, and double-click
-   **Install Agent Browser Gateway.app**.
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/), verify the SHA-256 checksum
+   published next to it, open it, and double-click **Install Agent Browser Gateway.app**.
 
 The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
@@ -126,6 +129,14 @@ abg tabs
 Source builds, unpacked extension loading, and the separate dev app are covered
 in [Developer setup](#developer-setup).
 
+Release archive generation, Chrome extension packaging, and Homebrew Cask update
+steps are documented in [Homebrew Cask Distribution](docs/HOMEBREW.md). Pull
+requests run the `CI` workflow, which smoke-tests unsigned macOS archives and
+records the resolved Swift dependency inventory. Chrome extension packaging and
+dependency security run as their own workflows. Tags matching `v*.*.*` run the
+`Release` workflow to build release archives, create the draft GitHub Release,
+and generate release notes.
+
 ---
 
 ## Tab access modes
@@ -141,6 +152,13 @@ The core security model:
    - You explicitly revoke (via the popup or `abg revoke`)
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+
+Short refs from `abg tabs --compact` are the pin-equivalent for a running Gateway session. A ref is
+bound to the pair of browser profile and Chrome tab ID, so adding/removing other tabs does not
+renumber it, and the same ref can be reused across a multi-step flow. Prefer refs over raw positive
+`tabId` values when multiple profiles are connected; Chrome can assign the same tab ID in different
+profiles, and ABG returns `ambiguous_tab_id` rather than routing to the wrong profile. Re-resolve the
+ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross-origin navigation.
 
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools, `raise`, and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
 
@@ -282,6 +300,7 @@ abg wait <tab|ref> --fn "window.ready === true"
 
 # Escape hatch
 abg eval <tab|ref> --script "document.title" --approve  # --approve required unless AutoMode is enabled
+abg eval <tab|ref> --script-file task.js --timeout 120000 --approve
 
 # Runtime stream
 abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
@@ -325,6 +344,50 @@ permission expiry, and audit log. [Issue #309](https://github.com/arcmanagement/
 contains the existing `open-front-window.sh` and `focus-chrome-tab.sh` examples and their macOS
 limitations.
 
+### Stable multi-step tab targeting
+
+Run `abg tabs --compact` once, select the target by `profile`, `url`, and `title`, then keep using its
+`ref` for the flow:
+
+```bash
+abg read t12 --selector "main" --format text
+abg fill t12 --selector "textarea" --value "Hello"
+abg read t12 --selector "textarea" --editable-value
+```
+
+The `targetId` in compact JSON is the Gateway's profile-qualified routing handle. It is intended for
+machine consumers; scripts should normally retain the human-readable `ref`. Raw `tabId` remains
+accepted when it is unique across connected profiles.
+
+### File attachment
+
+`abg upload` is the canonical route in ABG v0.4.3 and later. It works when Chrome's **Allow access to
+file URLs** setting is enabled for the Agent Browser Gateway extension, the selector resolves to a
+top-document `<input type="file">`, and the supplied paths are absolute and readable. Chrome applies
+that explicit local-file access grant to debugger file attachment even when the target page uses
+HTTP or HTTPS. Repeat `--file` only when the input has the `multiple` attribute. ABG resolves the
+input to a stable CDP backend node before calling `DOM.setFileInputFiles`.
+
+If the site exposes a custom upload button, inspect the page for its underlying file input and target
+that input. Cross-origin iframe inputs and widgets that do not expose a top-document file input are
+not supported; use the site's manual attachment UI instead. Do not synthesize `DataTransfer` or
+`DragEvent` through `eval`.
+
+When local-file access is off, ABG returns `file_access_required` with the exact recovery step instead
+of exposing Chrome's raw `{"code":-32000,"message":"Not allowed"}` debugger error. Current versions
+also use the stable CDP backend node ID so DOM lookup and attachment do not depend on a transient
+frontend node ID. Other Chrome rejections return `file_attach_failed` with selector, frame, and path
+guidance. If local-file access cannot be enabled, use the site's manual attachment UI.
+
+### Eval script size and timeout
+
+`eval` defaults to 75 seconds, or a higher profile default, so the local approval window can finish.
+`--timeout` is clamped to 1–300 seconds. Keep script source at or below 64 KiB. The hard limit is
+256 KiB; larger `--script-file` input fails locally with `script_too_large` before it reaches the
+browser. A timed-out accepted script returns `command_timeout` with the effective timeout and script
+size in the message. Split large work or replace it with named primitives, `upload`, `wait --fn`, or
+a local plugin command.
+
 Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
 replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids
 clipboard dependence, and returns the detected editable kind plus replacement lengths. Use
@@ -345,13 +408,40 @@ log only and summarizes action counts, tab IDs, origins, timestamps, and approva
 not include raw pasted values, clipboard payloads, plugin arguments, or raw audit `details`. Use
 `audit` when you need exact event records for debugging or review.
 
+Replay flows are governed by the [Replay Policy](docs/REPLAY_POLICY.md). Flow files should keep
+repeatable operation shape and non-secret defaults, while caller-provided values stay in explicit
+runtime input or a separate local values file. Secret placeholders use `{{secret.name}}` and must
+not be written to flow files, audit logs, dry-run output, screenshots, HAR files, or exported replay
+artifacts. `abg replay --dry-run` is a preflight preview: it may show target metadata, step order,
+required variable names, secret/non-secret classification, and value byte lengths, but not raw
+values or browser artifacts.
+
 Use `clipboard-write` and `paste-rich` for app-specific clipboard formats. `clipboard-write` writes
 one MIME payload to the local OS clipboard without a tab operation. `paste-rich` sends the native
 paste shortcut to the currently focused target, or focuses `--selector` first. The combined form
 `abg paste-rich t1 --mime "<type>" --value "<payload>"` writes the clipboard and pastes in one
 audited tab operation; the audit log records the tab, MIME type, and payload byte length, not the
-payload. For Google Sheets edit-mode cells, prepare the Sheets wrapped MIME payload and run
-`abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip`.
+payload.
+
+For a Google Sheets edit-mode cell, prepare a Sheets wrapped clipboard payload whose cell value
+contains the newline, focus the target cell in edit mode, then paste through the native path:
+
+```bash
+abg paste-rich t1 \
+  --mime "application/x-vnd.google-docs-sheets-clip+wrapped" \
+  --file sheets-multiline-cell.clip
+```
+
+For a rich editor that accepts HTML clipboard data, paste `text/html` while targeting the editable
+surface:
+
+```bash
+abg paste-rich t1 \
+  --selector '[contenteditable="true"]' \
+  --mime "text/html" \
+  --value '<p>First line</p><p><strong>Second line</strong></p>'
+```
+
 For Figma layer paste, write the Figma-specific MIME payload first, focus the canvas, then run
 `abg paste-rich t1`.
 
@@ -617,6 +707,11 @@ a user-operated connection path, not an ABG-operated relay. Likewise, local or o
 metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
 configuration. They are not telemetry sent to ABG operators.
 
+The initial iOS companion pairing design is documented in
+[docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md). It defines QR/manual-code pairing,
+the desktop Gateway receiving surface, revocation behavior, and the audit events that must be
+written before an implementation is considered complete.
+
 The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
 extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
 and a local approval window are required on every call. With AutoMode on, the user has opted into
@@ -662,8 +757,9 @@ transport, and a visible audit trail.
 
 Advanced parity features are governed by the
 [Advanced Automation Policy](docs/ADVANCED_AUTOMATION_POLICY.md). The policy classifies each
-capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or an official
-`non-goal`, with the required approval and audit behavior for each mode.
+capability as normal `per-tab`, `sandbox/all-tabs only`, `user-controlled deployment only`,
+`self-hosted only`, or an official `non-goal`, with the required approval and audit behavior for
+each mode.
 
 ### Feature parity for autonomous agents
 
@@ -679,11 +775,14 @@ capability as normal `per-tab`, `sandbox/all-tabs only`, `self-hosted only`, or 
 | Response waits | `wait-response` or `network --wait-response`, optional `--body --max-bytes` | `waitForResponse`, response body APIs | Body preview is opt-in, size-capped, and headers are not stored |
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
+| Bookmark / Reading List inspection | `bookmarks list/search/get/open`, `reading-list list/search` | Browser bookmark/context APIs | Separate explicit browser permission; not unlocked by per-tab or all-tabs sharing; redacted audit metadata |
+| Bookmark / Reading List mutation | Not provided by official ABG | Browser bookmark/context APIs | Official non-goal because profile-wide writes and deletes exceed tab consent; a user-controlled plugin or fork requires a new policy decision |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
 | Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |
 | Semantic locators | `find role/text/label/placeholder/alt/title/testid`, `first/last/nth` | Playwright locators / agent-browser find | Structured matches before actions |
 | AI snapshots | `snapshot` refs such as `@e1`, plus multi-tab selector snapshots | Accessibility snapshots / locator snapshots | Refs are per-tab and per-latest-snapshot |
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
+| Shared-tab video recording | `record start/stop` webm artifact | Browser video/screencast APIs | Explicit start approval, visible recording state, local output, and separate microphone disclosure |
 | JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
 | Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
 | General JavaScript eval | `eval` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval unless Trusted automation / AutoMode is enabled, exact script audit, result size cap |
@@ -725,11 +824,15 @@ Currently shipped:
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 - ✅ Gateway runtime/macOS shell boundary for future desktop OS ports (see [docs/GATEWAY_CORE_BOUNDARY.md](docs/GATEWAY_CORE_BOUNDARY.md))
 - ✅ Extension browser-adapter boundary for future desktop browser ports (see [docs/BROWSER_ADAPTER.md](docs/BROWSER_ADAPTER.md))
+- 📋 Windows and Linux desktop OS expansion models are documented separately in
+  [docs/DESKTOP_OS_EXPANSION.md](docs/DESKTOP_OS_EXPANSION.md).
 
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
 - 📋 Safari / Edge / iOS / Android (Phase 3+)
+- 📋 iOS Safari is blocked research, not MVP scope, until a native iOS companion and reduced
+  Safari-compatible command surface are designed.
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---
@@ -814,6 +917,15 @@ pnpm run test                           # Vitest unit tests
 pnpm run test:coverage                  # Vitest coverage for unit-testable extension logic
 make verify                             # CI-style local verification
 make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
+```
+
+Pull requests run the `CI` workflow's `Swift and extension tests` job. The GitHub check name used by
+branch protection is `CI / Swift and extension tests`. That job runs the following test gates:
+
+```bash
+swift test --enable-code-coverage
+scripts/swift-coverage-check.sh
+cd extension && pnpm run test:coverage
 ```
 
 Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).

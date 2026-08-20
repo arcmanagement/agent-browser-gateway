@@ -13,7 +13,7 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 ## 基本フロー
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
-2. `abg tabs --compact` で共有中タブの ref (`t1` など)、URL、`accessMode` を確認
+2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認
 3. 必要に応じて `abg read <ref>` / `abg screenshot <ref>` / `abg annotate <ref>` / `abg console <ref>` を呼ぶ
 4. タブが共有されていない場合は、ユーザーに「Chrome 拡張のアイコンをクリックして対象タブを共有してください」と案内する
 
@@ -133,7 +133,8 @@ abg wait <tab|ref> --url "**/dashboard"
 abg wait <tab|ref> --load networkidle            # networkidle / load / domcontentloaded
 abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle 後に selector visible を待つ
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
-abg eval <tab|ref> --script "return window.__STATE__" --approve  # AutoMode OFF では --approve + popup 承認が必要
+abg eval <tab|ref> --script "return window.__STATE__" --timeout 75000 --approve  # AutoMode OFF では --approve + popup 承認が必要
+abg eval <tab|ref> --script-file task.js --timeout 120000 --approve
 abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
 abg stream status
 abg stream disable
@@ -306,7 +307,11 @@ recorded. Plugin authors must preserve that invariant by not echoing argument va
 Use `abg clipboard-write` and `abg paste-rich` for app-specific clipboard formats such as Google
 Sheets wrapped cell payloads or Figma layer payloads. The combined `paste-rich --mime ... --file`
 form writes the clipboard and pastes into the shared tab while auditing only the MIME type and byte
-length, not the raw clipboard payload.
+length, not the raw clipboard payload. For Google Sheets edit-mode cells, focus the target cell and
+run `abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file
+sheets-multiline-cell.clip`. For rich editors that accept HTML clipboard data, run `abg paste-rich
+t1 --selector '[contenteditable="true"]' --mime "text/html" --value '<p>First
+line</p><p><strong>Second line</strong></p>'`.
 
 Use `abg exec-command` only after focusing the actual edit-mode surface, such as a double-clicked
 Google Sheets cell or a contenteditable rich editor. `insertText` preserves multiline values through
@@ -458,7 +463,8 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 
 - `abg` の出力は基本 JSON。値を取り出すときは `jq` 等でパースする
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
-- `tabId` は Chrome 内部のタブ ID で、ブラウザ再起動で変わる。通常は `abg tabs --compact` の `ref` (`t1` など) か `--match-url` / `--match-title` を使う
+- `abg tabs --compact` の `ref` は Gateway 起動中の pin 相当で、profile と Chrome tabId の組へ固定される。他のタブが増減しても同じ ref を連続操作に使う。Gateway 再起動、タブ close、共有 revoke、別 origin 遷移後は一覧を取り直す
+- `tabId` は Chrome profile 内の ID で、複数 profile では同じ値が衝突しうる。衝突時は `ambiguous_tab_id` になるため、通常は安定 `ref` か `--match-url` / `--match-title` を使う
 - `abg raise <tab|ref>` は共有済みタブと、そのタブを含む既存ウィンドウだけを前面化する。未共有 URL の open、新規ウィンドウ作成、全 Chrome タブの URL 検索は行わない。共有失効後は通常の `tab_not_permitted` で失敗する
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
 - `abg fill ... --diff` / `abg replace-editable ... --diff` は high-risk editor change 用。selector scoped text / HTML の hash、length、redacted bounded excerpt を result と local audit log に残す。full before/after content、replacement value、plugin args は default では保存しない
@@ -474,6 +480,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF。Trusted automation / AutoMode OFF では CLI の `--approve` と正確な script を表示する per-call approval が必要。AutoMode ON では共有済み tab に限って approval popup を省略できる。audit には script source、approval mode、result type/bytes summary が残る
+- eval の既定 timeout は 75 秒またはそれより長い profile 既定値で、`--timeout` は 1〜300 秒に clamp される。script は 64 KiB 以下を推奨し、256 KiB が hard limit。超過は送信前に `script_too_large`、実行時間超過は `command_timeout` で失敗する。大きな処理は分割するか named primitive / plugin にする
 - **Annotation mode**:
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
   - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る
@@ -488,7 +495,8 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
   - 例: Sheets の D1 チェックボックス ON → describe/screenshot で D1 の座標確認 → `abg click <tab> --x N --y M`
   - もしくは Sheets のキーボードナビ: `abg key <tab> Space` で選択中セルのチェック切替 (要事前にセル選択)
 - 操作系 (`click` / `fill` / `replace` / `upload` / `type` / `key` / `navigate` / `scroll` / `drag`) を呼ぶ前に、必ず screenshot/read/describe で**現状を確認**する。盲目的に操作しない
-- **ファイル添付は `abg upload` を使う**。`eval` で `DataTransfer` / `DragEvent` を合成してドロップする hack は避ける（巨大な `--script-file` は重い環境で command timeout になりやすい）。複数画像は `--file` を繰り返して 1 回の `upload` で渡す（input に `multiple` 属性が必要）。selector は top-document の `input[type=file]` を指すこと。cross-origin iframe 内や custom upload widget の場合は `file_attach_failed` で明示的に失敗する
+- **ファイル添付は v0.4.3 以降の `abg upload` を使う**。事前に `chrome://extensions` の Agent Browser Gateway 詳細で **Allow access to file URLs** を有効にする。Chrome は debugger による local file 添付にもこの明示許可を適用し、対象 page が HTTP / HTTPS でも必要になる。複数画像は `--file` を繰り返して 1 回の `upload` で渡し、対象 input に `multiple` 属性が必要。selector は top-document の `input[type=file]` を指し、file path は絶対パスかつ browser から読めるものにする。custom upload button は背後の input を `read` / `snapshot` で探す。cross-origin iframe 内や input を公開しない widget は未対応なので、サイトの手動添付 UI を使う。`eval` で `DataTransfer` / `DragEvent` を合成しない
+- local file access が無効なら `file_access_required` と recovery step を返す。v0.4.2 以前は transient CDP nodeId が DOM lookup と attach の間に無効化され、同じ raw `{"code":-32000,"message":"Not allowed"}` になる場合もあった。v0.4.3 以降は stable backendNodeId を使い、残る debugger rejection は selector / frame / path の確認を促す `file_attach_failed` になる
 - `replace` は外部ページを永続変更しない。一時的な DOM 差し替えで、承認付き write operation として扱う。注釈コメントが「このロゴを変えて」のような DOM 見た目変更なら、注釈の `selector` / `element.selector` を使って `abg replace <ref> --selector ... --html ...` を使える
 - ページ遷移後など要素出現を待つときは `abg wait <tabId> --selector "..."` を使う。`sleep` を bash で書かない
 - read は出力が大きいので、可能なら `--selector` で絞るか `--format markdown` / `--format text` で圧縮する。token 効率に直結

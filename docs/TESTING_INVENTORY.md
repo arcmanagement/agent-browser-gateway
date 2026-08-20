@@ -1,6 +1,6 @@
 # Testing Inventory
 
-Captured from `origin/main` on 2026-06-06 for the test foundation work tracked by #25.
+Updated from `origin/main` on 2026-07-27 for the test integration work tracked by #25.
 
 ## Swift Package
 
@@ -8,19 +8,30 @@ The Swift package has one test target:
 
 - `GatewayTests` in `Tests/GatewayTests`
 - Dependencies: `Gateway`, `GatewayCore`
-- Current count: 5 Swift test files, 5 `XCTestCase` classes, 40 XCTest methods
+- Current count: 8 Swift test files, 8 `XCTestCase` classes, 79 XCTest methods
 
 Current files:
 
 | File | Coverage area |
 | --- | --- |
+| `AuditLogTests.swift` | Audit-log persistence, integrity, filtering, and redaction |
+| `CLITransportTests.swift` | CLI transport discovery, endpoint authentication, and fallback behavior |
 | `ExtensionProtocolTests.swift` | Extension protocol decoding |
+| `GatewaySettingsStoreTests.swift` | Gateway settings persistence and validation |
 | `PluginHostTests.swift` | Plugin loading, transforms, commands, bundled plugins, plugin reload behavior, and tab command dispatch |
 | `PluginInstallerTests.swift` | GitHub/local plugin install, update, uninstall, disabled state, and path safety |
 | `RuntimeEnvironmentTests.swift` | Production/dev profile defaults and directory override behavior |
 | `WSServerSecurityTests.swift` | Extension-origin WebSocket origin policy |
 
-Measured with:
+The CI gate runs:
+
+```bash
+swift test --enable-code-coverage
+scripts/swift-coverage-check.sh
+```
+
+The coverage script enforces 60% or higher line coverage for the selected Gateway service sources.
+Inventory counts can be refreshed with:
 
 ```bash
 find Tests/GatewayTests -name '*.swift' -type f | wc -l
@@ -31,38 +42,33 @@ swift test list
 
 ## Extension Package
 
-The Chrome extension currently has build and static validation scripts, but no package-level test
-runner on `origin/main`.
+The Chrome extension uses Vitest with the V8 coverage provider and checked-in Chrome API mocks.
 
-Current scripts:
+Current test scripts:
 
-- `pnpm run build`
-- `pnpm run webstore:zip`
-- `pnpm run watch`
-- `pnpm run typecheck`
-- `pnpm run lint`
-- `pnpm run format`
+- `pnpm run test` for a single Vitest run
+- `pnpm run test:coverage` for the CI coverage run
+- `pnpm run test:watch` for local watch mode
 
 Current test framework usage:
 
-- No `test` or `test:watch` script in `extension/package.json`
-- No Vitest, Jest, Mocha, or Chrome API mock dependency in `extension/pnpm-lock.yaml`
-- No checked-in `extension/test/` directory on `origin/main`
-- Extension validation currently depends on TypeScript, Biome, and esbuild only
+- `extension/vitest.config.ts` sets the coverage scope and 60% thresholds.
+- `extension/test/chromeMock.ts` provides deterministic Chrome API mocks.
+- 6 `*.test.ts` files currently contain 26 tests.
+- Unit-testable extension logic covers approval, annotation, background, browser adapter, Chrome
+  mocks, and popup behavior.
 
-Measured with:
+The CI gate runs:
 
 ```bash
 cd extension
-pnpm run typecheck
-pnpm run lint
-pnpm run build
+pnpm install --frozen-lockfile
+pnpm run test:coverage
 ```
 
-## Gaps
+## CI and Branch Protection
 
-- Add a Chrome extension test runner and package test script. Tracked by #51.
-- Add unit tests for background, content, and popup logic once the Chrome API mock exists. Tracked by #52.
-- Add XCTest coverage for Gateway core services beyond the existing plugin/runtime/security tests. Tracked by #50.
-- Wire Swift and extension tests into CI/branch protection once both suites exist. Tracked by #53.
-- Add CLI command-contract tests for JSON output and error stability before making those checks required. Tracked by #76.
+The `CI` workflow runs both suites in the `Swift and extension tests` job. GitHub exposes that job
+as the `CI / Swift and extension tests` check. The branch-protection connection is tracked by #23;
+the combined test integration and its Swift and extension child issues are tracked by #25, #89,
+and #90.

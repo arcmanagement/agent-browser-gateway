@@ -33,6 +33,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
+    private var stableTabTargets = StableTabTargetRegistry()
     private var streamTabId: Int?
     private var streamExtensionId: String?
 
@@ -112,6 +113,11 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         extensionBrowsers.removeValue(forKey: extensionId)
         extensionVersions.removeValue(forKey: extensionId)
         permittedTabs.removeAll { $0.extensionId == extensionId }
+        stableTabTargets.remove(extensionId: extensionId)
+        if streamExtensionId == extensionId {
+            streamTabId = nil
+            streamExtensionId = nil
+        }
         // A recording owned by this extension can no longer be finalized cleanly;
         // flush whatever was captured and fail any pending stop.
         if let session = recording, session.extensionId == extensionId {
@@ -149,6 +155,13 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
+                stableTabTargets.remove(
+                    StableTabIdentity(extensionId: extensionId, tabId: tabId)
+                )
+                if streamTabId == tabId, streamExtensionId == extensionId {
+                    streamTabId = nil
+                    streamExtensionId = nil
+                }
                 Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": AnyCodable(reason)]) }
             }
         case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
@@ -164,19 +177,24 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
-                if streamTabId == tabId {
+                stableTabTargets.remove(
+                    StableTabIdentity(extensionId: extensionId, tabId: tabId)
+                )
+                if streamTabId == tabId, streamExtensionId == extensionId {
                     streamTabId = nil
                     streamExtensionId = nil
                 }
                 Task { await auditLog.log(action: "tab_closed", extensionId: extensionId, tabId: tabId, url: url) }
             }
         case .runtimeEvent(let tabId, let event):
-            guard streamTabId == tabId else { return }
+            guard streamTabId == tabId, streamExtensionId == extensionId else { return }
             var payload: [String: Any] = [
                 "tabId": tabId,
                 "ts": ISO8601DateFormatter().string(from: Date()),
             ]
-            if let tab = permittedTabs.first(where: { $0.tabId == tabId }) {
+            if let tab = permittedTabs.first(where: {
+                $0.extensionId == extensionId && $0.tabId == tabId
+            }) {
                 payload["url"] = tab.url
                 payload["title"] = tab.title
             }
@@ -382,15 +400,28 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         case "record_status":
             return CLIResponse(id: req.id, result: AnyCodable(recordStatusPayload()))
         case "revoke_tab":
-            guard let tabId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
+            guard let requestedId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
             }
-            // Send revoke to all extensions; the one owning it will act
-            for extId in connectedExtensionIds {
-                _ = try? await sendCommand(to: extId, method: "revoke", params: AnyCodable(["tabId": tabId]))
+            let resolution = resolveTabTarget(requestedId)
+            guard let tab = resolution.tab else {
+                return CLIResponse(id: req.id, error: resolution.error)
             }
-            permittedTabs.removeAll { $0.tabId == tabId }
-            await auditLog.log(action: "revoke_via_cli", tabId: tabId)
+            _ = try? await sendCommand(
+                to: tab.extensionId,
+                method: "revoke",
+                params: AnyCodable(["tabId": tab.tabId])
+            )
+            permittedTabs.removeAll { $0.extensionId == tab.extensionId && $0.tabId == tab.tabId }
+            stableTabTargets.remove(
+                StableTabIdentity(extensionId: tab.extensionId, tabId: tab.tabId)
+            )
+            await auditLog.log(
+                action: "revoke_via_cli",
+                extensionId: tab.extensionId,
+                tabId: tab.tabId,
+                url: tab.url
+            )
             return CLIResponse(id: req.id, result: AnyCodable(["ok": true]))
         case "audit":
             let lines = (req.params?.value as? [String: Any])?["lines"] as? Int ?? 50
@@ -601,12 +632,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return nil
         }
 
-        let matches = permittedTabs.enumerated().compactMap { index, tab -> ErrorPayload.TabCandidate? in
-            guard !tab.isExpired, pluginHost.matchesManifestDomain(plugin: pluginName, url: tab.url) else {
-                return nil
-            }
-            return ErrorPayload.TabCandidate(
-                ref: "t\(index + 1)",
+        let matchingTabs = permittedTabs.filter {
+            !$0.isExpired && pluginHost.matchesManifestDomain(plugin: pluginName, url: $0.url)
+        }
+        let matches = matchingTabs.map { tab in
+            ErrorPayload.TabCandidate(
+                ref: stableTarget(for: tab).ref,
                 tabId: tab.tabId,
                 title: tab.title,
                 url: tab.url,
@@ -615,7 +646,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
 
         if matches.count == 1 {
-            resolvedTabId = matches[0].tabId
+            resolvedTabId = stableTarget(for: matchingTabs[0]).targetId
             return nil
         }
         if matches.isEmpty {
@@ -713,17 +744,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleStreamEnable(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
         do {
-            _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tabId, "enabled": true]))
-            streamTabId = tabId
+            _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tab.tabId, "enabled": true]))
+            streamTabId = tab.tabId
             streamExtensionId = tab.extensionId
-            await auditLog.log(action: "stream_enable", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
+            await auditLog.log(action: "stream_enable", extensionId: tab.extensionId, tabId: tab.tabId, url: tab.url, agent: "cli")
             var status = streamStatus()
             if let requestedPort = params["port"] as? Int, requestedPort != ABGConstants.wsPort {
                 status["portNote"] = "Custom stream ports are not started separately yet; use the Gateway stream URL."
@@ -758,12 +790,14 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     // MARK: - Recording
 
     private func handleRecordStart(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
         if let existing = recording {
             return CLIResponse(id: req.id, error: ErrorPayload(
                 code: "already_recording",
@@ -939,7 +973,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         ) ?? ["ok": true, "recordingId": recordingId]
         let extensionId = session.extensionId
         let tabId = session.tabId
-        let url = permittedTabs.first(where: { $0.tabId == tabId })?.url ?? ""
+        let url = permittedTabs.first(where: {
+            $0.extensionId == extensionId && $0.tabId == tabId
+        })?.url ?? ""
         recording = nil
         lastFinishedRecording = payload
         Task {
@@ -1021,12 +1057,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,
     /// the html-to-markdown plugin transformer is invoked here in the Gateway.
     private func handleReadTab(req: CLIRequest) async -> CLIResponse {
-        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard var params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
         let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
         let keepImages = (params["keepImages"] as? Bool) ?? false
         let redact = (params["redact"] as? Bool) ?? false
@@ -1095,12 +1134,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleHarTab(req: CLIRequest) async -> CLIResponse {
-        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard var params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
         do {
             let rawOutputPath = try (params["outputPath"] as? String) ?? defaultHAROutputPath(tabId: tabId)
             let outputPath = rawOutputPath as NSString
@@ -1155,12 +1197,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleStateTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        let params = extensionParams(rawParams, for: tab)
         do {
             let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
             var details: [String: AnyCodable] = [
@@ -1189,11 +1234,30 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleSandboxTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
+        }
+        let tabId = tab.tabId
+        var params = extensionParams(rawParams, for: tab)
+        if let requestedTargetTabId = params["targetTabId"] as? Int {
+            let targetResolution = resolveTabTarget(requestedTargetTabId)
+            guard let targetTab = targetResolution.tab else {
+                return CLIResponse(id: req.id, error: targetResolution.error)
+            }
+            guard targetTab.extensionId == tab.extensionId else {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "cross_profile_target",
+                        message: "Sandbox tab actions cannot target a different browser profile."
+                    )
+                )
+            }
+            params["targetTabId"] = targetTab.tabId
         }
         guard tab.accessMode == "all_tabs" else {
             return CLIResponse(
@@ -1243,12 +1307,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func dispatch(req: CLIRequest, method: String) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        let params = extensionParams(rawParams, for: tab)
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
@@ -1444,13 +1511,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
 
     private func handlePasteRichTab(req: CLIRequest) async -> CLIResponse {
         guard var params = req.params?.value as? [String: Any],
-              let tabId = params["tabId"] as? Int
+              let requestedId = params["tabId"] as? Int
         else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
 
         let mime = params["mime"] as? String
         let value = params["value"] as? String
@@ -1528,26 +1598,53 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleEvalTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any],
-              let tabId = params["tabId"] as? Int,
+        guard var params = req.params?.value as? [String: Any],
+              let requestedId = params["tabId"] as? Int,
               let script = params["script"] as? String
         else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId and script required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let scriptBytes = script.utf8.count
+        guard scriptBytes <= EvalScriptLimits.maximumBytes else {
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "script_too_large",
+                    message: "Eval script is \(scriptBytes) bytes; the hard limit is \(EvalScriptLimits.maximumBytes) bytes.",
+                    userMessage: "大きな eval script は分割するか、upload・read・wait・plugin などの正規 primitive に置き換えてください。",
+                    nextCommand: "abg eval --help",
+                    hint: "Recommended maximum: \(EvalScriptLimits.recommendedBytes) bytes."
+                )
+            )
         }
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
+        }
+        let tabId = tab.tabId
+        let requestedTimeout = params["timeoutMs"] as? Int
+        let timeoutMs = GatewaySettings.clampedTimeout(
+            requestedTimeout ?? max(GatewaySettingsStore.load().defaultTimeoutMs, EvalScriptLimits.defaultTimeoutMs)
+        )
+        params = extensionParams(params, for: tab)
+        params["timeoutMs"] = timeoutMs
         var auditDetails: [String: AnyCodable] = [
             "script": AnyCodable(script),
-            "scriptBytes": AnyCodable(script.utf8.count),
+            "scriptBytes": AnyCodable(scriptBytes),
             "approvalRequested": AnyCodable((params["approve"] as? Bool) ?? false),
             "tabTitle": AnyCodable(tab.title),
+            "timeoutMs": AnyCodable(timeoutMs),
         ]
         if let maxBytes = params["maxBytes"] as? Int {
             auditDetails["maxBytes"] = AnyCodable(maxBytes)
         }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "eval_script", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "eval_script",
+                params: AnyCodable(params),
+                timeoutMs: timeoutMs
+            )
             auditDetails["ok"] = AnyCodable(true)
             if let dict = result?.value as? [String: Any] {
                 if let ok = dict["ok"] as? Bool {
@@ -1575,6 +1672,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             auditDetails["ok"] = AnyCodable(false)
             auditDetails["error"] = AnyCodable(error.localizedDescription)
             await auditLog.log(action: "eval_script", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
+            if error.localizedDescription == "command timeout" {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "command_timeout",
+                        message: "Eval command timed out after \(timeoutMs) ms for a \(scriptBytes)-byte script.",
+                        userMessage: "対象タブの共有状態と profile を確認してください。必要なら script を \(EvalScriptLimits.recommendedBytes) bytes 以下に分割し、--timeout は最大 \(GatewaySettings.maximumTimeoutMs) ms まで指定できます。",
+                        nextCommand: "abg tabs --compact",
+                        hint: "Recommended script size: \(EvalScriptLimits.recommendedBytes) bytes; hard limit: \(EvalScriptLimits.maximumBytes) bytes."
+                    )
+                )
+            }
             return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
         }
     }
@@ -1592,9 +1701,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func tabSummary(_ tab: PermittedTab) -> [String: Any] {
+        let target = stableTarget(for: tab)
         var dict: [String: Any] = [
             "extensionId": tab.extensionId,
             "tabId": tab.tabId,
+            "targetId": target.targetId,
+            "ref": target.ref,
             "url": tab.url,
             "title": tab.title,
             "origin": tab.origin,
@@ -1610,11 +1722,64 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func tabSummaries() -> [[String: Any]] {
-        permittedTabs.enumerated().map { index, tab in
-            var dict = tabSummary(tab)
-            dict["ref"] = "t\(index + 1)"
-            return dict
+        permittedTabs.map(tabSummary)
+    }
+
+    private func stableTarget(for tab: PermittedTab) -> StableTabTarget {
+        stableTabTargets.target(
+            for: StableTabIdentity(extensionId: tab.extensionId, tabId: tab.tabId)
+        )
+    }
+
+    private func resolveTabTarget(_ requestedId: Int) -> (tab: PermittedTab?, error: ErrorPayload?) {
+        if requestedId < 0 {
+            guard let identity = stableTabTargets.identity(forTargetId: requestedId),
+                  let tab = permittedTabs.first(where: {
+                      $0.extensionId == identity.extensionId && $0.tabId == identity.tabId
+                  })
+            else {
+                return (nil, tabUnavailableError(tabId: requestedId))
+            }
+            return (tab, nil)
         }
+
+        let matches = permittedTabs.filter { $0.tabId == requestedId }
+        if matches.count == 1 {
+            return (matches[0], nil)
+        }
+        if matches.count > 1 {
+            var candidates: [ErrorPayload.TabCandidate] = []
+            for tab in matches {
+                let target = stableTarget(for: tab)
+                candidates.append(
+                    ErrorPayload.TabCandidate(
+                        ref: target.ref,
+                        tabId: tab.tabId,
+                        title: tab.title,
+                        url: tab.url,
+                        accessMode: tab.accessMode
+                    )
+                )
+            }
+            return (
+                nil,
+                ErrorPayload(
+                    code: "ambiguous_tab_id",
+                    message: "tabId \(requestedId) exists in multiple connected browser profiles. Use a stable ref from `abg tabs --compact`.",
+                    userMessage: "複数 profile に同じ Chrome tabId があります。`abg tabs --compact` の ref を指定してください。",
+                    nextCommand: "abg tabs --compact",
+                    tabId: requestedId,
+                    candidates: candidates
+                )
+            )
+        }
+        return (nil, tabUnavailableError(tabId: requestedId))
+    }
+
+    private func extensionParams(_ params: [String: Any], for tab: PermittedTab) -> [String: Any] {
+        var routed = params
+        routed["tabId"] = tab.tabId
+        return routed
     }
 
     private func extensionDetails() -> [[String: Any]] {

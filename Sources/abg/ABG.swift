@@ -330,7 +330,7 @@ func resolveTabId(client: UDSClient, tabToken: String?, matchUrl: String?, match
                 "nextCommand": "abg tabs --compact",
             ])
         }
-        if let tabId = matches.first?["tabId"] as? Int { return tabId }
+        if let tabId = routingTabId(matches.first) { return tabId }
     }
 
     guard let token = tabToken, !token.isEmpty else {
@@ -342,10 +342,17 @@ func resolveTabId(client: UDSClient, tabToken: String?, matchUrl: String?, match
         ])
     }
     if let id = Int(token) { return id }
-    if let refIndex = parseTabRef(token) {
+    if parseTabRef(token) != nil {
         let tabs = try tabsWithRefs(client.call(method: "list_tabs"))
-        let index = refIndex - 1
-        if tabs.indices.contains(index), let tabId = tabs[index]["tabId"] as? Int {
+        let targets = tabs.compactMap { tab -> StableTabTarget? in
+            guard let ref = tab["ref"] as? String,
+                  let targetId = routingTabId(tab)
+            else {
+                return nil
+            }
+            return StableTabTarget(ref: ref, targetId: targetId)
+        }
+        if let tabId = StableTabTargetRegistry.targetId(forRef: token, in: targets) {
             return tabId
         }
         try failWithJSON([
@@ -367,9 +374,15 @@ func tabsWithRefs(_ value: Any?) -> [[String: Any]] {
     guard let tabs = value as? [[String: Any]] else { return [] }
     return tabs.enumerated().map { index, tab in
         var copy = tab
-        copy["ref"] = "t\(index + 1)"
+        if copy["ref"] == nil {
+            copy["ref"] = "t\(index + 1)"
+        }
         return copy
     }
+}
+
+private func routingTabId(_ tab: [String: Any]?) -> Int? {
+    tab?["targetId"] as? Int ?? tab?["tabId"] as? Int
 }
 
 func compactTabs(_ tabs: [[String: Any]]) -> [[String: Any]] {
@@ -382,6 +395,15 @@ func compactTabs(_ tabs: [[String: Any]]) -> [[String: Any]] {
         ]
         if let accessMode = tab["accessMode"] {
             compact["accessMode"] = accessMode
+        }
+        if let targetId = tab["targetId"] {
+            compact["targetId"] = targetId
+        }
+        if let profile = tab["profile"] {
+            compact["profile"] = profile
+        }
+        if let browser = tab["browser"] {
+            compact["browser"] = browser
         }
         return compact
     }
@@ -896,6 +918,8 @@ struct Eval: AsyncParsableCommand {
         discussion: """
         Eval is an escape hatch. It is disabled by default in the extension popup. When Trusted automation / AutoMode is off, pass --approve to open a local approval window with the exact script. When AutoMode is on, the extension may skip the popup for already-shared tabs while still auditing the script.
         Prefer named primitives such as read/get/find/wait when they cover the workflow.
+        Keep scripts at or below 65536 bytes. The hard limit is 262144 bytes. Split larger work or use a named primitive/plugin.
+        The command timeout defaults to 75000 ms, or a higher Gateway profile default, and is clamped to 1000...300000 ms.
         """
     )
     @OptionGroup var target: TabTarget
@@ -904,9 +928,22 @@ struct Eval: AsyncParsableCommand {
     @Flag(name: .long, help: "Read JavaScript source from stdin") var stdin: Bool = false
     @Flag(name: .long, help: "Required unless Trusted automation / AutoMode is enabled in the extension popup") var approve: Bool = false
     @Option(name: .long, help: "Maximum sanitized result JSON bytes (default 65536, hard cap 262144)") var maxBytes: Int = 65_536
+    @Option(name: .long, help: "Command timeout in milliseconds (default 75000 or higher profile default; maximum 300000)") var timeout: Int = max(defaultGatewayTimeoutMs(), EvalScriptLimits.defaultTimeoutMs)
 
     func run() async throws {
         let script = try readScriptSource()
+        let scriptBytes = script.utf8.count
+        guard scriptBytes <= EvalScriptLimits.maximumBytes else {
+            try failWithJSON([
+                "error": "script_too_large",
+                "message": "Eval script is \(scriptBytes) bytes; the hard limit is \(EvalScriptLimits.maximumBytes) bytes.",
+                "userMessage": "大きな eval script は分割するか、upload・read・wait・plugin などの正規 primitive に置き換えてください。",
+                "hint": "Recommended maximum: \(EvalScriptLimits.recommendedBytes) bytes.",
+                "scriptBytes": scriptBytes,
+                "recommendedScriptBytes": EvalScriptLimits.recommendedBytes,
+                "maximumScriptBytes": EvalScriptLimits.maximumBytes,
+            ])
+        }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
         let result = try client.call(method: "eval_tab", params: [
@@ -914,6 +951,7 @@ struct Eval: AsyncParsableCommand {
             "script": script,
             "approve": approve,
             "maxBytes": maxBytes,
+            "timeoutMs": GatewaySettings.clampedTimeout(timeout),
         ])
         printJSON(result)
         if let dict = result as? [String: Any], (dict["ok"] as? Bool) == false {
@@ -1324,12 +1362,6 @@ struct PasteRich: AsyncParsableCommand {
                 "message": "--mime is required when passing --value, --file, or --stdin.",
             ])
         }
-        if !wantsWrite && (value != nil || file != nil || stdin) {
-            try failWithJSON([
-                "error": "bad_params",
-                "message": "--mime is required when writing clipboard content.",
-            ])
-        }
 
         let text = wantsWrite ? try readPayload(value: value, file: file, stdin: stdin) : nil
         let client = UDSClient()
@@ -1344,7 +1376,7 @@ struct PasteRich: AsyncParsableCommand {
         if let selector { step["selector"] = selector }
         if let frame { step["frame"] = frame }
         if let mime { step["mime"] = mime }
-        if let text { step["value"] = text }
+        if let text { step["contentBytes"] = text.utf8.count }
         appendRecordedStep(step)
         printJSON(result)
     }
@@ -2120,8 +2152,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "paste_rich":
         if let selector = stringValue(step, "selector") { params["selector"] = selector }
         if let frame = stringValue(step, "frame") { params["frame"] = frame }
-        if let mime = stringValue(step, "mime") { params["mime"] = mime }
-        if let value = stringValue(step, "value") { params["value"] = value }
+        if let mime = stringValue(step, "mime"), let value = stringValue(step, "value") {
+            params["mime"] = mime
+            params["value"] = value
+        }
         return try client.call(method: "paste_rich_tab", params: params)
     case "clear":
         params["selector"] = try requiredString(step, "selector", op: op)

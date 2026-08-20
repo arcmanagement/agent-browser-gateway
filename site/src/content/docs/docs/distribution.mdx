@@ -8,6 +8,15 @@ sidebar:
 ABG release artifacts are built from the repository and published for the app, CLI, and browser
 extension. The public download page keeps current artifacts available under `/downloads/`.
 
+Current public distribution state:
+
+- macOS app: signed and notarized `v0.4.2` DMG on the download page and GitHub Releases
+- Chrome extension: `v0.4.3` on the Chrome Web Store, updated July 11, 2026
+- Windows package: pending signed release and WinGet indexing
+
+The app and extension versions can differ while Chrome Web Store review and signed app publication
+complete independently.
+
 ## Homebrew cask
 
 The macOS cask installs:
@@ -29,6 +38,15 @@ and no update is needed.
 Homebrew is ready for a release when the versioned macOS ZIP is published under
 `https://agent-browser-gateway.com/downloads/`, and this repository's
 `Casks/agent-browser-gateway.rb` points at that version and SHA-256.
+
+## Chrome Web Store
+
+Install the extension from the
+[public Chrome Web Store listing](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi).
+
+For release verification, confirm that the public listing is available, then record its displayed
+version and update date separately from the latest macOS release. The current listing reports
+version `0.4.3`, updated July 11, 2026.
 
 ## WinGet
 
