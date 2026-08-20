@@ -347,8 +347,27 @@ one MIME payload to the local OS clipboard without a tab operation. `paste-rich`
 paste shortcut to the currently focused target, or focuses `--selector` first. The combined form
 `abg paste-rich t1 --mime "<type>" --value "<payload>"` writes the clipboard and pastes in one
 audited tab operation; the audit log records the tab, MIME type, and payload byte length, not the
-payload. For Google Sheets edit-mode cells, prepare the Sheets wrapped MIME payload and run
-`abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file sheets.clip`.
+payload.
+
+For a Google Sheets edit-mode cell, prepare a Sheets wrapped clipboard payload whose cell value
+contains the newline, focus the target cell in edit mode, then paste through the native path:
+
+```bash
+abg paste-rich t1 \
+  --mime "application/x-vnd.google-docs-sheets-clip+wrapped" \
+  --file sheets-multiline-cell.clip
+```
+
+For a rich editor that accepts HTML clipboard data, paste `text/html` while targeting the editable
+surface:
+
+```bash
+abg paste-rich t1 \
+  --selector '[contenteditable="true"]' \
+  --mime "text/html" \
+  --value '<p>First line</p><p><strong>Second line</strong></p>'
+```
+
 For Figma layer paste, write the Figma-specific MIME payload first, focus the canvas, then run
 `abg paste-rich t1`.
 

@@ -26,6 +26,19 @@ export function originForUrl(url: string): string {
   }
 }
 
+export function richClipboardPayloadLabel(
+  mime: string | undefined,
+  contentBytes: number | undefined,
+): string {
+  if (!mime) return " current clipboard payload";
+  const byteSuffix = contentBytes === undefined ? "" : ` (${contentBytes} bytes)`;
+  return ` ${quoteForIntentLabel(mime)} clipboard payload${byteSuffix}`;
+}
+
+function quoteForIntentLabel(value: string): string {
+  return JSON.stringify(value.length > 120 ? `${value.slice(0, 117)}...` : value);
+}
+
 // Normalize the file list for an upload_file command. Accepts `files` (array of
 // absolute paths, the canonical form) or the legacy single `file` string, and
 // returns a non-empty array of strings. Throws on malformed input so the

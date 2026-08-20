@@ -1310,12 +1310,6 @@ struct PasteRich: AsyncParsableCommand {
                 "message": "--mime is required when passing --value, --file, or --stdin.",
             ])
         }
-        if !wantsWrite && (value != nil || file != nil || stdin) {
-            try failWithJSON([
-                "error": "bad_params",
-                "message": "--mime is required when writing clipboard content.",
-            ])
-        }
 
         let text = wantsWrite ? try readPayload(value: value, file: file, stdin: stdin) : nil
         let client = UDSClient()
@@ -1330,7 +1324,7 @@ struct PasteRich: AsyncParsableCommand {
         if let selector { step["selector"] = selector }
         if let frame { step["frame"] = frame }
         if let mime { step["mime"] = mime }
-        if let text { step["value"] = text }
+        if let text { step["contentBytes"] = text.utf8.count }
         appendRecordedStep(step)
         printJSON(result)
     }
@@ -2106,8 +2100,10 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
     case "paste_rich":
         if let selector = stringValue(step, "selector") { params["selector"] = selector }
         if let frame = stringValue(step, "frame") { params["frame"] = frame }
-        if let mime = stringValue(step, "mime") { params["mime"] = mime }
-        if let value = stringValue(step, "value") { params["value"] = value }
+        if let mime = stringValue(step, "mime"), let value = stringValue(step, "value") {
+            params["mime"] = mime
+            params["value"] = value
+        }
         return try client.call(method: "paste_rich_tab", params: params)
     case "clear":
         params["selector"] = try requiredString(step, "selector", op: op)

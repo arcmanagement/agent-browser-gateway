@@ -7,6 +7,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  richClipboardPayloadLabel,
 } from "./backgroundLogic.js";
 import {
   type BrowserBookmarkTreeNode,
@@ -1746,11 +1747,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const target = selector
       ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
       : "the currently focused target";
-    const payload = mime
-      ? ` ${quoteForIntent(mime)} clipboard payload${contentBytes === undefined ? "" : ` (${contentBytes} bytes)`}`
-      : " current clipboard payload";
     return {
-      intent: `Paste${payload} into ${target}.`,
+      intent: `Paste${richClipboardPayloadLabel(mime, contentBytes)} into ${target}.`,
       run: () => pasteRichClipboard(tabId, selector, frame),
     };
   }

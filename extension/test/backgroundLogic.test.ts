@@ -5,6 +5,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  richClipboardPayloadLabel,
 } from "../src/backgroundLogic.js";
 
 describe("normalizeUploadFiles", () => {
@@ -120,5 +121,16 @@ describe("backgroundLogic", () => {
     expect(preview).toContain("[redacted");
     expect(diff.text.beforeExcerpt.length).toBeLessThanOrEqual(120);
     expect(diff.text.afterExcerpt.length).toBeLessThanOrEqual(120);
+  });
+
+  it("describes rich clipboard payloads without raw content", () => {
+    const label = richClipboardPayloadLabel("text/html", 25);
+
+    expect(label).toBe(' "text/html" clipboard payload (25 bytes)');
+    expect(label).not.toContain("<b>secret</b>");
+  });
+
+  it("describes current clipboard paste without claiming a MIME payload", () => {
+    expect(richClipboardPayloadLabel(undefined, undefined)).toBe(" current clipboard payload");
   });
 });

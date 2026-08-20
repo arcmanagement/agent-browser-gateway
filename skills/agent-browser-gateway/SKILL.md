@@ -305,7 +305,11 @@ recorded. Plugin authors must preserve that invariant by not echoing argument va
 Use `abg clipboard-write` and `abg paste-rich` for app-specific clipboard formats such as Google
 Sheets wrapped cell payloads or Figma layer payloads. The combined `paste-rich --mime ... --file`
 form writes the clipboard and pastes into the shared tab while auditing only the MIME type and byte
-length, not the raw clipboard payload.
+length, not the raw clipboard payload. For Google Sheets edit-mode cells, focus the target cell and
+run `abg paste-rich t1 --mime "application/x-vnd.google-docs-sheets-clip+wrapped" --file
+sheets-multiline-cell.clip`. For rich editors that accept HTML clipboard data, run `abg paste-rich
+t1 --selector '[contenteditable="true"]' --mime "text/html" --value '<p>First
+line</p><p><strong>Second line</strong></p>'`.
 
 Use `abg exec-command` only after focusing the actual edit-mode surface, such as a double-clicked
 Google Sheets cell or a contenteditable rich editor. `insertText` preserves multiline values through
