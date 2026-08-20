@@ -1,15 +1,19 @@
-# Gateway core and macOS shell boundary
+# Gateway core and OS-specific shell boundary
 
-The Gateway target is split into two layers:
+The current Swift Gateway target is split into two layers:
 
 | Layer | Files | Responsibility |
 |---|---|---|
 | Runtime boundary | `GatewayRuntime.swift`, `Coordinator.swift`, `WSServer.swift`, `UDSServer.swift`, `AuditLog.swift`, `PluginHost.swift` | Local protocol handling, extension state, CLI dispatch, audit logging, plugin execution, and loopback transports. |
 | macOS shell | `App.swift`, `MenuBar.swift`, `GatewayWindowView.swift` | SwiftUI/AppKit lifecycle, menu bar item, dashboard window, Finder/pasteboard actions, and visual presentation. |
 
-`GatewayRuntime` is the transport-facing protocol. `WSServer` and `UDSServer` depend on that protocol
+`GatewayRuntime` is the transport-facing protocol. `WSServer` (extension `/ws`, runtime `/stream`, and the token-authenticated CLI `/cli` route) and `UDSServer` depend on that protocol
 instead of the macOS `GatewayCoordinator` concrete type, so a future Windows/Linux shell can provide a
 different runtime implementation or wrap the same runtime behavior without changing the transports.
+
+The desktop OS expansion model is documented in
+[DESKTOP_OS_EXPANSION.md](DESKTOP_OS_EXPANSION.md). That document keeps Windows and Linux execution
+models separate and states the packaging, startup, logs, IPC, and security assumptions for each OS.
 
 ## macOS-specific APIs
 
@@ -27,6 +31,10 @@ filesystem paths from `ABGConstants`, but should not import AppKit or SwiftUI.
 
 - A non-macOS shell should start the runtime, expose status, and provide UI/tray equivalents outside
   `GatewayCoordinator`.
-- Loopback WS/UDS transports should continue to speak through `GatewayRuntime`.
+- Loopback WebSocket and platform-local CLI IPC transports should continue to speak through
+  `GatewayRuntime`. The shared local IPC contract is documented in `LOCAL_IPC.md`.
 - Platform-specific installer/tray/status work should not add AppKit or SwiftUI dependencies to the
   runtime boundary.
+- Windows shell work should stay in the WinUI/tray, installer, named-pipe, and Windows path layers.
+- Linux shell work should stay CLI/headless-first, with optional systemd user-service integration and
+  no required desktop UI.

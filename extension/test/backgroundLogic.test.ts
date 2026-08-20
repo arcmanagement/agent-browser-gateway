@@ -1,10 +1,60 @@
 import { describe, expect, it } from "vitest";
 import {
   createAuditDiff,
+  describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
+  normalizeUploadFiles,
   originForUrl,
+  richClipboardPayloadLabel,
 } from "../src/backgroundLogic.js";
+
+describe("normalizeUploadFiles", () => {
+  it("accepts a files array of absolute paths", () => {
+    expect(normalizeUploadFiles({ files: ["/tmp/a.png", "/tmp/b.png"] })).toEqual([
+      "/tmp/a.png",
+      "/tmp/b.png",
+    ]);
+  });
+
+  it("accepts a legacy single file string", () => {
+    expect(normalizeUploadFiles({ file: "/tmp/a.png" })).toEqual(["/tmp/a.png"]);
+  });
+
+  it("prefers files over the legacy file alias", () => {
+    expect(normalizeUploadFiles({ files: ["/tmp/a.png"], file: "/tmp/legacy.png" })).toEqual([
+      "/tmp/a.png",
+    ]);
+  });
+
+  it("throws when no file is provided", () => {
+    expect(() => normalizeUploadFiles({})).toThrow(/file required/);
+    expect(() => normalizeUploadFiles({ files: [] })).toThrow(/file required/);
+  });
+
+  it("throws when any entry is not a non-empty string", () => {
+    expect(() => normalizeUploadFiles({ files: ["/tmp/a.png", ""] })).toThrow(/file required/);
+    expect(() => normalizeUploadFiles({ files: ["/tmp/a.png", 123 as unknown as string] })).toThrow(
+      /file required/,
+    );
+  });
+});
+
+describe("describeFileAttachFailure", () => {
+  it("explains the explicit Chrome local-file grant for Not allowed", () => {
+    expect(describeFileAttachFailure('{"code":-32000,"message":"Not allowed"}')).toEqual({
+      code: "file_access_required",
+      message: expect.stringContaining("Allow access to file URLs"),
+    });
+  });
+
+  it("preserves the generic attachment guidance for other debugger errors", () => {
+    const failure = describeFileAttachFailure("Could not find node");
+    expect(failure.code).toBe("file_attach_failed");
+    expect(failure.message).toContain("top-document input[type=file]");
+    expect(failure.message).toContain("Could not find node");
+  });
+});
 
 describe("backgroundLogic", () => {
   it("detects browser labels from user agents without making security decisions", () => {
@@ -88,5 +138,16 @@ describe("backgroundLogic", () => {
     expect(preview).toContain("[redacted");
     expect(diff.text.beforeExcerpt.length).toBeLessThanOrEqual(120);
     expect(diff.text.afterExcerpt.length).toBeLessThanOrEqual(120);
+  });
+
+  it("describes rich clipboard payloads without raw content", () => {
+    const label = richClipboardPayloadLabel("text/html", 25);
+
+    expect(label).toBe(' "text/html" clipboard payload (25 bytes)');
+    expect(label).not.toContain("<b>secret</b>");
+  });
+
+  it("describes current clipboard paste without claiming a MIME payload", () => {
+    expect(richClipboardPayloadLabel(undefined, undefined)).toBe(" current clipboard payload");
   });
 });

@@ -22,7 +22,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     private(set) var auditLog = AuditLog()
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
-    private(set) lazy var pluginHost = PluginHost(abgVersion: "0.4.1") { [weak self] method, params in
+    /// Whether the Unix socket transport is serving the CLI (false = WS /cli only).
+    @Published private(set) var cliSocketActive = false
+    private(set) lazy var pluginHost = PluginHost(abgVersion: ABGConstants.version) { [weak self] method, params in
         guard let self else {
             throw PluginTabAPIError.dispatcherUnavailable
         }
@@ -31,8 +33,25 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
 
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
+    private var stableTabTargets = StableTabTargetRegistry()
     private var streamTabId: Int?
     private var streamExtensionId: String?
+
+    // Active tab recording (single session, mirrors the stream model).
+    private struct RecordingSession {
+        let recordingId: String
+        let tabId: Int
+        let extensionId: String
+        let outputPath: String
+        let startedAt: Date
+        var mic: Bool
+        var handle: FileHandle?
+        var bytes: Int
+        var lastSeq: Int
+    }
+    private var recording: RecordingSession?
+    private var lastFinishedRecording: [String: Any]?
+    private var recordingStopWaiters: [String: CheckedContinuation<AnyCodable, Error>] = [:]
 
     private init() {}
 
@@ -40,7 +59,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         pluginHost.loadAll(from: PluginHost.defaultSearchPaths())
         refreshPluginSummaries()
 
-        let ws = WSServer(runtime: self)
+        // Rendezvous for the CLI's WS fallback: rotate the token on every launch and
+        // publish {token, port} where both unsandboxed and bundled sandboxed CLIs look.
+        let cliToken = CLIEndpoint.generateToken()
+        CLIEndpoint.write(token: cliToken, port: ABGConstants.wsPort)
+
+        let ws = WSServer(runtime: self, cliToken: cliToken)
         wsServer = ws
         Task.detached { [self] in
             do {
@@ -50,14 +74,25 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             }
         }
 
-        let uds = UDSServer()
-        udsServer = uds
-        Task.detached { [self] in
-            do {
-                try await uds.start(runtime: self)
-            } catch {
-                await self.setStatus("UDS error: \(error.localizedDescription)")
+        // The socket path can exceed the 104-byte sun_path limit (long usernames,
+        // relocated homes). That leaves the WS /cli fallback as the CLI transport —
+        // a degraded-but-working state, not a startup error.
+        let socketPath = ABGConstants.configuredCLISocketPath()
+        if ABGConstants.fitsUnixSocketPath(socketPath) {
+            cliSocketActive = true
+            let uds = UDSServer()
+            udsServer = uds
+            Task.detached { [self] in
+                do {
+                    try await uds.start(runtime: self)
+                } catch {
+                    await MainActor.run { self.cliSocketActive = false }
+                    await self.setStatus("UDS error: \(error.localizedDescription) — CLI stays available over loopback WS")
+                }
             }
+        } else {
+            cliSocketActive = false
+            print("[ABG] CLI socket path exceeds the sun_path limit (\(socketPath.utf8.count) bytes); CLI served over loopback WS only")
         }
 
         statusMessage = "Running on \(ABGConstants.wsHost):\(ABGConstants.wsPort) (\(ABGConstants.runtimeProfileLabel))"
@@ -78,6 +113,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         extensionBrowsers.removeValue(forKey: extensionId)
         extensionVersions.removeValue(forKey: extensionId)
         permittedTabs.removeAll { $0.extensionId == extensionId }
+        stableTabTargets.remove(extensionId: extensionId)
+        if streamExtensionId == extensionId {
+            streamTabId = nil
+            streamExtensionId = nil
+        }
+        // A recording owned by this extension can no longer be finalized cleanly;
+        // flush whatever was captured and fail any pending stop.
+        if let session = recording, session.extensionId == extensionId {
+            handleRecordInterrupted(recordingId: session.recordingId, reason: "extension_disconnected")
+        }
         Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
     }
 
@@ -110,6 +155,13 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
+                stableTabTargets.remove(
+                    StableTabIdentity(extensionId: extensionId, tabId: tabId)
+                )
+                if streamTabId == tabId, streamExtensionId == extensionId {
+                    streamTabId = nil
+                    streamExtensionId = nil
+                }
                 Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": AnyCodable(reason)]) }
             }
         case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
@@ -125,19 +177,24 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
                 let url = permittedTabs[idx].url
                 permittedTabs.remove(at: idx)
-                if streamTabId == tabId {
+                stableTabTargets.remove(
+                    StableTabIdentity(extensionId: extensionId, tabId: tabId)
+                )
+                if streamTabId == tabId, streamExtensionId == extensionId {
                     streamTabId = nil
                     streamExtensionId = nil
                 }
                 Task { await auditLog.log(action: "tab_closed", extensionId: extensionId, tabId: tabId, url: url) }
             }
         case .runtimeEvent(let tabId, let event):
-            guard streamTabId == tabId else { return }
+            guard streamTabId == tabId, streamExtensionId == extensionId else { return }
             var payload: [String: Any] = [
                 "tabId": tabId,
                 "ts": ISO8601DateFormatter().string(from: Date()),
             ]
-            if let tab = permittedTabs.first(where: { $0.tabId == tabId }) {
+            if let tab = permittedTabs.first(where: {
+                $0.extensionId == extensionId && $0.tabId == tabId
+            }) {
                 payload["url"] = tab.url
                 payload["title"] = tab.title
             }
@@ -151,6 +208,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                   let text = String(data: data, encoding: .utf8)
             else { return }
             Task { await wsServer?.broadcastRuntimeEvent(text) }
+        case .recordChunk(let recordingId, let seq, let dataBase64):
+            handleRecordChunk(recordingId: recordingId, seq: seq, dataBase64: dataBase64)
+        case .recordStopped(let recordingId, let durationMs, let mime, let micUsed, let chunkCount):
+            handleRecordStopped(recordingId: recordingId, durationMs: durationMs, mime: mime, micUsed: micUsed, chunkCount: chunkCount)
+        case .recordFailed(let recordingId, let error):
+            handleRecordFailed(recordingId: recordingId, error: error)
         case .response(let id, let result, let error):
             if let cont = inflight.removeValue(forKey: id) {
                 if let error = error {
@@ -170,12 +233,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             let extDetails = extensionDetails()
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "version": ABGConstants.version,
                 "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
                 "stateDir": ABGConstants.supportDir.path,
                 "userDir": ABGConstants.abgUserDir.path,
                 "auditLogPath": ABGConstants.auditLogPath,
+                "cliSocketPath": ABGConstants.configuredCLISocketPath(),
+                "cliTransports": cliSocketActive ? ["uds", "ws"] : ["ws"],
+                "sandboxed": ABGConstants.isSandboxed,
                 "extensions": extDetails,
                 "extensionCount": extDetails.count,
                 "permittedTabCount": permittedTabs.count,
@@ -185,17 +252,33 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         case "inspect":
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,
+                "version": ABGConstants.version,
                 "profile": ABGConstants.runtimeProfileLabel,
                 "wsHost": ABGConstants.wsHost,
                 "wsPort": ABGConstants.wsPort,
                 "stateDir": ABGConstants.supportDir.path,
                 "userDir": ABGConstants.abgUserDir.path,
                 "auditLogPath": ABGConstants.auditLogPath,
+                "cliSocketPath": ABGConstants.configuredCLISocketPath(),
+                "cliTransports": cliSocketActive ? ["uds", "ws"] : ["ws"],
+                "sandboxed": ABGConstants.isSandboxed,
                 "extensions": extensionDetails(),
                 "extensionCount": connectedExtensionIds.count,
                 "permittedTabCount": permittedTabs.count,
                 "tabs": tabSummaries(),
             ]))
+        case "bookmarks_list":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_list")
+        case "bookmarks_search":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_search")
+        case "bookmarks_get":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_get")
+        case "bookmarks_open":
+            return await handlePersonalDataCommand(req: req, method: "bookmarks_open")
+        case "reading_list_list":
+            return await handlePersonalDataCommand(req: req, method: "reading_list_list")
+        case "reading_list_search":
+            return await handlePersonalDataCommand(req: req, method: "reading_list_search")
         case "frames_tab":
             return await dispatch(req: req, method: "frames")
         case "read_tab":
@@ -308,16 +391,35 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, result: AnyCodable(streamStatus()))
         case "stream_disable":
             return await handleStreamDisable(req: req)
+        case "record_start":
+            return await handleRecordStart(req: req)
+        case "record_stop":
+            return await handleRecordStop(req: req)
+        case "record_status":
+            return CLIResponse(id: req.id, result: AnyCodable(recordStatusPayload()))
         case "revoke_tab":
-            guard let tabId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
+            guard let requestedId = (req.params?.value as? [String: Any])?["tabId"] as? Int else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
             }
-            // Send revoke to all extensions; the one owning it will act
-            for extId in connectedExtensionIds {
-                _ = try? await sendCommand(to: extId, method: "revoke", params: AnyCodable(["tabId": tabId]))
+            let resolution = resolveTabTarget(requestedId)
+            guard let tab = resolution.tab else {
+                return CLIResponse(id: req.id, error: resolution.error)
             }
-            permittedTabs.removeAll { $0.tabId == tabId }
-            await auditLog.log(action: "revoke_via_cli", tabId: tabId)
+            _ = try? await sendCommand(
+                to: tab.extensionId,
+                method: "revoke",
+                params: AnyCodable(["tabId": tab.tabId])
+            )
+            permittedTabs.removeAll { $0.extensionId == tab.extensionId && $0.tabId == tab.tabId }
+            stableTabTargets.remove(
+                StableTabIdentity(extensionId: tab.extensionId, tabId: tab.tabId)
+            )
+            await auditLog.log(
+                action: "revoke_via_cli",
+                extensionId: tab.extensionId,
+                tabId: tab.tabId,
+                url: tab.url
+            )
             return CLIResponse(id: req.id, result: AnyCodable(["ok": true]))
         case "audit":
             let lines = (req.params?.value as? [String: Any])?["lines"] as? Int ?? 50
@@ -417,6 +519,99 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
     }
 
+    private func handlePersonalDataCommand(req: CLIRequest, method: String) async -> CLIResponse {
+        let params = (req.params?.value as? [String: Any]) ?? [:]
+        guard let extensionId = resolvePersonalDataExtensionId(params: params) else {
+            if connectedExtensionIds.isEmpty {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "extension_not_connected",
+                        message: "No browser extension is connected to the Gateway.",
+                        userMessage: "Chrome 拡張機能が Gateway に接続されていません。拡張機能を有効にしてから再実行してください。",
+                        nextCommand: "abg status"
+                    )
+                )
+            }
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "ambiguous_extension",
+                    message: "Multiple browser extensions are connected. Pass --extension-id for browser-owned personal data commands.",
+                    userMessage: "複数のブラウザ profile が接続されています。browser-owned personal data を読む profile を --extension-id で明示してください。",
+                    nextCommand: "abg status"
+                )
+            )
+        }
+
+        do {
+            let result = try await sendCommand(to: extensionId, method: method, params: AnyCodable(params))
+            await auditLog.log(
+                action: method,
+                extensionId: extensionId,
+                agent: "cli",
+                details: personalDataAuditDetails(method: method, params: params, result: result?.value)
+            )
+            return CLIResponse(id: req.id, result: result)
+        } catch {
+            await auditLog.log(
+                action: method,
+                extensionId: extensionId,
+                agent: "cli",
+                details: personalDataAuditDetails(method: method, params: params, result: nil, error: error.localizedDescription)
+            )
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
+        }
+    }
+
+    private func resolvePersonalDataExtensionId(params: [String: Any]) -> String? {
+        if let extensionId = params["extensionId"] as? String, connectedExtensionIds.contains(extensionId) {
+            return extensionId
+        }
+        if connectedExtensionIds.count == 1 {
+            return connectedExtensionIds[0]
+        }
+        return nil
+    }
+
+    private func personalDataAuditDetails(method: String, params: [String: Any], result: Any?, error: String? = nil) -> [String: AnyCodable] {
+        var details: [String: AnyCodable] = [
+            "boundary": AnyCodable("browser_owned_personal_data"),
+            "urlRedaction": AnyCodable("full_urls_not_recorded"),
+        ]
+        if let limit = params["limit"] as? Int {
+            details["limit"] = AnyCodable(limit)
+        }
+        if let query = params["query"] as? String {
+            details["queryBytes"] = AnyCodable(query.utf8.count)
+        }
+        if let bookmarkId = params["bookmarkId"] as? String {
+            details["bookmarkId"] = AnyCodable(bookmarkId)
+        }
+        if let hasBeenRead = params["hasBeenRead"] as? Bool {
+            details["hasBeenRead"] = AnyCodable(hasBeenRead)
+        }
+        if let dict = result as? [String: Any] {
+            if let count = dict["count"] as? Int {
+                details["count"] = AnyCodable(count)
+            }
+            if let ok = dict["ok"] as? Bool {
+                details["ok"] = AnyCodable(ok)
+            }
+            if method == "bookmarks_open" {
+                details["opened"] = AnyCodable((dict["opened"] as? Bool) == true)
+                if let tabId = dict["tabId"] as? Int {
+                    details["openedTabId"] = AnyCodable(tabId)
+                }
+            }
+        }
+        if let error {
+            details["ok"] = AnyCodable(false)
+            details["error"] = AnyCodable(error)
+        }
+        return details
+    }
+
     private func resolvePluginCommandTabId(
         pluginName: String,
         commandName: String,
@@ -435,12 +630,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return nil
         }
 
-        let matches = permittedTabs.enumerated().compactMap { index, tab -> ErrorPayload.TabCandidate? in
-            guard !tab.isExpired, pluginHost.matchesManifestDomain(plugin: pluginName, url: tab.url) else {
-                return nil
-            }
-            return ErrorPayload.TabCandidate(
-                ref: "t\(index + 1)",
+        let matchingTabs = permittedTabs.filter {
+            !$0.isExpired && pluginHost.matchesManifestDomain(plugin: pluginName, url: $0.url)
+        }
+        let matches = matchingTabs.map { tab in
+            ErrorPayload.TabCandidate(
+                ref: stableTarget(for: tab).ref,
                 tabId: tab.tabId,
                 title: tab.title,
                 url: tab.url,
@@ -449,7 +644,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
 
         if matches.count == 1 {
-            resolvedTabId = matches[0].tabId
+            resolvedTabId = stableTarget(for: matchingTabs[0]).targetId
             return nil
         }
         if matches.isEmpty {
@@ -547,17 +742,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleStreamEnable(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
         do {
-            _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tabId, "enabled": true]))
-            streamTabId = tabId
+            _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tab.tabId, "enabled": true]))
+            streamTabId = tab.tabId
             streamExtensionId = tab.extensionId
-            await auditLog.log(action: "stream_enable", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
+            await auditLog.log(action: "stream_enable", extensionId: tab.extensionId, tabId: tab.tabId, url: tab.url, agent: "cli")
             var status = streamStatus()
             if let requestedPort = params["port"] as? Int, requestedPort != ABGConstants.wsPort {
                 status["portNote"] = "Custom stream ports are not started separately yet; use the Gateway stream URL."
@@ -589,15 +785,285 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         return status
     }
 
+    // MARK: - Recording
+
+    private func handleRecordStart(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
+        }
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
+        }
+        let tabId = tab.tabId
+        if let existing = recording {
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "already_recording",
+                message: "A recording is already active on tab \(existing.tabId).",
+                userMessage: "既に録画中です。`abg record stop` で停止してから再実行してください。",
+                nextCommand: "abg record stop"
+            ))
+        }
+        let mic = (params["mic"] as? Bool) ?? false
+        let recordingId = UUID().uuidString
+        let rawOutputPath = (params["outputPath"] as? String) ?? defaultRecordingOutputPath(tabId: tabId)
+        let outputPath = (rawOutputPath as NSString).expandingTildeInPath
+
+        // Register the session before dispatching: the extension begins streaming
+        // chunks as soon as the user approves, which can arrive while this command
+        // is still awaiting the approval round-trip.
+        recording = RecordingSession(
+            recordingId: recordingId,
+            tabId: tabId,
+            extensionId: tab.extensionId,
+            outputPath: outputPath,
+            startedAt: Date(),
+            mic: mic,
+            handle: nil,
+            bytes: 0,
+            lastSeq: -1
+        )
+
+        do {
+            let commandParams: [String: Any] = ["tabId": tabId, "mic": mic, "recordingId": recordingId]
+            // Approval can take up to ~62s; override the default 30s command timeout.
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "record_start",
+                params: AnyCodable(commandParams),
+                timeoutMs: 75_000
+            )
+            let dict = result?.value as? [String: Any] ?? [:]
+            let micUsed = (dict["mic"] as? Bool) ?? mic
+            if var session = recording, session.recordingId == recordingId {
+                session.mic = micUsed
+                recording = session
+            }
+            await auditLog.log(
+                action: "record_start",
+                extensionId: tab.extensionId,
+                tabId: tabId,
+                url: tab.url,
+                details: [
+                    "recordingId": AnyCodable(recordingId),
+                    "mic": AnyCodable(micUsed),
+                    "outputPath": AnyCodable(outputPath),
+                ]
+            )
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "ok": true,
+                "recordingId": recordingId,
+                "tabId": tabId,
+                "path": outputPath,
+                "mic": micUsed,
+                "startedAt": ISO8601DateFormatter().string(from: recording?.startedAt ?? Date()),
+            ]))
+        } catch {
+            finalizeRecordingCleanup(recordingId: recordingId, deleteFile: true)
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "record_start_failed",
+                message: error.localizedDescription,
+                userMessage: "録画を開始できませんでした。承認ウィンドウで許可したか、対象タブが録画可能か確認してください。"
+            ))
+        }
+    }
+
+    private func handleRecordStop(req: CLIRequest) async -> CLIResponse {
+        guard let session = recording else {
+            if let last = lastFinishedRecording {
+                return CLIResponse(id: req.id, result: AnyCodable(last))
+            }
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: "not_recording",
+                message: "No recording is active.",
+                userMessage: "録画中のセッションがありません。",
+                nextCommand: "abg record status"
+            ))
+        }
+        let recordingId = session.recordingId
+        let extensionId = session.extensionId
+        do {
+            let payload: AnyCodable = try await withCheckedThrowingContinuation { cont in
+                recordingStopWaiters[recordingId] = cont
+                // Ask the extension to stop; the file is finalized when the
+                // record_stopped event arrives (handleRecordStopped resumes us).
+                Task {
+                    do {
+                        _ = try await sendCommand(
+                            to: extensionId,
+                            method: "record_stop",
+                            params: AnyCodable(["recordingId": recordingId]),
+                            timeoutMs: 20_000
+                        )
+                    } catch {
+                        await MainActor.run {
+                            if let waiter = self.recordingStopWaiters.removeValue(forKey: recordingId) {
+                                self.finalizeRecordingCleanup(recordingId: recordingId, deleteFile: false)
+                                waiter.resume(throwing: error)
+                            }
+                        }
+                    }
+                }
+                // Safety net: if the finalize event never arrives, return what we have.
+                Task {
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    await MainActor.run {
+                        if let waiter = self.recordingStopWaiters.removeValue(forKey: recordingId) {
+                            let partial = self.finalizeRecordingPayload(recordingId: recordingId, durationMs: nil, mime: nil, micUsed: nil, chunkCount: nil, finalized: false)
+                            self.finalizeRecordingCleanup(recordingId: recordingId, deleteFile: false)
+                            waiter.resume(returning: AnyCodable(partial ?? ["ok": false, "recordingId": recordingId, "error": "record stop timed out"]))
+                        }
+                    }
+                }
+            }
+            return CLIResponse(id: req.id, result: payload)
+        } catch {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "record_stop_failed", message: error.localizedDescription))
+        }
+    }
+
+    private func recordStatusPayload() -> [String: Any] {
+        guard let session = recording else {
+            var payload: [String: Any] = ["recording": false]
+            if let last = lastFinishedRecording { payload["last"] = last }
+            return payload
+        }
+        return [
+            "recording": true,
+            "recordingId": session.recordingId,
+            "tabId": session.tabId,
+            "mic": session.mic,
+            "path": session.outputPath,
+            "bytes": session.bytes,
+            "startedAt": ISO8601DateFormatter().string(from: session.startedAt),
+        ]
+    }
+
+    private func handleRecordChunk(recordingId: String, seq: Int, dataBase64: String) {
+        guard var session = recording, session.recordingId == recordingId else { return }
+        guard let data = Data(base64Encoded: dataBase64) else { return }
+        do {
+            if session.handle == nil {
+                let url = URL(fileURLWithPath: session.outputPath)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                FileManager.default.createFile(atPath: session.outputPath, contents: nil)
+                session.handle = try FileHandle(forWritingTo: url)
+            }
+            try session.handle?.write(contentsOf: data)
+            session.bytes += data.count
+            session.lastSeq = seq
+            recording = session
+        } catch {
+            handleRecordFailed(recordingId: recordingId, error: "failed to write chunk: \(error.localizedDescription)")
+        }
+    }
+
+    private func handleRecordStopped(recordingId: String, durationMs: Int, mime: String, micUsed: Bool, chunkCount: Int) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        let payload = finalizeRecordingPayload(
+            recordingId: recordingId,
+            durationMs: durationMs,
+            mime: mime,
+            micUsed: micUsed,
+            chunkCount: chunkCount,
+            finalized: true
+        ) ?? ["ok": true, "recordingId": recordingId]
+        let extensionId = session.extensionId
+        let tabId = session.tabId
+        let url = permittedTabs.first(where: {
+            $0.extensionId == extensionId && $0.tabId == tabId
+        })?.url ?? ""
+        recording = nil
+        lastFinishedRecording = payload
+        Task {
+            await auditLog.log(
+                action: "record_stop",
+                extensionId: extensionId,
+                tabId: tabId,
+                url: url,
+                details: [
+                    "recordingId": AnyCodable(recordingId),
+                    "bytes": AnyCodable((payload["bytes"] as? Int) ?? 0),
+                    "durationMs": AnyCodable(durationMs),
+                    "mime": AnyCodable(mime),
+                    "mic": AnyCodable(micUsed),
+                    "chunkCount": AnyCodable(chunkCount),
+                ]
+            )
+        }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(returning: AnyCodable(payload))
+        }
+    }
+
+    private func handleRecordFailed(recordingId: String, error: String) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        try? FileManager.default.removeItem(atPath: session.outputPath)
+        recording = nil
+        Task { await auditLog.log(action: "record_failed", tabId: session.tabId, details: ["recordingId": AnyCodable(recordingId), "error": AnyCodable(error)]) }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(throwing: NSError(domain: "ABG", code: 4, userInfo: [NSLocalizedDescriptionKey: error]))
+        }
+    }
+
+    /// Extension gone mid-recording: flush what we captured and fail any waiter.
+    private func handleRecordInterrupted(recordingId: String, reason: String) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        let payload = finalizeRecordingPayload(recordingId: recordingId, durationMs: nil, mime: nil, micUsed: session.mic, chunkCount: nil, finalized: false)
+        recording = nil
+        if let payload { lastFinishedRecording = payload }
+        if let waiter = recordingStopWaiters.removeValue(forKey: recordingId) {
+            waiter.resume(throwing: NSError(domain: "ABG", code: 6, userInfo: [NSLocalizedDescriptionKey: "recording interrupted: \(reason)"]))
+        }
+    }
+
+    private func finalizeRecordingPayload(recordingId: String, durationMs: Int?, mime: String?, micUsed: Bool?, chunkCount: Int?, finalized: Bool) -> [String: Any]? {
+        guard let session = recording, session.recordingId == recordingId else { return nil }
+        var payload: [String: Any] = [
+            "ok": true,
+            "recordingId": recordingId,
+            "tabId": session.tabId,
+            "path": session.outputPath,
+            "bytes": session.bytes,
+            "mic": micUsed ?? session.mic,
+            "finalized": finalized,
+        ]
+        if let durationMs { payload["durationMs"] = durationMs }
+        if let mime { payload["mime"] = mime }
+        if let chunkCount { payload["chunkCount"] = chunkCount }
+        return payload
+    }
+
+    private func finalizeRecordingCleanup(recordingId: String, deleteFile: Bool) {
+        guard let session = recording, session.recordingId == recordingId else { return }
+        try? session.handle?.close()
+        if deleteFile { try? FileManager.default.removeItem(atPath: session.outputPath) }
+        recording = nil
+    }
+
+    private func defaultRecordingOutputPath(tabId: Int) -> String {
+        let base = ABGConstants.recordingsDir
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return base.appendingPathComponent("tab-\(tabId)-\(formatter.string(from: Date())).webm").path
+    }
+
     /// `read_tab` always asks the extension for raw text+html. When asMarkdown is requested,
     /// the html-to-markdown plugin transformer is invoked here in the Gateway.
     private func handleReadTab(req: CLIRequest) async -> CLIResponse {
-        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard var params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
         let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
         let keepImages = (params["keepImages"] as? Bool) ?? false
         let redact = (params["redact"] as? Bool) ?? false
@@ -666,12 +1132,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleHarTab(req: CLIRequest) async -> CLIResponse {
-        guard var params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard var params = req.params?.value as? [String: Any], let requestedId = params["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
         do {
             let rawOutputPath = try (params["outputPath"] as? String) ?? defaultHAROutputPath(tabId: tabId)
             let outputPath = rawOutputPath as NSString
@@ -726,12 +1195,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleStateTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        let params = extensionParams(rawParams, for: tab)
         do {
             let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
             var details: [String: AnyCodable] = [
@@ -760,11 +1232,30 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleSandboxTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
+        }
+        let tabId = tab.tabId
+        var params = extensionParams(rawParams, for: tab)
+        if let requestedTargetTabId = params["targetTabId"] as? Int {
+            let targetResolution = resolveTabTarget(requestedTargetTabId)
+            guard let targetTab = targetResolution.tab else {
+                return CLIResponse(id: req.id, error: targetResolution.error)
+            }
+            guard targetTab.extensionId == tab.extensionId else {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "cross_profile_target",
+                        message: "Sandbox tab actions cannot target a different browser profile."
+                    )
+                )
+            }
+            params["targetTabId"] = targetTab.tabId
         }
         guard tab.accessMode == "all_tabs" else {
             return CLIResponse(
@@ -814,12 +1305,15 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func dispatch(req: CLIRequest, method: String) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any], let tabId = params["tabId"] as? Int else {
+        guard let rawParams = req.params?.value as? [String: Any], let requestedId = rawParams["tabId"] as? Int else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        let params = extensionParams(rawParams, for: tab)
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
@@ -1015,13 +1509,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
 
     private func handlePasteRichTab(req: CLIRequest) async -> CLIResponse {
         guard var params = req.params?.value as? [String: Any],
-              let tabId = params["tabId"] as? Int
+              let requestedId = params["tabId"] as? Int
         else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
         }
+        let tabId = tab.tabId
+        params = extensionParams(params, for: tab)
 
         let mime = params["mime"] as? String
         let value = params["value"] as? String
@@ -1099,26 +1596,53 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func handleEvalTab(req: CLIRequest) async -> CLIResponse {
-        guard let params = req.params?.value as? [String: Any],
-              let tabId = params["tabId"] as? Int,
+        guard var params = req.params?.value as? [String: Any],
+              let requestedId = params["tabId"] as? Int,
               let script = params["script"] as? String
         else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "tabId and script required"))
         }
-        guard let tab = permittedTabs.first(where: { $0.tabId == tabId }) else {
-            return CLIResponse(id: req.id, error: tabUnavailableError(tabId: tabId))
+        let scriptBytes = script.utf8.count
+        guard scriptBytes <= EvalScriptLimits.maximumBytes else {
+            return CLIResponse(
+                id: req.id,
+                error: ErrorPayload(
+                    code: "script_too_large",
+                    message: "Eval script is \(scriptBytes) bytes; the hard limit is \(EvalScriptLimits.maximumBytes) bytes.",
+                    userMessage: "大きな eval script は分割するか、upload・read・wait・plugin などの正規 primitive に置き換えてください。",
+                    nextCommand: "abg eval --help",
+                    hint: "Recommended maximum: \(EvalScriptLimits.recommendedBytes) bytes."
+                )
+            )
         }
+        let resolution = resolveTabTarget(requestedId)
+        guard let tab = resolution.tab else {
+            return CLIResponse(id: req.id, error: resolution.error)
+        }
+        let tabId = tab.tabId
+        let requestedTimeout = params["timeoutMs"] as? Int
+        let timeoutMs = GatewaySettings.clampedTimeout(
+            requestedTimeout ?? max(GatewaySettingsStore.load().defaultTimeoutMs, EvalScriptLimits.defaultTimeoutMs)
+        )
+        params = extensionParams(params, for: tab)
+        params["timeoutMs"] = timeoutMs
         var auditDetails: [String: AnyCodable] = [
             "script": AnyCodable(script),
-            "scriptBytes": AnyCodable(script.utf8.count),
+            "scriptBytes": AnyCodable(scriptBytes),
             "approvalRequested": AnyCodable((params["approve"] as? Bool) ?? false),
             "tabTitle": AnyCodable(tab.title),
+            "timeoutMs": AnyCodable(timeoutMs),
         ]
         if let maxBytes = params["maxBytes"] as? Int {
             auditDetails["maxBytes"] = AnyCodable(maxBytes)
         }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "eval_script", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "eval_script",
+                params: AnyCodable(params),
+                timeoutMs: timeoutMs
+            )
             auditDetails["ok"] = AnyCodable(true)
             if let dict = result?.value as? [String: Any] {
                 if let ok = dict["ok"] as? Bool {
@@ -1146,6 +1670,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             auditDetails["ok"] = AnyCodable(false)
             auditDetails["error"] = AnyCodable(error.localizedDescription)
             await auditLog.log(action: "eval_script", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
+            if error.localizedDescription == "command timeout" {
+                return CLIResponse(
+                    id: req.id,
+                    error: ErrorPayload(
+                        code: "command_timeout",
+                        message: "Eval command timed out after \(timeoutMs) ms for a \(scriptBytes)-byte script.",
+                        userMessage: "対象タブの共有状態と profile を確認してください。必要なら script を \(EvalScriptLimits.recommendedBytes) bytes 以下に分割し、--timeout は最大 \(GatewaySettings.maximumTimeoutMs) ms まで指定できます。",
+                        nextCommand: "abg tabs --compact",
+                        hint: "Recommended script size: \(EvalScriptLimits.recommendedBytes) bytes; hard limit: \(EvalScriptLimits.maximumBytes) bytes."
+                    )
+                )
+            }
             return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
         }
     }
@@ -1163,9 +1699,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func tabSummary(_ tab: PermittedTab) -> [String: Any] {
+        let target = stableTarget(for: tab)
         var dict: [String: Any] = [
             "extensionId": tab.extensionId,
             "tabId": tab.tabId,
+            "targetId": target.targetId,
+            "ref": target.ref,
             "url": tab.url,
             "title": tab.title,
             "origin": tab.origin,
@@ -1181,11 +1720,64 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func tabSummaries() -> [[String: Any]] {
-        permittedTabs.enumerated().map { index, tab in
-            var dict = tabSummary(tab)
-            dict["ref"] = "t\(index + 1)"
-            return dict
+        permittedTabs.map(tabSummary)
+    }
+
+    private func stableTarget(for tab: PermittedTab) -> StableTabTarget {
+        stableTabTargets.target(
+            for: StableTabIdentity(extensionId: tab.extensionId, tabId: tab.tabId)
+        )
+    }
+
+    private func resolveTabTarget(_ requestedId: Int) -> (tab: PermittedTab?, error: ErrorPayload?) {
+        if requestedId < 0 {
+            guard let identity = stableTabTargets.identity(forTargetId: requestedId),
+                  let tab = permittedTabs.first(where: {
+                      $0.extensionId == identity.extensionId && $0.tabId == identity.tabId
+                  })
+            else {
+                return (nil, tabUnavailableError(tabId: requestedId))
+            }
+            return (tab, nil)
         }
+
+        let matches = permittedTabs.filter { $0.tabId == requestedId }
+        if matches.count == 1 {
+            return (matches[0], nil)
+        }
+        if matches.count > 1 {
+            var candidates: [ErrorPayload.TabCandidate] = []
+            for tab in matches {
+                let target = stableTarget(for: tab)
+                candidates.append(
+                    ErrorPayload.TabCandidate(
+                        ref: target.ref,
+                        tabId: tab.tabId,
+                        title: tab.title,
+                        url: tab.url,
+                        accessMode: tab.accessMode
+                    )
+                )
+            }
+            return (
+                nil,
+                ErrorPayload(
+                    code: "ambiguous_tab_id",
+                    message: "tabId \(requestedId) exists in multiple connected browser profiles. Use a stable ref from `abg tabs --compact`.",
+                    userMessage: "複数 profile に同じ Chrome tabId があります。`abg tabs --compact` の ref を指定してください。",
+                    nextCommand: "abg tabs --compact",
+                    tabId: requestedId,
+                    candidates: candidates
+                )
+            )
+        }
+        return (nil, tabUnavailableError(tabId: requestedId))
+    }
+
+    private func extensionParams(_ params: [String: Any], for tab: PermittedTab) -> [String: Any] {
+        var routed = params
+        routed["tabId"] = tab.tabId
+        return routed
     }
 
     private func extensionDetails() -> [[String: Any]] {
@@ -1238,11 +1830,11 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         )
     }
 
-    func sendCommand(to extensionId: String, method: String, params: AnyCodable?) async throws -> AnyCodable? {
+    func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
         guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
-        let timeoutMs = GatewaySettingsStore.load().defaultTimeoutMs
+        let timeoutMs = timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable?, Error>) in
             inflight[id] = cont
             Task {

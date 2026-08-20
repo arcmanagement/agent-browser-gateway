@@ -3,16 +3,27 @@ import {
   type AuditDiffPayload,
   type AuditDiffValue,
   createAuditDiff,
+  describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
+  normalizeUploadFiles,
   originForUrl,
+  richClipboardPayloadLabel,
 } from "./backgroundLogic.js";
 import {
+  type BrowserBookmarkTreeNode,
   type BrowserDownloadDelta,
   type BrowserDownloadItem,
+  type BrowserReadingListEntry,
+  type BrowserReadingListQueryInfo,
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
+import {
+  normalizeGatewayWebSocketUrl,
+  resolveStoredGatewayWebSocketUrl,
+} from "./gatewayEndpoint.js";
+import { GatewayWebSocketConnection } from "./gatewayWebSocketConnection.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -20,11 +31,14 @@ import type {
   ApprovalRequest,
   ApprovalToBackground,
   BackgroundToApproval,
+  BackgroundToOffscreen,
   BackgroundToPopup,
   ConsoleEntry,
   ExtensionSettings,
   ExtToGateway,
   GatewayCommand,
+  OffscreenStartResult,
+  OffscreenStopResult,
   OperationMethod,
   PopupToBackground,
   TabAccessMode,
@@ -33,9 +47,11 @@ import type {
 declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
-const WS_URL = __ABG_WS_URL__;
-const VERSION = "0.4.1";
+const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
+const VERSION = "0.4.3";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
+const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
+const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
@@ -46,7 +62,10 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   evalEnabled: false,
   trustedAutomationEnabled: false,
   profileLabel: "",
+  gatewayWebSocketUrl: DEFAULT_GATEWAY_WEBSOCKET_URL,
   allTabsAccessEnabled: false,
+  bookmarksAccessEnabled: false,
+  readingListAccessEnabled: false,
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
@@ -146,6 +165,17 @@ type Point = { x: number; y: number };
 type ApprovalResolution = {
   decision: ApprovalDecision;
   message: string;
+  // Present only for record_start approvals: the tabCapture stream ID minted
+  // inside the "Allow" click gesture.
+  streamId?: string;
+};
+
+type RecordingSession = {
+  recordingId: string;
+  tabId: number;
+  mic: boolean;
+  mime: string;
+  startedAt: number;
 };
 
 type PendingApproval = {
@@ -180,17 +210,49 @@ const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
+let recordingSession: RecordingSession | null = null;
 
 let extensionId: string | null = null;
-let ws: WebSocket | null = null;
 let wsConnected = false;
-let reconnectTimer: number | null = null;
+const gatewayWebSocketConnection = new GatewayWebSocketConnection({
+  endpoint: DEFAULT_GATEWAY_WEBSOCKET_URL,
+  createSocket: (endpoint) => new WebSocket(endpoint),
+  onConnectionChange: (connected) => {
+    wsConnected = connected;
+  },
+  onOpen: async () => {
+    const { profileLabel } = await getSettings();
+    sendWS({
+      type: "hello",
+      extensionId: extensionId ?? "?",
+      version: VERSION,
+      profileLabel: profileLabel || undefined,
+      browserKind: await detectCurrentBrowserKind(),
+    });
+    await reconcileAllTabsAccess({ emit: false });
+    for (const [tabId, permittedTab] of permittedTabs) {
+      sendTabPermitted(tabId, permittedTab);
+    }
+  },
+  onMessage: (event) => {
+    try {
+      const command = JSON.parse(event.data) as GatewayCommand;
+      handleGatewayCommand(command);
+    } catch (error) {
+      console.warn("[ABG] WS message parse error", error);
+    }
+  },
+  onWarning: (message, error) => {
+    console.warn(message, error);
+  },
+});
 
 // ---------- Bootstrap ----------
 
 (async () => {
   extensionId = await getOrCreateExtensionId();
-  await ensureSettingsStored();
+  const settings = await ensureSettingsStored();
+  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
   await restoreState();
   await reconcileAllTabsAccess();
   ensureWS();
@@ -203,7 +265,8 @@ browser.runtime.onInstalled.addListener(async () => {
 
 browser.runtime.onStartup.addListener(async () => {
   extensionId = await getOrCreateExtensionId();
-  await ensureSettingsStored();
+  const settings = await ensureSettingsStored();
+  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
   await restoreState();
   await reconcileAllTabsAccess();
   ensureWS();
@@ -235,7 +298,10 @@ async function getSettings(): Promise<ExtensionSettings> {
     "evalEnabled",
     "trustedAutomationEnabled",
     "profileLabel",
+    "gatewayWebSocketUrl",
     "allTabsAccessEnabled",
+    "bookmarksAccessEnabled",
+    "readingListAccessEnabled",
   ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
@@ -249,23 +315,41 @@ async function getSettings(): Promise<ExtensionSettings> {
       : DEFAULT_SETTINGS.trustedAutomationEnabled;
   const profileLabel =
     typeof stored.profileLabel === "string" ? stored.profileLabel : DEFAULT_SETTINGS.profileLabel;
+  const gatewayWebSocketUrl = resolveStoredGatewayWebSocketUrl(
+    stored.gatewayWebSocketUrl,
+    DEFAULT_SETTINGS.gatewayWebSocketUrl,
+  );
   const allTabsAccessEnabled =
     typeof stored.allTabsAccessEnabled === "boolean"
       ? stored.allTabsAccessEnabled
       : DEFAULT_SETTINGS.allTabsAccessEnabled;
+  const bookmarksAccessEnabled =
+    typeof stored.bookmarksAccessEnabled === "boolean"
+      ? stored.bookmarksAccessEnabled
+      : DEFAULT_SETTINGS.bookmarksAccessEnabled;
+  const readingListAccessEnabled =
+    typeof stored.readingListAccessEnabled === "boolean"
+      ? stored.readingListAccessEnabled
+      : DEFAULT_SETTINGS.readingListAccessEnabled;
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
     typeof stored.trustedAutomationEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string" ||
-    typeof stored.allTabsAccessEnabled !== "boolean"
+    gatewayWebSocketUrl.shouldPersist ||
+    typeof stored.allTabsAccessEnabled !== "boolean" ||
+    typeof stored.bookmarksAccessEnabled !== "boolean" ||
+    typeof stored.readingListAccessEnabled !== "boolean"
   ) {
     await browser.storage.local.set({
       operationsRequireApproval,
       evalEnabled,
       trustedAutomationEnabled,
       profileLabel,
+      gatewayWebSocketUrl: gatewayWebSocketUrl.url,
       allTabsAccessEnabled,
+      bookmarksAccessEnabled,
+      readingListAccessEnabled,
     });
   }
   return {
@@ -273,12 +357,15 @@ async function getSettings(): Promise<ExtensionSettings> {
     evalEnabled,
     trustedAutomationEnabled,
     profileLabel,
+    gatewayWebSocketUrl: gatewayWebSocketUrl.url,
     allTabsAccessEnabled,
+    bookmarksAccessEnabled,
+    readingListAccessEnabled,
   };
 }
 
-async function ensureSettingsStored(): Promise<void> {
-  await getSettings();
+async function ensureSettingsStored(): Promise<ExtensionSettings> {
+  return await getSettings();
 }
 
 async function setOperationsRequireApproval(value: boolean): Promise<ExtensionSettings> {
@@ -320,6 +407,15 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
   return settings;
 }
 
+async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings> {
+  const normalizedUrl = normalizeGatewayWebSocketUrl(value);
+  const current = await getSettings();
+  const settings: ExtensionSettings = { ...current, gatewayWebSocketUrl: normalizedUrl };
+  await browser.storage.local.set(settings);
+  gatewayWebSocketConnection.reconnect(normalizedUrl);
+  return settings;
+}
+
 async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
   if (value && !(await hasAllUrlsPermission())) {
@@ -338,6 +434,38 @@ async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSetting
   return settings;
 }
 
+async function setBookmarksAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  if (value) {
+    ensureBookmarksSupported();
+    if (!(await hasBookmarksPermission())) {
+      throw new GatewayError(
+        "bookmarks_permission_required",
+        "Chrome has not granted ABG optional access to bookmarks in this profile.",
+      );
+    }
+  }
+  const settings: ExtensionSettings = { ...current, bookmarksAccessEnabled: value };
+  await browser.storage.local.set(settings);
+  return settings;
+}
+
+async function setReadingListAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  if (value) {
+    ensureReadingListSupported();
+    if (!(await hasReadingListPermission())) {
+      throw new GatewayError(
+        "reading_list_permission_required",
+        "Chrome has not granted ABG optional access to Reading List in this profile.",
+      );
+    }
+  }
+  const settings: ExtensionSettings = { ...current, readingListAccessEnabled: value };
+  await browser.storage.local.set(settings);
+  return settings;
+}
+
 async function hasAllUrlsPermission(): Promise<boolean> {
   try {
     return await browser.permissions.contains({ origins: ALL_URLS_ORIGINS });
@@ -346,9 +474,35 @@ async function hasAllUrlsPermission(): Promise<boolean> {
   }
 }
 
+async function hasBookmarksPermission(): Promise<boolean> {
+  try {
+    return await browser.permissions.contains({ permissions: [BOOKMARKS_PERMISSION] });
+  } catch {
+    return false;
+  }
+}
+
+async function hasReadingListPermission(): Promise<boolean> {
+  try {
+    return await browser.permissions.contains({ permissions: [READING_LIST_PERMISSION] });
+  } catch {
+    return false;
+  }
+}
+
 async function isAllTabsAccessActive(): Promise<boolean> {
   const settings = await getSettings();
   return settings.allTabsAccessEnabled && (await hasAllUrlsPermission());
+}
+
+async function isBookmarksAccessActive(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.bookmarksAccessEnabled && (await hasBookmarksPermission());
+}
+
+async function isReadingListAccessActive(): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.readingListAccessEnabled && (await hasReadingListPermission());
 }
 
 async function isIncognitoAccessAllowed(): Promise<boolean> {
@@ -398,64 +552,11 @@ async function restoreState(): Promise<void> {
 // ---------- WebSocket ----------
 
 function ensureWS(): void {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-  try {
-    ws = new WebSocket(WS_URL);
-  } catch (e) {
-    console.warn("[ABG] WS construct failed", e);
-    scheduleReconnect();
-    return;
-  }
-  ws.addEventListener("open", async () => {
-    wsConnected = true;
-    const { profileLabel } = await getSettings();
-    sendWS({
-      type: "hello",
-      extensionId: extensionId ?? "?",
-      version: VERSION,
-      profileLabel: profileLabel || undefined,
-      browserKind: await detectCurrentBrowserKind(),
-    });
-    await reconcileAllTabsAccess({ emit: false });
-    // Re-send all currently permitted tabs so Gateway is in sync
-    for (const [tabId, p] of permittedTabs) {
-      sendTabPermitted(tabId, p);
-    }
-  });
-  ws.addEventListener("message", (ev) => {
-    try {
-      const cmd = JSON.parse(ev.data) as GatewayCommand;
-      handleGatewayCommand(cmd);
-    } catch (e) {
-      console.warn("[ABG] WS message parse error", e);
-    }
-  });
-  ws.addEventListener("close", () => {
-    wsConnected = false;
-    ws = null;
-    scheduleReconnect();
-  });
-  ws.addEventListener("error", () => {
-    wsConnected = false;
-    try {
-      ws?.close();
-    } catch {}
-    ws = null;
-    scheduleReconnect();
-  });
-}
-
-function scheduleReconnect(): void {
-  if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    ensureWS();
-  }, 3000) as unknown as number;
+  gatewayWebSocketConnection.ensureConnected();
 }
 
 function sendWS(msg: ExtToGateway): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify(msg));
+  gatewayWebSocketConnection.send(JSON.stringify(msg));
 }
 
 function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
@@ -561,6 +662,29 @@ async function allTabsAccessState(): Promise<{
   };
 }
 
+async function personalDataAccessState(): Promise<{
+  bookmarks: { permissionGranted: boolean; active: boolean; supported: boolean };
+  readingList: { permissionGranted: boolean; active: boolean; supported: boolean };
+}> {
+  const [settings, bookmarksPermissionGranted, readingListPermissionGranted] = await Promise.all([
+    getSettings(),
+    hasBookmarksPermission(),
+    hasReadingListPermission(),
+  ]);
+  return {
+    bookmarks: {
+      permissionGranted: bookmarksPermissionGranted,
+      active: settings.bookmarksAccessEnabled && bookmarksPermissionGranted,
+      supported: !!browser.bookmarks,
+    },
+    readingList: {
+      permissionGranted: readingListPermissionGranted,
+      active: settings.readingListAccessEnabled && readingListPermissionGranted,
+      supported: !!browser.readingList,
+    },
+  };
+}
+
 async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void> {
   if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) return;
   const tabId = tab.id;
@@ -647,6 +771,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
     if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
   }
   streamingTabs.delete(tabId);
+  stopRecordingForTab(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
@@ -655,12 +780,15 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
 
 async function updateBadge(tabId: number): Promise<void> {
   const tab = permittedTabs.get(tabId);
+  const isRecording = recordingSession?.tabId === tabId;
   try {
     await browser.action.setBadgeText({
       tabId,
-      text: tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
+      text: isRecording ? "REC" : tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
     });
-    if (tab) {
+    if (isRecording) {
+      await browser.action.setBadgeBackgroundColor({ tabId, color: "#ff3b30" });
+    } else if (tab) {
       await browser.action.setBadgeBackgroundColor({
         tabId,
         color: tab.accessMode === "all_tabs" ? "#0a84ff" : "#34c759",
@@ -729,6 +857,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
       if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
     }
     streamingTabs.delete(tabId);
+    stopRecordingForTab(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
     await detachDebugger(tabId);
@@ -1121,7 +1250,19 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
   const tabId = cmd.params?.tabId;
   try {
-    if (cmd.method === "frames") {
+    if (cmd.method === "bookmarks_list") {
+      reply(cmd.id, await listBookmarks(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_search") {
+      reply(cmd.id, await searchBookmarks(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_get") {
+      reply(cmd.id, await getBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_open") {
+      reply(cmd.id, await openBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_list") {
+      reply(cmd.id, await listReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_search") {
+      reply(cmd.id, await searchReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "frames") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await listFrames(tabId));
     } else if (cmd.method === "read_dom") {
@@ -1198,6 +1339,13 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
       reply(cmd.id, { ok: true });
+    } else if (cmd.method === "record_start") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, await recordStart(tabId, cmd.params ?? {}));
+    } else if (cmd.method === "record_stop") {
+      reply(cmd.id, await recordStop(cmd.params ?? {}));
+    } else if (cmd.method === "record_status") {
+      reply(cmd.id, recordStatus());
     } else if (isOperationCommand(cmd)) {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await runApprovedOperation(cmd, tabId));
@@ -1211,6 +1359,253 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       replyError(cmd.id, "command_failed", e instanceof Error ? e.message : String(e));
     }
   }
+}
+
+function ensureBookmarksSupported(): void {
+  if (!browser.bookmarks) {
+    throw new GatewayError(
+      "bookmarks_unsupported",
+      "This browser extension target does not expose the chrome.bookmarks API.",
+    );
+  }
+}
+
+function ensureReadingListSupported(): void {
+  if (!browser.readingList) {
+    throw new GatewayError(
+      "reading_list_unsupported",
+      "This browser extension target does not expose the chrome.readingList API. Chrome documents the API for Chrome 120+; other Chromium browsers may omit it.",
+    );
+  }
+}
+
+async function requireBookmarksAccess(): Promise<NonNullable<typeof browser.bookmarks>> {
+  const api = browser.bookmarks;
+  if (!api) {
+    throw new GatewayError(
+      "bookmarks_unsupported",
+      "This browser extension target does not expose the chrome.bookmarks API.",
+    );
+  }
+  if (!(await isBookmarksAccessActive())) {
+    throw new GatewayError(
+      "bookmarks_permission_required",
+      "Bookmark inspection requires the separate bookmarks permission. Enable Bookmarks access in the ABG extension popup.",
+    );
+  }
+  return api;
+}
+
+async function requireReadingListAccess(): Promise<NonNullable<typeof browser.readingList>> {
+  const api = browser.readingList;
+  if (!api) {
+    throw new GatewayError(
+      "reading_list_unsupported",
+      "This browser extension target does not expose the chrome.readingList API. Chrome documents the API for Chrome 120+; other Chromium browsers may omit it.",
+    );
+  }
+  if (!(await isReadingListAccessActive())) {
+    throw new GatewayError(
+      "reading_list_permission_required",
+      "Reading List inspection requires the separate Reading List permission. Enable Reading List access in the ABG extension popup.",
+    );
+  }
+  return api;
+}
+
+function isBookmarkNode(value: unknown): value is BrowserBookmarkTreeNode {
+  return isRecord(value) && typeof value.id === "string" && typeof value.title === "string";
+}
+
+function bookmarkPath(parents: string[], title: string): string {
+  return [...parents, title].filter(Boolean).join(" / ");
+}
+
+function publicBookmarkNode(
+  node: BrowserBookmarkTreeNode,
+  parents: string[] = [],
+): Record<string, unknown> {
+  const isFolder = !node.url;
+  const output: Record<string, unknown> = {
+    id: node.id,
+    title: node.title,
+    type: isFolder ? "folder" : "bookmark",
+    path: bookmarkPath(parents, node.title),
+  };
+  if (node.url) output.url = node.url;
+  if (node.parentId) output.parentId = node.parentId;
+  if (typeof node.index === "number") output.index = node.index;
+  if (typeof node.dateAdded === "number") output.dateAdded = node.dateAdded;
+  if (typeof node.dateGroupModified === "number") {
+    output.dateGroupModified = node.dateGroupModified;
+  }
+  const dateLastUsed = (node as BrowserBookmarkTreeNode & { dateLastUsed?: number }).dateLastUsed;
+  if (typeof dateLastUsed === "number") output.dateLastUsed = dateLastUsed;
+  const children = node.children ?? [];
+  if (children.length > 0) {
+    output.children = children.map((child) => publicBookmarkNode(child, [...parents, node.title]));
+  }
+  return output;
+}
+
+function flattenBookmarkNodes(
+  nodes: BrowserBookmarkTreeNode[],
+  parents: string[] = [],
+  includeFolders = false,
+): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const node of nodes) {
+    if (includeFolders || node.url) rows.push(publicBookmarkNode(node, parents));
+    if (node.children) {
+      rows.push(...flattenBookmarkNodes(node.children, [...parents, node.title], includeFolders));
+    }
+  }
+  return rows;
+}
+
+function findBookmarkNode(
+  nodes: BrowserBookmarkTreeNode[],
+  id: string,
+  parents: string[] = [],
+): { node: BrowserBookmarkTreeNode; parents: string[] } | null {
+  for (const node of nodes) {
+    if (node.id === id) return { node, parents };
+    if (node.children) {
+      const found = findBookmarkNode(node.children, id, [...parents, node.title]);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function readLimit(params: GatewayCommand["params"], fallback: number, maximum: number): number {
+  const limit = params?.limit;
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return fallback;
+  return Math.max(1, Math.min(maximum, Math.floor(limit)));
+}
+
+async function listBookmarks(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const includeFolders = params?.includeFolders === true;
+  const tree = await api.getTree();
+  const rows = flattenBookmarkNodes(tree, [], includeFolders).slice(
+    0,
+    readLimit(params, 100, 1000),
+  );
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    count: rows.length,
+    bookmarks: rows,
+  };
+}
+
+async function searchBookmarks(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const query = typeof params?.query === "string" ? params.query.trim() : "";
+  if (!query) throw new GatewayError("bad_params", "query is required");
+  const needle = query.toLowerCase();
+  const tree = await api.getTree();
+  const rows = flattenBookmarkNodes(tree, [], params?.includeFolders === true)
+    .filter((node) => {
+      const title = typeof node.title === "string" ? node.title : "";
+      const url = typeof node.url === "string" ? node.url : "";
+      return title.toLowerCase().includes(needle) || url.toLowerCase().includes(needle);
+    })
+    .slice(0, readLimit(params, 50, 500));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    queryBytes: query.length,
+    count: rows.length,
+    bookmarks: rows,
+  };
+}
+
+async function getBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : "";
+  if (!id) throw new GatewayError("bad_params", "bookmarkId is required");
+  const found = findBookmarkNode(await api.getTree(), id);
+  if (!found) throw new GatewayError("bookmark_not_found", `Bookmark not found: ${id}`);
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    bookmark: publicBookmarkNode(found.node, found.parents),
+  };
+}
+
+async function openBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : "";
+  if (!id) throw new GatewayError("bad_params", "bookmarkId is required");
+  const node = (await api.get(id)).find(isBookmarkNode);
+  if (!node) throw new GatewayError("bookmark_not_found", `Bookmark not found: ${id}`);
+  if (!node.url) throw new GatewayError("bookmark_is_folder", "Cannot open a bookmark folder.");
+  const tab = await browser.tabs.create({ url: node.url, active: true });
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "bookmarks",
+    opened: true,
+    bookmarkId: id,
+    tabId: tab.id,
+    title: node.title,
+  };
+}
+
+function publicReadingListEntry(entry: BrowserReadingListEntry): Record<string, unknown> {
+  return {
+    title: entry.title,
+    url: entry.url,
+    hasBeenRead: entry.hasBeenRead,
+    creationTime: entry.creationTime,
+    lastUpdateTime: entry.lastUpdateTime,
+  };
+}
+
+async function listReadingList(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const query: BrowserReadingListQueryInfo = {};
+  if (typeof params?.hasBeenRead === "boolean") query.hasBeenRead = params.hasBeenRead;
+  const entries = (await api.query(query))
+    .map(publicReadingListEntry)
+    .slice(0, readLimit(params, 100, 1000));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "readingList",
+    count: entries.length,
+    entries,
+  };
+}
+
+async function searchReadingList(
+  params: GatewayCommand["params"],
+): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const queryText = typeof params?.query === "string" ? params.query.trim() : "";
+  if (!queryText) throw new GatewayError("bad_params", "query is required");
+  const all = await api.query({});
+  const needle = queryText.toLowerCase();
+  const entries = all
+    .filter(
+      (entry) =>
+        entry.title.toLowerCase().includes(needle) || entry.url.toLowerCase().includes(needle),
+    )
+    .map(publicReadingListEntry)
+    .slice(0, readLimit(params, 50, 500));
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission: "readingList",
+    queryBytes: queryText.length,
+    count: entries.length,
+    entries,
+  };
 }
 
 function isOperationCommand(cmd: GatewayCommand): cmd is OperationCommand {
@@ -1353,11 +1748,8 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const target = selector
       ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
       : "the currently focused target";
-    const payload = mime
-      ? ` ${quoteForIntent(mime)} clipboard payload${contentBytes === undefined ? "" : ` (${contentBytes} bytes)`}`
-      : " current clipboard payload";
     return {
-      intent: `Paste${payload} into ${target}.`,
+      intent: `Paste${richClipboardPayloadLabel(mime, contentBytes)} into ${target}.`,
       run: () => pasteRichClipboard(tabId, selector, frame),
     };
   }
@@ -1381,12 +1773,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
   }
   if (cmd.method === "upload_file") {
     const selector = cmd.params?.selector;
-    const file = cmd.params?.file;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
-    if (typeof file !== "string" || file.length === 0) throw new Error("file required");
+    const files = normalizeUploadFiles(cmd.params ?? {});
+    const firstFile = files[0] ?? "";
+    const fileIntent =
+      files.length === 1
+        ? `local file ${quoteForIntent(firstFile)}`
+        : `${files.length} local files (${quoteForIntent(firstFile)}, ...)`;
     return {
-      intent: `Attach local file ${quoteForIntent(file)} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
-      run: () => uploadFile(tabId, selector, file, frame),
+      intent: `Attach ${fileIntent} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      run: () => uploadFile(tabId, selector, files, frame),
     };
   }
   if (cmd.method === "type_text") {
@@ -1838,11 +2234,12 @@ function finalizeApproval(
   return true;
 }
 
-function resolutionForDecision(decision: ApprovalDecision): ApprovalResolution {
+function resolutionForDecision(decision: ApprovalDecision, streamId?: string): ApprovalResolution {
   if (decision === "allow") {
     return {
       decision,
       message: "Operation approved.",
+      streamId,
     };
   }
   if (decision === "timeout") {
@@ -1855,6 +2252,202 @@ function resolutionForDecision(decision: ApprovalDecision): ApprovalResolution {
     decision,
     message: "Operation denied by user.",
   };
+}
+
+// ---------- Recording (tab video + audio) ----------
+//
+// Recording is always approval-gated regardless of operationsRequireApproval:
+// it captures tab audio (and optionally the microphone / physical room), which
+// is heavier than the per-tab read/operate model. The approval-window "Allow"
+// click doubles as the user gesture that mints the tabCapture stream ID, so the
+// CLI-driven start still satisfies Chrome's gesture requirement.
+
+const OFFSCREEN_URL = "offscreen.html";
+let creatingOffscreen: Promise<void> | null = null;
+
+async function recordStart(
+  tabId: number,
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ recordingId: string; tabId: number; mic: boolean; mime: string }> {
+  if (recordingSession) {
+    throw new GatewayError(
+      "already_recording",
+      `A recording is already active on tab ${recordingSession.tabId}. Stop it first.`,
+    );
+  }
+  const recordingId = params.recordingId ?? crypto.randomUUID();
+  const withMic = params.mic === true;
+  const intent = withMic
+    ? "Record this tab to a video file, capturing tab audio and the microphone (physical room)."
+    : "Record this tab to a video file, capturing tab audio.";
+
+  const approval = await requestOperationApproval("record_start", tabId, intent);
+  if (approval.decision !== "allow") {
+    throw new GatewayError("user_denied", approval.message);
+  }
+  if (!approval.streamId) {
+    throw new GatewayError(
+      "no_capture_stream",
+      "Approval did not yield a tab capture stream (the Allow click must mint it).",
+    );
+  }
+
+  await ensureOffscreenDocument();
+  const start = (await sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "start",
+    recordingId,
+    streamId: approval.streamId,
+    withMic,
+    timesliceMs: typeof params.timesliceMs === "number" ? params.timesliceMs : undefined,
+  })) as OffscreenStartResult | undefined;
+  if (!start?.ok) {
+    throw new GatewayError("record_start_failed", start?.error ?? "offscreen recorder failed");
+  }
+
+  recordingSession = {
+    recordingId,
+    tabId,
+    mic: start.micUsed === true,
+    mime: start.mime ?? "video/webm",
+    startedAt: Date.now(),
+  };
+  await updateBadge(tabId);
+  return {
+    recordingId,
+    tabId,
+    mic: recordingSession.mic,
+    mime: recordingSession.mime,
+  };
+}
+
+async function recordStop(
+  params: NonNullable<GatewayCommand["params"]>,
+): Promise<{ ok: true; recordingId: string; tabId: number }> {
+  const session = recordingSession;
+  if (!session) {
+    throw new GatewayError("not_recording", "No recording is active.");
+  }
+  if (params.recordingId && params.recordingId !== session.recordingId) {
+    throw new GatewayError(
+      "recording_mismatch",
+      "recordingId does not match the active recording.",
+    );
+  }
+  const stop = (await sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "stop",
+    recordingId: session.recordingId,
+  })) as OffscreenStopResult | undefined;
+  if (!stop?.ok) {
+    throw new GatewayError(
+      "record_stop_failed",
+      stop?.error ?? "offscreen recorder failed to stop",
+    );
+  }
+  // The offscreen streams its trailing chunk(s) then a record_stopped event,
+  // which the Gateway uses to finalize the webm file. The session is cleared
+  // when that event is forwarded (handleOffscreenEvent).
+  return { ok: true, recordingId: session.recordingId, tabId: session.tabId };
+}
+
+function recordStatus(): {
+  recording: boolean;
+  recordingId?: string;
+  tabId?: number;
+  mic?: boolean;
+  mime?: string;
+  startedAt?: number;
+} {
+  if (!recordingSession) return { recording: false };
+  return {
+    recording: true,
+    recordingId: recordingSession.recordingId,
+    tabId: recordingSession.tabId,
+    mic: recordingSession.mic,
+    mime: recordingSession.mime,
+    startedAt: recordingSession.startedAt,
+  };
+}
+
+async function ensureOffscreenDocument(): Promise<void> {
+  const offscreen = (chrome as unknown as { offscreen?: typeof chrome.offscreen }).offscreen;
+  if (!offscreen) throw new GatewayError("offscreen_unavailable", "offscreen API unavailable");
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType],
+    documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
+  });
+  if (contexts.length > 0) return;
+  if (!creatingOffscreen) {
+    creatingOffscreen = offscreen
+      .createDocument({
+        url: OFFSCREEN_URL,
+        reasons: ["USER_MEDIA" as chrome.offscreen.Reason],
+        justification: "Record a shared tab (video + audio) to a local file.",
+      })
+      .finally(() => {
+        creatingOffscreen = null;
+      });
+  }
+  await creatingOffscreen;
+}
+
+async function sendToOffscreen(msg: BackgroundToOffscreen): Promise<unknown> {
+  return chrome.runtime.sendMessage(msg);
+}
+
+function handleOffscreenEvent(rawMsg: Record<string, unknown>): void {
+  const type = rawMsg.type;
+  const recordingId = typeof rawMsg.recordingId === "string" ? rawMsg.recordingId : "";
+  if (!recordingId) return;
+  if (type === "abg_offscreen_chunk") {
+    sendWS({
+      type: "record_chunk",
+      recordingId,
+      seq: typeof rawMsg.seq === "number" ? rawMsg.seq : 0,
+      dataBase64: typeof rawMsg.dataBase64 === "string" ? rawMsg.dataBase64 : "",
+    });
+    return;
+  }
+  if (type === "abg_offscreen_stopped") {
+    sendWS({
+      type: "record_stopped",
+      recordingId,
+      durationMs: typeof rawMsg.durationMs === "number" ? rawMsg.durationMs : 0,
+      mime: typeof rawMsg.mime === "string" ? rawMsg.mime : "video/webm",
+      micUsed: rawMsg.micUsed === true,
+      chunkCount: typeof rawMsg.chunkCount === "number" ? rawMsg.chunkCount : 0,
+    });
+    void finishRecordingSession(recordingId);
+    return;
+  }
+  if (type === "abg_offscreen_error") {
+    sendWS({
+      type: "record_failed",
+      recordingId,
+      error: typeof rawMsg.error === "string" ? rawMsg.error : "recording failed",
+    });
+    void finishRecordingSession(recordingId);
+  }
+}
+
+async function finishRecordingSession(recordingId: string): Promise<void> {
+  if (recordingSession?.recordingId !== recordingId) return;
+  const tabId = recordingSession.tabId;
+  recordingSession = null;
+  await updateBadge(tabId);
+}
+
+// Best-effort: when a recording tab is revoked or closed, tell the offscreen to
+// stop so the Gateway can finalize the file. The offscreen also self-stops when
+// the tab's capture track ends, so this is belt-and-suspenders.
+function stopRecordingForTab(tabId: number): void {
+  if (recordingSession?.tabId !== tabId) return;
+  void sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "stop",
+    recordingId: recordingSession.recordingId,
+  }).catch(() => {});
 }
 
 function reply(id: string, result: unknown): void {
@@ -5369,7 +5962,7 @@ async function replaceDom(
 async function uploadFile(
   tabId: number,
   selector: string,
-  file: string,
+  files: string[],
   frame?: string,
 ): Promise<{ ok: true; selector: string; files: number }> {
   if (frame) {
@@ -5377,6 +5970,10 @@ async function uploadFile(
       "unsupported_frame_upload",
       "upload currently supports top-document input[type=file] only; use a top-document selector or file a frame upload follow-up",
     );
+  }
+  if (!(await browser.extension.isAllowedFileSchemeAccess())) {
+    const failure = describeFileAttachFailure("Not allowed");
+    throw new GatewayError(failure.code, failure.message);
   }
   await attachDebugger(tabId);
   const documentNode = (await browser.debugger.sendCommand({ tabId }, "DOM.getDocument", {
@@ -5392,7 +5989,7 @@ async function uploadFile(
   }
   const described = (await browser.debugger.sendCommand({ tabId }, "DOM.describeNode", {
     nodeId: queryResult.nodeId,
-  })) as { node: { nodeName: string; attributes?: string[] } };
+  })) as { node: { nodeName: string; attributes?: string[]; backendNodeId?: number } };
   const attrs = described.node.attributes ?? [];
   const attrMap = new Map<string, string>();
   for (let i = 0; i < attrs.length; i += 2) {
@@ -5406,10 +6003,27 @@ async function uploadFile(
   ) {
     throw new GatewayError("not_file_input", "selector does not point to input[type=file]");
   }
-  await browser.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
-    nodeId: queryResult.nodeId,
-    files: [file],
-  });
+  if (files.length > 1 && attrMap.get("multiple") === undefined) {
+    throw new GatewayError(
+      "single_file_input",
+      `selector points to a single-file input but ${files.length} files were given; the input needs the "multiple" attribute to accept more than one file`,
+    );
+  }
+  // Prefer backendNodeId: it stays valid across the getDocument/querySelector
+  // round-trip, whereas a plain nodeId can be invalidated by DOM mutation
+  // between calls — a common source of "Not allowed" from setFileInputFiles.
+  const backendNodeId = described.node.backendNodeId;
+  const target = backendNodeId !== undefined ? { backendNodeId } : { nodeId: queryResult.nodeId };
+  try {
+    await browser.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
+      ...target,
+      files,
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    const failure = describeFileAttachFailure(detail);
+    throw new GatewayError(failure.code, failure.message);
+  }
   const [res] = await browser.scripting.executeScript({
     target: { tabId },
     func: (sel: string) => {
@@ -6055,6 +6669,15 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
       sendResponse({ type: "ok" });
       return;
     }
+    if (
+      isRecord(rawMsg) &&
+      typeof rawMsg.type === "string" &&
+      rawMsg.type.startsWith("abg_offscreen_")
+    ) {
+      handleOffscreenEvent(rawMsg);
+      sendResponse({ type: "ok" });
+      return;
+    }
     const msg = parseRuntimeMessage(rawMsg);
     if (!msg) {
       const reply: RuntimeResponse = { type: "error", message: "unknown message" };
@@ -6103,6 +6726,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       },
       sharedTabs,
       allTabsAccess,
+      personalDataAccess: await personalDataAccessState(),
       settings: await getSettings(),
       annotationState: {
         enabled: annotationState.enabled,
@@ -6134,8 +6758,20 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     await setProfileLabel(msg.value);
     return { type: "ok" };
   }
+  if (msg.type === "set_gateway_websocket_url") {
+    await setGatewayWebSocketUrl(msg.value);
+    return { type: "ok" };
+  }
   if (msg.type === "set_all_tabs_access") {
     await setAllTabsAccessEnabled(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_bookmarks_access") {
+    await setBookmarksAccessEnabled(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_reading_list_access") {
+    await setReadingListAccessEnabled(msg.value);
     return { type: "ok" };
   }
   if (msg.type === "annotation_action") {
@@ -6153,7 +6789,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     }
     return { type: "approval_request", request: pending.request };
   }
-  const resolved = finalizeApproval(msg.approvalId, resolutionForDecision(msg.decision));
+  const resolved = finalizeApproval(
+    msg.approvalId,
+    resolutionForDecision(msg.decision, msg.streamId),
+  );
   if (!resolved) {
     return { type: "error", message: "approval request not found" };
   }
@@ -6183,8 +6822,17 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   if (rawMsg.type === "set_profile_label" && typeof rawMsg.value === "string") {
     return { type: "set_profile_label", value: rawMsg.value };
   }
+  if (rawMsg.type === "set_gateway_websocket_url" && typeof rawMsg.value === "string") {
+    return { type: "set_gateway_websocket_url", value: rawMsg.value };
+  }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_bookmarks_access" && typeof rawMsg.value === "boolean") {
+    return { type: "set_bookmarks_access", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_reading_list_access" && typeof rawMsg.value === "boolean") {
+    return { type: "set_reading_list_access", value: rawMsg.value };
   }
   if (
     rawMsg.type === "annotation_action" &&
@@ -6205,6 +6853,7 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
       type: "approval_decision",
       approvalId: rawMsg.approvalId,
       decision: rawMsg.decision,
+      streamId: typeof rawMsg.streamId === "string" ? rawMsg.streamId : undefined,
     };
   }
   return null;

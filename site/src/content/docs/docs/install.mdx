@@ -8,7 +8,7 @@ sidebar:
 ## Requirements
 
 - macOS 14 or newer for the current Gateway app.
-- Google Chrome 116 or newer for the Chrome extension.
+- Google Chrome 120 or newer for the Chrome extension.
 - A terminal that can run the `abg` CLI.
 - For development builds: Xcode 16 or newer, `mise`, Node.js, and pnpm.
 
@@ -50,7 +50,7 @@ Install with WinGet after the current release's `microsoft/winget-pkgs` PR is me
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-Current `v0.4.1` status: WinGet is not indexed yet, and no Windows release ZIP is published yet. If
+Current `v0.4.2` status: WinGet is not indexed yet, and no Windows release ZIP is published yet. If
 `winget` reports no matching package, that is expected until the signed Windows release and
 Microsoft indexing are complete.
 
@@ -62,7 +62,9 @@ For current Windows testing, clone the repository on Windows and run:
 
 ## Browser extension
 
-Install Agent Browser Gateway from the Chrome Web Store for normal Chrome use. For local extension
+Install Agent Browser Gateway from the
+[Chrome Web Store](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi)
+for normal Chrome use. The public listing currently serves extension `v0.4.3`. For local extension
 development, build the extension from the repository and load `extension/dist/` as an unpacked
 extension.
 
@@ -71,13 +73,15 @@ extension access to incognito windows by default.
 
 ## Agent skill
 
-After the Gateway and CLI are available, install or refresh the Claude Code and Codex skill guidance:
+After the Gateway and CLI are available, install or refresh the Claude Code and Codex skill guidance
+with the [skills CLI](https://github.com/vercel-labs/skills):
 
 ```bash
-abg install-skill --target both
+npx skills add arcmanagement/agent-browser-gateway -g
 ```
 
-Use `--target claude` or `--target codex` when you only want one agent's skill installed.
+Use `-a claude-code` or `-a codex` when you only want one agent's skill installed, and
+`npx skills update -g` to refresh installed skills later.
 
 ## Development app
 

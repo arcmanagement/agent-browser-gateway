@@ -24,6 +24,9 @@ abg frames t1
 abg get text t1 "h1"
 abg snapshot t1 --interactive-only --compact
 abg screenshot t1 --out page.png
+abg record start t1 --out demo.webm
+abg record stop
+abg record status
 abg console t1
 abg table t1 --format markdown
 abg network t1 --url "*api*"
@@ -41,6 +44,10 @@ abg upload t1 --selector "input[type=file]" --file ./report.pdf
 abg navigate t1 "https://example.com"
 abg revoke t1
 ```
+
+タブ録画は常にapproval-gatedです。`abg record start` はローカル承認windowを開き、
+AllowクリックがChromeの `tabCapture` に必要なgestureを兼ねます。`--mic` は部屋の音も
+混ぜたい場合だけ使います。
 
 ## タブ指定
 

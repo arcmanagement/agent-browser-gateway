@@ -10,6 +10,7 @@ personal browser profile.
 |---|---|
 | `per-tab` | Allowed for an explicitly shared tab in a normal browser profile. Read-only tools should stay here when possible. |
 | `sandbox/all-tabs only` | Allowed only in an intentionally isolated browser profile where the user enabled all-tabs access. |
+| `user-controlled deployment only` | Allowed only when the user explicitly controls the browser permission, local profile, organization deployment, plugin, or fork that exposes the capability. It is not part of normal per-tab or all-tabs sharing. |
 | `self-hosted only` | Allowed only when the user or their organization operates the network/service side. It is not an ABG-operated service. |
 | `non-goal` | Not accepted in official ABG, even if convenient. |
 
@@ -23,6 +24,11 @@ personal browser profile.
 | Redacted HAR export | `per-tab` | No write approval; artifact generation must be explicit | Log tab, filters, redaction mode, byte size, and local path | Local filesystem only; no ABG cloud storage. |
 | Cookie / Web Storage reads | `per-tab` | No write approval; full values require explicit `--values` | Log kind, filters, counts, and whether values were requested | Values are redacted by default. |
 | Framework and Web Vitals reads | `per-tab` | No write approval | Log read command and tab | Hook-dependent, bounded, no component mutation. |
+| JavaScript dialog inspection and handling | `per-tab` | No approval to inspect; accept, dismiss, and prompt-value operations require approval | Log dialog type and handling action without storing sensitive prompt values | Dialog handling stays scoped to the shared tab. |
+| Download lifecycle and local artifact paths | `per-tab` | Download initiation follows the approval policy of the triggering action | Log tab, suggested filename, state, byte size, and local path | File contents are not read automatically and artifacts remain local. |
+| Bookmark / Reading List inspection | `user-controlled deployment only` | Separate explicit browser permission required; no write approval for read-only list, search, get, or open | Log operation class, browser/profile identity, result counts, and redacted URL metadata by default | Browser-owned personal data. It is not unlocked by per-tab or all-tabs sharing. |
+| Bookmark / Reading List mutation | `non-goal` in official ABG; a future user-controlled plugin or fork requires a new policy decision | Not applicable in official ABG | Not applicable in official ABG | Profile-wide personal-data writes and deletes are not bounded by tab consent, and the deletion/reorganization risk outweighs the current demonstrated need. |
+| Shared-tab video recording | `per-tab` | Explicit start approval required; microphone inclusion is optional and separately identified | Log tab, start/stop time, output path, byte count, requested audio sources, and approval result | Must show a visible recording indicator. Generated artifacts stay local. |
 | Cookie / storage write or delete | `sandbox/all-tabs only` | Required per operation | Log key/name, scope, action, and value byte count, never raw secret values | Not allowed for normal personal-profile per-tab sharing. |
 | Network route/mock/mutation | `sandbox/all-tabs only` | Required before enabling each rule and before mutation when practical | Log rule id, URL scope, method/status changes, byte counts | No silent request/response rewriting in normal mode. |
 | Init scripts / pre-page-load instrumentation | `sandbox/all-tabs only` | Required before installing/enabling script | Log script hash/source summary, URL scope, enable/disable time | Needed before navigation, so it does not fit normal per-tab consent. |
@@ -35,15 +41,24 @@ personal browser profile.
 | General JavaScript eval escape hatch | `per-tab` only when enabled | Extension eval setting enabled. With Trusted automation / AutoMode off, CLI `--approve` and per-call local approval window. With AutoMode on, popup can be skipped for already-shared tabs. | Log exact script source, approval mode, and result type/size summary | Prefer named structured tools. |
 | Hidden general JavaScript execution without explicit user policy | `non-goal` | Not applicable | Not applicable | Eval must require either per-call approval or explicit Trusted automation / AutoMode. |
 
-## Related Roadmap Issues
+## Epic #178 closure ledger
 
-- #183 HAR export uses the `per-tab` artifact rule with safe redaction defaults.
-- #184 cookie/storage inspection uses the `per-tab` read-only rule.
-- #185 framework inspection uses the `per-tab` read-only observation rule.
-- #187 sandbox browser-owned automation is limited to the `sandbox/all-tabs only` rows above;
-  the first supported controls are viewport emulation, Web Storage set/delete, and sandbox tab
-  create/close.
-- #188 documents the official non-goals versus user-controlled/self-hosted extensions.
+| Issue | Capability | Outcome | Boundary |
+|---|---|---|---|
+| #179 | Frame targeting | Shipped | `per-tab`; same-origin targeting only, with explicit cross-origin errors. |
+| #180 | JavaScript dialogs | Shipped | `per-tab`; inspection is read-only and handling requires approval and audit. |
+| #181 | Downloads | Shipped | `per-tab`; lifecycle and local artifact paths only. |
+| #182 | Response waits and bounded body inspection | Shipped | `per-tab`; body access is explicit and size-capped. |
+| #183 | HAR export | Shipped | `per-tab`; explicit local artifact with safe redaction defaults. |
+| #184 | Cookie and Web Storage inspection | Shipped | `per-tab`; read-only and redacted by default. |
+| #185 | Framework and Web Vitals inspection | Shipped | `per-tab`; read-only, bounded snapshots. |
+| #186 | Advanced automation policy | Decision complete | Defines the mode, approval, and audit boundaries in this document. |
+| #187 | Browser-owned sandbox controls | Shipped | `sandbox/all-tabs only`; state changes require approval and audit. |
+| #188 | Official non-goals and extensions | Shipped | Separates official non-goals from user-controlled and self-hosted deployments. |
+| #199 | Bookmark and Reading List inspection | Shipped | `user-controlled deployment only`; separate browser permissions and redacted audit metadata. |
+| #200 | Bookmark and Reading List mutation | Descoped from official ABG | Profile-wide personal-data writes and deletes exceed tab consent and carry disproportionate deletion/reorganization risk. A future user-controlled plugin, fork, or new decision issue may revisit the capability. |
+| #203 | Trusted eval automation | Shipped | `per-tab`; eval stays disabled by default and requires per-call approval or explicit AutoMode, with audit. |
+| #304 | Shared-tab recording | Shipped | `per-tab`; explicit start, visible recording state, local artifact, and separate microphone disclosure. |
 
 ## Implementation Checklist
 

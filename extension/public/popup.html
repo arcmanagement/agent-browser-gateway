@@ -140,6 +140,21 @@
         border-radius: 4px;
         box-sizing: border-box;
       }
+      .input-with-action {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 6px;
+      }
+      .input-with-action button {
+        width: auto;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      .field-note {
+        color: #777;
+        font-size: 11px;
+        line-height: 1.35;
+      }
       .ws-ok {
         color: #34c759;
       }
@@ -196,9 +211,35 @@
       <span>Sandbox all-tabs profile mode</span>
     </label>
     <div class="setting-note" id="allTabsNote"></div>
+    <label class="setting-row">
+      <input type="checkbox" id="bookmarksToggle" />
+      <span>Bookmarks access</span>
+    </label>
+    <div class="setting-note" id="bookmarksNote"></div>
+    <label class="setting-row">
+      <input type="checkbox" id="readingListToggle" />
+      <span>Reading List access</span>
+    </label>
+    <div class="setting-note" id="readingListNote"></div>
     <div class="profile-row">
       <label for="profileLabel">Profile label (shown in menubar)</label>
       <input type="text" id="profileLabel" placeholder="e.g. personal, work, staging" />
+    </div>
+    <div class="profile-row">
+      <label for="gatewayWebSocketUrl">Gateway WebSocket endpoint</label>
+      <div class="input-with-action">
+        <input
+          type="text"
+          id="gatewayWebSocketUrl"
+          placeholder="ws://127.0.0.1:8765/ws"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="applyGatewayUrlBtn" class="secondary" type="button">Apply</button>
+      </div>
+      <div class="field-note">
+        Developer and self-hosted diagnostics only. Applying reconnects immediately.
+      </div>
     </div>
     <div class="status" id="status">…</div>
     <div class="shared-list" id="sharedList"></div>

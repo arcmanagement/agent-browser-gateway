@@ -3,6 +3,24 @@ export type BrowserKind = "chrome" | "firefox";
 export type BrowserTab = chrome.tabs.Tab;
 export type BrowserDownloadDelta = chrome.downloads.DownloadDelta;
 export type BrowserDownloadItem = chrome.downloads.DownloadItem;
+export type BrowserBookmarkTreeNode = chrome.bookmarks.BookmarkTreeNode;
+export type BrowserReadingListEntry = {
+  title: string;
+  url: string;
+  hasBeenRead: boolean;
+  creationTime: number;
+  lastUpdateTime: number;
+};
+
+export type BrowserReadingListQueryInfo = {
+  title?: string;
+  url?: string;
+  hasBeenRead?: boolean;
+};
+
+type BrowserReadingListAPI = {
+  query(info: BrowserReadingListQueryInfo): Promise<BrowserReadingListEntry[]>;
+};
 
 declare const __ABG_BROWSER_TARGET__: BrowserKind | undefined;
 
@@ -24,7 +42,14 @@ export type BrowserAdapter = {
     "attach" | "detach" | "onDetach" | "onEvent" | "sendCommand"
   >;
   readonly downloads: Pick<typeof chrome.downloads, "onChanged" | "onCreated" | "search">;
-  readonly extension: Pick<typeof chrome.extension, "isAllowedIncognitoAccess">;
+  readonly bookmarks?: Pick<
+    typeof chrome.bookmarks,
+    "get" | "getChildren" | "getRecent" | "getSubTree" | "getTree" | "search"
+  >;
+  readonly extension: Pick<
+    typeof chrome.extension,
+    "isAllowedFileSchemeAccess" | "isAllowedIncognitoAccess"
+  >;
   readonly permissions: Pick<typeof chrome.permissions, "contains" | "remove" | "request">;
   readonly runtime: Pick<
     typeof chrome.runtime,
@@ -49,10 +74,12 @@ export type BrowserAdapter = {
     | "update"
   >;
   readonly windows: Pick<typeof chrome.windows, "create" | "onRemoved" | "remove">;
+  readonly readingList?: BrowserReadingListAPI;
 };
 
 type RuntimeBrowser = typeof chrome & {
   browser?: never;
+  readingList?: BrowserReadingListAPI;
 };
 
 function runtimeBrowser(): RuntimeBrowser {
@@ -97,11 +124,23 @@ function unsupportedDebugger(): BrowserAdapter["debugger"] {
   };
 }
 
+function extensionAccessApi(api: RuntimeBrowser): BrowserAdapter["extension"] {
+  const extensionApi = api.extension as Partial<BrowserAdapter["extension"]> | undefined;
+  return {
+    isAllowedFileSchemeAccess:
+      typeof extensionApi?.isAllowedFileSchemeAccess === "function"
+        ? () => extensionApi.isAllowedFileSchemeAccess?.() ?? Promise.resolve(true)
+        : async () => true,
+    isAllowedIncognitoAccess:
+      typeof extensionApi?.isAllowedIncognitoAccess === "function"
+        ? () => extensionApi.isAllowedIncognitoAccess?.() ?? Promise.resolve(true)
+        : async () => true,
+  };
+}
+
 function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAdapter {
   const debuggerApi = api.debugger ?? unsupportedDebugger();
-  const extensionApi = api.extension ?? {
-    isAllowedIncognitoAccess: async () => true,
-  };
+  const extensionApi = extensionAccessApi(api);
   return {
     kind,
     supportsDebugger: !!api.debugger,
@@ -117,6 +156,9 @@ function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAd
     },
     get downloads() {
       return api.downloads;
+    },
+    get bookmarks() {
+      return api.bookmarks;
     },
     get extension() {
       return extensionApi;
@@ -138,6 +180,9 @@ function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAd
     },
     get windows() {
       return api.windows;
+    },
+    get readingList() {
+      return api.readingList;
     },
   };
 }
@@ -165,12 +210,11 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
     get downloads() {
       return runtimeBrowser().downloads;
     },
+    get bookmarks() {
+      return runtimeBrowser().bookmarks;
+    },
     get extension() {
-      return (
-        runtimeBrowser().extension ?? {
-          isAllowedIncognitoAccess: async () => true,
-        }
-      );
+      return extensionAccessApi(runtimeBrowser());
     },
     get permissions() {
       return runtimeBrowser().permissions;
@@ -189,6 +233,9 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
     },
     get windows() {
       return runtimeBrowser().windows;
+    },
+    get readingList() {
+      return runtimeBrowser().readingList;
     },
   };
 }

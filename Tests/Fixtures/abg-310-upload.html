@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>File upload validation</title>
+<label for="files">Files</label>
+<input id="files" type="file" multiple>
+<output id="result">0 files</output>
+<script>
+  document.querySelector("#files").addEventListener("change", (event) => {
+    document.querySelector("#result").textContent =
+      `${event.currentTarget.files.length} files`;
+  });
+</script>
+</html>

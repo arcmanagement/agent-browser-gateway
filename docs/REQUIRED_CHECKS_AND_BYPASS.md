@@ -32,17 +32,36 @@ CI workflows that produce them are reliable on pull requests.
 
 ## Target Required Checks
 
-When required checks are enabled, keep the required set small and tied to stable PR-triggered jobs:
+The PR test gate is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 
-- macOS Swift build and `swift test`
-- extension dependency install with frozen lockfile
-- extension `pnpm run typecheck`
-- extension `pnpm run lint`
-- extension `pnpm run build`
-- extension `pnpm run test` after the Vitest test script lands
+| GitHub Actions field | Value |
+| --- | --- |
+| Workflow | `CI` |
+| Job ID | `verify` |
+| Job name | `Swift and extension tests` |
+| Required-check display name | `CI / Swift and extension tests` |
 
-Do not require release-only, tag-only, notarization, Pages deployment, or manual `workflow_dispatch`
-jobs. Those are release gates, not ordinary PR merge gates.
+The job runs these test commands:
+
+```bash
+swift test --enable-code-coverage
+scripts/swift-coverage-check.sh
+cd extension && pnpm run test:coverage
+```
+
+It also builds Swift in debug and release configurations, installs extension dependencies from the
+frozen lockfile, and runs extension typecheck, lint, and build checks. Swift XCTest completion is
+tracked by [#89](https://github.com/arcmanagement/agent-browser-gateway/issues/89), extension Vitest
+completion by [#90](https://github.com/arcmanagement/agent-browser-gateway/issues/90), and their
+combined test gate by [#25](https://github.com/arcmanagement/agent-browser-gateway/issues/25).
+
+When required checks are enabled under
+[#23](https://github.com/arcmanagement/agent-browser-gateway/issues/23), require the single
+`CI / Swift and extension tests` check. Keeping the required rule tied to the aggregated PR job
+avoids depending on release-only, tag-only, notarization, Pages deployment, or manual
+`workflow_dispatch` jobs.
+
+Those other jobs are release gates, not ordinary PR merge gates.
 
 ## Verification Runbook
 
