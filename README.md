@@ -76,6 +76,9 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
+   The public listing currently serves extension `v0.4.3`. The Chrome extension and macOS app can
+   advance independently while store review and signed app publication complete.
+
 2. Install the local Gateway.
 
    macOS:
@@ -105,8 +108,8 @@ CLI. Install the browser extension first, then install the local Gateway.
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
-   [agent-browser-gateway.com](https://agent-browser-gateway.com/), open it, and double-click
-   **Install Agent Browser Gateway.app**.
+   [agent-browser-gateway.com](https://agent-browser-gateway.com/), verify the SHA-256 checksum
+   published next to it, open it, and double-click **Install Agent Browser Gateway.app**.
 
 The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
