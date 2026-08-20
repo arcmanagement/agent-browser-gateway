@@ -785,6 +785,8 @@ ABG_PORT=8766 .build/debug/abg status   # point CLI at the dev app
 cd extension
 pnpm run watch                          # rebuild on save
 ABG_PORT=8766 pnpm run build             # local unpacked extension named Agent Browser Gateway Dev
+ABG_EXTENSION_WS_URL=ws://gateway.example.com:8765/ws \
+  pnpm run build                         # gateway reached through a trusted VPN or tunnel
 pnpm run lint                           # Biome (lint + format check)
 pnpm run format                         # Biome auto-format
 pnpm run typecheck                      # tsc --noEmit
@@ -793,6 +795,10 @@ pnpm run test:coverage                  # Vitest coverage for unit-testable exte
 make verify                             # CI-style local verification
 make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
+
+`ABG_EXTENSION_WS_URL` changes only the extension's `/ws` connection target. The Gateway still
+listens on loopback by default. Keep remote debugging behind a trusted VPN or tunnel; do not expose
+the unauthenticated extension endpoint directly to the internet.
 
 Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
 Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
