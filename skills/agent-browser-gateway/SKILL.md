@@ -24,6 +24,7 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 abg status                              # Gateway 起動状況、接続中拡張、共有タブ数
 abg tabs --compact                      # 共有中タブ一覧 (ref/tabId/title/url/accessMode)
 abg inspect                             # status + tabs をまとめて確認
+abg raise <tab|ref>                     # 共有済みタブをアクティブ化し、既存ウィンドウを前面化
 abg bookmarks list                      # browser-owned personal data。別途 Bookmarks access が必要
 abg bookmarks search "reference"        # 明示許可後に bookmark title/URL を検索
 abg bookmarks get <bookmark-id>
@@ -464,6 +465,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
 - `abg tabs --compact` の `ref` は Gateway 起動中の pin 相当で、profile と Chrome tabId の組へ固定される。他のタブが増減しても同じ ref を連続操作に使う。Gateway 再起動、タブ close、共有 revoke、別 origin 遷移後は一覧を取り直す
 - `tabId` は Chrome profile 内の ID で、複数 profile では同じ値が衝突しうる。衝突時は `ambiguous_tab_id` になるため、通常は安定 `ref` か `--match-url` / `--match-title` を使う
+- `abg raise <tab|ref>` は共有済みタブと、そのタブを含む既存ウィンドウだけを前面化する。未共有 URL の open、新規ウィンドウ作成、全 Chrome タブの URL 検索は行わない。共有失効後は通常の `tab_not_permitted` で失敗する
 - iframe 内を対象にする場合は、先に `abg frames <ref>` で `@f1` などの frame ref を確認し、`read` / `get` / `find` / `snapshot` / predicate / wait / selector action に `--frame @f1` を付ける。cross-origin frame は一覧には出るが selector 操作は `frame_not_accessible` で明示的に失敗し、top document へ黙って fallback しない
 - `abg fill ... --diff` / `abg replace-editable ... --diff` は high-risk editor change 用。selector scoped text / HTML の hash、length、redacted bounded excerpt を result と local audit log に残す。full before/after content、replacement value、plugin args は default では保存しない
 - JavaScript dialog は `abg dialog <ref>` で pending 状態を読む。accept / dismiss / prompt-value は write-like action として通常の operation approval と audit log を通る。pending dialog がなければ `no_dialog_pending` で明示的に失敗する
@@ -472,7 +474,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - HAR export は `abg har <ref> --out file.har` を使う。one-shot / local-only で、cookies、authorization headers、request headers、request bodies、response bodies は default で省略する。`--limit` は最大 1000 件に bounded され、Gateway は tab、filter、byte size、redaction mode、output path を local audit log に記録する
 - Cookie / Web Storage inspection は `abg state <ref>` を使う。shared tab origin の cookies / localStorage / sessionStorage を read-only で列挙し、値は default redacted。`--values` を明示した場合だけ full values を返し、Gateway audit log に values requested と count が残る。write/delete は提供しない
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない
-- Advanced automation parity は `docs/ADVANCED_AUTOMATION_POLICY.md` の mode 境界に従う。normal per-tab / sandbox all-tabs / self-hosted / official non-goal を混同しない。cookie/storage mutation、network mocking、init scripts、emulation、tab/window management は normal personal-profile per-tab には出さない
+- Advanced automation parity は `docs/ADVANCED_AUTOMATION_POLICY.md` の mode 境界に従う。normal per-tab / sandbox all-tabs / self-hosted / official non-goal を混同しない。cookie/storage mutation、network mocking、init scripts、emulation、tab/window の作成・閉鎖は normal personal-profile per-tab には出さない。共有済みタブの `raise` は既存ウィンドウの前面化に限定する
 - Sandbox browser-owned controls は `abg sandbox <ref> ...` を使う。Gateway は `accessMode: all_tabs` 以外では拒否する。viewport emulation、localStorage/sessionStorage set/delete、sandbox tab create/close は local approval と Gateway audit を通る。mixed personal profile では all-tabs mode を有効にしない
 - Official ABG non-goals: ABG-operated cloud relay、ABG operators への telemetry、明示的な per-call approval または Trusted automation / AutoMode なしの hidden general JS execution。#71 の remote pairing は user-controlled Tailnet/LAN path であり ABG-operated relay ではない。self-hosted metrics は user/team-owned endpoint に限定する
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない

@@ -249,6 +249,8 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             ]))
         case "list_tabs":
             return CLIResponse(id: req.id, result: AnyCodable(tabSummaries()))
+        case "raise_tab":
+            return await dispatch(req: req, method: "raise_tab")
         case "inspect":
             return CLIResponse(id: req.id, result: AnyCodable([
                 "running": true,

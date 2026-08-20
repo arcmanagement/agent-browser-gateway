@@ -60,11 +60,42 @@ public enum GatewayDomainPolicyAction: String, Codable, CaseIterable, Hashable, 
     }
 }
 
+public enum GatewayNetworkBodyPolicy: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
+    case explicitRequestOnly = "explicit_request_only"
+    case requireApproval = "require_approval"
+    case metadataOnly = "metadata_only"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .explicitRequestOnly:
+            return "Explicit Request"
+        case .requireApproval:
+            return "Require Approval"
+        case .metadataOnly:
+            return "Metadata Only"
+        }
+    }
+
+    public var detail: String {
+        switch self {
+        case .explicitRequestOnly:
+            return "Allow bounded response body previews only when the command asks for --body."
+        case .requireApproval:
+            return "Require local approval before returning a bounded response body preview."
+        case .metadataOnly:
+            return "Keep network inspection to metadata and omit response body previews."
+        }
+    }
+}
+
 public struct GatewayDomainPolicy: Codable, Equatable, Identifiable, Sendable {
     public var domain: String
     public var action: GatewayDomainPolicyAction
     public var approvalMode: GatewayApprovalMode
     public var timeoutMs: Int
+    public var networkBodyPolicy: GatewayNetworkBodyPolicy
     public var appliesToSubdomains: Bool
 
     public var id: String { domain }
@@ -74,20 +105,23 @@ public struct GatewayDomainPolicy: Codable, Equatable, Identifiable, Sendable {
         action: GatewayDomainPolicyAction = .ask,
         approvalMode: GatewayApprovalMode = .extensionPopup,
         timeoutMs: Int = GatewaySettings.defaultTimeoutMs,
+        networkBodyPolicy: GatewayNetworkBodyPolicy = .explicitRequestOnly,
         appliesToSubdomains: Bool = true
     ) {
         self.domain = GatewaySettings.normalizedDomain(domain) ?? domain.trimmingCharacters(in: .whitespacesAndNewlines)
         self.action = action
         self.approvalMode = approvalMode
         self.timeoutMs = GatewaySettings.clampedTimeout(timeoutMs)
+        self.networkBodyPolicy = networkBodyPolicy
         self.appliesToSubdomains = appliesToSubdomains
     }
 
-    enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey {
         case domain
         case action
         case approvalMode
         case timeoutMs
+        case networkBodyPolicy
         case appliesToSubdomains
     }
 
@@ -98,12 +132,15 @@ public struct GatewayDomainPolicy: Codable, Equatable, Identifiable, Sendable {
         let action = try container.decodeIfPresent(GatewayDomainPolicyAction.self, forKey: .action)
             ?? Self.legacyAction(for: approvalMode)
         let timeoutMs = try container.decodeIfPresent(Int.self, forKey: .timeoutMs) ?? GatewaySettings.defaultTimeoutMs
+        let networkBodyPolicy = try container.decodeIfPresent(GatewayNetworkBodyPolicy.self, forKey: .networkBodyPolicy)
+            ?? .explicitRequestOnly
         let appliesToSubdomains = try container.decodeIfPresent(Bool.self, forKey: .appliesToSubdomains) ?? true
         self.init(
             domain: domain,
             action: action,
             approvalMode: approvalMode,
             timeoutMs: timeoutMs,
+            networkBodyPolicy: networkBodyPolicy,
             appliesToSubdomains: appliesToSubdomains
         )
     }
@@ -125,22 +162,43 @@ public struct GatewaySettings: Codable, Equatable, Sendable {
 
     public var defaultTimeoutMs: Int
     public var approvalModeDefault: GatewayApprovalMode
+    public var networkBodyPolicyDefault: GatewayNetworkBodyPolicy
     public var domainPolicies: [GatewayDomainPolicy]
 
     public init(
         defaultTimeoutMs: Int = Self.defaultTimeoutMs,
         approvalModeDefault: GatewayApprovalMode = .extensionPopup,
+        networkBodyPolicyDefault: GatewayNetworkBodyPolicy = .explicitRequestOnly,
         domainPolicies: [GatewayDomainPolicy] = []
     ) {
         self.defaultTimeoutMs = Self.clampedTimeout(defaultTimeoutMs)
         self.approvalModeDefault = approvalModeDefault
+        self.networkBodyPolicyDefault = networkBodyPolicyDefault
         self.domainPolicies = Self.normalizedDomainPolicies(domainPolicies)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case defaultTimeoutMs
+        case approvalModeDefault
+        case networkBodyPolicyDefault
+        case domainPolicies
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            defaultTimeoutMs: try container.decodeIfPresent(Int.self, forKey: .defaultTimeoutMs) ?? Self.defaultTimeoutMs,
+            approvalModeDefault: try container.decodeIfPresent(GatewayApprovalMode.self, forKey: .approvalModeDefault) ?? .extensionPopup,
+            networkBodyPolicyDefault: try container.decodeIfPresent(GatewayNetworkBodyPolicy.self, forKey: .networkBodyPolicyDefault) ?? .explicitRequestOnly,
+            domainPolicies: try container.decodeIfPresent([GatewayDomainPolicy].self, forKey: .domainPolicies) ?? []
+        )
     }
 
     public var normalized: GatewaySettings {
         GatewaySettings(
             defaultTimeoutMs: defaultTimeoutMs,
             approvalModeDefault: approvalModeDefault,
+            networkBodyPolicyDefault: networkBodyPolicyDefault,
             domainPolicies: domainPolicies
         )
     }
@@ -158,6 +216,7 @@ public struct GatewaySettings: Codable, Equatable, Sendable {
                 action: policy.action,
                 approvalMode: policy.approvalMode,
                 timeoutMs: policy.timeoutMs,
+                networkBodyPolicy: policy.networkBodyPolicy,
                 appliesToSubdomains: policy.appliesToSubdomains
             )
         }
@@ -165,21 +224,29 @@ public struct GatewaySettings: Codable, Equatable, Sendable {
     }
 
     public func policy(for url: String) -> GatewayDomainPolicy? {
-        guard let host = URL(string: url)?.host(percentEncoded: false)?.lowercased() else {
+        guard let host = URL(string: url)?.host(percentEncoded: false) else {
             return nil
         }
+        return matchingDomainPolicy(for: host)
+    }
+
+    public func matchingDomainPolicy(for host: String) -> GatewayDomainPolicy? {
+        guard let normalizedHost = Self.normalizedDomain(host) else { return nil }
         return domainPolicies
             .filter { policy in
                 if policy.domain.hasPrefix("*.") {
                     let suffix = String(policy.domain.dropFirst(2))
-                    return host == suffix || host.hasSuffix(".\(suffix)")
+                    return normalizedHost == suffix || normalizedHost.hasSuffix(".\(suffix)")
                 }
-                if host == policy.domain {
-                    return true
-                }
-                return policy.appliesToSubdomains && host.hasSuffix(".\(policy.domain)")
+                if normalizedHost == policy.domain { return true }
+                return policy.appliesToSubdomains && normalizedHost.hasSuffix(".\(policy.domain)")
             }
-            .sorted { lhs, rhs in lhs.domain.count > rhs.domain.count }
+            .sorted {
+                if $0.domain.count != $1.domain.count {
+                    return $0.domain.count > $1.domain.count
+                }
+                return $0.domain.localizedCaseInsensitiveCompare($1.domain) == .orderedAscending
+            }
             .first
     }
 
@@ -213,6 +280,82 @@ public struct GatewaySettings: Codable, Equatable, Sendable {
             return nil
         }
         return normalized
+    }
+}
+
+public struct GatewayResolvedPolicy: Equatable, Sendable {
+    public enum Source: String, Equatable, Sendable {
+        case defaultPolicy = "default"
+        case domain
+        case session
+        case oneTime
+    }
+
+    public var action: GatewayDomainPolicyAction
+    public var approvalMode: GatewayApprovalMode
+    public var timeoutMs: Int
+    public var networkBodyPolicy: GatewayNetworkBodyPolicy
+    public var source: Source
+
+    public init(
+        action: GatewayDomainPolicyAction = .ask,
+        approvalMode: GatewayApprovalMode,
+        timeoutMs: Int,
+        networkBodyPolicy: GatewayNetworkBodyPolicy,
+        source: Source
+    ) {
+        self.action = action
+        self.approvalMode = approvalMode
+        self.timeoutMs = GatewaySettings.clampedTimeout(timeoutMs)
+        self.networkBodyPolicy = networkBodyPolicy
+        self.source = source
+    }
+}
+
+public enum GatewayPolicyResolver {
+    public static func resolve(
+        host: String,
+        settings: GatewaySettings,
+        sessionPolicy: GatewayResolvedPolicy? = nil,
+        oneTimePolicy: GatewayResolvedPolicy? = nil
+    ) -> GatewayResolvedPolicy {
+        if let oneTimePolicy {
+            return GatewayResolvedPolicy(
+                action: oneTimePolicy.action,
+                approvalMode: oneTimePolicy.approvalMode,
+                timeoutMs: oneTimePolicy.timeoutMs,
+                networkBodyPolicy: oneTimePolicy.networkBodyPolicy,
+                source: .oneTime
+            )
+        }
+
+        if let sessionPolicy {
+            return GatewayResolvedPolicy(
+                action: sessionPolicy.action,
+                approvalMode: sessionPolicy.approvalMode,
+                timeoutMs: sessionPolicy.timeoutMs,
+                networkBodyPolicy: sessionPolicy.networkBodyPolicy,
+                source: .session
+            )
+        }
+
+        if let domainPolicy = settings.matchingDomainPolicy(for: host) {
+            return GatewayResolvedPolicy(
+                action: domainPolicy.action,
+                approvalMode: domainPolicy.approvalMode,
+                timeoutMs: domainPolicy.timeoutMs,
+                networkBodyPolicy: domainPolicy.networkBodyPolicy,
+                source: .domain
+            )
+        }
+
+        return GatewayResolvedPolicy(
+            action: .ask,
+            approvalMode: settings.approvalModeDefault,
+            timeoutMs: settings.defaultTimeoutMs,
+            networkBodyPolicy: settings.networkBodyPolicyDefault,
+            source: .defaultPolicy
+        )
     }
 }
 
