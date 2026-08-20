@@ -137,7 +137,10 @@ Current repo version: **v0.4.2**.
   `{{var.name}}` for non-secret values, `{{secret.name}}` for secret values, dry-run metadata only,
   and no secrets in audit logs, flow files, screenshots, HAR files, or exported replay artifacts.
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
-- Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
+- Gateway Settings UI for profile-local timeout defaults, approval defaults, network-body defaults,
+  and per-domain policy storage. Persistent policy lives in owner-only `gateway-settings.json` under
+  `~/.abg/` or `~/.abg-dev/`; runtime precedence is one-time decision, session policy, most specific
+  domain policy, then profile default.
 
 ## Next
 

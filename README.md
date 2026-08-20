@@ -170,6 +170,37 @@ Every operation an agent performs is recorded to a local audit log (`~/Library/L
 The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
 The Gateway window also has Settings for profile-local timeout defaults, approval defaults, and
 per-domain policy drafts stored in `gateway-settings.json` under `~/.abg/` or `~/.abg-dev/`.
+The file is local JSON with owner-only permissions and no app database. Persistent defaults live at
+the top level, while per-domain overrides live in `domainPolicies`:
+
+```json
+{
+  "approvalModeDefault": "extension_popup",
+  "defaultTimeoutMs": 30000,
+  "networkBodyPolicyDefault": "explicit_request_only",
+  "domainPolicies": [
+    {
+      "domain": "example.com",
+      "approvalMode": "require_approval",
+      "timeoutMs": 45000,
+      "networkBodyPolicy": "require_approval",
+      "appliesToSubdomains": true
+    }
+  ]
+}
+```
+
+Policy precedence is intentionally narrow: one-time approval or denial for the current operation
+wins, then any current session policy, then the most specific matching domain policy, then the
+profile default. One-time and session decisions are runtime state and are not written to
+`gateway-settings.json`. Domain matching normalizes URL hosts, strips ports, and prefers the longest
+matching domain when subdomain matching is enabled.
+
+The selected editing surface is the existing Gateway window Settings section. It will extend the
+current timeout and approval controls with network body preview policy for defaults and domain
+policies, without adding a separate broad settings panel. Network body preview remains bounded and explicit: `explicit_request_only`
+allows previews only for commands that ask for `--body`, `require_approval` adds a local approval
+checkpoint, and `metadata_only` keeps network inspection to metadata.
 
 ---
 
