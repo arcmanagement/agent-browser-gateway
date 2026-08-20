@@ -22,7 +22,6 @@ struct GatewayWindowView: View {
     @State private var newPolicyDomain = ""
     @State private var newPolicyApprovalMode: GatewayApprovalMode = .extensionPopup
     @State private var newPolicyTimeoutMs = GatewaySettings.defaultTimeoutMs
-    @State private var newPolicyNetworkBodyPolicy: GatewayNetworkBodyPolicy = .explicitRequestOnly
     @State private var newPolicyAppliesToSubdomains = true
     @State private var isInstallSheetPresented = false
     @State private var pluginOperation: PluginManagementOperation?
@@ -657,7 +656,6 @@ struct GatewayWindowView: View {
         ], spacing: 10) {
             PluginStat(title: "Timeout", value: "\(gatewaySettings.defaultTimeoutMs / 1000)s", symbol: "timer")
             PluginStat(title: "Approval", value: gatewaySettings.approvalModeDefault.title, symbol: "checkmark.shield")
-            PluginStat(title: "Network Body", value: gatewaySettings.networkBodyPolicyDefault.title, symbol: "doc.text.magnifyingglass")
             PluginStat(title: "Policies", value: "\(gatewaySettings.domainPolicies.count)", symbol: "globe")
             PluginStat(title: "Profile", value: ABGConstants.runtimeProfileLabel, symbol: "shippingbox")
         }
@@ -708,28 +706,6 @@ struct GatewayWindowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        Label("Network Body Default", systemImage: "doc.text.magnifyingglass")
-                            .font(.system(size: 13, weight: .semibold))
-                        Spacer(minLength: 0)
-                        Picker("Network Body Default", selection: $gatewaySettings.networkBodyPolicyDefault) {
-                            ForEach(GatewayNetworkBodyPolicy.allCases) { policy in
-                                Text(policy.title).tag(policy)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 210)
-                    }
-
-                    Text(gatewaySettings.networkBodyPolicyDefault.detail)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
                 settingsFeedback
             }
         }
@@ -766,21 +742,6 @@ struct GatewayWindowView: View {
                         }
                         .labelsHidden()
                         .frame(width: 180)
-                    }
-
-                    HStack(spacing: 10) {
-                        Picker("Network Body", selection: $newPolicyNetworkBodyPolicy) {
-                            ForEach(GatewayNetworkBodyPolicy.allCases) { policy in
-                                Text(policy.title).tag(policy)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 180)
-
-                        Text(newPolicyNetworkBodyPolicy.detail)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
                     }
 
                     HStack(spacing: 10) {
@@ -876,7 +837,6 @@ struct GatewayWindowView: View {
                 HStack(spacing: 6) {
                     PluginStatusBadge(text: policy.approvalMode.title.uppercased(), color: .blue)
                     PluginStatusBadge(text: "\(policy.timeoutMs / 1000)S", color: .secondary)
-                    PluginStatusBadge(text: policy.networkBodyPolicy.title.uppercased(), color: .purple)
                     if policy.appliesToSubdomains {
                         PluginStatusBadge(text: "SUBDOMAINS", color: .green)
                     }
@@ -1382,7 +1342,6 @@ struct GatewayWindowView: View {
             domain: domain,
             approvalMode: newPolicyApprovalMode,
             timeoutMs: newPolicyTimeoutMs,
-            networkBodyPolicy: newPolicyNetworkBodyPolicy,
             appliesToSubdomains: newPolicyAppliesToSubdomains
         )
         gatewaySettings.domainPolicies.removeAll { $0.domain == domain }
@@ -1390,7 +1349,6 @@ struct GatewayWindowView: View {
         gatewaySettings.domainPolicies = GatewaySettings.normalizedDomainPolicies(gatewaySettings.domainPolicies)
         newPolicyDomain = ""
         newPolicyTimeoutMs = gatewaySettings.defaultTimeoutMs
-        newPolicyNetworkBodyPolicy = gatewaySettings.networkBodyPolicyDefault
         clearSettingsFeedback()
     }
 

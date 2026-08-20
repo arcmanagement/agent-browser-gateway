@@ -176,9 +176,9 @@ profile default. One-time and session decisions are runtime state and are not wr
 `gateway-settings.json`. Domain matching normalizes URL hosts, strips ports, and prefers the longest
 matching domain when subdomain matching is enabled.
 
-The smallest editing surface is the existing Gateway window Settings section. It edits the timeout,
-approval mode, and network body preview policy for defaults and domain policies without adding a
-separate broad settings panel. Network body preview remains bounded and explicit: `explicit_request_only`
+The selected editing surface is the existing Gateway window Settings section. It will extend the
+current timeout and approval controls with network body preview policy for defaults and domain
+policies, without adding a separate broad settings panel. Network body preview remains bounded and explicit: `explicit_request_only`
 allows previews only for commands that ask for `--body`, `require_approval` adds a local approval
 checkpoint, and `metadata_only` keeps network inspection to metadata.
 
