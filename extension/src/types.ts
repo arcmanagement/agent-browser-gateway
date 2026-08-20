@@ -177,6 +177,7 @@ export type GatewayMethod =
   | "bookmarks_open"
   | "reading_list_list"
   | "reading_list_search"
+  | "raise_tab"
   | "revoke"
   | "wait_for"
   | "eval_script"

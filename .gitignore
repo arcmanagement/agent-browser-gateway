@@ -68,6 +68,7 @@ docs/*
 !docs/PLUGINS.md
 !docs/REPLAY_POLICY.md
 !docs/RECORDING.md
+!docs/RELEASE_ARTIFACT_TRUST.md
 !docs/REPRODUCIBLE_DOCKER_BUILD.md
 !docs/REQUIRED_CHECKS_AND_BYPASS.md
 !docs/store-submission.md

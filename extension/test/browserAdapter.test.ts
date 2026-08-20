@@ -24,6 +24,8 @@ describe("browserAdapter", () => {
     const tab = await browserAdapter.tabs.create({ url: "https://example.test" });
     expect(tab.id).toBe(1);
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://example.test" });
+    await browserAdapter.windows.update(1, { focused: true });
+    expect(chrome.windows.update).toHaveBeenCalledWith(1, { focused: true });
     expect(browserAdapter.downloads.onCreated.hasListeners()).toBe(false);
     expect(browserAdapter.windows.onRemoved.hasListeners()).toBe(false);
   });

@@ -7,6 +7,16 @@ Linux `abg` CLI and shared `GatewayCore` code.
 make docker-repro
 ```
 
+For the broader v1.0 release artifact dry run, including the Chrome extension ZIP, unsigned host
+Gateway binaries, SBOM, and checksum manifest, use:
+
+```bash
+make reproducible-build
+```
+
+The release trust plan and user verification path are documented in
+[`RELEASE_ARTIFACT_TRUST.md`](RELEASE_ARTIFACT_TRUST.md).
+
 Outputs are written to `dist/reproducible-docker/`:
 
 - `abg-linux-<arch>`

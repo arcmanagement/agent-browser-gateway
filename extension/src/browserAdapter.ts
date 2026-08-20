@@ -73,7 +73,7 @@ export type BrowserAdapter = {
     | "remove"
     | "update"
   >;
-  readonly windows: Pick<typeof chrome.windows, "create" | "onRemoved" | "remove">;
+  readonly windows: Pick<typeof chrome.windows, "create" | "onRemoved" | "remove" | "update">;
   readonly readingList?: BrowserReadingListAPI;
 };
 

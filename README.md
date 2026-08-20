@@ -160,7 +160,7 @@ renumber it, and the same ref can be reused across a multi-step flow. Prefer ref
 profiles, and ABG returns `ambiguous_tab_id` rather than routing to the wrong profile. Re-resolve the
 ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross-origin navigation.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools and `revoke` never prompt. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools, `raise`, and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
@@ -215,6 +215,7 @@ documented JSON keys rather than parsing human-oriented help text.
 abg status                                       # Gateway state, connected extensions, shared tab count
 abg tabs [--compact] [--format text]             # List shared tabs with short refs (t1, t2, ...)
 abg inspect                                      # status + shared tabs in one JSON response
+abg raise <tab|ref>                              # Activate a shared tab and bring its existing window forward
 abg bookmarks list                              # Browser-owned personal data; requires separate Bookmarks access
 abg bookmarks search "reference"                # Search bookmark titles/URLs after explicit permission
 abg bookmarks get <bookmark-id>
@@ -277,6 +278,7 @@ abg dialog <tab|ref> --prompt-value "ok"         # Approve and submit prompt tex
 # Tab targeting shortcuts
 abg read --match-url "*kintone*" --format markdown
 abg click --match-title "アプリ管理" --selector "button.save"
+abg raise --match-title "Review"
 
 # Operation
 abg click <tab|ref> --selector "<css>"            # CSS selector click
@@ -352,6 +354,26 @@ abg audit [--lines 50]                  # Local audit log
 abg activity --period day|week          # Local daily/weekly activity digest
 abg mcp-server                          # Stdio MCP wrapper over the same abg CLI
 ```
+
+### Bringing a shared tab to the front
+
+`abg raise <tab|ref>` activates the selected shared tab, then focuses the browser window that
+already contains it. The command accepts the same short refs and `--match-url` / `--match-title`
+selectors as other tab commands. It does not create a tab or window, navigate, or search outside the
+Gateway's shared-tab list. If sharing was revoked, expired, or invalidated by a cross-origin
+navigation, the command fails with the normal `tab_not_permitted` guidance before Chrome is asked to
+focus anything. The explicit CLI invocation is the presentation consent, so it does not open a
+second approval window; the Gateway records `raise_tab`, extension ID, tab ID, and the shared URL in
+the local audit log.
+
+ABG intentionally does not provide `abg open <url> --new-window --activate` for normal personal
+profiles. Creating browser tabs or windows remains limited to isolated `sandbox/all-tabs` mode.
+On macOS, users can keep a separate AppleScript helper when they intentionally need to open an
+arbitrary URL in a new Chrome window or search all Chrome tabs by URL. That helper uses macOS
+Automation permission and operates outside ABG, so it bypasses ABG's explicit-sharing boundary,
+permission expiry, and audit log. [Issue #309](https://github.com/arcmanagement/agent-browser-gateway/issues/309)
+contains the existing `open-front-window.sh` and `focus-chrome-tab.sh` examples and their macOS
+limitations.
 
 ### Stable multi-step tab targeting
 
@@ -696,7 +718,7 @@ Closed-source extensions are not auditable. Source-published extensions distribu
 binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
-- **Reproducible builds** (target for v1.0): the Linux CLI can be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). Signed macOS artifacts remain separate because they require Apple's signing and notarization toolchain.
+- **Reproducible builds** (target for v1.0): release dry runs use `make reproducible-build` to create unsigned Gateway and extension comparison artifacts, checksums, and an SBOM. The Linux CLI can also be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). The v1.0 checksum, signing, SBOM, provenance, and user verification plan is in [`docs/RELEASE_ARTIFACT_TRUST.md`](docs/RELEASE_ARTIFACT_TRUST.md).
 - **No analytics, no crash reporter, no auto-update phone-home.** The Gateway's only outbound connection is the loopback WebSocket to its own extension. Inspect with `lsof -i -p <gateway-pid>` at any time.
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
@@ -925,6 +947,7 @@ pnpm run typecheck                      # tsc --noEmit
 pnpm run test                           # Vitest unit tests
 pnpm run test:coverage                  # Vitest coverage for unit-testable extension logic
 make verify                             # CI-style local verification
+make reproducible-build                 # unsigned release dry run with SBOM and checksums
 make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
 

@@ -43,7 +43,7 @@ struct ABG: AsyncParsableCommand {
         commandName: "abg",
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
-            Status.self, Tabs.self, Inspect.self,
+            Status.self, Tabs.self, Inspect.self, Raise.self,
             Bookmarks.self, ReadingList.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
@@ -57,7 +57,7 @@ struct ABG: AsyncParsableCommand {
 }
 
 private let builtInTopLevelCommands: Set<String> = [
-    "status", "tabs", "inspect",
+    "status", "tabs", "inspect", "raise",
     "bookmarks", "reading-list",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
@@ -625,6 +625,20 @@ struct Inspect: AsyncParsableCommand {
             status["nextCommand"] = "abg tabs --compact"
         }
         printJSON(status)
+    }
+}
+
+struct Raise: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Bring an already-shared tab and its browser window to the front"
+    )
+    @OptionGroup var target: TabTarget
+
+    func run() async throws {
+        let client = UDSClient()
+        let tabId = try resolveTabId(client: client, target: target)
+        let result = try client.call(method: "raise_tab", params: ["tabId": tabId])
+        printJSON(result)
     }
 }
 
