@@ -1,7 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway gateway-dev extension all clean test lint format dist appstore-pkg docker-repro pages-dmg windows-dist pages-windows release verify
+.PHONY: help install gateway gateway-dev extension all clean test lint format dist reproducible-build appstore-pkg docker-repro pages-dmg windows-dist pages-windows release verify
 
 PAGES_OUTPUT_DIR ?= site/downloads
 
@@ -17,6 +17,7 @@ help:
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
+	@printf "  make reproducible-build build unsigned pinned artifacts, SBOM, and checksums\n"
 	@printf "  make appstore-pkg build sandboxed Mac App Store package candidate (requires VERSION=x.y.z)\n"
 	@printf "  make docker-repro build reproducible Linux abg CLI artifacts through Docker\n"
 	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
@@ -57,6 +58,7 @@ test:
 
 verify:
 	cd extension && pnpm run typecheck && pnpm run lint
+	node --test scripts/resolve-reproducible-output.test.mjs
 	swift test
 	swift build -c release
 	cd extension && pnpm run build
@@ -66,6 +68,9 @@ ifndef VERSION
 	$(error VERSION is required, e.g. make dist VERSION=0.3.10)
 endif
 	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" CASK_OUTPUT="$(CASK_OUTPUT)" bash scripts/dist-macos-arm64.sh
+
+reproducible-build:
+	bash scripts/reproducible-build.sh
 
 appstore-pkg:
 ifndef VERSION
