@@ -1,6 +1,6 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-07-09.
+Living document. Reflects current intent, not commitment. Last updated 2026-07-27.
 
 Current repo version: **v0.4.2**.
 
@@ -246,7 +246,9 @@ whether App Store or Developer ID distribution is worth productizing.
 
 ## Phase 4
 
-- iOS Safari Web Extension
+- iOS Safari Web Extension: blocked research, not MVP scope until a native iOS companion design
+  replaces the current local Gateway/CLI bridge and the extension command surface is reduced to APIs
+  that Safari exposes on iOS.
 - Android Chrome
 - Android WebView DevTools bridge design is tracked in
   [docs/ANDROID_WEBVIEW_DEVTOOLS_BRIDGE.md](docs/ANDROID_WEBVIEW_DEVTOOLS_BRIDGE.md). The first
@@ -258,6 +260,60 @@ whether App Store or Developer ID distribution is worth productizing.
 - iOS companion pairing design: QR/manual-code pairing, desktop Gateway receive endpoints,
   revocation scope, and audit events are defined in
   [docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md) (#67).
+
+### iOS Safari Web Extension feasibility (#66)
+
+Current decision: iOS Safari support is not an MVP port of the Chrome extension. It is a later
+native-companion research track. The existing ABG model assumes a desktop Gateway process, loopback
+WebSocket, Unix domain socket, and `abg` CLI. Apple packages Safari web extensions as macOS,
+visionOS, or iOS app extensions inside a containing app, and the extension, containing app, and
+native app extension run in separate sandboxes. That makes iOS support a product and architecture
+project, not a manifest conversion.
+
+Apple references:
+
+- [Safari web extensions](https://developer.apple.com/documentation/safariservices/safari-web-extensions)
+- [Creating a Safari web extension](https://developer.apple.com/documentation/safariservices/creating-a-safari-web-extension)
+- [Managing Safari web extension permissions](https://developer.apple.com/documentation/safariservices/managing-safari-web-extension-permissions)
+- [Assessing your Safari web extension's browser compatibility](https://developer.apple.com/documentation/safariservices/assessing-your-safari-web-extension-s-browser-compatibility)
+- [Messaging between the app and JavaScript in a Safari web extension](https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension)
+
+Capability mapping:
+
+| ABG capability | iOS Safari extension-only status | Native companion requirement | MVP decision |
+|---|---|---|---|
+| Per-page read state (`read`, `get`, `snapshot`) | Partially feasible after the user grants website access from Safari's More menu or Settings. `tabs` needs host permission, `scripting.executeScript` lacks `injectImmediately`, and dynamic content-script registration requires Safari 16.4 or later. | Required for an external agent command channel, durable audit and policy storage, and cross-session state. Page code must route messages through extension background or UI code. | Not MVP. A limited read-only prototype is feasible but is not ABG parity. |
+| Screenshots (`screenshot`, visual annotations) | Partially feasible for visible-tab capture. Apple documents `tabs.captureVisibleTab`, but ABG also needs desktop file output, annotation coordination, and debugger-backed fallbacks. | Required to persist or export captures and connect them to an agent workflow. | Research-only. Prototype visible-tab capture on a real iOS device before committing to this scope. |
+| Operation approval (`click`, `fill`, `type`, `navigate`, dialogs, eval) | Simple content-script operations and extension UI may be feasible, but ABG's current command surface relies heavily on Chrome's `debugger` API and DevTools Protocol. Safari provides no equivalent iOS path for those commands. | Required for durable approval state, audit logging, and a native review surface. Native messaging goes through a native app extension; Apple also states that a containing iOS app cannot initiate messages to the extension's JavaScript. | Unsupported for MVP. Any later write primitive must preserve explicit approval and audit semantics, and the extension must initiate native exchanges. |
+| Network, cookies, downloads, sandbox/all-tabs, PDF, HAR, emulation, and file operations | Not feasible as extension-only ABG parity. Apple documents `webRequest` as unsupported on iOS, storage and window API limits, and App Store updates instead of `update_url`. ABG also uses Chrome-only permissions including `debugger`, `downloads`, `tabCapture`, and `offscreen`. | A companion can provide app storage, export, and approval UI, but cannot recreate missing Safari extension APIs. | Explicitly unsupported for iOS MVP. |
+
+Browser-extension-only scope that may be worth a later prototype:
+
+- Safari-packaged extension with `activeTab`, narrow host permissions, popup/share UI, and website
+  permission guidance.
+- Read-only DOM and text extraction from a user-granted page using supported `tabs` and `scripting`
+  APIs, with clear errors for unsupported frames or missing website permission.
+- Visible-tab capture proof of concept on a real iOS device.
+- Local extension storage for transient share state, within Safari's storage limits.
+
+Native-companion scope required before any ABG-branded iOS support:
+
+- iOS containing app and native app extension packaged through Xcode and App Store distribution.
+- App group storage shared by the containing app and native app extension.
+- Extension-initiated native messaging through the native app extension. The containing iOS app
+  cannot send unsolicited messages to extension JavaScript.
+- Replacement for desktop Gateway and CLI semantics, since iOS cannot expose the same Unix socket
+  and shell-driven `abg` workflow to a coding agent running on a desktop.
+- Native approval and audit surfaces that preserve ABG's user-visible control model.
+
+Unsupported behavior for iOS Safari:
+
+- No Chrome DevTools Protocol or `chrome.debugger` automation parity.
+- No sandbox/all-tabs profile mode equivalent.
+- No browser-owned network interception, HAR export, download lifecycle, PDF generation, cookie
+  inspection, emulation, file upload, or dialog handling parity.
+- No background desktop agent connection matching the current local Gateway and CLI transport.
+- No hidden eval or write operation without explicit user approval.
 
 ## Hard non-goals
 
