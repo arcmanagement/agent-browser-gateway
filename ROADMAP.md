@@ -386,6 +386,42 @@ References:
 - WebKit, "Enabling the Inspection of Web Content in Apps":
   <https://webkit.org/blog/13936/enabling-the-inspection-of-web-content-in-apps/>
 
+### Mobile browser and WebView debugging design (#28)
+
+Mobile support is a separate consent model from desktop extension sharing. Desktop ABG consent is a
+browser-extension grant for one already-open desktop tab, with auto-revoke on origin change, tab close,
+or explicit revoke. Mobile and WebView support must instead start with device or app pairing, then expose
+remote debug targets only after the user approves the device, network path, and individual target scope.
+
+Common requirements:
+
+- No ABG-operated relay. USB, local loopback forwarding, Tailnet, and LAN pairing are acceptable tracks;
+  cloud rendezvous owned by ABG is not.
+- Pairing is not host permission. A paired device may expose several tabs, apps, or WebView targets, so
+  ABG still needs target-level sharing, expiry, revoke, and audit entries.
+- Mobile pairing consent and write-operation approval remain distinct. Pairing allows ABG to see eligible
+  remote targets; operation approval controls whether an agent action can mutate one selected target.
+- Target identifiers must include platform, connection mode, device identity, target kind, URL/title when
+  available, and whether the target is browser-owned or app-owned.
+
+Environment tracks:
+
+| Environment | Debugging path | Consent boundary | Constraints | Implementation candidate |
+| --- | --- | --- | --- | --- |
+| Mobile Safari on iOS/iPadOS | Safari Web Inspector on a paired Mac, plus Safari Web Extension for user-facing UI where needed. | User enables Web Inspector on the iOS device, trusts the Mac, and separately grants Safari extension website access if an extension path is used. | Safari inspection is mediated by Apple's Web Inspector stack, not Chrome DevTools Protocol. iOS requires an app/extension distribution path and macOS-side inspection. This is not a drop-in port of the Chrome extension. | Research a macOS Web Inspector adapter only after Android CDP target inventory proves the remote-target model. |
+| Android Chrome | Chrome remote debugging over USB or ADB TCP forwarding to the Chrome DevTools Protocol endpoint. | User enables Android Developer Options and USB debugging, accepts the device prompt, then ABG requires a local pairing token and per-target share before commands run. | Chrome for Android does not use ABG's desktop extension consent. The MVP should not require Chrome extensions on Android; it should enumerate CDP page targets exposed through `adb forward`. | First implementation target: add read-only Android Chrome target discovery over ADB/CDP, gated by an explicit `abg mobile pair` flow. |
+| WKWebView | Safari Web Inspector for inspectable app-owned web content. | App owner must make the WKWebView inspectable where platform rules require it; user still trusts the Mac/device pair and ABG still requires target sharing. | ABG cannot force third-party apps to expose WKWebView content. The app owner, provisioning mode, and inspectability setting are part of the consent boundary. | Document app-owner requirements before implementing any adapter. |
+| Android WebView | Android WebView debugging with `WebView.setWebContentsDebuggingEnabled(true)`, then CDP access through Android remote debugging. | App owner enables WebView debugging; user approves Android USB debugging; ABG pairing and per-target sharing happen after targets appear. | Production apps may not expose WebView debugging. WebView targets are app-owned, so ABG must display the app/process boundary clearly and must not treat them like normal browser tabs. | Build after Android Chrome CDP inventory, reusing the same remote-target model with WebView-specific labels and app ownership checks. |
+
+Selected first target:
+
+- Implement Android Chrome read-only target discovery over USB/ADB CDP before browser control or WebView
+  support. This is the smallest useful slice because official Chrome remote debugging already exposes page
+  targets through a local forwarded endpoint, while consent can be modeled as Android USB debugging approval
+  plus ABG pairing plus per-target share.
+- Defer Mobile Safari, WKWebView, and Android WebView command execution until the remote-target inventory,
+  pairing state, expiry, revoke, and audit model exist.
+
 ## Hard non-goals
 
 These will not happen, regardless of demand:
