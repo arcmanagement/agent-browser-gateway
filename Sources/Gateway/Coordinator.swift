@@ -801,6 +801,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, error: resolution.error)
         }
         let tabId = tab.tabId
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "record_start") {
+            return response
+        }
         if let existing = recording {
             return CLIResponse(id: req.id, error: ErrorPayload(
                 code: "already_recording",
@@ -1215,8 +1218,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         let params = extensionParams(rawParams, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "state_inspect") {
+            return response
+        }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "state_inspect",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             var details: [String: AnyCodable] = [
                 "kind": AnyCodable((params["kind"] as? String) ?? "all"),
                 "includeValues": AnyCodable((params["includeValues"] as? Bool) ?? false),
@@ -1252,10 +1263,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         var params = extensionParams(rawParams, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "sandbox_action") {
+            return response
+        }
         if let requestedTargetTabId = params["targetTabId"] as? Int {
             let targetResolution = resolveTabTarget(requestedTargetTabId)
             guard let targetTab = targetResolution.tab else {
                 return CLIResponse(id: req.id, error: targetResolution.error)
+            }
+            if let response = await policyBlockedResponse(req: req, tab: targetTab, method: "sandbox_action") {
+                return response
             }
             guard targetTab.extensionId == tab.extensionId else {
                 return CLIResponse(
@@ -1303,7 +1320,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             auditDetails["targetTabId"] = AnyCodable(targetTabId)
         }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "sandbox_action", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "sandbox_action",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             auditDetails["ok"] = AnyCodable(true)
             await auditLog.log(action: "sandbox_action", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
             return CLIResponse(id: req.id, result: result)
@@ -1538,6 +1560,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         params = extensionParams(params, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "paste_rich") {
+            return response
+        }
 
         let mime = params["mime"] as? String
         let value = params["value"] as? String
@@ -1562,7 +1587,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
 
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "paste_rich", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "paste_rich",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             if let dict = result?.value as? [String: Any] {
                 if let focused = dict["focused"] as? Bool { details["focused"] = AnyCodable(focused) }
                 if let found = dict["found"] as? Bool { details["found"] = AnyCodable(found) }

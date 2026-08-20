@@ -1770,11 +1770,11 @@ private struct AuditLogViewEntry: Identifiable {
         if let selector = details?["selector"] as? String, !selector.isEmpty {
             return selector
         }
-        if let command = details?["command"] as? String, !command.isEmpty {
-            return command
-        }
         if let targetTabId = details?["targetTabId"] as? Int {
             return "Tab \(targetTabId)"
+        }
+        if let targetUrl = details?["targetUrl"] as? String, !targetUrl.isEmpty {
+            return targetUrl
         }
         if let id = details?["id"] as? Int {
             return "Element \(id)"
