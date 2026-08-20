@@ -31,8 +31,12 @@ If you previously tapped the temporary public Homebrew repository or the private
 run `brew untap arcmanagement/agent-browser-gateway` once and tap again with the explicit GitHub URL
 above.
 
-You can also download the current DMG from the [download page](/#download), verify its SHA-256
-checksum, open the DMG, and run the installer.
+You can also download the current DMG from the [download page](/#download), download its matching
+`.sha256.txt` file, verify the SHA-256 checksum, open the DMG, and run the installer:
+
+```bash
+shasum -a 256 -c agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
+```
 
 Launch the app once so the menu bar icon appears. Then confirm the CLI can reach it:
 
@@ -62,7 +66,9 @@ For current Windows testing, clone the repository on Windows and run:
 
 ## Browser extension
 
-Install Agent Browser Gateway from the Chrome Web Store for normal Chrome use. For local extension
+Install Agent Browser Gateway from the
+[Chrome Web Store](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi)
+for normal Chrome use. The public listing currently serves extension `v0.4.3`. For local extension
 development, build the extension from the repository and load `extension/dist/` as an unpacked
 extension.
 

@@ -65,6 +65,11 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
+Internally, the CLI uses one JSON contract over platform-local IPC: Unix domain sockets on macOS and
+Linux, and named pipes on Windows. macOS can fall back to a token-authenticated loopback WebSocket
+when sandbox or path-length constraints prevent a usable socket. Endpoint resolution and cleanup
+are owned by ABG, so callers do not need OS-specific transport details.
+
 ## Plugins
 
 Plugins are local JavaScript modules loaded by the Gateway. They can transform browser data, add
@@ -78,3 +83,70 @@ See [Plugins](./plugins/) for install and authoring details.
 Chrome is the first browser target. Firefox support is being added through a browser adapter and a
 Firefox extension target. Safari, mobile browsers, and remote pairing are future tracks and require
 separate permission and pairing designs.
+
+## Mobile consent and pairing design
+
+Mobile and WebView support connects a phone, tablet, or embedded browser surface to a desktop
+Gateway owned by the same user. This is different from desktop per-tab consent: the desktop extension
+can share a tab through a browser popup on the same machine, while mobile pairing must first prove
+which desktop Gateway is being trusted before any tab or approval surface becomes available.
+
+### Pairing methods
+
+| Method | Fit | Decision |
+| --- | --- | --- |
+| QR code | Best first-run flow when the desktop can show a short-lived pairing URL and the phone has a camera. The user confirms the same code on both devices before the mobile session is created. | MVP pairing method. The QR payload must expire quickly and only bootstrap a scoped pairing token. |
+| Manual token entry | Works when camera access is unavailable, screen sharing hides the QR code, or the mobile surface is a constrained WebView. | MVP fallback. Use a short code plus desktop confirmation, not a long bearer secret copied by hand. |
+| Tailnet link | Good for users who already operate a private Tailnet and need desktop-to-mobile pairing across networks. It keeps connectivity user-controlled. | Supported private remote boundary after local MVP. It must never route through an ABG-operated relay. |
+| Local network discovery | Convenient on trusted LANs, but discovery broadcasts expose that a Gateway exists and are noisy in offices, hotels, and shared networks. | Rejected for MVP. It can be reconsidered only behind explicit opt-in, authenticated discovery, and audit entries. |
+
+### Consent and session scope
+
+Desktop per-tab consent starts from a local browser action: the user shares one tab, the share is
+scoped to that tab reference, and it automatically revokes when the tab closes, changes origin, or is
+explicitly revoked. Mobile consent adds a device/session layer before tab consent:
+
+- A paired mobile device receives no tab access by default.
+- The desktop Gateway owns the pairing list, session lifetime, approval state, and audit log.
+- Mobile approval forwarding can approve or reject a pending desktop operation, but it must not grant
+  broad tab visibility by itself.
+- A mobile session is scoped to one Gateway, one paired device identity, and one approval purpose.
+- Revoking the mobile session removes the device from the pairing list and invalidates all outstanding
+  approval prompts and pairing tokens for that device.
+- Revoking a desktop tab share still works independently and immediately removes that tab from both
+  local and mobile approval surfaces.
+
+The MVP behavior is pairing for approval forwarding only. Mobile read or operate commands are not
+part of the first mobile consent boundary because they would combine remote connectivity, browser
+tab visibility, and mutation approval into one release step.
+
+### Network boundaries
+
+The local-only desktop workflow remains the default and highest-trust mode. The Gateway continues to
+listen on loopback for normal CLI and extension traffic, and the product must remain usable with all
+non-loopback networking blocked.
+
+Tailnet operation is the selected private remote boundary after the local MVP. The user or
+organization controls the Tailnet, device enrollment, DNS, and firewall policy. ABG may bind an
+explicit remote-pairing listener only when the user enables it, and the listener must require a
+short-lived pairing token plus device confirmation before any session is created.
+
+LAN operation is rejected for the MVP except when it is the transport underneath a user-controlled
+Tailnet or an explicitly configured address. Automatic LAN discovery is not selected because it can
+advertise the Gateway on untrusted networks, increases phishing surface for lookalike Gateways, and
+creates confusing behavior when multiple Gateways are present.
+
+An ABG-operated cloud relay is rejected. It would add a central service that can observe metadata,
+become an account and abuse-prevention boundary, and weaken the local-first security promise.
+
+### Remaining implementation blockers
+
+- Define the pairing-token format, expiry, rotation, storage location, and audit event schema.
+- Add a desktop pairing management surface for listing, naming, revoking, and auditing paired
+  devices.
+- Define the mobile approval UI for pending operations, including redacted operation details and
+  timeout behavior.
+- Decide whether the first mobile surface is a mobile web page served by the Gateway, a native app,
+  a Safari Web Extension, an Android app, or a WebView debugging bridge.
+- Add transport tests for loopback-only default behavior, explicit remote listener enablement,
+  expired tokens, revoked devices, and rejected LAN discovery.

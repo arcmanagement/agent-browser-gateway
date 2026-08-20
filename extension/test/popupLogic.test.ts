@@ -12,6 +12,7 @@ const baseSettings: ExtensionSettings = {
   evalEnabled: false,
   operationsRequireApproval: true,
   profileLabel: "",
+  gatewayWebSocketUrl: "ws://127.0.0.1:8765/ws",
   trustedAutomationEnabled: false,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,

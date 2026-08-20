@@ -25,6 +25,8 @@ const bookmarksNoteEl = document.getElementById("bookmarksNote") as HTMLDivEleme
 const readingListToggleEl = document.getElementById("readingListToggle") as HTMLInputElement;
 const readingListNoteEl = document.getElementById("readingListNote") as HTMLDivElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
+const gatewayWebSocketUrlEl = document.getElementById("gatewayWebSocketUrl") as HTMLInputElement;
+const applyGatewayUrlBtn = document.getElementById("applyGatewayUrlBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
 const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivElement;
@@ -231,6 +233,32 @@ async function refresh(): Promise<void> {
         statusEl.textContent = `error: ${response.message}`;
       }
     }, 350) as unknown as number;
+  };
+
+  if (document.activeElement !== gatewayWebSocketUrlEl) {
+    gatewayWebSocketUrlEl.value = state.settings.gatewayWebSocketUrl;
+  }
+  const applyGatewayWebSocketUrl = async () => {
+    applyGatewayUrlBtn.disabled = true;
+    const response = await send({
+      type: "set_gateway_websocket_url",
+      value: gatewayWebSocketUrlEl.value,
+    });
+    if (response.type === "error") {
+      statusEl.textContent = `error: ${response.message}`;
+      applyGatewayUrlBtn.disabled = false;
+      return;
+    }
+    gatewayWebSocketUrlEl.blur();
+    statusEl.textContent = "Reconnecting to Gateway…";
+    await refresh();
+  };
+  applyGatewayUrlBtn.disabled = false;
+  applyGatewayUrlBtn.onclick = applyGatewayWebSocketUrl;
+  gatewayWebSocketUrlEl.onkeydown = async (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    await applyGatewayWebSocketUrl();
   };
 
   const incognitoAccessAllowed = state.activeTab.incognitoAccessAllowed;

@@ -46,7 +46,10 @@ export type BrowserAdapter = {
     typeof chrome.bookmarks,
     "get" | "getChildren" | "getRecent" | "getSubTree" | "getTree" | "search"
   >;
-  readonly extension: Pick<typeof chrome.extension, "isAllowedIncognitoAccess">;
+  readonly extension: Pick<
+    typeof chrome.extension,
+    "isAllowedFileSchemeAccess" | "isAllowedIncognitoAccess"
+  >;
   readonly permissions: Pick<typeof chrome.permissions, "contains" | "remove" | "request">;
   readonly runtime: Pick<
     typeof chrome.runtime,
@@ -121,11 +124,23 @@ function unsupportedDebugger(): BrowserAdapter["debugger"] {
   };
 }
 
+function extensionAccessApi(api: RuntimeBrowser): BrowserAdapter["extension"] {
+  const extensionApi = api.extension as Partial<BrowserAdapter["extension"]> | undefined;
+  return {
+    isAllowedFileSchemeAccess:
+      typeof extensionApi?.isAllowedFileSchemeAccess === "function"
+        ? () => extensionApi.isAllowedFileSchemeAccess?.() ?? Promise.resolve(true)
+        : async () => true,
+    isAllowedIncognitoAccess:
+      typeof extensionApi?.isAllowedIncognitoAccess === "function"
+        ? () => extensionApi.isAllowedIncognitoAccess?.() ?? Promise.resolve(true)
+        : async () => true,
+  };
+}
+
 function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAdapter {
   const debuggerApi = api.debugger ?? unsupportedDebugger();
-  const extensionApi = api.extension ?? {
-    isAllowedIncognitoAccess: async () => true,
-  };
+  const extensionApi = extensionAccessApi(api);
   return {
     kind,
     supportsDebugger: !!api.debugger,
@@ -199,11 +214,7 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
       return runtimeBrowser().bookmarks;
     },
     get extension() {
-      return (
-        runtimeBrowser().extension ?? {
-          isAllowedIncognitoAccess: async () => true,
-        }
-      );
+      return extensionAccessApi(runtimeBrowser());
     },
     get permissions() {
       return runtimeBrowser().permissions;

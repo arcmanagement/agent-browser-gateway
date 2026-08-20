@@ -71,6 +71,13 @@ Store submission remains a Partner Center action, and Mac App Store upload stays
 on the trusted maintainer Mac. WinGet submission is deferred until the draft
 GitHub Release is published and the setup ZIP URL is public.
 
+For branch validation before tagging, run the `CI` workflow. Its release artifact
+smoke-test job builds unsigned archives with the workflow dispatch
+`release_version` input, verifies the generated Cask, and uploads the archive
+set as a workflow artifact. The same CI run also uploads a Chrome Web Store ZIP
+and runs dependency security checks, so release, packaging, and dependency
+failures are visible before a tag is created.
+
 ## Publish
 
 1. Run the signed/notarized local build above.
