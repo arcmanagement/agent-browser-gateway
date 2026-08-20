@@ -154,12 +154,18 @@ Current repo version: **v0.4.2**.
 
 ## Phase 3
 
-- Gateway runtime/macOS shell boundary for desktop OS ports
+- Gateway core and OS-specific shell boundary for desktop OS ports
 - Shared extension browser-adapter boundary for desktop browser ports
 - Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path)
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
-- Windows port of the Gateway, including tray lifecycle, launch-at-sign-in, and WinUI setup/status surfaces
+- Windows native Gateway shell, including WinUI setup/status surfaces, tray lifecycle,
+  launch-at-sign-in, signed setup ZIPs, WinGet publication, Windows log paths, named-pipe IPC, and
+  Windows user-scoped security assumptions
+- Linux headless Gateway shell, including tarball-first packaging, CLI lifecycle commands, optional
+  systemd user service, XDG-style state/log paths, Unix domain socket IPC, and user-scoped security
+  assumptions without committing to a desktop UI
+- Desktop OS expansion details are tracked in [docs/DESKTOP_OS_EXPANSION.md](docs/DESKTOP_OS_EXPANSION.md).
 
 ## Phase 4
 
