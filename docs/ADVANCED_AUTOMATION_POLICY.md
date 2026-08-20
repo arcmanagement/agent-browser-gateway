@@ -24,6 +24,7 @@ personal browser profile.
 | Redacted HAR export | `per-tab` | No write approval; artifact generation must be explicit | Log tab, filters, redaction mode, byte size, and local path | Local filesystem only; no ABG cloud storage. |
 | Cookie / Web Storage reads | `per-tab` | No write approval; full values require explicit `--values` | Log kind, filters, counts, and whether values were requested | Values are redacted by default. |
 | Framework and Web Vitals reads | `per-tab` | No write approval | Log read command and tab | Hook-dependent, bounded, no component mutation. |
+| Raise an already-shared tab and its existing window | `per-tab` | The explicit CLI invocation is sufficient; no second popup | Log command, extension, shared tab, and shared URL | The extension must reject unshared or expired tabs. No tab/window discovery, creation, closing, or navigation. |
 | JavaScript dialog inspection and handling | `per-tab` | No approval to inspect; accept, dismiss, and prompt-value operations require approval | Log dialog type and handling action without storing sensitive prompt values | Dialog handling stays scoped to the shared tab. |
 | Download lifecycle and local artifact paths | `per-tab` | Download initiation follows the approval policy of the triggering action | Log tab, suggested filename, state, byte size, and local path | File contents are not read automatically and artifacts remain local. |
 | Bookmark / Reading List inspection | `user-controlled deployment only` | Separate explicit browser permission required; no write approval for read-only list, search, get, or open | Log operation class, browser/profile identity, result counts, and redacted URL metadata by default | Browser-owned personal data. It is not unlocked by per-tab or all-tabs sharing. |
@@ -59,6 +60,7 @@ personal browser profile.
 | #200 | Bookmark and Reading List mutation | Descoped from official ABG | Profile-wide personal-data writes and deletes exceed tab consent and carry disproportionate deletion/reorganization risk. A future user-controlled plugin, fork, or new decision issue may revisit the capability. |
 | #203 | Trusted eval automation | Shipped | `per-tab`; eval stays disabled by default and requires per-call approval or explicit AutoMode, with audit. |
 | #304 | Shared-tab recording | Shipped | `per-tab`; explicit start, visible recording state, local artifact, and separate microphone disclosure. |
+| #309 | Shared-tab foreground activation | Shipped | `per-tab`; only an already-shared tab and its existing window can be activated. |
 
 ## Implementation Checklist
 

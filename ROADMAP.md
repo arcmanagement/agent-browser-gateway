@@ -154,7 +154,9 @@ Current repo version: **v0.4.2**.
 - Daily/weekly digest of agent activity (local only, opt-in)
 - `wait_for_response` and other DevTools-Protocol-flavored tools (network idle, page load, etc.)
 - Browser-owned automation controls such as storage mutation, network mocking, init scripts,
-  emulation, and tab/window management are sandbox/all-tabs profile work, not normal per-tab work.
+  emulation, and tab/window creation or closing are sandbox/all-tabs profile work, not normal
+  per-tab work. Raising an already-shared tab and its existing window remains inside the per-tab
+  boundary because it cannot discover or operate unshared tabs.
 
 ## Phase 3
 
