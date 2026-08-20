@@ -156,7 +156,9 @@ Current repo version: **v0.4.2**.
 
 - Gateway core and OS-specific shell boundary for desktop OS ports
 - Shared extension browser-adapter boundary for desktop browser ports
-- Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path)
+- Firefox extension MVP (WebExtensions MV3 manifest, share/revoke/read/screenshot fallback path).
+  Full Chrome parity is blocked until Firefox exposes a debugger/CDP-equivalent extension API or ABG
+  adds a separate Firefox-native automation bridge; see `extension/FIREFOX.md`.
 - Safari Web Extension (App Extension, requires Apple Developer Program)
 - Edge / Brave (mostly trivial after Chrome)
 - Windows native Gateway shell, including WinUI setup/status surfaces, tray lifecycle,
