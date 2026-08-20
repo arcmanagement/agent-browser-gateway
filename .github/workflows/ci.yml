@@ -3,6 +3,11 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release smoke-test version without the leading v"
+        required: false
+        default: "0.0.0-ci"
 
 permissions:
   contents: read
@@ -60,3 +65,71 @@ jobs:
       - name: Build extension
         working-directory: extension
         run: pnpm run build
+
+  release-artifact-smoke:
+    name: Release artifact smoke test
+    runs-on: macos-latest
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || '0.0.0-ci' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Install extension dependencies
+        working-directory: extension
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned release archives
+        run: make dist VERSION="$RELEASE_VERSION"
+
+      - name: Verify release archive outputs
+        run: |
+          set -euo pipefail
+          test -f "dist/agent-browser-gateway-$RELEASE_VERSION-macos-arm64.zip"
+          test -f "dist/agent-browser-gateway-extension-$RELEASE_VERSION.zip"
+          test -f "dist/agent-browser-gateway.rb"
+          ruby -c dist/agent-browser-gateway.rb
+          shasum -a 256 \
+            "dist/agent-browser-gateway-$RELEASE_VERSION-macos-arm64.zip" \
+            "dist/agent-browser-gateway-extension-$RELEASE_VERSION.zip" \
+            "dist/agent-browser-gateway.rb" \
+            > dist/CI_SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-release-artifacts-${{ env.RELEASE_VERSION }}
+          path: |
+            dist/agent-browser-gateway-${{ env.RELEASE_VERSION }}-macos-arm64.zip
+            dist/agent-browser-gateway-extension-${{ env.RELEASE_VERSION }}.zip
+            dist/agent-browser-gateway.rb
+            dist/CI_SHA256SUMS.txt
+
+  swift-dependency-inventory:
+    name: Swift dependency inventory
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Resolve Swift dependencies
+        run: swift package resolve
+
+      - name: Write Swift dependency inventory
+        run: swift package show-dependencies --format json > swift-dependencies.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-swift-dependencies
+          path: swift-dependencies.json
