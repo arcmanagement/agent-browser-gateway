@@ -133,6 +133,9 @@ Current repo version: **v0.4.2**.
 
 - WS bind retry (Gateway currently does not retry if the port is already in use)
 - MCP stdio wrapper (`abg mcp-server`) over the same CLI for ecosystem coverage
+- Replay variables and dry-run expansion must follow [`docs/REPLAY_POLICY.md`](docs/REPLAY_POLICY.md):
+  `{{var.name}}` for non-secret values, `{{secret.name}}` for secret values, dry-run metadata only,
+  and no secrets in audit logs, flow files, screenshots, HAR files, or exported replay artifacts.
 - More domain-specific annotation heuristics without accidentally selecting oversized wrappers
 - Gateway Settings UI for profile-local timeout defaults, approval defaults, and per-domain policy storage
 

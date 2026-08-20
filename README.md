@@ -326,6 +326,14 @@ log only and summarizes action counts, tab IDs, origins, timestamps, and approva
 not include raw pasted values, clipboard payloads, plugin arguments, or raw audit `details`. Use
 `audit` when you need exact event records for debugging or review.
 
+Replay flows are governed by the [Replay Policy](docs/REPLAY_POLICY.md). Flow files should keep
+repeatable operation shape and non-secret defaults, while caller-provided values stay in explicit
+runtime input or a separate local values file. Secret placeholders use `{{secret.name}}` and must
+not be written to flow files, audit logs, dry-run output, screenshots, HAR files, or exported replay
+artifacts. `abg replay --dry-run` is a preflight preview: it may show target metadata, step order,
+required variable names, secret/non-secret classification, and value byte lengths, but not raw
+values or browser artifacts.
+
 Use `clipboard-write` and `paste-rich` for app-specific clipboard formats. `clipboard-write` writes
 one MIME payload to the local OS clipboard without a tab operation. `paste-rich` sends the native
 paste shortcut to the currently focused target, or focuses `--selector` first. The combined form
