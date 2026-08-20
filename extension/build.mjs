@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as esbuild from "esbuild";
+import { resolveGatewayWebSocketUrl } from "./src/gatewayEndpoint.js";
 
 const watch = process.argv.includes("--watch");
 const target = parseTarget(
@@ -8,7 +9,8 @@ const target = parseTarget(
 const DEFAULT_ABG_PORT = 8765;
 const rawPort = process.env.ABG_EXTENSION_PORT || process.env.ABG_PORT;
 const abgPort = parsePort(rawPort, DEFAULT_ABG_PORT);
-const abgWsUrl = `ws://127.0.0.1:${abgPort}/ws`;
+const defaultAbgWsUrl = `ws://127.0.0.1:${abgPort}/ws`;
+const abgWsUrl = resolveGatewayWebSocketUrl(process.env.ABG_EXTENSION_WS_URL, defaultAbgWsUrl);
 
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
@@ -95,7 +97,7 @@ function parsePort(raw, fallback) {
 
 async function patchManifest(target) {
   const configuredName = process.env.ABG_EXTENSION_NAME?.trim();
-  const devBuild = abgPort !== DEFAULT_ABG_PORT;
+  const devBuild = abgPort !== DEFAULT_ABG_PORT || abgWsUrl !== defaultAbgWsUrl;
   const manifestPath = "dist/manifest.json";
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   if (target === "firefox") {
