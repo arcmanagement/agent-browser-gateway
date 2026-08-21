@@ -92,9 +92,6 @@ public sealed partial class SetupWindow : Window
         SetStatus("Configuring sign-in startup...", 68);
         ConfigureStartup(targetDir, enableStartup);
 
-        SetStatus("Updating Claude/Codex skills...", 76);
-        RunInstallSkill(targetDir);
-
         SetStatus("Registering uninstall entry...", 82);
         RegisterUninstallEntry(targetDir);
 
@@ -235,18 +232,6 @@ public sealed partial class SetupWindow : Window
         }
 
         WindowsStartup.Disable();
-    }
-
-    private static void RunInstallSkill(string installDir)
-    {
-        var abg = Path.Combine(installDir, "abg.exe");
-        if (!File.Exists(abg)) return;
-
-        var result = RunHidden(abg, "install-skill --target both", installDir);
-        if (result.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"Skill update failed.\n\n{result.Output}");
-        }
     }
 
     private static void RegisterUninstallEntry(string installDir)

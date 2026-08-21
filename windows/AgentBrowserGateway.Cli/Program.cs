@@ -87,7 +87,8 @@ internal static class Program
             case "audit":
                 return await AuditAsync(rest).ConfigureAwait(false);
             case "install-skill":
-                return SkillInstaller.Install(rest);
+                PrintErrorJson("install_skill_removed", "abg install-skill was removed. Install the ABG skills with: npx skills add arcmanagement/agent-browser-gateway -g");
+                return 1;
             case "record":
             case "replay":
             case "plugin":
@@ -514,8 +515,7 @@ internal static class Program
           abg navigate <tab|ref> https://example.com
           abg revoke <tab|ref>
 
-        Installer helper:
-          abg install-skill [--target both|claude|codex] [--no-upgrade]
+        Agent skills install via: npx skills add arcmanagement/agent-browser-gateway -g
         """);
     }
 

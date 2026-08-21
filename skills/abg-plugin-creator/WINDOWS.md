@@ -1,8 +1,3 @@
----
-name: abg-plugin-creator
-version: 0.1.0
-description: Scaffold and validate local Agent Browser Gateway plugins.
----
 
 # ABG Plugin Creator
 

@@ -85,20 +85,6 @@ public static class AbgPaths
         }
     }
 
-    public static string ClaudeSkillsDir => Path.Combine(UserProfile, ".claude", "skills");
-
-    public static string CodexSkillsDir
-    {
-        get
-        {
-            var codexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
-            var home = string.IsNullOrWhiteSpace(codexHome)
-                ? Path.Combine(UserProfile, ".codex")
-                : ExpandUserPath(codexHome);
-            return Path.Combine(home, "skills");
-        }
-    }
-
     public static string ExpandUserPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return path;

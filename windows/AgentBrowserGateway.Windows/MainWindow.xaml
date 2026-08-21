@@ -62,7 +62,7 @@
             <StackPanel Spacing="6">
                 <TextBlock Text="CLI setup" FontWeight="SemiBold" />
                 <TextBlock Text="Place this folder on PATH, then run: abg status" TextWrapping="Wrap" />
-                <TextBlock Text="The installer runs: abg install-skill --target both" FontFamily="Consolas" TextWrapping="Wrap" />
+                <TextBlock Text="Install agent skills with: npx skills add arcmanagement/agent-browser-gateway -g" FontFamily="Consolas" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
     </Grid>

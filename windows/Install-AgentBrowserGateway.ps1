@@ -186,13 +186,7 @@ if (-not $NoPathUpdate) {
 
 Register-UninstallEntry
 
-$Abg = Join-Path $InstallDir "abg.exe"
-if (Test-Path $Abg) {
-    Write-Host "Updating Claude/Codex skills..."
-    & $Abg install-skill --target both
-} else {
-    Write-Warning "abg.exe was not found at $Abg; skipped skill update."
-}
+Write-Host "Install agent skills with: npx skills add arcmanagement/agent-browser-gateway -g"
 
 if (-not $NoStart) {
     $Gateway = Join-Path $InstallDir "agent-browser-gateway.exe"
