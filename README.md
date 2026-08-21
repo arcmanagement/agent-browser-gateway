@@ -316,7 +316,7 @@ printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdi
 abg exec-command <tab|ref> --command selectAll
 abg navigate <tab|ref> "<url>"                    # cross-origin auto-revokes
 abg scroll <tab|ref> [--dy 800] [--dx 0]          # Wheel scroll (delta px)
-abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # Element scrollBy for virtual lists
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # Element scrollBy for virtual lists; falls back to the scrollable descendant/ancestor and reports moved/movedX/movedY (moved: false + warning when nothing scrolled)
 abg scroll-into-view <tab|ref> --selector "<css>" # Center a known element in the viewport
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"
 
