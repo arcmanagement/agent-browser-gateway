@@ -68,6 +68,25 @@ public enum ABGConstants {
         return url
     }
 
+    public static var harDir: URL {
+        let url = configuredHARDir(environment: ProcessInfo.processInfo.environment)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        chmod(url.path, 0o700)
+        return url
+    }
+
+    /// A permissions probe that matches how the sandbox actually fails: POSIX mode
+    /// checks pass inside a denied location, so the only reliable signal is an
+    /// attempted write. Creates the directory if needed, then creates and removes a
+    /// probe file.
+    public static func canWriteInDirectory(_ dir: URL) -> Bool {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let probe = dir.appendingPathComponent(".abg-write-probe-\(UUID().uuidString)")
+        guard FileManager.default.createFile(atPath: probe.path, contents: nil) else { return false }
+        try? FileManager.default.removeItem(at: probe)
+        return true
+    }
+
     public static var udsPath: String {
         supportDir.appendingPathComponent("gateway.sock").path
     }
@@ -234,6 +253,11 @@ public enum ABGConstants {
     public static func configuredRecordingsDir(environment: [String: String]) -> URL {
         mediaOutputBaseDir(environment: environment)
             .appendingPathComponent("recordings", isDirectory: true)
+    }
+
+    public static func configuredHARDir(environment: [String: String]) -> URL {
+        mediaOutputBaseDir(environment: environment)
+            .appendingPathComponent("har", isDirectory: true)
     }
 
     /// Media written by a sandboxed process must land in the shared group container:

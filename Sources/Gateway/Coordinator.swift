@@ -810,6 +810,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         let recordingId = UUID().uuidString
         let rawOutputPath = (params["outputPath"] as? String) ?? defaultRecordingOutputPath(tabId: tabId)
         let outputPath = (rawOutputPath as NSString).expandingTildeInPath
+        if let unwritable = unwritableOutputPathError(outputPath) {
+            return CLIResponse(id: req.id, error: unwritable)
+        }
 
         // Register the session before dispatching: the extension begins streaming
         // chunks as soon as the user approves, which can arrive while this command
@@ -948,7 +951,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if session.handle == nil {
                 let url = URL(fileURLWithPath: session.outputPath)
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                FileManager.default.createFile(atPath: session.outputPath, contents: nil)
+                guard FileManager.default.createFile(atPath: session.outputPath, contents: nil) else {
+                    throw NSError(domain: "ABG", code: 7, userInfo: [NSLocalizedDescriptionKey: "could not create \(session.outputPath)"])
+                }
                 session.handle = try FileHandle(forWritingTo: url)
             }
             try session.handle?.write(contentsOf: data)
@@ -1148,6 +1153,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             let outputPath = rawOutputPath as NSString
             let expandedOutputPath = outputPath.expandingTildeInPath
             params["outputPath"] = expandedOutputPath
+            if let unwritable = unwritableOutputPathError(expandedOutputPath) {
+                return CLIResponse(id: req.id, error: unwritable)
+            }
 
             let result = try await sendCommand(to: tab.extensionId, method: "har_export", params: AnyCodable(params))
             guard var dict = result?.value as? [String: Any], let har = dict["har"] else {
@@ -1793,15 +1801,32 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     private func defaultHAROutputPath(tabId: Int) throws -> String {
-        let base = FileManager.default.temporaryDirectory
-            .appendingPathComponent("abg", isDirectory: true)
-            .appendingPathComponent("har", isDirectory: true)
+        // ABGConstants.harDir resolves into the app-group container for the sandboxed
+        // gateway, where the CLI and the user can actually read the file; the gateway's
+        // own container temp dir is invisible to both.
+        let base = ABGConstants.harDir
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let timestamp = formatter.string(from: Date())
         return base.appendingPathComponent("tab-\(tabId)-\(timestamp).har").path
+    }
+
+    /// Rejects an output path the gateway cannot actually write before any capture or
+    /// approval starts. Under the App Store sandbox an arbitrary user path fails only
+    /// at write time, which would otherwise surface as a mid-recording failure.
+    private func unwritableOutputPathError(_ path: String) -> ErrorPayload? {
+        let dir = URL(fileURLWithPath: path).deletingLastPathComponent()
+        guard !ABGConstants.canWriteInDirectory(dir) else { return nil }
+        return ErrorPayload(
+            code: "output_path_unwritable",
+            message: "cannot write to \(dir.path)\(ABGConstants.isSandboxed ? " from the sandboxed gateway" : "")",
+            userMessage: ABGConstants.isSandboxed
+                ? "App Store 版 Gateway はこの場所へ書き込めません。--output を省略すると読み取り可能な共有コンテナへ保存されます。"
+                : "指定した出力先ディレクトリへ書き込めません。パスを確認してください。",
+            hint: "default output dir: \(ABGConstants.isSandboxed ? ABGConstants.harDir.deletingLastPathComponent().path : FileManager.default.temporaryDirectory.path)"
+        )
     }
 
     private func tabUnavailableError(tabId: Int) -> ErrorPayload {
