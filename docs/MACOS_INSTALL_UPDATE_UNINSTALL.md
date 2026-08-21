@@ -87,7 +87,9 @@ again. The installer:
 5. Starts the menubar app after installation.
 
 Keep the agent skills current with `npx skills update -g` (or re-run the
-`npx skills add` command above).
+`npx skills add` command above). `npx skills list -g` shows the installed skills
+and their sources. Verify what a source publishes before installing with
+`npx skills add arcmanagement/agent-browser-gateway --skill agent-browser-gateway --list`.
 
 The update does not delete local runtime state, audit logs, user plugins, or Chrome
 extension settings.
@@ -121,7 +123,8 @@ Remove the installed agent skills only if you no longer want agents to discover 
 npx skills remove -g agent-browser-gateway abg-plugin-creator
 ```
 
-or delete the directories directly:
+or delete the directories directly (fallback only; prefer `npx skills remove` so
+the skills CLI keeps its install records consistent):
 
 ```bash
 rm -rf "$HOME/.claude/skills/agent-browser-gateway"

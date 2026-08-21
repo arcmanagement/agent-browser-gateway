@@ -42,7 +42,9 @@ After cloning the repository or extracting the Windows source zip, run this from
 This restores packages, runs tests, builds `dist\agent-browser-gateway-<version>-windows-x64.zip`,
 builds `dist\agent-browser-gateway-<version>-windows-x64-setup.zip`, extracts the non-GUI payload,
 installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
-the user `PATH`, and starts the tray Gateway.
+the user `PATH`, and starts the tray Gateway. `abg install-skill` is a legacy Windows-only
+fallback: the standard skill install path on every platform is
+`npx skills add arcmanagement/agent-browser-gateway -g` (see #363 for its removal).
 
 WinUI 3 publish must run on Windows or GitHub Actions `windows-latest`. macOS can prepare source
 changes and non-WinUI artifacts, but it cannot publish the WinUI app because `XamlCompiler.exe` is
