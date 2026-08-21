@@ -48,7 +48,7 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg read` | Object containing tab metadata and the requested content format, such as `text`, `html`, `markdown`, or structured JSON. |
 | `abg get` | Object or scalar result for the requested getter. Getter names and primitive JSON types are part of the command contract. |
 | `abg snapshot` | Object or array containing inspectable element rows with refs, text, roles, and selector/geometry metadata when available. |
-| `abg screenshot` | Object with local output path and capture metadata. `abg screenshot --latest` returns the latest saved screenshot path object or a normalized error. |
+| `abg screenshot` | Object with local output path and capture metadata. Debugger-backed captures pin image pixels to CSS pixels and report `cssViewport`, `imageSize`, and `scale: 1`, so image coordinates convert directly to `click --x/--y` coordinates. `abg screenshot --latest` returns the latest saved screenshot path object or a normalized error. |
 | `abg wait` | Object `{ ok, mode, ... }` — `{ ok: true, mode, ms | value }` on success, `{ ok: false, error: "timeout", mode, timeoutMs }` on timeout. Combined load+selector waits return `{ load, selector }` with one such object each. |
 | `abg replay` | Dry run returns `{ tabId, steps }`; execution returns `{ ok, tabId, results }` where each result row is `{ index, op, result }` and `result` is that step's command output. See `docs/REPLAY_POLICY.md`. |
 | `abg record start` | Object `{ ok, recordingId, tabId, path, mic, startedAt }` after the user approves. `abg record stop` returns `{ ok, path, bytes, durationMs, mime, mic }`; `abg record status` returns `{ recording, ... }`. See `docs/RECORDING.md`. |

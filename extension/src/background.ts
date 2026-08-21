@@ -3631,18 +3631,49 @@ async function clickSnapshotRef(tabId: number, ref: string): Promise<unknown> {
   return clickSelector(tabId, target.selector, target.frame);
 }
 
+type ScreenshotResult = {
+  dataUrl: string;
+  cssViewport?: { width: number; height: number };
+  imageSize?: { width: number; height: number };
+  scale?: number;
+};
+
 async function screenshot(
   tabId: number,
   clip?: { x: number; y: number; width: number; height: number },
-): Promise<{ dataUrl: string }> {
+): Promise<ScreenshotResult> {
   if (!browser.supportsDebugger) {
     return screenshotWithVisibleTabCapture(tabId, clip);
   }
 
   await attachDebugger(tabId);
+  // Full captures previously omitted the clip, so Chrome picked the scale from
+  // the device pixel ratio and consecutive captures of the same viewport could
+  // come back at different sizes. Deriving an explicit CSS-pixel clip with
+  // scale 1 makes image pixels equal CSS pixels on every capture, so
+  // screenshot-derived coordinates feed straight into click --x/--y.
+  const layout = (await browser.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
+    cssVisualViewport?: {
+      clientWidth: number;
+      clientHeight: number;
+      pageX: number;
+      pageY: number;
+    };
+  };
+  const viewport = layout.cssVisualViewport;
+  const effectiveClip =
+    clip ??
+    (viewport
+      ? {
+          x: viewport.pageX,
+          y: viewport.pageY,
+          width: viewport.clientWidth,
+          height: viewport.clientHeight,
+        }
+      : undefined);
   const params: Record<string, unknown> = { format: "png" };
-  if (clip) {
-    params.clip = { ...clip, scale: 1 };
+  if (effectiveClip) {
+    params.clip = { ...effectiveClip, scale: 1 };
   }
   const result = (await browser.debugger.sendCommand(
     { tabId },
@@ -3651,7 +3682,18 @@ async function screenshot(
   )) as {
     data: string;
   };
-  return { dataUrl: `data:image/png;base64,${result.data}` };
+  const output: ScreenshotResult = { dataUrl: `data:image/png;base64,${result.data}` };
+  if (viewport) {
+    output.cssViewport = { width: viewport.clientWidth, height: viewport.clientHeight };
+  }
+  if (effectiveClip) {
+    output.imageSize = {
+      width: Math.round(effectiveClip.width),
+      height: Math.round(effectiveClip.height),
+    };
+    output.scale = 1;
+  }
+  return output;
 }
 
 async function screenshotWithVisibleTabCapture(

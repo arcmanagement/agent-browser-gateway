@@ -477,7 +477,11 @@ func saveScreenshotResult(_ result: Any?, outPath: String) throws -> [String: An
     }
     try png.write(to: URL(fileURLWithPath: outPath))
     try outPath.write(to: latestScreenshotMarker(), atomically: true, encoding: .utf8)
-    return ["path": outPath, "bytes": png.count]
+    var output: [String: Any] = ["path": outPath, "bytes": png.count]
+    for key in ["cssViewport", "imageSize", "scale"] {
+        if let value = dict[key] { output[key] = value }
+    }
+    return output
 }
 
 func savePDFResult(_ result: Any?, outPath: String) throws -> [String: Any] {
