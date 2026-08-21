@@ -35,6 +35,10 @@ export function normalizeGatewayWebSocketUrl(value: string): string {
   return url.toString();
 }
 
+export function normalizeAppliedGatewayWebSocketUrl(value: string, defaultUrl: string): string {
+  return normalizeGatewayWebSocketUrl(value.trim() || defaultUrl);
+}
+
 export function resolveStoredGatewayWebSocketUrl(
   storedValue: unknown,
   defaultUrl: string,
