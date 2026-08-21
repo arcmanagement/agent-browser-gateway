@@ -16,6 +16,7 @@ const baseSettings: ExtensionSettings = {
   trustedAutomationEnabled: false,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
+  personalDataMutationsEnabled: false,
 };
 
 describe("popupLogic", () => {

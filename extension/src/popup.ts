@@ -24,6 +24,12 @@ const bookmarksToggleEl = document.getElementById("bookmarksToggle") as HTMLInpu
 const bookmarksNoteEl = document.getElementById("bookmarksNote") as HTMLDivElement;
 const readingListToggleEl = document.getElementById("readingListToggle") as HTMLInputElement;
 const readingListNoteEl = document.getElementById("readingListNote") as HTMLDivElement;
+const personalDataMutationsToggleEl = document.getElementById(
+  "personalDataMutationsToggle",
+) as HTMLInputElement;
+const personalDataMutationsNoteEl = document.getElementById(
+  "personalDataMutationsNote",
+) as HTMLDivElement;
 const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
 const gatewayWebSocketUrlEl = document.getElementById("gatewayWebSocketUrl") as HTMLInputElement;
 const applyGatewayUrlBtn = document.getElementById("applyGatewayUrlBtn") as HTMLButtonElement;
@@ -217,6 +223,21 @@ async function refresh(): Promise<void> {
       await removeApiPermission("readingList");
     }
     readingListToggleEl.disabled = false;
+    await refresh();
+  };
+
+  personalDataMutationsToggleEl.checked = state.settings.personalDataMutationsEnabled;
+  personalDataMutationsNoteEl.textContent =
+    "Allows agent-requested bookmark and Reading List changes. Every change still opens a per-operation approval window; deletes use stronger confirmation copy.";
+  personalDataMutationsToggleEl.onchange = async () => {
+    const nextValue = personalDataMutationsToggleEl.checked;
+    personalDataMutationsToggleEl.disabled = true;
+    const response = await send({ type: "set_personal_data_mutations", value: nextValue });
+    if (response.type === "error") {
+      personalDataMutationsToggleEl.checked = !nextValue;
+      statusEl.textContent = `error: ${response.message}`;
+    }
+    personalDataMutationsToggleEl.disabled = false;
     await refresh();
   };
 

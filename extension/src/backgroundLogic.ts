@@ -313,3 +313,44 @@ export function clickSelectorFrameFn(
   el.click();
   return { found: true, tag: el.tagName, frame: ctx.frame };
 }
+
+export type PersonalDataMutationKind =
+  | "bookmark_create"
+  | "bookmark_update"
+  | "bookmark_move"
+  | "bookmark_remove"
+  | "reading_list_add"
+  | "reading_list_update"
+  | "reading_list_remove";
+
+/**
+ * Approval intent for browser-owned personal data mutations. Delete operations
+ * carry deliberately stronger copy than create/update so an accidental Allow on
+ * a destructive request is harder.
+ */
+export function personalDataMutationIntent(
+  kind: PersonalDataMutationKind,
+  target: { title?: string; url?: string; id?: string; parentId?: string },
+): string {
+  const label = target.title ? `"${target.title}"` : (target.url ?? `id ${target.id ?? "?"}`);
+  switch (kind) {
+    case "bookmark_create":
+      return `Create bookmark ${label}${target.url ? ` for ${target.url}` : ""}${
+        target.parentId ? ` in folder ${target.parentId}` : ""
+      }. Browser-owned personal data write.`;
+    case "bookmark_update":
+      return `Update bookmark ${label} (id ${target.id ?? "?"}). Browser-owned personal data write.`;
+    case "bookmark_move":
+      return `Move bookmark ${label} (id ${target.id ?? "?"})${
+        target.parentId ? ` to folder ${target.parentId}` : ""
+      }. Browser-owned personal data write.`;
+    case "bookmark_remove":
+      return `PERMANENTLY DELETE bookmark ${label} (id ${target.id ?? "?"}). This removes saved personal data from the browser and ABG cannot undo it.`;
+    case "reading_list_add":
+      return `Add ${label} to the Reading List. Browser-owned personal data write.`;
+    case "reading_list_update":
+      return `Update the Reading List entry ${label}. Browser-owned personal data write.`;
+    case "reading_list_remove":
+      return `PERMANENTLY DELETE the Reading List entry ${label}. This removes saved personal data from the browser and ABG cannot undo it.`;
+  }
+}

@@ -7,6 +7,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  personalDataMutationIntent,
   raiseBrowserTab,
   raisePermittedBrowserTab,
   richClipboardPayloadLabel,
@@ -266,5 +267,35 @@ describe("clickSelectorFrameFn", () => {
     const source = clickSelectorFrameFn.toString();
     expect(source).not.toContain("import");
     expect(source).not.toContain("require(");
+  });
+});
+
+describe("personalDataMutationIntent", () => {
+  it("describes creates with title, url, and folder", () => {
+    const intent = personalDataMutationIntent("bookmark_create", {
+      title: "Docs",
+      url: "https://example.com/docs",
+      parentId: "42",
+    });
+    expect(intent).toContain('Create bookmark "Docs"');
+    expect(intent).toContain("https://example.com/docs");
+    expect(intent).toContain("folder 42");
+    expect(intent).toContain("Browser-owned personal data write.");
+  });
+
+  it("uses stronger copy for deletes than for creates", () => {
+    const remove = personalDataMutationIntent("bookmark_remove", { title: "Docs", id: "42" });
+    expect(remove).toContain("PERMANENTLY DELETE");
+    expect(remove).toContain("cannot undo");
+    const create = personalDataMutationIntent("bookmark_create", { title: "Docs" });
+    expect(create).not.toContain("PERMANENTLY DELETE");
+  });
+
+  it("covers reading list removals with the destructive copy", () => {
+    const intent = personalDataMutationIntent("reading_list_remove", {
+      url: "https://example.com/article",
+    });
+    expect(intent).toContain("PERMANENTLY DELETE");
+    expect(intent).toContain("https://example.com/article");
   });
 });

@@ -223,6 +223,13 @@ abg bookmarks get <bookmark-id>
 abg bookmarks open <bookmark-id>                # Open an existing bookmark URL through an explicit command
 abg reading-list list                           # Chrome 120+ chrome.readingList, separate permission
 abg reading-list search "saved page"
+abg bookmarks create --title "Docs" --url <url> # Mutations need the extra popup toggle + per-operation approval
+abg bookmarks update <bookmark-id> --title "New title"
+abg bookmarks move <bookmark-id> --parent-id <folder-id>
+abg bookmarks remove <bookmark-id>              # Destructive; stronger approval copy, folders refused
+abg reading-list add --title "Article" --url <url>
+abg reading-list update <url> --read
+abg reading-list remove <url>                   # Destructive; stronger approval copy
 abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --frame @f1 --selector "<css>"
@@ -808,6 +815,7 @@ each mode.
 | HAR export | `har --out file.har`, with URL/method/status/type filters | HAR recording/export | One-shot, local-only, metadata-only redaction by default |
 | Cookie/storage inspection | `state --kind cookies/local-storage/session-storage`, optional `--values` | Browser context storage APIs | Read-only, shared-tab origin scoped, values redacted by default and audited when requested |
 | Bookmark / Reading List inspection | `bookmarks list/search/get/open`, `reading-list list/search` | Browser bookmark/context APIs | Separate explicit browser permission; not unlocked by per-tab or all-tabs sharing; redacted audit metadata |
+| Bookmark / Reading List mutations | `bookmarks create/update/move/remove`, `reading-list add/update/remove` | Browser bookmark write APIs | Extra opt-in toggle on top of the read permission, per-operation approval always, destructive operations use stronger copy, folder deletion refused, redacted audit metadata |
 | Bookmark / Reading List mutation | Not provided by official ABG | Browser bookmark/context APIs | Official non-goal because profile-wide writes and deletes exceed tab consent; a user-controlled plugin or fork requires a new policy decision |
 | Framework/vitals inspection | `framework --kind react/web-vitals/spa` | Framework-aware inspection / performance APIs | Read-only snapshots only; missing hooks fail gracefully |
 | Sandbox browser-owned controls | `sandbox viewport/storage-set/storage-delete/tab-create/tab-close` | Browser context emulation and lifecycle controls | Sandbox/all-tabs profile only; approval and audit required |

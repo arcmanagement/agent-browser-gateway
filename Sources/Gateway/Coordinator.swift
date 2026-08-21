@@ -281,6 +281,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return await handlePersonalDataCommand(req: req, method: "reading_list_list")
         case "reading_list_search":
             return await handlePersonalDataCommand(req: req, method: "reading_list_search")
+        case "bookmarks_create", "bookmarks_update", "bookmarks_move", "bookmarks_remove",
+             "reading_list_add", "reading_list_update", "reading_list_remove":
+            return await handlePersonalDataCommand(req: req, method: req.method)
         case "frames_tab":
             return await dispatch(req: req, method: "frames")
         case "read_tab":
@@ -592,6 +595,27 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         if let hasBeenRead = params["hasBeenRead"] as? Bool {
             details["hasBeenRead"] = AnyCodable(hasBeenRead)
+        }
+        let mutationKinds: [String: String] = [
+            "bookmarks_create": "create", "bookmarks_update": "update",
+            "bookmarks_move": "move", "bookmarks_remove": "remove",
+            "reading_list_add": "add", "reading_list_update": "update",
+            "reading_list_remove": "remove",
+        ]
+        if let mutation = mutationKinds[method] {
+            details["mutation"] = AnyCodable(mutation)
+            if let title = params["title"] as? String {
+                details["titleBytes"] = AnyCodable(title.utf8.count)
+            }
+            if let url = params["url"] as? String {
+                details["urlBytes"] = AnyCodable(url.utf8.count)
+                if let origin = URL(string: url).flatMap({ $0.host }) {
+                    details["urlHost"] = AnyCodable(origin)
+                }
+            }
+            if let parentId = params["parentId"] as? String {
+                details["parentId"] = AnyCodable(parentId)
+            }
         }
         if let dict = result as? [String: Any] {
             if let count = dict["count"] as? Int {
