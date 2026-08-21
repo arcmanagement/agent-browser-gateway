@@ -76,8 +76,14 @@ can inspect file names and checksum format without access to signing keys or rel
 3. Run the signed macOS release build on a trusted Mac with `SIGN_IDENTITY` and `NOTARY_PROFILE`.
 4. Generate release SBOMs and `SHA256SUMS.txt`.
 5. Verify `codesign`, `spctl`, and `shasum -a 256 -c SHA256SUMS.txt`.
-6. Publish artifacts, checksum files, SBOMs, and release notes together.
-7. Confirm the public download page links to the versioned artifacts and checksum files.
+6. Confirm the artifact hygiene check passed. `make dist` and the DMG build run it
+   automatically; run it directly against any artifact with
+   `scripts/check-artifact-hygiene.sh dist/<artifact>.zip dist/<artifact>.dmg`. It fails when
+   an artifact contains developer-local absolute paths, absolute SwiftPM `.build`
+   paths, or `Bundle.module` accessor strings; prefix-mapped relative
+   `.build/checkouts/...` strings from dependencies are accepted.
+7. Publish artifacts, checksum files, SBOMs, and release notes together.
+8. Confirm the public download page links to the versioned artifacts and checksum files.
 
 ## User verification before installation
 

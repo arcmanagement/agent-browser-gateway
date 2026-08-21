@@ -173,6 +173,9 @@ cask "agent-browser-gateway" do
 end
 EOF
 
+echo "==> artifact hygiene check"
+bash "$ROOT/scripts/check-artifact-hygiene.sh" "$ZIP_PATH" "$EXTENSION_ZIP_PATH"
+
 echo "==> done"
 echo "payload:   $ZIP_PATH"
 echo "extension: $EXTENSION_ZIP_PATH"
