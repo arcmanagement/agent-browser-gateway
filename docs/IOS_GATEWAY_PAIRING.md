@@ -143,6 +143,61 @@ After revocation, the companion can no longer:
 Revocation does not remove ordinary desktop tab shares, all-tabs profile settings, or audit log rows.
 Those remain owned by the desktop Gateway and existing browser consent model.
 
+## Approval forwarding
+
+This section defines what a paired companion sees and can decide under the `approval_forwarding`
+scope, and the MVP boundary for the first implementation
+([#72](https://github.com/arcmanagement/agent-browser-gateway/issues/72)).
+
+### Approval request payload
+
+The desktop Gateway forwards a pending operation approval to paired companions as a summary, never
+as the raw command:
+
+| Field | Content |
+| --- | --- |
+| `approvalId` | The pending approval's identifier; approve/deny must echo it. |
+| `method` | The operation kind shown to the desktop approval window (for example `record_start`, `eval_script`, `personal_data_mutation`). |
+| `intent` | The same human-readable intent string the desktop approval window shows. |
+| `target.origin` | Origin of the target tab. The full URL and title stay on the desktop. |
+| `target.tabRef` | The stable tab ref, so the phone and desktop name the same tab. |
+| `requester` | Which agent surface asked: `cli`, `mcp`, or a plugin name. |
+| `gatewayLabel` | The desktop Gateway's profile label and hostname, so multiple desktops stay distinguishable. |
+| `createdAt` / `expiresAt` | The approval window's own expiry; the phone shows the same countdown. |
+| `scriptPreview` | Only for `eval_script`: the same truncated script block the desktop window shows. |
+
+### Decision rules and misuse protections
+
+- **Impersonation**: approval requests reach only companions whose grant carries
+  `approval_forwarding`, over the pairing-authenticated session; the phone displays `gatewayLabel`
+  from the stored grant, not from the message, so a spoofed payload cannot claim another desktop.
+- **Stale approvals**: a decision carries `approvalId` and is rejected with `approval_expired` when
+  the window already timed out, was decided elsewhere, or the underlying tab share was revoked.
+  First decision wins across the desktop window and every paired phone; later decisions get
+  `approval_already_decided`.
+- **Accidental approval**: the phone UI defaults to Deny, requires a distinct confirm gesture for
+  Allow, and uses the stronger destructive copy for the same operations the desktop window treats
+  as destructive (deletes, recording with microphone).
+- **Mismatched desktop sessions**: a companion paired with several Gateways shows the
+  `gatewayLabel` on every request, and a decision is bound to the session that delivered the
+  request, so an approval can never cross Gateways.
+- Silent approval stays impossible: forwarding never bypasses the desktop approval flow — it is a
+  second surface for the same pending approval, and the desktop audit log records which surface
+  decided (`decidedBy: "desktop_window" | "companion:<deviceIdHash>"`).
+
+### MVP boundary
+
+The first implementation forwards read-only summaries and binary decisions only:
+
+1. Forward pending approvals with the payload above; no tab content, screenshots, or DOM ever
+   leave the desktop.
+2. Accept `allow` / `deny` with `approvalId`; everything else stays desktop-only.
+3. No push transport: the companion receives requests over the active `WS /companion` session when
+   the app is open. Push notification delivery is a later scope with its own review because it
+   moves approval metadata through third-party infrastructure.
+4. Recording approvals are not forwardable in the MVP: minting the capture stream requires the
+   desktop gesture (see the tabCapture constraint in #369), so the phone can only deny them early.
+
 ## Desktop audit log policy
 
 Pairing uses the existing desktop audit JSONL shape:
