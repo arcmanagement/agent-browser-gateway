@@ -69,6 +69,38 @@ For public releases, publish these files next to the release artifacts:
 The local dry run writes the same first two file types under `dist/reproducible-build/`, so reviewers
 can inspect file names and checksum format without access to signing keys or release credentials.
 
+## Tag and binary signing policy
+
+Recorded under [#86](https://github.com/arcmanagement/agent-browser-gateway/issues/86); this
+ratifies the practice the release pipeline already uses.
+
+**Signing targets**
+
+| Target | Mechanism | Verifier |
+|---|---|---|
+| Release tags (`vX.Y.Z`) | Annotated tags signed with the release operator's SSH signing key (`git tag -s`) | GitHub shows the Verified badge; locally, `git tag -v vX.Y.Z` with an `gpg.ssh.allowedSignersFile` containing the operator key |
+| macOS app, CLI, DMG | Developer ID signing plus notarization on a trusted Mac | `codesign --verify --strict`, `spctl --assess`, `xcrun stapler validate` |
+| Mac App Store package | Apple re-signs after certification | Store install path |
+| Chrome extension | Google signs after Web Store upload | Web Store install path |
+| Windows binaries | Deferred until a signing provider is selected (recorded in #291) | n/a |
+| Checksums and SBOMs | Not independently signed; integrity anchors are the signed tag, the GitHub Release association, and HTTPS delivery | `shasum -a 256 -c SHA256SUMS.txt` against the release page |
+
+GPG-signed tags and detached GPG signatures over checksum files are intentionally not adopted:
+the SSH signing key already used for commits keeps one key lifecycle, GitHub verifies it
+server-side, and a separate GPG identity would add key management without changing what a
+downloader can verify today. Revisit detached checksum signatures with the v1.0 reproducibility
+work (#31) if third-party mirroring of artifacts becomes a supported path.
+
+**Key management**
+
+- The tag/commit SSH signing key belongs to the release operator account and never leaves that
+  operator's machine.
+- Developer ID application/installer certificates and their private keys live only in the trusted
+  maintainer Mac's keychain; lifecycle, expiry, and cleanup are documented in
+  `docs/app-store-submission.md`.
+- No long-lived private signing keys are stored in GitHub Actions secrets; CI builds unsigned
+  artifacts, and signing happens on the maintainer Mac.
+
 ## Maintainer release checklist
 
 1. Build from the signed tag, not from a local branch.
