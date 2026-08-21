@@ -5,12 +5,12 @@ sidebar:
   order: 3
 ---
 
-ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けに公開されます。
-public download pageでは、現在のartifactを `/downloads/` 配下で提供します。
+ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser extension向けにGitHub Releasesで
+公開されます。
 
 現在のpublic distribution state:
 
-- macOS app: download pageとGitHub Releasesでsigned and notarized `v0.4.5` DMGを公開済み
+- macOS app: GitHub Releasesでsigned and notarized `v0.4.5` DMGを公開済み
 - Chrome extension: Chrome Web Storeで`v0.4.4`を公開済み。更新日は2026年8月21日
 - Windows package: signed releaseとWinGet indexing待ち
 
@@ -37,8 +37,7 @@ cask はすでにインストール済みです。ABG の状態は `brew info --
 `abg --help` で確認できます。無関係な tap の trust warning が表示されることもありますが、その警告は
 ABG cask の install 結果とは別です。
 
-Homebrew releaseの準備完了条件は、versioned macOS ZIPが
-`https://agent-browser-gateway.com/downloads/` に公開され、このrepositoryの
+Homebrew releaseの準備完了条件は、versioned macOS ZIPが対応するGitHub Releaseへ公開され、このrepositoryの
 `Casks/agent-browser-gateway.rb` がそのversionとSHA-256を指していることです。
 
 ## Chrome Web Store
@@ -61,7 +60,7 @@ winget install --id ArcManagement.AgentBrowserGateway --source winget
 現在の `v0.4.5` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
 返す場合、それはsigned Windows release workflowとWinGet submissionが完了するまでの想定動作です。
 
-WinGet releaseの準備完了条件は、public Windows setup ZIPが `/downloads/` に公開され、そこから生成された
+WinGet releaseの準備完了条件は、public Windows setup ZIPがGitHub Releasesへ公開され、そこから生成された
 `microsoft/winget-pkgs` PRがmergeされ、indexされることです。
 
 ## Signed local release build
@@ -93,4 +92,4 @@ shasum -a 256 \
 ```
 
 CIではunsigned artifactのbuildとtestを実行できます。signed release assetは信頼済みmaintainer Macで作成し、
-そのあとpublic download siteへ公開します。
+公開前のdraft GitHub Releaseへuploadします。

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a signed/notarized DMG for temporary GitHub Pages distribution.
+# Build a signed/notarized DMG for GitHub Release distribution.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,7 +22,6 @@ INSTALLER_RESOURCES="$DMG_ROOT/$INSTALLER_APP/Contents/Resources"
 DMG_NAME="agent-browser-gateway-$VERSION-macos-arm64.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 VOLUME_NAME="Agent Browser Gateway $VERSION"
-PAGES_OUTPUT_DIR="${PAGES_OUTPUT_DIR:-}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
@@ -182,13 +181,6 @@ else
 fi
 
 SHA256="$(/usr/bin/shasum -a 256 "$DMG_PATH" | /usr/bin/awk '{print $1}')"
-
-if [ -n "$PAGES_OUTPUT_DIR" ]; then
-    echo "==> copy DMG to Pages output"
-    mkdir -p "$PAGES_OUTPUT_DIR"
-    cp "$DMG_PATH" "$PAGES_OUTPUT_DIR/$DMG_NAME"
-    printf "%s  %s\n" "$SHA256" "$DMG_NAME" > "$PAGES_OUTPUT_DIR/$DMG_NAME.sha256.txt"
-fi
 
 echo "==> done"
 echo "dmg:    $DMG_PATH"

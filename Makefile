@@ -1,9 +1,7 @@
 # Convenience targets for ABG development.
 # Run `make help` for a list.
 
-.PHONY: help install gateway gateway-dev extension all clean test lint format dist reproducible-build appstore-pkg docker-repro pages-dmg windows-dist pages-windows release verify
-
-PAGES_OUTPUT_DIR ?= site/downloads
+.PHONY: help install gateway gateway-dev extension all clean test lint format dist release-dmg reproducible-build appstore-pkg docker-repro pages-dmg windows-dist pages-windows release verify
 
 help:
 	@printf "ABG dev targets:\n\n"
@@ -17,12 +15,11 @@ help:
 	@printf "  make test         run all available tests (swift + extension typecheck)\n"
 	@printf "  make verify       lint + typecheck + build (CI-style)\n"
 	@printf "  make dist         build macOS arm64 release zip and cask (requires VERSION=x.y.z)\n"
+	@printf "  make release-dmg  build signed/notarized DMG for GitHub Release upload\n"
 	@printf "  make reproducible-build build unsigned pinned artifacts, SBOM, and checksums\n"
 	@printf "  make appstore-pkg build sandboxed Mac App Store package candidate (requires VERSION=x.y.z)\n"
 	@printf "  make docker-repro build reproducible Linux abg CLI artifacts through Docker\n"
-	@printf "  make pages-dmg    build signed/notarized DMG and copy it to site/downloads\n"
 	@printf "  make windows-dist build Windows x64 zip (run from Windows with dotnet)\n"
-	@printf "  make pages-windows build Windows x64 zip and copy it to site/downloads\n"
 	@printf "  make clean        remove .build, extension/dist, Agent Browser Gateway.app\n"
 	@printf "  make release      tagged release build (requires VERSION=x.y.z)\n"
 
@@ -81,8 +78,10 @@ endif
 docker-repro:
 	bash scripts/repro-docker-build.sh
 
-pages-dmg: dist
-	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" PAGES_OUTPUT_DIR="$(PAGES_OUTPUT_DIR)" bash scripts/dist-pages-dmg.sh
+release-dmg: dist
+	VERSION="$(VERSION)" SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" bash scripts/dist-pages-dmg.sh
+
+pages-dmg: release-dmg
 
 windows-dist:
 ifndef VERSION
@@ -90,12 +89,8 @@ ifndef VERSION
 endif
 	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)"
 
-pages-windows:
-ifndef VERSION
-	$(error VERSION is required, e.g. make pages-windows VERSION=0.3.10)
-endif
-	powershell -ExecutionPolicy Bypass -File scripts/dist-windows-x64.ps1 -Version "$(VERSION)" -PagesOutputDir "$(PAGES_OUTPUT_DIR)"
+pages-windows: windows-dist
 
-release: dist
+release: release-dmg
 	@echo "Release artifacts for v$(VERSION) are in dist/"
 	@echo "Tag: git tag -s v$(VERSION) -m 'v$(VERSION)' && git push origin v$(VERSION)"

@@ -4,7 +4,7 @@ param(
     [string]$OutputDir = "dist\winget",
     [string]$PackageIdentifier = "ArcManagement.AgentBrowserGateway",
     [string]$Repository = "arcmanagement/agent-browser-gateway",
-    [string]$PublicDownloadBaseUrl = "https://agent-browser-gateway.com/downloads",
+    [string]$PublicDownloadBaseUrl = "https://github.com/arcmanagement/agent-browser-gateway/releases/download",
     [string]$InstallerUrl = "",
     [string]$InstallerSha256 = "",
     [string]$ManifestVersion = "1.12.0"
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 
 $Version = $Version.TrimStart("v")
 if ([string]::IsNullOrWhiteSpace($InstallerUrl)) {
-    $InstallerUrl = "$PublicDownloadBaseUrl/agent-browser-gateway-$Version-windows-x64-setup.zip"
+    $InstallerUrl = "$PublicDownloadBaseUrl/v$Version/agent-browser-gateway-$Version-windows-x64-setup.zip"
 }
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")

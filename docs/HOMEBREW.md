@@ -15,9 +15,8 @@ brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
-This works after the versioned macOS ZIP exists under
-`https://agent-browser-gateway.com/downloads/` and this repository's `Casks/agent-browser-gateway.rb`
-points at that version and SHA-256.
+This works after the versioned macOS ZIP exists in the matching GitHub Release and this repository's
+`Casks/agent-browser-gateway.rb` points at that version and SHA-256.
 
 The temporary public tap repository `arcmanagement/homebrew-agent-browser-gateway` is archived. Use
 the explicit GitHub URL above so Homebrew taps this source repository instead of applying its
@@ -36,7 +35,7 @@ Developer ID signed and notarized build:
 
 ```bash
 export VERSION=0.4.5
-make dist VERSION="$VERSION" \
+make release-dmg VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
 ```
@@ -44,12 +43,13 @@ make dist VERSION="$VERSION" \
 Keep Developer ID signing local. Do not put the Developer ID private key, certificate
 password, App Store Connect credentials, or `notarytool` credentials into GitHub Actions
 secrets. CI may build and test unsigned artifacts, but signed release assets should be
-created on a trusted maintainer Mac and published to the public download site afterward.
+created on a trusted maintainer Mac and uploaded to the draft GitHub Release before publication.
 
 Outputs:
 
 ```text
 dist/agent-browser-gateway-0.4.5-macos-arm64.zip
+dist/agent-browser-gateway-0.4.5-macos-arm64.dmg
 dist/agent-browser-gateway-extension-0.4.5.zip
 dist/agent-browser-gateway.rb
 ```
@@ -95,15 +95,29 @@ failures are visible before a tag is created.
      "dist/agent-browser-gateway-extension-$VERSION.zip"
    ```
 
-3. Create and push the release tag.
-4. Publish both zip files and their SHA-256 files under
-   `https://agent-browser-gateway.com/downloads/`. Keep the release tag for source traceability.
+3. Create and push the release tag. Wait for the tag workflow to create the draft GitHub Release.
+4. Replace the CI-built unsigned macOS ZIP with the signed local ZIP, then upload the signed DMG,
+   extension ZIP, and checksum sidecars to the same draft GitHub Release.
 
    ```bash
-   cp "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" site/public/downloads/
-   cp "dist/agent-browser-gateway-extension-$VERSION.zip" site/public/downloads/
-   shasum -a 256 site/public/downloads/agent-browser-gateway-$VERSION-*.zip \
-     > site/public/downloads/SHA256SUMS.txt
+   (
+     cd dist
+     shasum -a 256 "agent-browser-gateway-$VERSION-macos-arm64.zip" \
+       > "agent-browser-gateway-$VERSION-macos-arm64.zip.sha256.txt"
+     shasum -a 256 "agent-browser-gateway-$VERSION-macos-arm64.dmg" \
+       > "agent-browser-gateway-$VERSION-macos-arm64.dmg.sha256.txt"
+     shasum -a 256 "agent-browser-gateway-extension-$VERSION.zip" \
+       > "agent-browser-gateway-extension-$VERSION.zip.sha256.txt"
+   )
+
+   gh release upload "v$VERSION" \
+     "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
+     "dist/agent-browser-gateway-$VERSION-macos-arm64.zip.sha256.txt" \
+     "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
+     "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg.sha256.txt" \
+     "dist/agent-browser-gateway-extension-$VERSION.zip" \
+     "dist/agent-browser-gateway-extension-$VERSION.zip.sha256.txt" \
+     --clobber
    ```
 
 5. Update `Casks/agent-browser-gateway.rb` from the public release asset:
@@ -131,8 +145,8 @@ failures are visible before a tag is created.
    brew audit --cask --strict --online --tap="$tap_name" agent-browser-gateway
    ```
 
-7. Commit and push the site downloads and `Casks/agent-browser-gateway.rb` in this source
-   repository before announcing the release as Homebrew-ready.
+7. Commit and push `Casks/agent-browser-gateway.rb` before announcing the release as Homebrew-ready.
+   Do not commit release binaries to the source repository.
 
 Generate the same-repository tap cask directly into `Casks/` after the public download asset exists:
 

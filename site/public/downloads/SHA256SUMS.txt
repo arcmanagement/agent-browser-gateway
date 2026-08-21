@@ -1,3 +1,0 @@
-31114313bd1438e0c23ba56b5857a50ce467095bdc6350c73b5fa1034180803b  agent-browser-gateway-0.4.5-macos-arm64.dmg
-2a576dcda46c8eafebe4636f3b75dc352e3ac56aa1fbf25a41376465afd9857e  agent-browser-gateway-0.4.5-macos-arm64.zip
-10cb6fbeee6f3dcf39978ad794447b4fb35f759635d1777264aa01d4c2504bed  agent-browser-gateway-extension-0.4.5.zip
