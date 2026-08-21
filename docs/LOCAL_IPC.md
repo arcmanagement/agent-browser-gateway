@@ -85,3 +85,20 @@ The platform shell owns endpoint creation and cleanup. The command protocol, req
 shape, audit behavior, and CLI output remain platform-neutral. New commands must be added to the JSON
 contract and runtime handling without requiring callers to know which OS-specific IPC transport is in
 use.
+
+## Extension channel transport decision
+
+The extension ↔ Gateway channel stays on the loopback WebSocket (`/ws` with the extension-scheme
+Origin allowlist) and does not migrate to Chrome Native Messaging, in whole or as a replacement
+([#367](https://github.com/arcmanagement/agent-browser-gateway/issues/367)).
+
+Native Messaging was rejected because it is structurally same-machine only and cannot carry the
+remote-pairing direction ([#71](https://github.com/arcmanagement/agent-browser-gateway/issues/71)),
+the sandboxed Mac App Store build cannot write the host manifest outside its container, Chrome owns
+the host process lifecycle while the Gateway is a persistent resident process, and manifest
+registration multiplies per-browser and per-OS installer complexity.
+
+Revisit only if fixed-port conflicts on 8765 or non-MAS `network.server` concerns become concrete
+problems. Local hardening of the shared listener is tracked through the token-authenticated `/cli`
+route ([#366](https://github.com/arcmanagement/agent-browser-gateway/issues/366)) and the `/stream`
+token gate ([#365](https://github.com/arcmanagement/agent-browser-gateway/issues/365)).
