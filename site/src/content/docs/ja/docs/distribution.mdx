@@ -10,8 +10,8 @@ public download pageでは、現在のartifactを `/downloads/` 配下で提供�
 
 現在のpublic distribution state:
 
-- macOS app: download pageとGitHub Releasesでsigned and notarized `v0.4.4` DMGを公開済み
-- Chrome extension: Chrome Web Storeで`v0.4.3`を公開済み。更新日は2026年7月11日
+- macOS app: download pageとGitHub Releasesでsigned and notarized `v0.4.5` DMGを公開済み
+- Chrome extension: Chrome Web Storeで`v0.4.4`を公開済み。更新日は2026年8月21日
 - Windows package: signed releaseとWinGet indexing待ち
 
 Chrome Web Store reviewとsigned app publicationは個別に完了するため、appとextensionのversionが
@@ -48,7 +48,7 @@ extensionは
 からインストールします。
 
 release verificationでは、public listingを開けることを確認し、表示versionと更新日をlatest macOS release
-とは別に記録します。現在のlistingはversion `0.4.3`、更新日は2026年7月11日です。
+とは別に記録します。現在のlistingはversion `0.4.4`、更新日は2026年8月21日です。
 
 ## WinGet
 
@@ -58,7 +58,7 @@ Windows package identifier:
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-現在の `v0.4.4` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
+現在の `v0.4.5` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
 返す場合、それはsigned Windows release workflowとWinGet submissionが完了するまでの想定動作です。
 
 WinGet releaseの準備完了条件は、public Windows setup ZIPが `/downloads/` に公開され、そこから生成された
@@ -69,7 +69,7 @@ WinGet releaseの準備完了条件は、public Windows setup ZIPが `/downloads
 maintainer release buildは信頼済みMac上で作成します。
 
 ```bash
-export VERSION=0.4.4
+export VERSION=0.4.5
 make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"

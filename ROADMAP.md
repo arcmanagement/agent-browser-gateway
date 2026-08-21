@@ -2,9 +2,13 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-08-21.
 
-Current repo version: **v0.4.4**.
+Current repo version: **v0.4.5**.
 
 ## Shipped
+
+### v0.4.5 — Gateway endpoint reset patch (2026-08-21)
+- Changed the extension's Apply action so an empty or whitespace-only Gateway WebSocket endpoint restores `ws://127.0.0.1:8765/ws` and reconnects.
+- Kept validation errors for non-empty invalid endpoints without adding extension permissions or changing the per-tab consent boundary.
 
 ### v0.4.4 — Release trust, Gateway routing, and operator controls (2026-08-21)
 - Added a reproducible release entry point, dependency inventory checks, SBOM guidance, and explicit checksum, signing, and provenance responsibilities.

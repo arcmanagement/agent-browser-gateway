@@ -28,14 +28,14 @@ the explicit GitHub URL above so Homebrew taps this source repository instead of
 Unsigned local smoke build:
 
 ```bash
-export VERSION=0.4.4
+export VERSION=0.4.5
 make dist VERSION="$VERSION"
 ```
 
 Developer ID signed and notarized build:
 
 ```bash
-export VERSION=0.4.4
+export VERSION=0.4.5
 make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
@@ -49,8 +49,8 @@ created on a trusted maintainer Mac and published to the public download site af
 Outputs:
 
 ```text
-dist/agent-browser-gateway-0.4.4-macos-arm64.zip
-dist/agent-browser-gateway-extension-0.4.4.zip
+dist/agent-browser-gateway-0.4.5-macos-arm64.zip
+dist/agent-browser-gateway-extension-0.4.5.zip
 dist/agent-browser-gateway.rb
 ```
 
@@ -137,7 +137,7 @@ failures are visible before a tag is created.
 Generate the same-repository tap cask directly into `Casks/` after the public download asset exists:
 
 ```bash
-export VERSION=0.4.4
+export VERSION=0.4.5
 bash scripts/update-homebrew-cask.sh "$VERSION"
 git add Casks/agent-browser-gateway.rb
 git commit -m "Update Homebrew cask for v$VERSION"

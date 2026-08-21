@@ -76,7 +76,7 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
-   The public listing currently serves extension `v0.4.3`. The Chrome extension and macOS app can
+   The public listing currently serves extension `v0.4.4`. The Chrome extension and macOS app can
    advance independently while store review and signed app publication complete.
 
 2. Install the local Gateway.
@@ -104,7 +104,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.4.4` yet. If this command reports no matching package, that is the
+   WinGet is not live for `v0.4.5` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -115,7 +115,7 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows package-manager install and release ZIPs are pending for `v0.4.4` while the signed Windows
+Windows package-manager install and release ZIPs are pending for `v0.4.5` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.
 
@@ -978,7 +978,7 @@ In short:
 
 ## Status
 
-🚧 **v0.4.4 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.4.5 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
