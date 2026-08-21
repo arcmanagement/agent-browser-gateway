@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.4.zip
+dist/agent-browser-gateway-extension-0.4.5.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,16 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.5 review notes
+
+This Chrome Web Store package keeps the existing permission boundary and changes the developer
+Gateway endpoint setting:
+
+- Applying an empty or whitespace-only endpoint restores `ws://127.0.0.1:8765/ws` and reconnects.
+- Applying a non-empty invalid endpoint continues to show a validation error.
+
+No extension permissions or default host permissions are added.
 
 ## 0.4.4 review notes
 

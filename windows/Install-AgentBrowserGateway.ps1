@@ -135,7 +135,7 @@ function Register-UninstallEntry {
     $UninstallCommand = "$QuotedPowerShell -NoProfile -ExecutionPolicy Bypass -File $QuotedScript -InstallDir $QuotedInstallDir"
     $QuietUninstallCommand = "$UninstallCommand -Silent"
     $VersionPath = Join-Path $InstallDir "VERSION"
-    $DisplayVersion = "0.4.4"
+    $DisplayVersion = "0.4.5"
     if (Test-Path $VersionPath) {
         $DisplayVersion = (Get-Content -Path $VersionPath -Raw).Trim()
     }

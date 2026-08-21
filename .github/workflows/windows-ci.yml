@@ -33,7 +33,7 @@ on:
       version:
         description: "Windows artifact version"
         required: false
-        default: "0.4.4"
+        default: "0.4.5"
       upload_release:
         description: "Upload signed Windows assets to the GitHub Release"
         required: false
@@ -73,7 +73,7 @@ jobs:
             $version = "${{ github.event.release.tag_name }}".TrimStart("v")
             $releaseTag = "${{ github.event.release.tag_name }}"
           } else {
-            $version = "${{ inputs.version || '0.4.4' }}".TrimStart("v")
+            $version = "${{ inputs.version || '0.4.5' }}".TrimStart("v")
             $releaseTag = "${{ inputs.release_tag || '' }}"
             if ([string]::IsNullOrWhiteSpace($releaseTag)) {
               $releaseTag = "v$version"
