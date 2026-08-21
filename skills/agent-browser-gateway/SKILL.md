@@ -135,7 +135,7 @@ abg wait <tab|ref> --load networkidle --selector ".ready"  # network idle 後に
 abg wait <tab|ref> --fn "window.ready === true"  # readiness predicate only, not general eval
 abg eval <tab|ref> --script "return window.__STATE__" --timeout 75000 --approve  # AutoMode OFF では --approve + popup 承認が必要
 abg eval <tab|ref> --script-file task.js --timeout 120000 --approve
-abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream
+abg stream enable <tab|ref>                      # local ws://127.0.0.1:8765/stream。購読には x-abg-token header が必要 (`abg stream status` の tokenFile 参照)
 abg stream status
 abg stream disable
 abg validate editable <tab|ref> --selector "<css>" --rules html-attrs,shortcodes

@@ -335,7 +335,7 @@ abg eval <tab|ref> --script "document.title" --approve  # --approve required unl
 abg eval <tab|ref> --script-file task.js --timeout 120000 --approve
 
 # Runtime stream
-abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream
+abg stream enable <tab|ref>                       # local ws://127.0.0.1:8765/stream (send the x-abg-token header from cli-endpoint.json; see `abg stream status` tokenFile)
 abg stream status
 abg stream disable
 
@@ -816,7 +816,7 @@ each mode.
 | Downloads | `download`, `download --wait` | Download lifecycle events | Metadata/path only; file contents are not read |
 | Shared-tab video recording | `record start/stop` webm artifact | Browser video/screencast APIs | Explicit start approval, visible recording state, local output, and separate microphone disclosure |
 | JavaScript dialogs | `dialog`, `dialog --accept/--dismiss/--prompt-value` | Dialog event/handler APIs | Inspect is read-only; handling uses operation approval and audit |
-| Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only and scoped to one shared tab |
+| Runtime event stream | `stream enable/status/disable` over local `/stream` | Page events / runtime streams | Loopback-only, token-authenticated, and scoped to one shared tab |
 | General JavaScript eval | `eval` escape hatch, disabled by default | Playwright `evaluate`, agent-browser eval-like tools | Per-call approval unless Trusted automation / AutoMode is enabled, exact script audit, result size cap |
 | Global browser visibility | Optional all-tabs profile mode | Common in automation frameworks | Off by default, local opt-in, removable optional permission, audit log |
 
