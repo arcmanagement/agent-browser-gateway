@@ -18,6 +18,7 @@ final class ExtensionProtocolTests: XCTestCase {
             "command",
             "expectedDomains",
             "candidates",
+            "matchCount",
         ])
         XCTAssertEqual(CLIJSONContract.stderrErrorKeys, [
             "error",
@@ -30,6 +31,7 @@ final class ExtensionProtocolTests: XCTestCase {
             "command",
             "expectedDomains",
             "candidates",
+            "matchCount",
         ])
     }
 
@@ -79,6 +81,26 @@ final class ExtensionProtocolTests: XCTestCase {
         XCTAssertEqual(candidates.first?["title"] as? String, "Slack")
         XCTAssertEqual(candidates.first?["url"] as? String, "https://example.slack.com/")
         XCTAssertEqual(candidates.first?["accessMode"] as? String, "manual")
+    }
+
+    func testAmbiguousSelectorErrorRoundTripsMatchCount() throws {
+        let wire = Data("""
+        {"type":"response","id":"cmd-1","error":{"code":"ambiguous_selector","message":"selector matched 3 elements; nothing was clicked.","matchCount":3}}
+        """.utf8)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: wire) as? [String: Any])
+        let errorObject = try XCTUnwrap(object["error"] as? [String: Any])
+        let payload = try JSONDecoder().decode(
+            ErrorPayload.self,
+            from: JSONSerialization.data(withJSONObject: errorObject)
+        )
+        XCTAssertEqual(payload.code, "ambiguous_selector")
+        XCTAssertEqual(payload.matchCount, 3)
+
+        let encoded = try JSONEncoder().encode(CLIResponse(id: "cmd-1", error: payload))
+        let reencoded = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let reencodedError = try XCTUnwrap(reencoded["error"] as? [String: Any])
+        XCTAssertEqual(reencodedError["matchCount"] as? Int, 3)
+        XCTAssertTrue(CLIJSONContract.errorPayloadKeys.contains("matchCount"))
     }
 
     func testPermittedTabExpirationIsOptionalAndTimeBounded() {

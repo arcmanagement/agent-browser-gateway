@@ -2,6 +2,7 @@ import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverla
 import {
   type AuditDiffPayload,
   type AuditDiffValue,
+  clickSelectorFrameFn,
   createAuditDiff,
   describeFileAttachFailure,
   detectBrowserKind,
@@ -192,11 +193,13 @@ type RuntimeResponse = BackgroundToPopup | BackgroundToApproval;
 
 class GatewayError extends Error {
   readonly code: string;
+  readonly matchCount?: number;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, matchCount?: number) {
     super(message);
     this.name = "GatewayError";
     this.code = code;
+    this.matchCount = matchCount;
   }
 }
 
@@ -1362,7 +1365,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     }
   } catch (e) {
     if (e instanceof GatewayError) {
-      replyError(cmd.id, e.code, e.message);
+      replyError(cmd.id, e.code, e.message, e.matchCount);
     } else {
       replyError(cmd.id, "command_failed", e instanceof Error ? e.message : String(e));
     }
@@ -2462,8 +2465,12 @@ function reply(id: string, result: unknown): void {
   sendWS({ type: "response", id, result });
 }
 
-function replyError(id: string, code: string, message: string): void {
-  sendWS({ type: "response", id, error: { code, message } });
+function replyError(id: string, code: string, message: string, matchCount?: number): void {
+  sendWS({
+    type: "response",
+    id,
+    error: matchCount === undefined ? { code, message } : { code, message, matchCount },
+  });
 }
 
 type DomReadResult = {
@@ -2506,6 +2513,7 @@ type FrameScriptError = {
   __abgFrameError: true;
   code: string;
   message: string;
+  matchCount?: number;
 };
 
 type SnapshotRefTarget = { selector: string; frame?: string };
@@ -2693,7 +2701,7 @@ async function evaluatePageExpression<T>(tabId: number, expression: string): Pro
     (value as FrameScriptError).__abgFrameError
   ) {
     const err = value as FrameScriptError;
-    throw new GatewayError(err.code, err.message);
+    throw new GatewayError(err.code, err.message, err.matchCount);
   }
   return value as T;
 }
@@ -2735,7 +2743,7 @@ async function evaluatePageExpressionWithScripting<T>(
     (value as FrameScriptError).__abgFrameError
   ) {
     const err = value as FrameScriptError;
-    throw new GatewayError(err.code, err.message);
+    throw new GatewayError(err.code, err.message, err.matchCount);
   }
   return value as T;
 }
@@ -2755,11 +2763,15 @@ async function runFrameScript<T, Args>(
       const __abgApi = __abgCreateFrameApi();
       return __abgPageFn(__abgApi.resolve(__abgFrameTarget), __abgArgs);
     } catch (error) {
-      return {
+      const frameError = {
         __abgFrameError: true,
         code: error && error.code ? error.code : "frame_script_failed",
         message: error && error.message ? error.message : String(error),
       };
+      if (error && typeof error.matchCount === "number") {
+        frameError.matchCount = error.matchCount;
+      }
+      return frameError;
     }
   })()`;
   return evaluatePageExpression<T>(tabId, expression);
@@ -4878,12 +4890,7 @@ async function clickSelector(
   selector: string,
   frame?: string,
 ): Promise<{ found: boolean; tag?: string }> {
-  return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
-    if (!el) return { found: false } as const;
-    el.click();
-    return { found: true, tag: el.tagName, frame: ctx.frame } as const;
-  });
+  return runFrameScript(tabId, frame, { selector }, clickSelectorFrameFn);
 }
 
 async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true }> {

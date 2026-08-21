@@ -87,7 +87,7 @@ abg read --match-url "*kintone*" --format markdown
 abg click --match-title "アプリ管理" --selector "button.save"
 
 # 操作系
-abg click <tab|ref> --selector "<css>"           # CSS selector でクリック
+abg click <tab|ref> --selector "<css>"           # CSS selector でクリック。複数一致は ambiguous_selector で止まる。繰り返し要素は `abg find first|last|nth` か snapshot ref
 abg click <tab|ref> --id <n>                     # describe の id でクリック
 abg click <tab|ref> --x <px> --y <px>            # 座標でクリック (canvas にも有効)
 abg dblclick <tab|ref> --selector "<css>"        # CSS selector でダブルクリック

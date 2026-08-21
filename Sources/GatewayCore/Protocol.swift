@@ -204,6 +204,7 @@ public enum CLIJSONContract {
         "command",
         "expectedDomains",
         "candidates",
+        "matchCount",
     ]
     public static let stderrErrorKeys = [
         "error",
@@ -216,6 +217,7 @@ public enum CLIJSONContract {
         "command",
         "expectedDomains",
         "candidates",
+        "matchCount",
     ]
 }
 
@@ -270,6 +272,7 @@ public struct ErrorPayload: Codable, Sendable {
     public let command: String?
     public let expectedDomains: [String]?
     public let candidates: [TabCandidate]?
+    public let matchCount: Int?
 
     public init(
         code: String,
@@ -281,7 +284,8 @@ public struct ErrorPayload: Codable, Sendable {
         plugin: String? = nil,
         command: String? = nil,
         expectedDomains: [String]? = nil,
-        candidates: [TabCandidate]? = nil
+        candidates: [TabCandidate]? = nil,
+        matchCount: Int? = nil
     ) {
         self.code = code
         self.message = message
@@ -293,6 +297,7 @@ public struct ErrorPayload: Codable, Sendable {
         self.command = command
         self.expectedDomains = expectedDomains
         self.candidates = candidates
+        self.matchCount = matchCount
     }
 }
 

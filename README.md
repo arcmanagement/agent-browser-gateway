@@ -282,7 +282,7 @@ abg click --match-title "アプリ管理" --selector "button.save"
 abg raise --match-title "Review"
 
 # Operation
-abg click <tab|ref> --selector "<css>"            # CSS selector click
+abg click <tab|ref> --selector "<css>"            # CSS selector click (a selector matching multiple elements returns ambiguous_selector without clicking; use `abg find first|last|nth` or a snapshot ref for repeated controls)
 abg click <tab|ref> --id <n>                      # click an element from `abg describe`
 abg click <tab|ref> --x <px> --y <px>             # Coordinate click (works on canvas apps)
 abg dblclick <tab|ref> --selector "<css>"         # Selector double-click via CDP

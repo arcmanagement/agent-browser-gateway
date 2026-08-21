@@ -41,7 +41,12 @@ export type ExtToGateway =
       chunkCount: number;
     }
   | { type: "record_failed"; recordingId: string; error: string }
-  | { type: "response"; id: string; result?: unknown; error?: { code: string; message: string } };
+  | {
+      type: "response";
+      id: string;
+      result?: unknown;
+      error?: { code: string; message: string; matchCount?: number };
+    };
 
 export type GatewayCommand = {
   id: string;

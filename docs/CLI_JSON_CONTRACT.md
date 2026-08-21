@@ -104,7 +104,10 @@ timeout after dispatch. `file_access_required` means Chrome's explicit **Allow a
 grant is off; Chrome applies that local-file grant to debugger attachment on HTTP and HTTPS pages too.
 Other debugger-side attachment failures use `file_attach_failed` with selector, frame, and path
 recovery guidance. ABG v0.4.3 and later use a stable CDP backend node for upload, avoiding a separate
-class of failures caused by transient frontend node handles.
+class of failures caused by transient frontend node handles. `ambiguous_selector` means a
+selector-based click matched more than one element; nothing is clicked, the error carries
+`matchCount`, and the caller narrows the selector or picks one match with `abg find first|last|nth`
+or a snapshot ref.
 
 The stable optional error fields are:
 
@@ -116,6 +119,7 @@ The stable optional error fields are:
 - `command`
 - `expectedDomains`
 - `candidates`
+- `matchCount`
 
 ## Versioning Policy
 
