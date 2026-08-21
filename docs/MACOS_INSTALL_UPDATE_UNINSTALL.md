@@ -74,6 +74,23 @@ The bundled Store CLI is sandboxed. Commands that read arbitrary host files
 `sandbox_unsupported`; use `--stdin` variants or the Homebrew/DMG CLI when you need
 them.
 
+## Update Delivery Decision
+
+Recorded under [#38](https://github.com/arcmanagement/agent-browser-gateway/issues/38). The
+candidate mechanisms and the choice:
+
+| Mechanism | Verdict | Reason |
+|---|---|---|
+| GitHub Releases + installer re-run | **Adopted for the DMG path** | The signed DMG installer already performs a clean replace; the release page and Homebrew cask update on every tag |
+| Homebrew (`brew upgrade --cask agent-browser-gateway`) | **Adopted for CLI-first users** | The release workflow updates the cask on every tag, so updates arrive with normal brew usage |
+| Mac App Store | **Adopted for Store installs** | The Store build updates through macOS App Store automatic updates with no ABG-side machinery |
+| Sparkle in-app updater | **Not adopted** | Every supported install path above already has an update channel; embedding Sparkle adds an update framework, an appcast to host and sign, and sandbox complications for the Store build without reaching users the current channels miss |
+| No update path | Rejected | Leaves DMG users on stale, unpatched builds |
+
+Users check the installed version with `abg status` and compare against the
+[latest release](https://github.com/arcmanagement/agent-browser-gateway/releases/latest).
+Revisit an in-app update check only if DMG-installed users demonstrably lag behind releases.
+
 ## Update Behavior
 
 To update ABG, download the newer DMG and run **Install Agent Browser Gateway.app**
