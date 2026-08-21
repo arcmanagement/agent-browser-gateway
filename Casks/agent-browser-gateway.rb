@@ -2,7 +2,7 @@ cask "agent-browser-gateway" do
   version "0.4.5"
   sha256 "2a576dcda46c8eafebe4636f3b75dc352e3ac56aa1fbf25a41376465afd9857e"
 
-  url "https://agent-browser-gateway.com/downloads/agent-browser-gateway-#{version}-macos-arm64.zip"
+  url "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v#{version}/agent-browser-gateway-#{version}-macos-arm64.zip"
   name "Agent Browser Gateway"
   desc "Share authorized Chrome tabs with AI coding agents"
   homepage "https://agent-browser-gateway.com/"

@@ -64,8 +64,7 @@ For public releases, publish these files next to the release artifacts:
 - `agent-browser-gateway-X.Y.Z.spdx.json`
 - `agent-browser-gateway-X.Y.Z.cyclonedx.json`
 - platform-specific checksum sidecars such as
-  `agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt` when a direct download page serves that
-  asset separately
+  `agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt` for direct GitHub Release downloads
 
 The local dry run writes the same first two file types under `dist/reproducible-build/`, so reviewers
 can inspect file names and checksum format without access to signing keys or release credentials.
@@ -85,8 +84,8 @@ can inspect file names and checksum format without access to signing keys or rel
 Download the artifact and checksum file from the same release:
 
 ```bash
-curl -LO https://agent-browser-gateway.com/downloads/agent-browser-gateway-X.Y.Z-macos-arm64.dmg
-curl -LO https://agent-browser-gateway.com/downloads/agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
+curl -LO https://github.com/arcmanagement/agent-browser-gateway/releases/download/vX.Y.Z/agent-browser-gateway-X.Y.Z-macos-arm64.dmg
+curl -LO https://github.com/arcmanagement/agent-browser-gateway/releases/download/vX.Y.Z/agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
 shasum -a 256 -c agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
 ```
 

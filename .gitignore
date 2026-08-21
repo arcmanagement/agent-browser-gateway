@@ -81,3 +81,6 @@ assets/
 !packaging/msix/Assets/**
 !site/assets/
 !site/assets/**
+
+# Release binaries are published through GitHub Releases, not Git.
+site/public/downloads/
