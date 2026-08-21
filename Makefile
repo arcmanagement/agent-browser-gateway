@@ -69,6 +69,9 @@ endif
 reproducible-build:
 	bash scripts/reproducible-build.sh
 
+appstore-preflight:
+	VERSION="$(VERSION)" BUILD_NUMBER="$(BUILD_NUMBER)" APPSTORE_PROVISIONING_PROFILE="$(APPSTORE_PROVISIONING_PROFILE)" APPSTORE_APP_SIGN_IDENTITY="$(APPSTORE_APP_SIGN_IDENTITY)" APPSTORE_INSTALLER_SIGN_IDENTITY="$(APPSTORE_INSTALLER_SIGN_IDENTITY)" bash scripts/appstore-preflight.sh
+
 appstore-pkg:
 ifndef VERSION
 	$(error VERSION is required, e.g. make appstore-pkg VERSION=0.4.2)
