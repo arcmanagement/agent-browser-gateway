@@ -21,6 +21,7 @@ import {
   browserAdapter,
 } from "./browserAdapter.js";
 import {
+  normalizeAppliedGatewayWebSocketUrl,
   normalizeGatewayWebSocketUrl,
   resolveStoredGatewayWebSocketUrl,
 } from "./gatewayEndpoint.js";
@@ -409,7 +410,10 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
 }
 
 async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings> {
-  const normalizedUrl = normalizeGatewayWebSocketUrl(value);
+  const normalizedUrl = normalizeAppliedGatewayWebSocketUrl(
+    value,
+    DEFAULT_SETTINGS.gatewayWebSocketUrl,
+  );
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, gatewayWebSocketUrl: normalizedUrl };
   await browser.storage.local.set(settings);

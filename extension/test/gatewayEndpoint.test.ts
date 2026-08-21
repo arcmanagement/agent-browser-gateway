@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeAppliedGatewayWebSocketUrl,
   normalizeGatewayWebSocketUrl,
   resolveStoredGatewayWebSocketUrl,
 } from "../src/gatewayEndpoint.js";
@@ -26,6 +27,17 @@ describe("Gateway WebSocket endpoint", () => {
     "not-a-url",
   ])("rejects an unsupported endpoint: %s", (value) => {
     expect(() => normalizeGatewayWebSocketUrl(value)).toThrow();
+  });
+
+  it("uses the default endpoint when an empty value is applied", () => {
+    expect(normalizeAppliedGatewayWebSocketUrl("", defaultUrl)).toBe(defaultUrl);
+    expect(normalizeAppliedGatewayWebSocketUrl("   ", defaultUrl)).toBe(defaultUrl);
+  });
+
+  it("still rejects a non-empty invalid value when applied", () => {
+    expect(() =>
+      normalizeAppliedGatewayWebSocketUrl("https://gateway.example.com/ws", defaultUrl),
+    ).toThrow();
   });
 
   it("restores a valid stored endpoint", () => {
