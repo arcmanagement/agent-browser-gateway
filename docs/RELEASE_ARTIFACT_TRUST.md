@@ -101,6 +101,23 @@ work (#31) if third-party mirroring of artifacts becomes a supported path.
 - No long-lived private signing keys are stored in GitHub Actions secrets; CI builds unsigned
   artifacts, and signing happens on the maintainer Mac.
 
+## Signed-asset precedence over CI uploads
+
+The tag-triggered release workflow builds its own artifacts, but CI holds no
+signing keys: its macOS app is adhoc-signed. The upload step therefore never
+replaces an asset that already exists on the release — it uploads only the
+missing names and reports what it kept. A maintainer's Developer ID signed,
+notarized upload stays authoritative no matter which side runs last.
+
+`ALLOW_ASSET_OVERWRITE=true` forces the old replace behavior for a deliberate
+re-upload. The tag workflow must never set it.
+
+Ordering contract for a release: build and upload the signed artifacts from the
+trusted Mac first, then push the tag. If the tag lands first, the CI-built
+artifacts occupy those names, and re-uploading the signed ones requires
+`gh release upload --clobber` by hand followed by re-verifying that the served
+asset reports `source=Notarized Developer ID`.
+
 ## Maintainer release checklist
 
 1. Build from the signed tag, not from a local branch.
@@ -108,14 +125,17 @@ work (#31) if third-party mirroring of artifacts becomes a supported path.
 3. Run the signed macOS release build on a trusted Mac with `SIGN_IDENTITY` and `NOTARY_PROFILE`.
 4. Generate release SBOMs and `SHA256SUMS.txt`.
 5. Verify `codesign`, `spctl`, and `shasum -a 256 -c SHA256SUMS.txt`.
-6. Confirm the artifact hygiene check passed. `make dist` and the DMG build run it
+6. Confirm the served release assets are the signed ones: download the published
+   ZIP and DMG and check `spctl --assess --type execute` reports
+   `source=Notarized Developer ID`.
+7. Confirm the artifact hygiene check passed. `make dist` and the DMG build run it
    automatically; run it directly against any artifact with
    `scripts/check-artifact-hygiene.sh dist/<artifact>.zip dist/<artifact>.dmg`. It fails when
    an artifact contains developer-local absolute paths, absolute SwiftPM `.build`
    paths, or `Bundle.module` accessor strings; prefix-mapped relative
    `.build/checkouts/...` strings from dependencies are accepted.
-7. Publish artifacts, checksum files, SBOMs, and release notes together.
-8. Confirm the public download page links to the versioned artifacts and checksum files.
+8. Publish artifacts, checksum files, SBOMs, and release notes together.
+9. Confirm the public download page links to the versioned artifacts and checksum files.
 
 ## User verification before installation
 
