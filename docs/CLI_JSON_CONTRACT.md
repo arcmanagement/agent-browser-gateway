@@ -52,6 +52,10 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg wait` | Object `{ ok, mode, ... }` — `{ ok: true, mode, ms | value }` on success, `{ ok: false, error: "timeout", mode, timeoutMs }` on timeout. Combined load+selector waits return `{ load, selector }` with one such object each. |
 | `abg replay` | Dry run returns `{ tabId, steps }`; execution returns `{ ok, tabId, results }` where each result row is `{ index, op, result }` and `result` is that step's command output. See `docs/REPLAY_POLICY.md`. |
 | `abg record start` | Object `{ ok, recordingId, tabId, path, mic, startedAt }` after the user approves. `abg record stop` returns `{ ok, path, bytes, durationMs, mime, mic }`; `abg record status` returns `{ recording, ... }`. See `docs/RECORDING.md`. |
+| `abg companion offer` | Human-readable QR/manual pairing offer plus the claim prompt. `--json` prints the offer object (`gatewayBaseUrl`, `pairingId`, `pairingNonce`, `desktopPublicKey`, `expiresAt`, `displayCode`, `requestedScopes`, `manualCode`, `claimUrl`) without waiting. |
+| `abg companion confirm/reject` | Object `{ ok, deviceId, deviceLabel, scopes }` on confirm; `{ ok }` on reject. |
+| `abg companion list` | Array of paired companions with `deviceId`, `deviceLabel`, `scopes`, `pairedAt`, `active`, and `revokedAt`/`revokedBy` once revoked. |
+| `abg companion revoke` | Object `{ ok, deviceId, revoked }`. Closes the companion's live session. |
 | `abg audit` | Array of recent audit log rows. Rows are append-only JSON objects; sensitive operation payload values remain omitted or summarized. |
 | `abg plugin list` | Array of plugin objects with `name`, `source`, filesystem status, manifest metadata, and loaded command metadata when available. |
 | `abg <plugin> <command>` | JSON value returned by the plugin command handler. Command plugins should prefer stable object results such as `{ "ok": true, ... }`. |
