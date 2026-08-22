@@ -18,6 +18,7 @@ interface StartCommand {
   cmd: "start";
   recordingId: string;
   streamId: string;
+  source?: "tab" | "desktop";
   withMic: boolean;
   timesliceMs?: number;
 }
@@ -87,20 +88,35 @@ async function startRecording(msg: StartCommand): Promise<StartResult> {
     return { ok: false, error: "a recording is already active" };
   }
 
-  // chromeMediaSource constraints are not in the standard typings.
-  const tabConstraints = {
-    audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: msg.streamId } },
-    video: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: msg.streamId } },
-  } as unknown as MediaStreamConstraints;
-  const tabStream = await navigator.mediaDevices.getUserMedia(tabConstraints);
+  // chromeMediaSource constraints are not in the standard typings. Stream IDs
+  // minted by tabCapture use the "tab" source; IDs from the desktopCapture tab
+  // picker (all-tabs fallback) use "desktop".
+  const source = msg.source === "desktop" ? "desktop" : "tab";
+  const capture = (withAudio: boolean) =>
+    navigator.mediaDevices.getUserMedia({
+      audio: withAudio
+        ? { mandatory: { chromeMediaSource: source, chromeMediaSourceId: msg.streamId } }
+        : false,
+      video: { mandatory: { chromeMediaSource: source, chromeMediaSourceId: msg.streamId } },
+    } as unknown as MediaStreamConstraints);
+  let tabStream: MediaStream;
+  try {
+    tabStream = await capture(true);
+  } catch (error) {
+    if (source !== "desktop") throw error;
+    // The picker's share-audio toggle was off; record video-only.
+    tabStream = await capture(false);
+  }
 
   // Capturing tab audio detaches it from the output; rebuild it through a graph
   // so the user still hears the page while we also record it.
   const audioCtx = new AudioContext();
   const mixDestination = audioCtx.createMediaStreamDestination();
-  const tabSource = audioCtx.createMediaStreamSource(tabStream);
-  tabSource.connect(audioCtx.destination); // keep audible
-  tabSource.connect(mixDestination); // into the recording mix
+  if (tabStream.getAudioTracks().length > 0) {
+    const tabSource = audioCtx.createMediaStreamSource(tabStream);
+    tabSource.connect(audioCtx.destination); // keep audible
+    tabSource.connect(mixDestination); // into the recording mix
+  }
 
   let micUsed = false;
   let micStream: MediaStream | null = null;
