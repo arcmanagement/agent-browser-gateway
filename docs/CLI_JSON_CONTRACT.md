@@ -109,7 +109,9 @@ recovery guidance. ABG v0.4.3 and later use a stable CDP backend node for upload
 class of failures caused by transient frontend node handles. `ambiguous_selector` means a
 selector-based click matched more than one element; nothing is clicked, the error carries
 `matchCount`, and the caller narrows the selector or picks one match with `abg find first|last|nth`
-or a snapshot ref.
+or a snapshot ref. `blocked_by_extension_frame` means a third-party extension iframe (such as
+a password manager inline menu) is open in the tab and Chrome refuses debugger commands for the
+whole tab until the user dismisses it; the dispatched action may still have executed.
 
 The stable optional error fields are:
 

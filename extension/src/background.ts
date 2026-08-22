@@ -1367,7 +1367,20 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     if (e instanceof GatewayError) {
       replyError(cmd.id, e.code, e.message, e.matchCount);
     } else {
-      replyError(cmd.id, "command_failed", e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.includes("Cannot access a chrome-extension:// URL")) {
+        // A third-party extension iframe (typically a password manager's inline
+        // menu) is attached to the page; Chrome refuses debugger access to the
+        // whole tab until it goes away, and ABG cannot dismiss it because the
+        // dismissal itself would need a blocked command.
+        replyError(
+          cmd.id,
+          "blocked_by_extension_frame",
+          "A third-party extension iframe (for example a password manager inline menu) is open in this tab, and Chrome blocks debugger commands for the whole tab until the user dismisses it (click elsewhere or press Escape). The dispatched action may still have executed. For identity-like forms, filling via eval with native value setters avoids focusing the field and never triggers the menu.",
+        );
+      } else {
+        replyError(cmd.id, "command_failed", message);
+      }
     }
   }
 }
