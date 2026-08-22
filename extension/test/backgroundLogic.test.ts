@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clickSelectorFrameFn,
   createAuditDiff,
   describeFileAttachFailure,
   detectBrowserKind,
@@ -202,5 +203,68 @@ describe("backgroundLogic", () => {
 
   it("describes current clipboard paste without claiming a MIME payload", () => {
     expect(richClipboardPayloadLabel(undefined, undefined)).toBe(" current clipboard payload");
+  });
+});
+
+describe("clickSelectorFrameFn", () => {
+  const makeElement = (tag: string) => {
+    const clicks: number[] = [];
+    return {
+      tagName: tag,
+      clicks,
+      click() {
+        clicks.push(1);
+      },
+    };
+  };
+
+  const makeCtx = (elements: ReturnType<typeof makeElement>[], frame?: unknown) => ({
+    doc: {
+      querySelectorAll: () => elements,
+    } as unknown as Pick<Document, "querySelectorAll">,
+    frame,
+  });
+
+  it("returns found: false for zero matches without clicking", () => {
+    expect(clickSelectorFrameFn(makeCtx([]), { selector: ".missing" })).toEqual({
+      found: false,
+    });
+  });
+
+  it("clicks the single match and reports its tag", () => {
+    const el = makeElement("BUTTON");
+    const result = clickSelectorFrameFn(makeCtx([el]), { selector: "#submit" });
+    expect(result).toEqual({ found: true, tag: "BUTTON", frame: undefined });
+    expect(el.clicks).toHaveLength(1);
+  });
+
+  it("propagates the resolved frame descriptor for a single match", () => {
+    const el = makeElement("A");
+    const frame = { ref: "@f1", url: "https://example.com/inner" };
+    const result = clickSelectorFrameFn(makeCtx([el], frame), { selector: "a.next" });
+    expect(result.frame).toEqual(frame);
+    expect(el.clicks).toHaveLength(1);
+  });
+
+  it("rejects multiple matches with ambiguous_selector and clicks nothing", () => {
+    const first = makeElement("BUTTON");
+    const second = makeElement("BUTTON");
+    let thrown: (Error & { code?: string; matchCount?: number }) | undefined;
+    try {
+      clickSelectorFrameFn(makeCtx([first, second]), { selector: "button" });
+    } catch (error) {
+      thrown = error as Error & { code?: string; matchCount?: number };
+    }
+    expect(thrown?.code).toBe("ambiguous_selector");
+    expect(thrown?.matchCount).toBe(2);
+    expect(thrown?.message).toContain("matched 2 elements");
+    expect(first.clicks).toHaveLength(0);
+    expect(second.clicks).toHaveLength(0);
+  });
+
+  it("stays self-contained so it can be serialized into the page", () => {
+    const source = clickSelectorFrameFn.toString();
+    expect(source).not.toContain("import");
+    expect(source).not.toContain("require(");
   });
 });

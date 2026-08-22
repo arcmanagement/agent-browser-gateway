@@ -217,7 +217,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         case .response(let id, let result, let error):
             if let cont = inflight.removeValue(forKey: id) {
                 if let error = error {
-                    cont.resume(throwing: NSError(domain: "ABG", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(error.code): \(error.message)"]))
+                    cont.resume(throwing: ExtensionResponseError(payload: error))
                 } else {
                     cont.resume(returning: result)
                 }
@@ -1479,7 +1479,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             await auditLog.log(action: method, extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: details)
             return CLIResponse(id: req.id, result: result)
         } catch {
-            return CLIResponse(id: req.id, error: ErrorPayload(code: "command_failed", message: error.localizedDescription))
+            return CLIResponse(id: req.id, error: extensionErrorPayload(from: error))
         }
     }
 
@@ -1688,7 +1688,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
     }
 
+    /// Carries the extension's structured error through the inflight continuation so
+    /// optional fields such as `matchCount` survive the relay to the CLI response.
+    private struct ExtensionResponseError: LocalizedError {
+        let payload: ErrorPayload
+
+        var errorDescription: String? { "\(payload.code): \(payload.message)" }
+    }
+
     private func extensionErrorPayload(from error: Error) -> ErrorPayload {
+        if let responseError = error as? ExtensionResponseError {
+            return responseError.payload
+        }
         let message = error.localizedDescription
         if let separator = message.firstIndex(of: ":") {
             let code = String(message[..<separator])

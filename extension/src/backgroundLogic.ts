@@ -284,3 +284,32 @@ function commonSuffixLength(a: string, b: string, prefix: number): number {
   }
   return length;
 }
+
+/**
+ * Frame script for selector-based clicks. Serialized with Function.prototype.toString
+ * and evaluated inside the page, so it must stay self-contained: no references to
+ * module imports or outer-scope bindings.
+ *
+ * A selector that matches more than one element is rejected without clicking so an
+ * imprecise selector cannot act on a different element than intended. Callers that
+ * want one of several matches use `find first`, `find last`, `find nth`, or a
+ * snapshot ref.
+ */
+export function clickSelectorFrameFn(
+  ctx: { doc: Pick<Document, "querySelectorAll">; frame?: unknown },
+  opts: { selector: string },
+): { found: boolean; tag?: string; frame?: unknown } {
+  const matches = ctx.doc.querySelectorAll(opts.selector);
+  if (matches.length === 0) return { found: false };
+  if (matches.length > 1) {
+    const error = new Error(
+      `selector matched ${matches.length} elements; nothing was clicked. Use \`abg find first|last|nth\`, a snapshot ref, or a more specific selector.`,
+    ) as Error & { code: string; matchCount: number };
+    error.code = "ambiguous_selector";
+    error.matchCount = matches.length;
+    throw error;
+  }
+  const el = matches[0] as HTMLElement;
+  el.click();
+  return { found: true, tag: el.tagName, frame: ctx.frame };
+}

@@ -1134,7 +1134,7 @@ func escapeMarkdownCell(_ value: String) -> String {
 struct Click: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "要素をクリック (CSS selector / describe id / xy 座標)")
     @OptionGroup var target: TabTarget
-    @Option(name: .long, help: "クリック対象の CSS selector") var selector: String?
+    @Option(name: .long, help: "クリック対象の CSS selector。複数要素に一致すると ambiguous_selector エラーでクリックせず止まる。繰り返し要素は `abg find first|last|nth` か snapshot ref を使う") var selector: String?
     @Option(name: .long, help: "`abg describe` の element id") var id: Int?
     @Option(name: .long, help: "`abg snapshot` の element ref (例: @e1)") var ref: String?
     @Option(name: .long, help: "Frame ref from `abg frames` (for example @f1) or an iframe CSS selector. Required to act on selectors inside a frame.") var frame: String?
