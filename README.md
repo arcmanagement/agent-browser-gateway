@@ -923,6 +923,9 @@ Chrome disables extension access to incognito windows by default; normal tabs do
 
 ```bash
 npx skills add arcmanagement/agent-browser-gateway -g   # installs the ABG skills into ~/.claude/skills/ etc.
+npx skills list -g                                       # show installed skills
+npx skills update -g                                     # refresh them after a release
+npx skills remove -g agent-browser-gateway abg-plugin-creator  # uninstall
 ```
 
 Claude Code or Codex will now invoke `abg` automatically when the conversation references tabs you have shared.
