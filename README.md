@@ -1041,21 +1041,3 @@ ArcManagement has received a decision to grant Japanese patent application JP 20
 ### Trademarks
 
 "ABG™" and "Agent Browser Gateway™" are unregistered trademarks of ArcManagement, Inc. See [TRADEMARK.md](TRADEMARK.md).
-
----
-
-## 日本語サマリ
-
-**「いま開いてるタブを、明示的に AI に渡す。」**
-
-普段使いの Chrome に入れる軽量拡張と、Mac メニューバーに常駐する小さな .app + `abg` CLI。デフォルトでは、ユーザーが明示的に「このタブを共有」とした **そのタブだけ** が、Claude Code などの AI コーディングエージェントから見える。隔離プロファイルや sandbox マシンでは、popup から all-tabs mode を明示的に ON にできる。
-
-### コア思想
-
-1. **per-tab 明示許可がデフォルト** — 通常はタブ単位の許可。`host_permissions` は空。隔離プロファイル用 all-tabs mode のみ optional `<all_urls>` を要求
-2. **ソース公開 / テレメトリゼロ / 検証可能** — Anthropic / Google / Microsoft が**構造的に**提供できない価値。閉じたソースの拡張は買収やポリシー変更でマルウェア化する歴史がある (The Great Suspender, Stylish, Hover Zoom, etc.)。ABG はあなたの AI が**コードレベルで何をするか**を完全に検証可能にする
-3. **CLI + Skill が primary** — MCP より先に CLI。シェルがあれば任意のエージェントから使える
-4. **失効は明示的** — オリジン遷移 / タブクローズ / 明示解除。タイムアウトはオプション
-5. **すべて監査ログに記録** — JSONL ファイル、自分でも `abg audit` で読める
-
-詳しい設計議論は [`docs/`](docs/) を参照 (Claude.ai 上の設計セッションからの引き継ぎドキュメント)。
