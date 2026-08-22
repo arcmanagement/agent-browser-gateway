@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.6.zip
+dist/agent-browser-gateway-extension-0.4.7.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.7 review notes
+
+- No new permissions. The release adds companion pairing on the desktop app and
+  forwards operation approval summaries to a paired phone; the extension change
+  is limited to emitting those approval events over the existing local
+  WebSocket and accepting a decision for an approval already pending in it.
 
 ## 0.4.6 review notes
 

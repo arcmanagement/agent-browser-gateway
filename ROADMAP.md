@@ -2,9 +2,17 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-08-22.
 
-Current repo version: **v0.4.6**.
+Current repo version: **v0.4.7**.
 
 ## Shipped
+
+### v0.4.7 — iOS companion pairing and approval forwarding (2026-08-22)
+- Added the companion pairing surface: a five-minute pairing offer with first-claim-wins nonce checks, scope enforcement, desktop confirmation by display code, and one-shot revocation, served by an on-demand listener on a private (Tailnet or LAN) address while an offer or grant exists. The main gateway listener stays loopback-only.
+- Session tokens are stored only as hashes and delivered once, sealed to the companion's device key; `WS /companion` accepts a connection only with a valid device id and session token carrying the `approval_forwarding` scope.
+- Operation approvals are forwarded to paired phones as summaries — operation, intent, target origin and tab ref, requester, gateway label, expiry — never tab contents. First decision wins across the desktop window and every phone, recording `decidedBy` in the audit log; recording approvals stay desktop-only.
+- Added `abg companion offer | confirm | reject | list | revoke`, with the pairing QR code and the manual fields rendered locally in the terminal.
+- Released the ABG Companion iPhone app as a second platform on the same App Store record (submitted for review 2026-08-22).
+- Fixed the release workflow replacing maintainer-signed artifacts with unsigned CI builds.
 
 ### v0.4.6 — Backlog-zero quality release (2026-08-22)
 - Selector commands (read/get/find/fill/click/snapshot/describe) pierce open Shadow DOM by default, so LWC/Lit/Stencil apps such as Salesforce Lightning expose their form controls; closed roots stay invisible.
