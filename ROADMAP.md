@@ -1,10 +1,23 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-08-21.
+Living document. Reflects current intent, not commitment. Last updated 2026-08-22.
 
-Current repo version: **v0.4.5**.
+Current repo version: **v0.4.6**.
 
 ## Shipped
+
+### v0.4.6 — Backlog-zero quality release (2026-08-22)
+- Selector commands (read/get/find/fill/click/snapshot/describe) pierce open Shadow DOM by default, so LWC/Lit/Stencil apps such as Salesforce Lightning expose their form controls; closed roots stay invisible.
+- `click --selector` rejects selectors matching multiple elements with a structured `ambiguous_selector` error carrying `matchCount`, instead of silently clicking the first match.
+- Screenshots pin image pixels to CSS pixels (`scale: 1`) with `cssViewport`/`imageSize` metadata, making screenshot-derived click coordinates stable.
+- `scroll --selector` measures real movement, falls back to the scrollable descendant/ancestor, and reports `moved`/`movedX`/`movedY` with a warning instead of a silent no-op.
+- `paste-rich` performs the renderer paste command, so rich-MIME clipboard payloads actually insert (the Google Sheets smoke test caught the defect).
+- Recording tabs shared through all-tabs mode falls back to Chrome's tab picker (`desktopCapture`) when `tabCapture` lacks the per-tab invocation grant; manual-mode recording is unchanged.
+- The `/stream` runtime-event route requires the per-launch token like `/cli`; sandboxed gateway HAR/recording outputs resolve into the shared app-group container, and unwritable output paths are rejected up front as `output_path_unwritable`.
+- Bookmark and Reading List mutations ship behind a separate opt-in toggle with always-on per-operation approval, stronger delete copy, refused folder deletion, and redacted audit metadata.
+- Per-domain allow/ask/deny policies land in Gateway settings with audit-view polish and annotation target refinement.
+- A CDP block caused by another extension's in-page iframe returns `blocked_by_extension_frame` with recovery guidance.
+- Governance: required status checks (`Swift tests`, `Extension tests`) are active on `main`; CI runs the extension suite on Linux and path-gates the heavy macOS jobs; release artifacts pass an automated hygiene scan; the signing and update-delivery policies are recorded.
 
 ### v0.4.5 — Gateway endpoint reset patch (2026-08-21)
 - Changed the extension's Apply action so an empty or whitespace-only Gateway WebSocket endpoint restores `ws://127.0.0.1:8765/ws` and reconnects.
