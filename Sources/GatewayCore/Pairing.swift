@@ -19,6 +19,8 @@ public enum PairingFailureReason: String, Sendable {
     case deviceKeyInvalid = "device_key_invalid"
     case offerNotFound = "offer_not_found"
     case notClaimed = "not_claimed"
+    case pairingRevoked = "pairing_revoked"
+    case sessionInvalid = "session_invalid"
 }
 
 public struct PairingError: Error, Sendable {
@@ -68,10 +70,16 @@ public struct CompanionGrant: Codable, Sendable {
     public let devicePublicKeyBase64: String
     public let scopes: [PairingScope]
     public let pairedAt: Date
+    /// SHA-256 of the companion session token. The plain token exists only in
+    /// memory until the companion fetches it once via the status endpoint.
+    public var sessionTokenHash: String?
+    public var sessionTokenDelivered: Bool?
     public var revokedAt: Date?
     public var revokedBy: String?
 
     public var isActive: Bool { revokedAt == nil }
+
+    public func hasScope(_ scope: PairingScope) -> Bool { scopes.contains(scope) }
 }
 
 /// The QR and manual-code forms carry the same offer fields.
@@ -95,6 +103,9 @@ public struct PairingEngine: Sendable {
 
     public private(set) var activeOffer: PairingOffer?
     public private(set) var grants: [CompanionGrant]
+    /// pairingId → deviceId for offers that completed, so the status endpoint can
+    /// answer the companion that just paired without leaking other grants.
+    private var pairedOffers: [String: String] = [:]
 
     public init(grants: [CompanionGrant] = []) {
         self.activeOffer = nil
@@ -162,8 +173,10 @@ public struct PairingEngine: Sendable {
         return claim
     }
 
-    /// Desktop user confirmed the display code: the claim becomes a grant.
-    public mutating func confirm(pairingId: String, now: Date = Date()) throws -> CompanionGrant {
+    /// Desktop user confirmed the display code: the claim becomes a grant with a
+    /// fresh session token. Only the token's hash is stored; the plain value is
+    /// returned once for delivery to the companion.
+    public mutating func confirm(pairingId: String, now: Date = Date()) throws -> (grant: CompanionGrant, sessionToken: String, offer: PairingOffer) {
         guard var offer = activeOffer, offer.pairingId == pairingId else {
             throw PairingError(.offerNotFound)
         }
@@ -172,19 +185,62 @@ public struct PairingEngine: Sendable {
             throw PairingError(.expiredOffer)
         }
         guard let claim = offer.claim else { throw PairingError(.notClaimed) }
+        let sessionToken = Self.randomToken(bytes: 32)
         let grant = CompanionGrant(
             deviceId: claim.deviceId,
             deviceLabel: claim.deviceLabel,
             devicePublicKeyBase64: claim.devicePublicKeyBase64,
             scopes: claim.requestedScopes,
             pairedAt: now,
+            sessionTokenHash: Self.tokenHash(sessionToken),
+            sessionTokenDelivered: false,
             revokedAt: nil,
             revokedBy: nil
         )
         grants.append(grant)
         offer.state = .paired
         activeOffer = nil
-        return grant
+        pairedOffers[offer.pairingId] = grant.deviceId
+        return (grant, sessionToken, offer)
+    }
+
+    /// Companion-facing pairing state for GET /pairings/:id/status.
+    public enum PairingStatus: Sendable, Equatable {
+        case offerActive
+        case claimed
+        case paired(deviceId: String)
+        case revoked
+        case unknown
+    }
+
+    public func status(pairingId: String, now: Date = Date()) -> PairingStatus {
+        if let offer = activeOffer, offer.pairingId == pairingId, now < offer.expiresAt {
+            return offer.claim == nil ? .offerActive : .claimed
+        }
+        if let deviceId = pairedOffers[pairingId] {
+            if let grant = grants.first(where: { $0.deviceId == deviceId }) {
+                return grant.isActive ? .paired(deviceId: deviceId) : .revoked
+            }
+        }
+        return .unknown
+    }
+
+    public mutating func markSessionTokenDelivered(deviceId: String) {
+        guard let index = grants.firstIndex(where: { $0.deviceId == deviceId }) else { return }
+        grants[index].sessionTokenDelivered = true
+    }
+
+    /// Verifies a companion session credential with a constant-time comparison
+    /// against the stored hash. Revoked grants never verify.
+    public func verifySession(deviceId: String, sessionToken: String) -> Bool {
+        guard let grant = activeGrant(deviceId: deviceId), let expected = grant.sessionTokenHash else {
+            return false
+        }
+        return constantTimeEquals(Self.tokenHash(sessionToken), expected)
+    }
+
+    static func tokenHash(_ token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Desktop user rejected the claim (display codes did not match).
@@ -203,6 +259,7 @@ public struct PairingEngine: Sendable {
         }
         grants[index].revokedAt = now
         grants[index].revokedBy = by
+        grants[index].sessionTokenHash = nil
         return grants[index]
     }
 
@@ -283,5 +340,89 @@ public enum CompanionGrantStore {
         let data = try encoder.encode(grants)
         try data.write(to: url, options: .atomic)
         chmod(url.path, 0o600)
+    }
+}
+
+/// Seals small payloads (the session token) to the companion's public key:
+/// ephemeral Curve25519 ECDH → HKDF-SHA256 → ChaChaPoly. The companion opens it
+/// with its private key and the returned ephemeral public key.
+public enum PairingCrypto {
+    public struct Sealed: Codable, Sendable {
+        public let ephemeralPublicKey: String
+        public let ciphertext: String
+    }
+
+    static let hkdfInfo = Data("abg-companion-session-v1".utf8)
+
+    public static func seal(_ plaintext: String, toDevicePublicKeyBase64 device: String) throws -> Sealed {
+        guard let deviceKeyData = Data(base64Encoded: device),
+              let devicePublicKey = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: deviceKeyData) else {
+            throw PairingError(.deviceKeyInvalid)
+        }
+        let ephemeral = Curve25519.KeyAgreement.PrivateKey()
+        let shared = try ephemeral.sharedSecretFromKeyAgreement(with: devicePublicKey)
+        let key = shared.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(),
+            sharedInfo: hkdfInfo,
+            outputByteCount: 32
+        )
+        let box = try ChaChaPoly.seal(Data(plaintext.utf8), using: key)
+        return Sealed(
+            ephemeralPublicKey: ephemeral.publicKey.rawRepresentation.base64EncodedString(),
+            ciphertext: box.combined.base64EncodedString()
+        )
+    }
+
+    public static func open(_ sealed: Sealed, devicePrivateKey: Curve25519.KeyAgreement.PrivateKey) throws -> String {
+        guard let ephemeralData = Data(base64Encoded: sealed.ephemeralPublicKey),
+              let ephemeralKey = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: ephemeralData),
+              let combined = Data(base64Encoded: sealed.ciphertext) else {
+            throw PairingError(.sessionInvalid)
+        }
+        let shared = try devicePrivateKey.sharedSecretFromKeyAgreement(with: ephemeralKey)
+        let key = shared.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(),
+            sharedInfo: hkdfInfo,
+            outputByteCount: 32
+        )
+        let box = try ChaChaPoly.SealedBox(combined: combined)
+        let plain = try ChaChaPoly.open(box, using: key)
+        guard let text = String(data: plain, encoding: .utf8) else {
+            throw PairingError(.sessionInvalid)
+        }
+        return text
+    }
+}
+
+/// The approval summary forwarded to companions, per the approval-forwarding
+/// design in docs/IOS_GATEWAY_PAIRING.md. Never contains tab content.
+public struct CompanionApprovalSummary: Codable, Sendable {
+    public let approvalId: String
+    public let method: String
+    public let intent: String
+    public let targetOrigin: String
+    public let targetTabRef: String
+    public let requester: String
+    public let gatewayLabel: String
+    public let createdAt: Date
+    public let expiresAt: Date
+    public let scriptPreview: String?
+    /// False for operations the phone can only deny (recording in the MVP).
+    public let canAllow: Bool
+
+    public init(approvalId: String, method: String, intent: String, targetOrigin: String, targetTabRef: String, requester: String, gatewayLabel: String, createdAt: Date, expiresAt: Date, scriptPreview: String?, canAllow: Bool) {
+        self.approvalId = approvalId
+        self.method = method
+        self.intent = intent
+        self.targetOrigin = targetOrigin
+        self.targetTabRef = targetTabRef
+        self.requester = requester
+        self.gatewayLabel = gatewayLabel
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.scriptPreview = scriptPreview
+        self.canAllow = canAllow
     }
 }

@@ -42,8 +42,11 @@ final class PairingEngineTests: XCTestCase {
         )
         XCTAssertEqual(claim.requestedScopes, [.approvalForwarding])
 
-        let grant = try engine.confirm(pairingId: offer.pairingId)
+        let (grant, sessionToken, _) = try engine.confirm(pairingId: offer.pairingId)
         XCTAssertEqual(grant.deviceId, claim.deviceId)
+        XCTAssertEqual(sessionToken.count, 64)
+        XCTAssertTrue(engine.verifySession(deviceId: grant.deviceId, sessionToken: sessionToken))
+        XCTAssertFalse(engine.verifySession(deviceId: grant.deviceId, sessionToken: sessionToken + "0"))
         XCTAssertTrue(grant.isActive)
         XCTAssertEqual(grant.scopes, [.approvalForwarding])
         XCTAssertNil(engine.activeOffer)
@@ -158,9 +161,10 @@ final class PairingEngineTests: XCTestCase {
             deviceLabel: "phone",
             requestedScopes: [.approvalForwarding]
         )
-        let grant = try engine.confirm(pairingId: offer.pairingId)
+        let (grant, sessionToken, _) = try engine.confirm(pairingId: offer.pairingId)
 
         let revoked = engine.revoke(deviceId: grant.deviceId, by: "cli")
+        XCTAssertFalse(engine.verifySession(deviceId: grant.deviceId, sessionToken: sessionToken))
         XCTAssertEqual(revoked?.revokedBy, "cli")
         XCTAssertNil(engine.activeGrant(deviceId: grant.deviceId))
         XCTAssertNil(engine.revoke(deviceId: grant.deviceId, by: "cli"))
@@ -209,5 +213,39 @@ final class PairingEngineTests: XCTestCase {
         XCTAssertTrue(PairingManager.isPrivateLANAddress("172.16.5.5"))
         XCTAssertFalse(PairingManager.isPrivateLANAddress("172.32.0.1"))
         XCTAssertFalse(PairingManager.isPrivateLANAddress("8.8.8.8"))
+    }
+
+    func testStatusFollowsThePairingLifecycle() throws {
+        var engine = PairingEngine()
+        let offer = engine.createOffer()
+        XCTAssertEqual(engine.status(pairingId: offer.pairingId), .offerActive)
+        XCTAssertEqual(engine.status(pairingId: "nope"), .unknown)
+
+        _ = try engine.applyClaim(
+            pairingId: offer.pairingId,
+            nonce: offer.nonce,
+            devicePublicKeyBase64: devicePublicKey(),
+            deviceLabel: "phone",
+            requestedScopes: [.approvalForwarding]
+        )
+        XCTAssertEqual(engine.status(pairingId: offer.pairingId), .claimed)
+
+        let (grant, _, _) = try engine.confirm(pairingId: offer.pairingId)
+        XCTAssertEqual(engine.status(pairingId: offer.pairingId), .paired(deviceId: grant.deviceId))
+
+        engine.revoke(deviceId: grant.deviceId, by: "cli")
+        XCTAssertEqual(engine.status(pairingId: offer.pairingId), .revoked)
+    }
+
+    func testSessionTokenSealRoundTrip() throws {
+        let deviceKey = Curve25519.KeyAgreement.PrivateKey()
+        let devicePublic = deviceKey.publicKey.rawRepresentation.base64EncodedString()
+        let sealed = try PairingCrypto.seal("session-token-123", toDevicePublicKeyBase64: devicePublic)
+        XCTAssertFalse(sealed.ciphertext.contains("session-token"))
+        let opened = try PairingCrypto.open(sealed, devicePrivateKey: deviceKey)
+        XCTAssertEqual(opened, "session-token-123")
+
+        let wrongKey = Curve25519.KeyAgreement.PrivateKey()
+        XCTAssertThrowsError(try PairingCrypto.open(sealed, devicePrivateKey: wrongKey))
     }
 }

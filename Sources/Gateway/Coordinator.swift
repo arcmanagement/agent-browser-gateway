@@ -78,6 +78,26 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         // The socket path can exceed the 104-byte sun_path limit (long usernames,
         // relocated homes). That leaves the WS /cli fallback as the CLI transport —
         // a degraded-but-working state, not a startup error.
+        let manager = pairingManager
+        Task { [weak self] in
+            await manager.setDecideHandler { [weak self] extensionId, approvalId, decision, decidedBy in
+                guard let self else { return (false, "gateway_unavailable") }
+                do {
+                    let result = try await self.sendCommand(
+                        to: extensionId,
+                        method: "approval_decide",
+                        params: AnyCodable(["approvalId": approvalId, "decision": decision, "decidedBy": decidedBy] as [String: Any])
+                    )
+                    let dict = result?.value as? [String: Any]
+                    let applied = dict?["applied"] as? Bool ?? false
+                    return (applied, dict?["reason"] as? String)
+                } catch {
+                    return (false, "extension_unreachable")
+                }
+            }
+            await manager.startIfNeeded()
+            _ = self
+        }
         let socketPath = ABGConstants.configuredCLISocketPath()
         if ABGConstants.fitsUnixSocketPath(socketPath) {
             cliSocketActive = true
@@ -215,6 +235,45 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             handleRecordStopped(recordingId: recordingId, durationMs: durationMs, mime: mime, micUsed: micUsed, chunkCount: chunkCount)
         case .recordFailed(let recordingId, let error):
             handleRecordFailed(recordingId: recordingId, error: error)
+        case .approvalPending(let approval):
+            func numeric(_ value: Any?) -> Double? {
+                if let d = value as? Double { return d }
+                if let i = value as? Int { return Double(i) }
+                return nil
+            }
+            guard let dict = approval.value as? [String: Any],
+                  let approvalId = dict["approvalId"] as? String,
+                  let method = dict["method"] as? String,
+                  let intent = dict["intent"] as? String,
+                  let createdAtMs = numeric(dict["createdAt"]),
+                  let timeoutMs = numeric(dict["timeoutMs"]) else { return }
+            let tabId = dict["tabId"] as? Int ?? -1
+            let origin = dict["origin"] as? String ?? ""
+            let tabRef: String
+            if let tab = permittedTabs.first(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
+                tabRef = stableTarget(for: tab).ref
+            } else {
+                tabRef = ""
+            }
+            let createdAt = Date(timeIntervalSince1970: createdAtMs / 1000)
+            let summary = CompanionApprovalSummary(
+                approvalId: approvalId,
+                method: method,
+                intent: intent,
+                targetOrigin: origin,
+                targetTabRef: tabRef,
+                requester: "cli",
+                gatewayLabel: "\(ABGConstants.runtimeProfileLabel)@\(Host.current().localizedName ?? "mac")",
+                createdAt: createdAt,
+                expiresAt: createdAt.addingTimeInterval(timeoutMs / 1000),
+                scriptPreview: dict["scriptPreview"] as? String,
+                canAllow: method != "record_start"
+            )
+            let manager = pairingManager
+            Task { await manager.forwardApprovalPending(summary, extensionId: extensionId) }
+        case .approvalResolved(let approvalId, let decision, let decidedBy):
+            let manager = pairingManager
+            Task { await manager.forwardApprovalResolved(approvalId: approvalId, decision: decision, decidedBy: decidedBy) }
         case .response(let id, let result, let error):
             if let cont = inflight.removeValue(forKey: id) {
                 if let error = error {
