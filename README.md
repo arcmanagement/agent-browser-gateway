@@ -952,8 +952,9 @@ make reproducible-build                 # unsigned release dry run with SBOM and
 make docker-repro                       # pinned Docker rebuild of the Linux abg CLI artifact
 ```
 
-Pull requests run the `CI` workflow's `Swift and extension tests` job. The GitHub check name used by
-branch protection is `CI / Swift and extension tests`. That job runs the following test gates:
+Pull requests run the `CI` workflow's `Swift tests` job on macOS and `Extension tests` job on
+Linux. The GitHub check names used by branch protection are `CI / Swift tests` and
+`CI / Extension tests`. Those jobs run the following test gates:
 
 ```bash
 swift test --enable-code-coverage

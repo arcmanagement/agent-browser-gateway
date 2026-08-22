@@ -32,16 +32,17 @@ CI workflows that produce them are reliable on pull requests.
 
 ## Target Required Checks
 
-The PR test gate is defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+The PR test gates are defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 
-| GitHub Actions field | Value |
-| --- | --- |
-| Workflow | `CI` |
-| Job ID | `verify` |
-| Job name | `Swift and extension tests` |
-| Required-check display name | `CI / Swift and extension tests` |
+| GitHub Actions field | Swift gate | Extension gate |
+| --- | --- | --- |
+| Workflow | `CI` | `CI` |
+| Job ID | `swift-tests` | `extension-tests` |
+| Job name | `Swift tests` | `Extension tests` |
+| Required-check display name | `CI / Swift tests` | `CI / Extension tests` |
+| Runner | `macos-latest` | `ubuntu-latest` |
 
-The job runs these test commands:
+The gates run these test commands:
 
 ```bash
 swift test --enable-code-coverage
@@ -49,19 +50,40 @@ scripts/swift-coverage-check.sh
 cd extension && pnpm run test:coverage
 ```
 
-It also builds Swift in debug and release configurations, installs extension dependencies from the
-frozen lockfile, and runs extension typecheck, lint, and build checks. Swift XCTest completion is
-tracked by [#89](https://github.com/arcmanagement/agent-browser-gateway/issues/89), extension Vitest
-completion by [#90](https://github.com/arcmanagement/agent-browser-gateway/issues/90), and their
-combined test gate by [#25](https://github.com/arcmanagement/agent-browser-gateway/issues/25).
+plus the Swift debug build and the extension typecheck, lint, and build checks. Swift XCTest
+completion is tracked by [#89](https://github.com/arcmanagement/agent-browser-gateway/issues/89),
+extension Vitest completion by
+[#90](https://github.com/arcmanagement/agent-browser-gateway/issues/90), and their combined test
+gate by [#25](https://github.com/arcmanagement/agent-browser-gateway/issues/25).
 
 When required checks are enabled under
-[#23](https://github.com/arcmanagement/agent-browser-gateway/issues/23), require the single
-`CI / Swift and extension tests` check. Keeping the required rule tied to the aggregated PR job
-avoids depending on release-only, tag-only, notarization, Pages deployment, or manual
-`workflow_dispatch` jobs.
+[#23](https://github.com/arcmanagement/agent-browser-gateway/issues/23), require `CI / Swift tests`
+and `CI / Extension tests`. Both jobs run unconditionally on every pull request, so a required rule
+on them never waits on a skipped job. The other CI jobs stay out of the required set: release-only,
+tag-only, notarization, Pages deployment, and manual `workflow_dispatch` jobs are release gates,
+and the path-gated auxiliary jobs below are intentionally skipped on unrelated PRs.
 
-Those other jobs are release gates, not ordinary PR merge gates.
+## CI Cost Policy
+
+Recorded under [#94](https://github.com/arcmanagement/agent-browser-gateway/issues/94). Before the
+2026-08 split, every pull request started three `macos-latest` jobs (aggregate verify, release
+artifact smoke, dependency inventory); a representative run took about 14 minutes of wall time with
+all three billed at the macOS multiplier, and the release configuration was built twice (once in
+verify, once inside `make dist`).
+
+Policy:
+
+- `swift-tests` is the only unconditional macOS job. `extension-tests` runs the Node toolchain on
+  `ubuntu-latest`.
+- `release-artifact-smoke` runs `make dist` (which includes the Swift release build) only when
+  build-relevant paths change (`Sources/**`, `Tests/**`, `Package.*`, `extension/**`, `scripts/**`,
+  `packaging/**`, `Makefile`, `build-app.sh`, the workflow itself) or on manual dispatch, so
+  docs-only PRs skip it. The standalone `swift build -c release` step was removed from the PR gate
+  as redundant with `make dist`.
+- `swift-dependency-inventory` runs only when `Package.swift` or `Package.resolved` change, or on
+  manual dispatch.
+- PRs targeting any base branch use the same policy; full verification happens on the PR that
+  finally targets `main` because the two protection gates always run.
 
 ## Verification Runbook
 
