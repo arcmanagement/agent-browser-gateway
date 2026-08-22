@@ -29,7 +29,7 @@ enum ScreenshotMode {
                 requester: "cli",
                 gatewayLabel: "studio-mac",
                 createdAt: now,
-                expiresAt: now.addingTimeInterval(48),
+                expiresAt: now.addingTimeInterval(3600),
                 scriptPreview: nil,
                 canAllow: true
             ),
@@ -42,7 +42,7 @@ enum ScreenshotMode {
                 requester: "cli",
                 gatewayLabel: "studio-mac",
                 createdAt: now,
-                expiresAt: now.addingTimeInterval(41),
+                expiresAt: now.addingTimeInterval(3600),
                 scriptPreview: nil,
                 canAllow: true
             ),
