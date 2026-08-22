@@ -20,6 +20,7 @@ struct GatewayWindowView: View {
     @State private var settingsMessage: String?
     @State private var settingsError: String?
     @State private var newPolicyDomain = ""
+    @State private var newPolicyAction: GatewayDomainPolicyAction = .ask
     @State private var newPolicyApprovalMode: GatewayApprovalMode = .extensionPopup
     @State private var newPolicyTimeoutMs = GatewaySettings.defaultTimeoutMs
     @State private var newPolicyAppliesToSubdomains = true
@@ -735,13 +736,21 @@ struct GatewayWindowView: View {
                             .font(.system(size: 13, weight: .medium, design: .monospaced))
                             .onSubmit(addDomainPolicy)
 
+                        Picker("Action", selection: $newPolicyAction) {
+                            ForEach(GatewayDomainPolicyAction.allCases) { action in
+                                Text(action.title).tag(action)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 120)
+
                         Picker("Mode", selection: $newPolicyApprovalMode) {
                             ForEach(GatewayApprovalMode.allCases) { mode in
                                 Text(mode.title).tag(mode)
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 180)
+                        .frame(width: 170)
                     }
 
                     HStack(spacing: 10) {
@@ -835,6 +844,7 @@ struct GatewayWindowView: View {
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .lineLimit(1)
                 HStack(spacing: 6) {
+                    PluginStatusBadge(text: policy.action.title.uppercased(), color: policyActionColor(policy.action))
                     PluginStatusBadge(text: policy.approvalMode.title.uppercased(), color: .blue)
                     PluginStatusBadge(text: "\(policy.timeoutMs / 1000)S", color: .secondary)
                     if policy.appliesToSubdomains {
@@ -1144,7 +1154,8 @@ struct GatewayWindowView: View {
             PluginStat(title: "Command", value: entry.command, symbol: "terminal")
             PluginStat(title: "Tab", value: entry.tabDisplay, symbol: "rectangle.on.rectangle")
             PluginStat(title: "Origin", value: entry.origin, symbol: "globe")
-            PluginStat(title: "Agent", value: entry.agent ?? "unknown", symbol: "person.crop.circle")
+            PluginStat(title: "Target", value: entry.selectedTarget, symbol: "scope")
+            PluginStat(title: "Result", value: entry.resultSummary, symbol: "checkmark.seal")
         }
     }
 
@@ -1340,6 +1351,7 @@ struct GatewayWindowView: View {
         }
         let policy = GatewayDomainPolicy(
             domain: domain,
+            action: newPolicyAction,
             approvalMode: newPolicyApprovalMode,
             timeoutMs: newPolicyTimeoutMs,
             appliesToSubdomains: newPolicyAppliesToSubdomains
@@ -1350,6 +1362,17 @@ struct GatewayWindowView: View {
         newPolicyDomain = ""
         newPolicyTimeoutMs = gatewaySettings.defaultTimeoutMs
         clearSettingsFeedback()
+    }
+
+    private func policyActionColor(_ action: GatewayDomainPolicyAction) -> Color {
+        switch action {
+        case .allow:
+            return .green
+        case .ask:
+            return .orange
+        case .deny:
+            return .red
+        }
     }
 
     private func removeDomainPolicy(_ policy: GatewayDomainPolicy) {
@@ -1606,6 +1629,8 @@ private struct AuditLogViewEntry: Identifiable {
     let agent: String?
     let origin: String
     let outcome: String
+    let selectedTarget: String
+    let resultSummary: String
     let detailRows: [AuditLogDetailRow]
     let rawDetails: String?
     let auditDiffPreview: [String]
@@ -1673,6 +1698,8 @@ private struct AuditLogViewEntry: Identifiable {
         let command = (details?["command"] as? String) ?? entry.action
         let origin = Self.originLabel(for: entry.url)
         let outcome = Self.outcomeLabel(action: entry.action, details: details)
+        let selectedTarget = Self.selectedTargetLabel(tabId: entry.tabId, details: details)
+        let resultSummary = Self.resultSummaryLabel(outcome: outcome, details: details)
         let auditDiffPreview = ((details?["auditDiff"] as? [String: Any])?["preview"] as? [String]) ?? []
         let tabIDText = entry.tabId.map(String.init) ?? ""
         let detailSearchText = rows.map { "\($0.key) \($0.value)" }.joined(separator: " ")
@@ -1685,6 +1712,8 @@ private struct AuditLogViewEntry: Identifiable {
             entry.agent ?? "",
             origin,
             outcome,
+            selectedTarget,
+            resultSummary,
             rawDetails ?? "",
             detailSearchText,
         ]
@@ -1700,6 +1729,8 @@ private struct AuditLogViewEntry: Identifiable {
         self.agent = entry.agent
         self.origin = origin
         self.outcome = outcome
+        self.selectedTarget = selectedTarget
+        self.resultSummary = resultSummary
         self.detailRows = rows
         self.rawDetails = rawDetails
         self.auditDiffPreview = auditDiffPreview
@@ -1733,6 +1764,40 @@ private struct AuditLogViewEntry: Identifiable {
             return "closed"
         }
         return "recorded"
+    }
+
+    private static func selectedTargetLabel(tabId: Int?, details: [String: Any]?) -> String {
+        if let selector = details?["selector"] as? String, !selector.isEmpty {
+            return selector
+        }
+        if let targetTabId = details?["targetTabId"] as? Int {
+            return "Tab \(targetTabId)"
+        }
+        if let targetUrl = details?["targetUrl"] as? String, !targetUrl.isEmpty {
+            return targetUrl
+        }
+        if let id = details?["id"] as? Int {
+            return "Element \(id)"
+        }
+        if let x = details?["x"] as? Int, let y = details?["y"] as? Int {
+            return "Point \(x),\(y)"
+        }
+        return tabId.map { "Tab \($0)" } ?? "Gateway"
+    }
+
+    private static func resultSummaryLabel(outcome: String, details: [String: Any]?) -> String {
+        if let error = details?["error"] as? String, !error.isEmpty {
+            return clipped(error)
+        }
+        if let policyAction = details?["policyAction"] as? String,
+           let policyDomain = details?["policyDomain"] as? String {
+            return "\(outcome) by \(policyAction) \(policyDomain)"
+        }
+        if let auditDiff = details?["auditDiff"] as? [String: Any],
+           let changed = auditDiff["changed"] as? Bool {
+            return changed ? "changed" : "unchanged"
+        }
+        return outcome
     }
 
     private static func detailRows(from details: [String: Any]?) -> [AuditLogDetailRow] {

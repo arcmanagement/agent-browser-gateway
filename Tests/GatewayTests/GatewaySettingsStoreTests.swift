@@ -26,6 +26,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
             domainPolicies: [
                 GatewayDomainPolicy(
                     domain: " HTTPS://Example.com/path ",
+                    action: .allow,
                     approvalMode: .trustedAutomation,
                     timeoutMs: 999_999,
                     networkBodyPolicy: .metadataOnly,
@@ -33,6 +34,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
                 ),
                 GatewayDomainPolicy(
                     domain: "example.com",
+                    action: .deny,
                     approvalMode: .requireApproval,
                     timeoutMs: 2_000,
                     networkBodyPolicy: .requireApproval,
@@ -51,6 +53,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
         XCTAssertEqual(loaded.domainPolicies, [
             GatewayDomainPolicy(
                 domain: "example.com",
+                action: .deny,
                 approvalMode: .requireApproval,
                 timeoutMs: 2_000,
                 networkBodyPolicy: .requireApproval,
@@ -72,6 +75,47 @@ final class GatewaySettingsStoreTests: XCTestCase {
         let settings = GatewaySettingsStore.load(userDirectory: userDir)
 
         XCTAssertEqual(settings, GatewaySettings())
+    }
+
+    func testDomainPolicyMatchesMostSpecificURLHost() throws {
+        let settings = GatewaySettings(domainPolicies: [
+            GatewayDomainPolicy(domain: "example.com", action: .ask, timeoutMs: 3_000, appliesToSubdomains: true),
+            GatewayDomainPolicy(domain: "app.example.com", action: .allow, timeoutMs: 4_000, appliesToSubdomains: false),
+            GatewayDomainPolicy(domain: "*.internal.test", action: .deny, timeoutMs: 5_000),
+        ])
+
+        XCTAssertEqual(settings.policy(for: "https://app.example.com/path")?.action, .allow)
+        XCTAssertEqual(settings.policy(for: "https://docs.example.com/path")?.action, .ask)
+        XCTAssertEqual(settings.policy(for: "https://team.internal.test/path")?.action, .deny)
+        XCTAssertNil(settings.policy(for: "file:///tmp/example.html"))
+    }
+
+    func testLegacyApprovalModePoliciesDecodeToActions() throws {
+        let json = """
+        {
+          "defaultTimeoutMs": 30000,
+          "approvalModeDefault": "extension_popup",
+          "domainPolicies": [
+            {
+              "domain": "trusted.example",
+              "approvalMode": "trusted_automation",
+              "timeoutMs": 30000,
+              "appliesToSubdomains": true
+            },
+            {
+              "domain": "ask.example",
+              "approvalMode": "require_approval",
+              "timeoutMs": 30000,
+              "appliesToSubdomains": true
+            }
+          ]
+        }
+        """
+
+        let settings = try JSONDecoder().decode(GatewaySettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.policy(for: "https://trusted.example")?.action, .allow)
+        XCTAssertEqual(settings.policy(for: "https://ask.example")?.action, .ask)
     }
 
     func testOldSettingsFilesUseNetworkBodyDefaults() throws {
@@ -97,6 +141,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
 
         XCTAssertEqual(settings.networkBodyPolicyDefault, .explicitRequestOnly)
         XCTAssertEqual(settings.domainPolicies.first?.networkBodyPolicy, .explicitRequestOnly)
+        XCTAssertEqual(settings.domainPolicies.first?.action, .allow)
     }
 
     func testPolicyResolutionUsesDefaultThenDomainThenSessionThenOneTime() throws {
@@ -107,6 +152,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
             domainPolicies: [
                 GatewayDomainPolicy(
                     domain: "example.com",
+                    action: .deny,
                     approvalMode: .requireApproval,
                     timeoutMs: 45_000,
                     networkBodyPolicy: .requireApproval,
@@ -117,16 +163,19 @@ final class GatewaySettingsStoreTests: XCTestCase {
 
         let defaultPolicy = GatewayPolicyResolver.resolve(host: "other.test", settings: settings)
         XCTAssertEqual(defaultPolicy.source, .defaultPolicy)
+        XCTAssertEqual(defaultPolicy.action, .ask)
         XCTAssertEqual(defaultPolicy.approvalMode, .extensionPopup)
         XCTAssertEqual(defaultPolicy.networkBodyPolicy, .explicitRequestOnly)
 
         let domainPolicy = GatewayPolicyResolver.resolve(host: "app.example.com", settings: settings)
         XCTAssertEqual(domainPolicy.source, .domain)
+        XCTAssertEqual(domainPolicy.action, .deny)
         XCTAssertEqual(domainPolicy.approvalMode, .requireApproval)
         XCTAssertEqual(domainPolicy.timeoutMs, 45_000)
         XCTAssertEqual(domainPolicy.networkBodyPolicy, .requireApproval)
 
         let sessionOverride = GatewayResolvedPolicy(
+            action: .allow,
             approvalMode: .trustedAutomation,
             timeoutMs: 20_000,
             networkBodyPolicy: .metadataOnly,
@@ -138,10 +187,12 @@ final class GatewaySettingsStoreTests: XCTestCase {
             sessionPolicy: sessionOverride
         )
         XCTAssertEqual(sessionPolicy.source, .session)
+        XCTAssertEqual(sessionPolicy.action, .allow)
         XCTAssertEqual(sessionPolicy.approvalMode, .trustedAutomation)
         XCTAssertEqual(sessionPolicy.networkBodyPolicy, .metadataOnly)
 
         let oneTimeOverride = GatewayResolvedPolicy(
+            action: .deny,
             approvalMode: .requireApproval,
             timeoutMs: 5_000,
             networkBodyPolicy: .requireApproval,
@@ -154,6 +205,7 @@ final class GatewaySettingsStoreTests: XCTestCase {
             oneTimePolicy: oneTimeOverride
         )
         XCTAssertEqual(oneTimePolicy.source, .oneTime)
+        XCTAssertEqual(oneTimePolicy.action, .deny)
         XCTAssertEqual(oneTimePolicy.timeoutMs, 5_000)
         XCTAssertEqual(oneTimePolicy.networkBodyPolicy, .requireApproval)
     }

@@ -775,6 +775,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         guard let tab = resolution.tab else {
             return CLIResponse(id: req.id, error: resolution.error)
         }
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "stream_control") {
+            return response
+        }
         do {
             _ = try await sendCommand(to: tab.extensionId, method: "stream_control", params: AnyCodable(["tabId": tab.tabId, "enabled": true]))
             streamTabId = tab.tabId
@@ -824,6 +827,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, error: resolution.error)
         }
         let tabId = tab.tabId
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "record_start") {
+            return response
+        }
         if let existing = recording {
             return CLIResponse(id: req.id, error: ErrorPayload(
                 code: "already_recording",
@@ -1097,6 +1103,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         params = extensionParams(params, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "read_dom") {
+            return response
+        }
         let wantMarkdown = (params["asMarkdown"] as? Bool) ?? false
         let keepImages = (params["keepImages"] as? Bool) ?? false
         let redact = (params["redact"] as? Bool) ?? false
@@ -1106,7 +1115,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         params.removeValue(forKey: "redact")
         params.removeValue(forKey: "redactRegexes")
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "read_dom", params: AnyCodable(params))
+            let result = try await sendCommand(to: tab.extensionId, method: "read_dom", params: AnyCodable(params), timeoutMs: commandTimeoutMs(for: tab))
             await auditLog.log(action: "read_dom", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli")
             guard wantMarkdown,
                   var dict = result?.value as? [String: Any],
@@ -1174,6 +1183,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         params = extensionParams(params, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "har_export") {
+            return response
+        }
         do {
             let rawOutputPath = try (params["outputPath"] as? String) ?? defaultHAROutputPath(tabId: tabId)
             let outputPath = rawOutputPath as NSString
@@ -1183,7 +1195,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 return CLIResponse(id: req.id, error: unwritable)
             }
 
-            let result = try await sendCommand(to: tab.extensionId, method: "har_export", params: AnyCodable(params))
+            let result = try await sendCommand(to: tab.extensionId, method: "har_export", params: AnyCodable(params), timeoutMs: commandTimeoutMs(for: tab))
             guard var dict = result?.value as? [String: Any], let har = dict["har"] else {
                 return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_response", message: "extension did not return a HAR object"))
             }
@@ -1240,8 +1252,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         let params = extensionParams(rawParams, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "state_inspect") {
+            return response
+        }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "state_inspect", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "state_inspect",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             var details: [String: AnyCodable] = [
                 "kind": AnyCodable((params["kind"] as? String) ?? "all"),
                 "includeValues": AnyCodable((params["includeValues"] as? Bool) ?? false),
@@ -1277,10 +1297,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         var params = extensionParams(rawParams, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "sandbox_action") {
+            return response
+        }
         if let requestedTargetTabId = params["targetTabId"] as? Int {
             let targetResolution = resolveTabTarget(requestedTargetTabId)
             guard let targetTab = targetResolution.tab else {
                 return CLIResponse(id: req.id, error: targetResolution.error)
+            }
+            if let response = await policyBlockedResponse(req: req, tab: targetTab, method: "sandbox_action") {
+                return response
             }
             guard targetTab.extensionId == tab.extensionId else {
                 return CLIResponse(
@@ -1328,7 +1354,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             auditDetails["targetTabId"] = AnyCodable(targetTabId)
         }
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "sandbox_action", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "sandbox_action",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             auditDetails["ok"] = AnyCodable(true)
             await auditLog.log(action: "sandbox_action", extensionId: tab.extensionId, tabId: tabId, url: tab.url, agent: "cli", details: auditDetails)
             return CLIResponse(id: req.id, result: result)
@@ -1350,9 +1381,17 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         let params = extensionParams(rawParams, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: method) {
+            return response
+        }
         do {
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
-            let result = try await sendCommand(to: tab.extensionId, method: method, params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: method,
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             let details: [String: AnyCodable]? = {
                 if method == "dialog_action" {
                     var values: [String: AnyCodable] = [:]
@@ -1555,6 +1594,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
         let tabId = tab.tabId
         params = extensionParams(params, for: tab)
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "paste_rich") {
+            return response
+        }
 
         let mime = params["mime"] as? String
         let value = params["value"] as? String
@@ -1579,7 +1621,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         }
 
         do {
-            let result = try await sendCommand(to: tab.extensionId, method: "paste_rich", params: AnyCodable(params))
+            let result = try await sendCommand(
+                to: tab.extensionId,
+                method: "paste_rich",
+                params: AnyCodable(params),
+                timeoutMs: commandTimeoutMs(for: tab)
+            )
             if let dict = result?.value as? [String: Any] {
                 if let focused = dict["focused"] as? Bool { details["focused"] = AnyCodable(focused) }
                 if let found = dict["found"] as? Bool { details["found"] = AnyCodable(found) }
@@ -1656,12 +1703,21 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, error: resolution.error)
         }
         let tabId = tab.tabId
+        if let response = await policyBlockedResponse(req: req, tab: tab, method: "eval_script") {
+            return response
+        }
+        let policy = GatewaySettingsStore.load().policy(for: tab.url)
         let requestedTimeout = params["timeoutMs"] as? Int
         let timeoutMs = GatewaySettings.clampedTimeout(
-            requestedTimeout ?? max(GatewaySettingsStore.load().defaultTimeoutMs, EvalScriptLimits.defaultTimeoutMs)
+            requestedTimeout
+                ?? policy?.timeoutMs
+                ?? max(GatewaySettingsStore.load().defaultTimeoutMs, EvalScriptLimits.defaultTimeoutMs)
         )
         params = extensionParams(params, for: tab)
         params["timeoutMs"] = timeoutMs
+        if policy?.action == .ask {
+            params["approve"] = true
+        }
         var auditDetails: [String: AnyCodable] = [
             "script": AnyCodable(script),
             "scriptBytes": AnyCodable(scriptBytes),
@@ -1669,6 +1725,10 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             "tabTitle": AnyCodable(tab.title),
             "timeoutMs": AnyCodable(timeoutMs),
         ]
+        if let policy {
+            auditDetails["policyDomain"] = AnyCodable(policy.domain)
+            auditDetails["policyAction"] = AnyCodable(policy.action.rawValue)
+        }
         if let maxBytes = params["maxBytes"] as? Int {
             auditDetails["maxBytes"] = AnyCodable(maxBytes)
         }
@@ -1762,6 +1822,14 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         if let kind = extensionBrowsers[tab.extensionId] { dict["browser"] = kind }
         if let exp = tab.expiresAt {
             dict["expiresAt"] = ISO8601DateFormatter().string(from: exp)
+        }
+        if let policy = GatewaySettingsStore.load().policy(for: tab.url) {
+            dict["policy"] = [
+                "domain": policy.domain,
+                "action": policy.action.rawValue,
+                "approvalMode": policy.approvalMode.rawValue,
+                "timeoutMs": policy.timeoutMs,
+            ]
         }
         return dict
     }
@@ -1894,11 +1962,46 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         )
     }
 
+    private func policyBlockedResponse(req: CLIRequest, tab: PermittedTab, method: String) async -> CLIResponse? {
+        guard let policy = GatewaySettingsStore.load().policy(for: tab.url),
+              policy.action == .deny
+        else {
+            return nil
+        }
+        await auditLog.log(
+            action: "policy_deny",
+            extensionId: tab.extensionId,
+            tabId: tab.tabId,
+            url: tab.url,
+            agent: "gateway",
+            details: [
+                "command": AnyCodable(method),
+                "policyDomain": AnyCodable(policy.domain),
+                "policyAction": AnyCodable(policy.action.rawValue),
+                "ok": AnyCodable(false),
+            ]
+        )
+        return CLIResponse(
+            id: req.id,
+            error: ErrorPayload(
+                code: "domain_policy_denied",
+                message: "Domain policy denies \(method) for \(policy.domain).",
+                userMessage: "Gateway settings deny this domain. Change the matching policy to Allow or Ask before retrying.",
+                nextCommand: "Open Gateway Settings",
+                tabId: tab.tabId
+            )
+        )
+    }
+
+    private func commandTimeoutMs(for tab: PermittedTab) -> Int {
+        GatewaySettingsStore.load().policy(for: tab.url)?.timeoutMs ?? GatewaySettingsStore.load().defaultTimeoutMs
+    }
+
     func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
         guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
-        let timeoutMs = timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs
+        let timeoutMs = GatewaySettings.clampedTimeout(timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs)
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<AnyCodable?, Error>) in
             inflight[id] = cont
             Task {
