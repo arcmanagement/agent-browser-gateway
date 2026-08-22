@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.5.zip
+dist/agent-browser-gateway-extension-0.4.6.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,14 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.6 review notes
+
+- New `desktopCapture` permission: used only as the recording approval fallback for tabs shared
+  through the opt-in all-tabs sandbox mode, where no per-tab toolbar click exists for `tabCapture`.
+  The user always sees the local approval window first, and the Chrome tab picker itself is the
+  consent surface for the picked tab. Never invoked outside the recording flow.
+- Selector commands now traverse open shadow roots; this uses no additional permissions.
 
 ## 0.4.5 review notes
 

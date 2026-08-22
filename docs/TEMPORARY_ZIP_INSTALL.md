@@ -13,18 +13,18 @@
 以下の 2 つを送ります。
 
 ```text
-agent-browser-gateway-0.4.5-macos-arm64.zip
-agent-browser-gateway-extension-0.4.5.zip
+agent-browser-gateway-0.4.6-macos-arm64.zip
+agent-browser-gateway-extension-0.4.6.zip
 ```
 
 チェックサム (リリース時に `make dist` の出力で更新):
 
 ```text
-2a576dcda46c8eafebe4636f3b75dc352e3ac56aa1fbf25a41376465afd9857e  agent-browser-gateway-0.4.5-macos-arm64.zip
-10cb6fbeee6f3dcf39978ad794447b4fb35f759635d1777264aa01d4c2504bed  agent-browser-gateway-extension-0.4.5.zip
+4a15682d120b20dea1abf540f5c2f4db1e775b6677189cbd12b9a079265e6af7  agent-browser-gateway-0.4.6-macos-arm64.zip
+8c49dd932db9d7b7f4920bb746702a02618689cb007c05e157728bb0c725d35d  agent-browser-gateway-extension-0.4.6.zip
 ```
 
-`agent-browser-gateway-0.4.5-macos-arm64.zip` の中身:
+`agent-browser-gateway-0.4.6-macos-arm64.zip` の中身:
 
 ```text
 Agent Browser Gateway.app
@@ -37,7 +37,7 @@ abg
 
 ## アプリと CLI をインストール
 
-`agent-browser-gateway-0.4.5-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
+`agent-browser-gateway-0.4.6-macos-arm64.zip` を展開し、展開後のフォルダで以下を実行します。
 
 ```bash
 sudo mkdir -p /usr/local/bin
@@ -56,12 +56,12 @@ npx skills add arcmanagement/agent-browser-gateway -g
 
 ## Chrome 拡張をインストール
 
-`agent-browser-gateway-extension-0.4.5.zip` を、消さない場所へ展開します。
+`agent-browser-gateway-extension-0.4.6.zip` を、消さない場所へ展開します。
 
 ```bash
 rm -rf "$HOME/Applications/Agent Browser Gateway Extension"
 mkdir -p "$HOME/Applications/Agent Browser Gateway Extension"
-unzip agent-browser-gateway-extension-0.4.5.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
+unzip agent-browser-gateway-extension-0.4.6.zip -d "$HOME/Applications/Agent Browser Gateway Extension"
 ```
 
 Chrome で以下を行います。
