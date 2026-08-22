@@ -6078,6 +6078,10 @@ async function dispatchPasteShortcut(tabId: number): Promise<void> {
     windowsVirtualKeyCode: 86,
     nativeVirtualKeyCode: 86,
     modifiers: modifierMask,
+    // Synthesized modifier+V alone never reaches the browser's accelerator
+    // handling, so no paste event with clipboard data ever fires; the editing
+    // command makes the renderer perform the actual paste.
+    commands: ["paste"],
   });
   await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type: "keyUp",
