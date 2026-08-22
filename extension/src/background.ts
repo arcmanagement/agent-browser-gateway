@@ -6589,6 +6589,11 @@ async function scrollElement(
   deltaX: number;
   deltaY: number;
   steps: number;
+  moved?: boolean;
+  movedX?: number;
+  movedY?: number;
+  scrolledVia?: "self" | "descendant" | "ancestor" | "none";
+  warning?: string;
   scrollLeft?: number;
   scrollTop?: number;
   scrollWidth?: number;
@@ -6608,23 +6613,103 @@ async function scrollElement(
         steps: opts.steps,
       } as const;
     }
-    for (let i = 0; i < opts.steps; i += 1) {
-      el.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+    const tryScroll = (node: Element): { movedX: number; movedY: number } => {
+      const beforeLeft = node.scrollLeft;
+      const beforeTop = node.scrollTop;
+      for (let i = 0; i < opts.steps; i += 1) {
+        node.scrollBy({ left: opts.deltaX, top: opts.deltaY, behavior: "auto" });
+      }
+      return { movedX: node.scrollLeft - beforeLeft, movedY: node.scrollTop - beforeTop };
+    };
+    // Custom scroller UIs (virtualized lists, scrollbar-hider wrappers) often match
+    // a selector whose own scrollBy is a no-op. Measure the movement, and when the
+    // matched element does not move, retry on its most scrollable descendant, then
+    // on ancestors, so the reported movement reflects what the user actually sees.
+    let target: Element = el;
+    let via: "self" | "descendant" | "ancestor" = "self";
+    let moved = tryScroll(el);
+    const wantsMovement = opts.deltaX !== 0 || opts.deltaY !== 0;
+    if (moved.movedX === 0 && moved.movedY === 0 && wantsMovement) {
+      let best: Element | null = null;
+      let bestOverflow = 0;
+      const walk = (node: Element, depth: number): void => {
+        if (depth > 8) return;
+        for (const child of Array.from(node.children)) {
+          const overflow =
+            Math.max(0, child.scrollHeight - child.clientHeight) +
+            Math.max(0, child.scrollWidth - child.clientWidth);
+          if (overflow > bestOverflow) {
+            best = child;
+            bestOverflow = overflow;
+          }
+          walk(child, depth + 1);
+        }
+      };
+      walk(el, 0);
+      if (best) {
+        const attempt = tryScroll(best);
+        if (attempt.movedX !== 0 || attempt.movedY !== 0) {
+          moved = attempt;
+          target = best;
+          via = "descendant";
+        }
+      }
+      if (moved.movedX === 0 && moved.movedY === 0) {
+        let parent = el.parentElement;
+        while (parent) {
+          const attempt = tryScroll(parent);
+          if (attempt.movedX !== 0 || attempt.movedY !== 0) {
+            moved = attempt;
+            target = parent;
+            via = "ancestor";
+            break;
+          }
+          parent = parent.parentElement;
+        }
+      }
     }
-    return {
+    const didMove = moved.movedX !== 0 || moved.movedY !== 0;
+    const result: {
+      ok: boolean;
+      found: boolean;
+      selector: string;
+      deltaX: number;
+      deltaY: number;
+      steps: number;
+      moved: boolean;
+      movedX: number;
+      movedY: number;
+      scrolledVia: "self" | "descendant" | "ancestor" | "none";
+      warning?: string;
+      scrollLeft: number;
+      scrollTop: number;
+      scrollWidth: number;
+      scrollHeight: number;
+      clientWidth: number;
+      clientHeight: number;
+    } = {
       ok: true,
       found: true,
       selector: opts.selector,
       deltaX: opts.deltaX,
       deltaY: opts.deltaY,
       steps: opts.steps,
-      scrollLeft: el.scrollLeft,
-      scrollTop: el.scrollTop,
-      scrollWidth: el.scrollWidth,
-      scrollHeight: el.scrollHeight,
-      clientWidth: el.clientWidth,
-      clientHeight: el.clientHeight,
+      moved: didMove,
+      movedX: moved.movedX,
+      movedY: moved.movedY,
+      scrolledVia: didMove ? via : "none",
+      scrollLeft: target.scrollLeft,
+      scrollTop: target.scrollTop,
+      scrollWidth: target.scrollWidth,
+      scrollHeight: target.scrollHeight,
+      clientWidth: target.clientWidth,
+      clientHeight: target.clientHeight,
     };
+    if (!didMove && wantsMovement) {
+      result.warning =
+        "selector matched but nothing scrolled; the target may own a custom wheel handler — try coordinate scroll (--at-x/--at-y inside the pane) or a more specific scroller selector";
+    }
+    return result;
   });
 }
 

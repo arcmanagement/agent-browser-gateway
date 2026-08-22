@@ -122,7 +122,7 @@ printf 'line1\nline2\n' | abg exec-command <tab|ref> --command insertText --stdi
 abg exec-command <tab|ref> --command selectAll   # allowlist: insertText/delete/selectAll/undo/redo
 abg navigate <tab|ref> "<url>"           # タブを遷移 (別 origin で許可失効)
 abg scroll <tab|ref> [--dy 800] [--dx 0] [--at-x N --at-y N]  # ホイールスクロール
-abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # virtual list の内側 scrollable element を直接 scrollBy
+abg scroll <tab|ref> --selector ".scroll-pane" --dy -5000  # virtual list の内側 scrollable element を直接 scrollBy。動かなければ scrollable な子孫/祖先へ fallback し、moved/movedX/movedY を返す。moved: false + warning なら別手段に切り替える
 abg scroll-into-view <tab|ref> --selector "<css>" # 要素を viewport 中央へスクロール
 abg drag <tab|ref> --from-selector ".a" --to-selector ".b"    # DnD
 
