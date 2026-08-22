@@ -965,6 +965,8 @@ scripts/swift-coverage-check.sh
 cd extension && pnpm run test:coverage
 ```
 
+**Updates** — Homebrew installs update with `brew upgrade --cask agent-browser-gateway`, Mac App Store installs through App Store automatic updates, and DMG installs by downloading the newer DMG and running the bundled installer again ([details](docs/MACOS_INSTALL_UPDATE_UNINSTALL.md)). There is no in-app updater by design.
+
 Branch-protection verification and emergency bypass rules are documented in [docs/REQUIRED_CHECKS_AND_BYPASS.md](docs/REQUIRED_CHECKS_AND_BYPASS.md).
 Current Swift and extension test coverage is inventoried in [docs/TESTING_INVENTORY.md](docs/TESTING_INVENTORY.md).
 
