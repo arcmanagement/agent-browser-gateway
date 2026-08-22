@@ -53,7 +53,12 @@ struct ContentView: View {
                 Text(model.errorMessage ?? "")
             }
         }
-        .onAppear { if model.phase == .paired { model.connect() } }
+        .onAppear {
+            #if DEBUG
+            if ScreenshotMode.isEnabled { return }
+            #endif
+            if model.phase == .paired { model.connect() }
+        }
     }
 
     private var navigationTitle: String {
