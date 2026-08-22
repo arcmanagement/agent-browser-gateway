@@ -58,7 +58,9 @@ final class PairingEngineTests: XCTestCase {
         let offer = engine.createOffer()
         XCTAssertThrowsError(try engine.applyClaim(
             pairingId: offer.pairingId,
-            nonce: String(offer.nonce.dropLast()) + "0",
+            // Flip the last hex digit deterministically: appending a fixed
+            // character would match the original whenever it already ended in it.
+            nonce: String(offer.nonce.dropLast()) + (offer.nonce.hasSuffix("0") ? "1" : "0"),
             devicePublicKeyBase64: devicePublicKey(),
             deviceLabel: "attacker",
             requestedScopes: [.approvalForwarding]

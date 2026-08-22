@@ -7,7 +7,7 @@ import Glibc
 
 public enum ABGConstants {
     public static let bundleId = "jp.co.arcm.AgentBrowserGateway"
-    public static let version = "0.4.6"
+    public static let version = "0.4.7"
     // Shared rendezvous between the sandboxed Store gateway and bundled sandboxed CLI.
     public static let appGroupId = "group.jp.co.arcm.abg"
     public static let defaultWsPort: Int = 8765
