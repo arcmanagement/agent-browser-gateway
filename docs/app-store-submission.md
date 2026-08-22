@@ -50,6 +50,24 @@ durable product identifier.
 Do not store Apple private keys, certificates, App Store Connect API keys, or passwords in GitHub
 Actions secrets.
 
+## Release Channels
+
+Each tagged release fans out to these channels. Only the Mac App Store package leaves the
+CI boundary; everything else runs in GitHub Actions from the tag.
+
+| Channel | Artifact | Built by | Signing input |
+| --- | --- | --- | --- |
+| GitHub Release | DMG, extension zips, SBOM, checksums | CI `Release` workflow on `v*.*.*` tags | Developer ID (CI-held) |
+| Homebrew cask | Cask update pointing at the GitHub Release DMG | CI `Release` workflow | none (reuses DMG) |
+| Chrome Web Store | Extension zip submitted for review | CI `Release` workflow | none (store signs) |
+| Windows / WinGet | Windows zips and WinGet manifest submission | CI `Release` workflow | unsigned (see #291) |
+| Mac App Store | Sandboxed signed `.pkg` uploaded to App Store Connect | Trusted maintainer Mac only | Apple private keys and profile that never enter CI |
+
+The Mac App Store step stays on a maintainer Mac because the application and installer signing
+private keys, the App Store provisioning profile, and the App Store Connect credentials are not
+mirrored into GitHub secrets. Run `make appstore-preflight` on that Mac to confirm every local
+input is present before building.
+
 ## Unified Release Boundary
 
 The `Release` workflow runs on `v*.*.*` tag pushes and creates a draft GitHub Release, Windows
@@ -71,6 +89,39 @@ make appstore-pkg
 
 Upload the generated `.pkg` with Transporter or `xcrun altool --upload-package` using the
 `ABG_APP_STORE_CONNECT` keychain item on the trusted maintainer Mac.
+
+## Credential Lifecycle
+
+All Mac App Store signing material lives only on the trusted maintainer Mac:
+
+| Input | Where it lives | Expires | Renewal / cleanup |
+| --- | --- | --- | --- |
+| App signing identity (Apple Distribution / 3rd Party Mac Developer Application) | Certificate plus private key in the login keychain | ~1 year | Renew in the Apple Developer portal from a new CSR, import, delete the downloaded `.cer` |
+| Installer signing identity (Mac Installer Distribution / 3rd Party Mac Developer Installer) | Certificate plus private key in the login keychain | ~1 year | Same as above |
+| App Store provisioning profile | `.provisionprofile` file passed via `APPSTORE_PROVISIONING_PROFILE` | ~1 year | Download a fresh profile from the portal; `make appstore-preflight` reports the embedded expiry |
+| App Store Connect credentials | `ABG_APP_STORE_CONNECT` keychain item | API key rotation policy | Rotate in App Store Connect; never write the value to disk or the repo |
+| Transient downloads (`.cer`, `.provisionprofile`, any exported `.p12`) | Downloads folder during setup | n/a | Import what is needed, then delete; nothing is committed |
+
+The private keys exist only in the keychain and cannot be regenerated from the portal — losing
+them means revoking and reissuing the certificates. None of these inputs are stored in GitHub,
+GitHub Actions secrets, or the repository.
+
+## Differences from Xcode-Managed Submissions
+
+This repository is a Swift Package Manager project with no `.xcodeproj`, so nothing here uses
+Xcode's automatic signing. Where Xcode normally hides the provisioning profile and signing
+identities behind "Automatically manage signing", ABG passes them explicitly:
+
+- The profile is a visible `.provisionprofile` path in `APPSTORE_PROVISIONING_PROFILE`.
+- The identity names are visible strings in `APPSTORE_APP_SIGN_IDENTITY` and
+  `APPSTORE_INSTALLER_SIGN_IDENTITY`.
+- `scripts/dist-mac-app-store.sh` copies the profile's team identifier, application identifier,
+  and keychain access groups into the codesign entitlements, which Xcode would otherwise do
+  invisibly.
+
+Seeing these inputs spelled out is intentional, not an accident or a leak: identity names and
+profile metadata are not secrets. The secret material — the keychain private keys and the App
+Store Connect credentials — never appears in the repository, the environment files, or CI.
 
 ## App Store Connect Record
 
@@ -115,6 +166,12 @@ encryption:
 ```text
 LSApplicationCategoryType = public.app-category.developer-tools
 ITSAppUsesNonExemptEncryption = false
+```
+
+Check local inputs first (read-only; safe to run any time):
+
+```bash
+make appstore-preflight
 ```
 
 Local sandbox smoke build:
