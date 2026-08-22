@@ -782,6 +782,8 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             "wsUrl": "ws://\(ABGConstants.wsHost):\(ABGConstants.wsPort)/stream",
             "events": ["dom_mutation", "network", "console"],
             "localOnly": true,
+            "authHeader": "x-abg-token",
+            "tokenFile": ABGConstants.cliEndpointCandidates().first ?? "",
         ]
         if let streamTabId { status["tabId"] = streamTabId }
         return status

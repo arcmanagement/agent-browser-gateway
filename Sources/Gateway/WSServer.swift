@@ -80,32 +80,44 @@ actor WSServer {
                 Task { await self.handleClose(ws: ws) }
             }
         }
-        app.webSocket("stream", maxFrameSize: .init(integerLiteral: 16 * 1024 * 1024)) { _, ws in
-            Task { await self.handleRuntimeStream(ws: ws) }
-            _ = ws.onClose.always { _ in
-                Task { await self.handleRuntimeStreamClose(ws: ws) }
-            }
-        }
-
-        // CLI transport fallback for gateways whose Unix socket is unavailable (the
-        // sandboxed Store build). Same frame budget as /ws so screenshot/read payloads
-        // fit. shouldUpgrade rejects unauthorized requests before the connection is
-        // ever upgraded.
+        // The token gate protects every non-extension local route: loopback TCP is
+        // reachable from all accounts on the machine, and WS upgrades from web pages
+        // are exempt from same-origin policy. shouldUpgrade rejects unauthorized
+        // requests before the connection is ever upgraded.
         let cliToken = self.cliToken
-        app.webSocket(
-            "cli",
-            maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024),
-            shouldUpgrade: { req in
+        @Sendable func tokenGatedUpgrade(_ route: String) -> @Sendable (Request) -> EventLoopFuture<HTTPHeaders?> {
+            { req in
                 let authorized = Self.isAuthorizedCLIUpgrade(
                     origin: req.headers.first(name: .origin),
                     token: req.headers.first(name: "x-abg-token"),
                     expectedToken: cliToken
                 )
                 if !authorized {
-                    req.logger.warning("Rejected /cli WebSocket upgrade (bad token or Origin present)")
+                    req.logger.warning("Rejected /\(route) WebSocket upgrade (bad token or Origin present)")
                 }
                 return req.eventLoop.makeSucceededFuture(authorized ? HTTPHeaders() : nil)
-            },
+            }
+        }
+
+        app.webSocket(
+            "stream",
+            maxFrameSize: .init(integerLiteral: 16 * 1024 * 1024),
+            shouldUpgrade: tokenGatedUpgrade("stream"),
+            onUpgrade: { _, ws in
+                Task { await self.handleRuntimeStream(ws: ws) }
+                _ = ws.onClose.always { _ in
+                    Task { await self.handleRuntimeStreamClose(ws: ws) }
+                }
+            }
+        )
+
+        // CLI transport fallback for gateways whose Unix socket is unavailable (the
+        // sandboxed Store build). Same frame budget as /ws so screenshot/read payloads
+        // fit.
+        app.webSocket(
+            "cli",
+            maxFrameSize: .init(integerLiteral: 256 * 1024 * 1024),
+            shouldUpgrade: tokenGatedUpgrade("cli"),
             onUpgrade: { _, ws in
                 ws.onText { ws, text in
                     Task { await self.handleCLIText(ws: ws, text: text) }
@@ -116,10 +128,11 @@ actor WSServer {
         try await app.execute()
     }
 
-    /// Browsers always attach an Origin header to WebSocket upgrades and cannot set
-    /// custom headers, so requiring x-abg-token while rejecting any Origin-bearing
-    /// request excludes web content twice over. The token (0600 on disk) is what keeps
-    /// other local users out — loopback TCP, unlike the 0700 Unix socket, is reachable
+    /// Shared authorization for the `/cli` and `/stream` loopback routes. Browsers
+    /// always attach an Origin header to WebSocket upgrades and cannot set custom
+    /// headers, so requiring x-abg-token while rejecting any Origin-bearing request
+    /// excludes web content twice over. The token (0600 on disk) is what keeps other
+    /// local users out — loopback TCP, unlike the 0700 Unix socket, is reachable
     /// from every account on the machine.
     static func isAuthorizedCLIUpgrade(origin: String?, token: String?, expectedToken: String) -> Bool {
         guard origin == nil else { return false }
