@@ -180,6 +180,9 @@ else
     echo "==> skip DMG notarization (set NOTARY_PROFILE to enable notarytool submit)"
 fi
 
+echo "==> artifact hygiene check"
+bash "$ROOT/scripts/check-artifact-hygiene.sh" "$DMG_PATH"
+
 SHA256="$(/usr/bin/shasum -a 256 "$DMG_PATH" | /usr/bin/awk '{print $1}')"
 
 echo "==> done"
