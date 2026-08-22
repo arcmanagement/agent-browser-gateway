@@ -1,6 +1,6 @@
 import CryptoKit
 import XCTest
-@testable import ABG_Companion
+@testable import Agent_Browser_Gateway
 
 final class PairingTests: XCTestCase {
     func testOfferPayloadParsesTheDesktopQRJSON() throws {

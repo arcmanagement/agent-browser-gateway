@@ -65,7 +65,7 @@ struct ApprovalRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: approval.isDestructive ? "exclamationmark.triangle.fill" : "hand.raised.fill")
-                    .foregroundStyle(approval.isDestructive ? Color.orange : Color.accentColor)
+                    .foregroundStyle(approval.isDestructive ? Color.orange : Color.secondary)
                 Text(approval.method)
                     .font(.subheadline.weight(.semibold).monospaced())
                 Spacer()
@@ -85,7 +85,7 @@ struct ApprovalRow: View {
 
     private var remaining: String {
         let seconds = max(0, Int(approval.expiresAt.timeIntervalSince(now)))
-        return "\(seconds)s"
+        return "\(min(seconds, 60))s"
     }
 }
 
@@ -112,7 +112,7 @@ struct ApprovalDetailView: View {
                     LabeledContent("Tab", value: approval.targetTabRef.isEmpty ? "—" : approval.targetTabRef)
                     LabeledContent("Requested by", value: approval.requester)
                     LabeledContent("Gateway", value: approval.gatewayLabel)
-                    LabeledContent("Expires in", value: "\(max(0, Int(approval.expiresAt.timeIntervalSince(now))))s")
+                    LabeledContent("Expires in", value: "\(min(max(0, Int(approval.expiresAt.timeIntervalSince(now))), 60))s")
                 }
 
                 if let preview = approval.scriptPreview, !preview.isEmpty {
@@ -124,39 +124,25 @@ struct ApprovalDetailView: View {
                 }
 
                 Section {
-                    // Deny is the default action: it is first, prominent, and needs
-                    // no confirmation. Allow requires a second, deliberate tap.
-                    Button(role: .destructive) {
-                        decide("deny")
-                    } label: {
-                        Label("Deny", systemImage: "xmark.circle.fill").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-
+                    // Standard list actions: the system styles them, and the
+                    // destructive role keeps Allow from reading as the safe
+                    // default. Allow still needs a second, deliberate tap.
                     if approval.canAllow {
-                        if confirmingAllow {
-                            Button {
+                        Button(confirmingAllow ? allowConfirmLabel : "Allow…") {
+                            if confirmingAllow {
                                 decide("allow")
-                            } label: {
-                                Label(allowConfirmLabel, systemImage: "checkmark.shield.fill")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(approval.isDestructive ? Color.orange : Color.green)
-                        } else {
-                            Button {
+                            } else {
                                 confirmingAllow = true
-                            } label: {
-                                Label("Allow…", systemImage: "checkmark.circle")
-                                    .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
                         }
                     } else {
                         Text("This request can only be allowed on the desktop, where the capture permission is granted.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                    }
+
+                    Button("Deny", role: .destructive) {
+                        decide("deny")
                     }
                 } footer: {
                     if approval.isDestructive {
@@ -178,6 +164,6 @@ struct ApprovalDetailView: View {
     }
 
     private var allowConfirmLabel: String {
-        approval.isDestructive ? "Yes, allow this destructive action" : "Confirm allow"
+        approval.isDestructive ? "Tap again to allow this destructive action" : "Confirm allow"
     }
 }

@@ -24,6 +24,15 @@ final class CompanionModel: ObservableObject {
     init(store: PairingStore = PairingStore(), client: GatewayClient? = nil) {
         self.store = store
         self.client = client ?? GatewayClient(store: store)
+        #if DEBUG
+        if ScreenshotMode.isEnabled {
+            gateway = ScreenshotMode.gateway
+            pending = ScreenshotMode.approvals
+            connected = true
+            phase = .paired
+            return
+        }
+        #endif
         if let saved = store.loadGateway() {
             gateway = saved
             phase = .paired

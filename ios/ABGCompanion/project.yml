@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     DEVELOPMENT_TEAM: M46W5MVAQP
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.4.6"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: complete
@@ -23,8 +23,8 @@ targets:
       - path: ABGCompanion
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway.companion
-        PRODUCT_NAME: ABG Companion
+        PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway
+        PRODUCT_NAME: Agent Browser Gateway
         INFOPLIST_FILE: ABGCompanion/Info.plist
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -33,7 +33,7 @@ targets:
     info:
       path: ABGCompanion/Info.plist
       properties:
-        CFBundleDisplayName: ABG Companion
+        CFBundleDisplayName: ABG
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
@@ -63,7 +63,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway.companion.tests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ABG Companion.app/ABG Companion
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Agent Browser Gateway.app/Agent Browser Gateway
         BUNDLE_LOADER: $(TEST_HOST)
 
 schemes:
