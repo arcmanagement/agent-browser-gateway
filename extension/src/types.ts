@@ -123,6 +123,8 @@ export type GatewayCommand = {
     contentBytes?: number;
     bookmarkId?: string;
     includeFolders?: boolean;
+    title?: string;
+    parentId?: string;
     path?: string;
     hasBeenRead?: boolean;
     // wait_for
@@ -180,8 +182,15 @@ export type GatewayMethod =
   | "bookmarks_search"
   | "bookmarks_get"
   | "bookmarks_open"
+  | "bookmarks_create"
+  | "bookmarks_update"
+  | "bookmarks_move"
+  | "bookmarks_remove"
   | "reading_list_list"
   | "reading_list_search"
+  | "reading_list_add"
+  | "reading_list_update"
+  | "reading_list_remove"
   | "raise_tab"
   | "revoke"
   | "wait_for"
@@ -261,10 +270,15 @@ export type ExtensionSettings = {
   allTabsAccessEnabled: boolean;
   bookmarksAccessEnabled: boolean;
   readingListAccessEnabled: boolean;
+  personalDataMutationsEnabled: boolean;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
-export type ApprovalMethod = OperationMethod | "eval_script" | "record_start";
+export type ApprovalMethod =
+  | OperationMethod
+  | "eval_script"
+  | "record_start"
+  | "personal_data_mutation";
 
 export type ApprovalRequest = {
   id: string;
@@ -292,6 +306,7 @@ export type PopupToBackground =
   | { type: "set_all_tabs_access"; value: boolean }
   | { type: "set_bookmarks_access"; value: boolean }
   | { type: "set_reading_list_access"; value: boolean }
+  | { type: "set_personal_data_mutations"; value: boolean }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =

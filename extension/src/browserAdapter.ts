@@ -20,6 +20,9 @@ export type BrowserReadingListQueryInfo = {
 
 type BrowserReadingListAPI = {
   query(info: BrowserReadingListQueryInfo): Promise<BrowserReadingListEntry[]>;
+  addEntry(entry: { title: string; url: string; hasBeenRead: boolean }): Promise<void>;
+  updateEntry(entry: { url: string; title?: string; hasBeenRead?: boolean }): Promise<void>;
+  removeEntry(info: { url: string }): Promise<void>;
 };
 
 declare const __ABG_BROWSER_TARGET__: BrowserKind | undefined;
@@ -44,7 +47,16 @@ export type BrowserAdapter = {
   readonly downloads: Pick<typeof chrome.downloads, "onChanged" | "onCreated" | "search">;
   readonly bookmarks?: Pick<
     typeof chrome.bookmarks,
-    "get" | "getChildren" | "getRecent" | "getSubTree" | "getTree" | "search"
+    | "create"
+    | "get"
+    | "getChildren"
+    | "getRecent"
+    | "getSubTree"
+    | "getTree"
+    | "move"
+    | "remove"
+    | "search"
+    | "update"
   >;
   readonly extension: Pick<
     typeof chrome.extension,

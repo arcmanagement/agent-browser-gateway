@@ -2299,8 +2299,93 @@ struct Bookmarks: AsyncParsableCommand {
             BookmarkSearch.self,
             BookmarkGet.self,
             BookmarkOpen.self,
+            BookmarkCreate.self,
+            BookmarkUpdate.self,
+            BookmarkMove.self,
+            BookmarkRemove.self,
         ]
     )
+}
+
+struct BookmarkCreate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "create",
+        abstract: "Create a bookmark (browser-owned personal data mutation; needs the mutations toggle and per-operation approval)"
+    )
+    @Option(name: .long, help: "Bookmark title") var title: String?
+    @Option(name: .long, help: "Bookmark URL") var url: String?
+    @Option(name: .long, help: "Parent folder id") var parentId: String?
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        guard title != nil || url != nil else {
+            try failWithJSON(["error": "bad_params", "message": "specify --title or --url"])
+        }
+        var params = options.params()
+        if let title { params["title"] = title }
+        if let url { params["url"] = url }
+        if let parentId { params["parentId"] = parentId }
+        printJSON(try UDSClient().call(method: "bookmarks_create", params: params))
+    }
+}
+
+struct BookmarkUpdate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "update",
+        abstract: "Update a bookmark title or URL (browser-owned personal data mutation; needs the mutations toggle and per-operation approval)"
+    )
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @Option(name: .long, help: "New title") var title: String?
+    @Option(name: .long, help: "New URL") var url: String?
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        guard title != nil || url != nil else {
+            try failWithJSON(["error": "bad_params", "message": "specify --title or --url"])
+        }
+        var params = options.params()
+        params["bookmarkId"] = bookmarkId
+        if let title { params["title"] = title }
+        if let url { params["url"] = url }
+        printJSON(try UDSClient().call(method: "bookmarks_update", params: params))
+    }
+}
+
+struct BookmarkMove: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "move",
+        abstract: "Move a bookmark to another folder or position (browser-owned personal data mutation; needs the mutations toggle and per-operation approval)"
+    )
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @Option(name: .long, help: "Destination folder id") var parentId: String?
+    @Option(name: .long, help: "Destination index inside the folder") var index: Int?
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        guard parentId != nil || index != nil else {
+            try failWithJSON(["error": "bad_params", "message": "specify --parent-id or --index"])
+        }
+        var params = options.params()
+        params["bookmarkId"] = bookmarkId
+        if let parentId { params["parentId"] = parentId }
+        if let index { params["index"] = index }
+        printJSON(try UDSClient().call(method: "bookmarks_move", params: params))
+    }
+}
+
+struct BookmarkRemove: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remove",
+        abstract: "PERMANENTLY delete one bookmark (destructive browser-owned personal data mutation; the approval window uses stronger confirmation copy, and folders are refused)"
+    )
+    @Argument(help: "Bookmark node id") var bookmarkId: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["bookmarkId"] = bookmarkId
+        printJSON(try UDSClient().call(method: "bookmarks_remove", params: params))
+    }
 }
 
 struct BookmarkList: AsyncParsableCommand {
@@ -2373,8 +2458,72 @@ struct ReadingList: AsyncParsableCommand {
         subcommands: [
             ReadingListList.self,
             ReadingListSearch.self,
+            ReadingListAdd.self,
+            ReadingListUpdate.self,
+            ReadingListRemove.self,
         ]
     )
+}
+
+struct ReadingListAdd: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "add",
+        abstract: "Add a Reading List entry (browser-owned personal data mutation; needs the mutations toggle and per-operation approval)"
+    )
+    @Option(name: .long, help: "Entry title") var title: String
+    @Option(name: .long, help: "Entry URL") var url: String
+    @Flag(name: .long, help: "Mark the entry as already read") var read: Bool = false
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["title"] = title
+        params["url"] = url
+        if read { params["hasBeenRead"] = true }
+        printJSON(try UDSClient().call(method: "reading_list_add", params: params))
+    }
+}
+
+struct ReadingListUpdate: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "update",
+        abstract: "Update a Reading List entry title or read state (browser-owned personal data mutation; needs the mutations toggle and per-operation approval)"
+    )
+    @Argument(help: "Entry URL") var url: String
+    @Option(name: .long, help: "New title") var title: String?
+    @Flag(name: .long, help: "Mark as read") var read: Bool = false
+    @Flag(name: .long, help: "Mark as unread") var unread: Bool = false
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        if read && unread {
+            try failWithJSON(["error": "bad_params", "message": "Use only one of --read or --unread."])
+        }
+        guard title != nil || read || unread else {
+            try failWithJSON(["error": "bad_params", "message": "specify --title, --read, or --unread"])
+        }
+        var params = options.params()
+        params["url"] = url
+        if let title { params["title"] = title }
+        if read { params["hasBeenRead"] = true }
+        if unread { params["hasBeenRead"] = false }
+        printJSON(try UDSClient().call(method: "reading_list_update", params: params))
+    }
+}
+
+struct ReadingListRemove: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remove",
+        abstract: "PERMANENTLY delete one Reading List entry (destructive browser-owned personal data mutation; the approval window uses stronger confirmation copy)"
+    )
+    @Argument(help: "Entry URL") var url: String
+    @OptionGroup var options: PersonalDataOptions
+
+    func run() async throws {
+        var params = options.params()
+        params["url"] = url
+        printJSON(try UDSClient().call(method: "reading_list_remove", params: params))
+    }
 }
 
 struct ReadingListList: AsyncParsableCommand {

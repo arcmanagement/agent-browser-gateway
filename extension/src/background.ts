@@ -9,6 +9,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  personalDataMutationIntent,
   raisePermittedBrowserTab,
   richClipboardPayloadLabel,
 } from "./backgroundLogic.js";
@@ -69,6 +70,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   allTabsAccessEnabled: false,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
+  personalDataMutationsEnabled: false,
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
@@ -307,6 +309,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     "allTabsAccessEnabled",
     "bookmarksAccessEnabled",
     "readingListAccessEnabled",
+    "personalDataMutationsEnabled",
   ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
@@ -336,6 +339,10 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.readingListAccessEnabled === "boolean"
       ? stored.readingListAccessEnabled
       : DEFAULT_SETTINGS.readingListAccessEnabled;
+  const personalDataMutationsEnabled =
+    typeof stored.personalDataMutationsEnabled === "boolean"
+      ? stored.personalDataMutationsEnabled
+      : DEFAULT_SETTINGS.personalDataMutationsEnabled;
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
@@ -344,7 +351,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     gatewayWebSocketUrl.shouldPersist ||
     typeof stored.allTabsAccessEnabled !== "boolean" ||
     typeof stored.bookmarksAccessEnabled !== "boolean" ||
-    typeof stored.readingListAccessEnabled !== "boolean"
+    typeof stored.readingListAccessEnabled !== "boolean" ||
+    typeof stored.personalDataMutationsEnabled !== "boolean"
   ) {
     await browser.storage.local.set({
       operationsRequireApproval,
@@ -355,6 +363,7 @@ async function getSettings(): Promise<ExtensionSettings> {
       allTabsAccessEnabled,
       bookmarksAccessEnabled,
       readingListAccessEnabled,
+      personalDataMutationsEnabled,
     });
   }
   return {
@@ -366,6 +375,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     allTabsAccessEnabled,
     bookmarksAccessEnabled,
     readingListAccessEnabled,
+    personalDataMutationsEnabled,
   };
 }
 
@@ -1270,6 +1280,20 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, await listReadingList(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_search") {
       reply(cmd.id, await searchReadingList(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_create") {
+      reply(cmd.id, await createBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_update") {
+      reply(cmd.id, await updateBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_move") {
+      reply(cmd.id, await moveBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "bookmarks_remove") {
+      reply(cmd.id, await removeBookmark(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_add") {
+      reply(cmd.id, await addReadingListEntry(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_update") {
+      reply(cmd.id, await updateReadingListEntry(cmd.params ?? {}));
+    } else if (cmd.method === "reading_list_remove") {
+      reply(cmd.id, await removeReadingListEntry(cmd.params ?? {}));
     } else if (cmd.method === "raise_tab") {
       if (!tabId) throw new Error("tab not permitted");
       reply(cmd.id, await raisePermittedBrowserTab(browser, permittedTabs, tabId));
@@ -1605,6 +1629,148 @@ async function listReadingList(params: GatewayCommand["params"]): Promise<Record
     count: entries.length,
     entries,
   };
+}
+
+async function approvePersonalDataMutation(intent: string): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.personalDataMutationsEnabled) {
+    throw new GatewayError(
+      "personal_data_mutations_disabled",
+      "Bookmark and Reading List mutations are disabled. Enable them in the ABG extension popup first.",
+    );
+  }
+  // Mutations always require per-operation approval; the operationsRequireApproval
+  // opt-out does not apply to browser-owned personal data writes.
+  const resolution = await requestOperationApproval("personal_data_mutation", -1, intent);
+  if (resolution.decision !== "allow") {
+    throw new GatewayError("user_denied", resolution.message);
+  }
+}
+
+function personalDataMutationResult(
+  permission: "bookmarks" | "readingList",
+  mutation: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ok: true,
+    boundary: "browser_owned_personal_data",
+    permission,
+    mutation,
+    ...extra,
+  };
+}
+
+async function createBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const title = typeof params?.title === "string" ? params.title : "";
+  const url = typeof params?.url === "string" ? params.url : undefined;
+  const parentId = typeof params?.parentId === "string" ? params.parentId : undefined;
+  if (!title && !url) throw new GatewayError("bad_params", "title or url required");
+  await approvePersonalDataMutation(
+    personalDataMutationIntent("bookmark_create", { title, url, parentId }),
+  );
+  const node = await api.create({ title, url, parentId });
+  return personalDataMutationResult("bookmarks", "create", { bookmark: publicBookmarkNode(node) });
+}
+
+async function updateBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : undefined;
+  if (!id) throw new GatewayError("bad_params", "bookmarkId required");
+  const title = typeof params?.title === "string" ? params.title : undefined;
+  const url = typeof params?.url === "string" ? params.url : undefined;
+  if (title === undefined && url === undefined) {
+    throw new GatewayError("bad_params", "title or url required");
+  }
+  const [existing] = await api.get(id);
+  if (!existing) throw new GatewayError("not_found", `no bookmark with id ${id}`);
+  await approvePersonalDataMutation(
+    personalDataMutationIntent("bookmark_update", { title: existing.title, url, id }),
+  );
+  const node = await api.update(id, { title, url });
+  return personalDataMutationResult("bookmarks", "update", { bookmark: publicBookmarkNode(node) });
+}
+
+async function moveBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : undefined;
+  if (!id) throw new GatewayError("bad_params", "bookmarkId required");
+  const parentId = typeof params?.parentId === "string" ? params.parentId : undefined;
+  const index = typeof params?.index === "number" ? params.index : undefined;
+  if (parentId === undefined && index === undefined) {
+    throw new GatewayError("bad_params", "parentId or index required");
+  }
+  const [existing] = await api.get(id);
+  if (!existing) throw new GatewayError("not_found", `no bookmark with id ${id}`);
+  await approvePersonalDataMutation(
+    personalDataMutationIntent("bookmark_move", { title: existing.title, id, parentId }),
+  );
+  const node = await api.move(id, { parentId, index });
+  return personalDataMutationResult("bookmarks", "move", { bookmark: publicBookmarkNode(node) });
+}
+
+async function removeBookmark(params: GatewayCommand["params"]): Promise<Record<string, unknown>> {
+  const api = await requireBookmarksAccess();
+  const id = typeof params?.bookmarkId === "string" ? params.bookmarkId : undefined;
+  if (!id) throw new GatewayError("bad_params", "bookmarkId required");
+  const [existing] = await api.get(id);
+  if (!existing) throw new GatewayError("not_found", `no bookmark with id ${id}`);
+  if (!existing.url) {
+    // bookmarks.remove would only delete an empty folder, and recursive folder
+    // deletion is deliberately not offered: a single approval must not be able
+    // to erase a whole bookmark subtree.
+    throw new GatewayError(
+      "folder_removal_not_supported",
+      "Deleting bookmark folders through ABG is not supported. Delete individual bookmarks instead.",
+    );
+  }
+  await approvePersonalDataMutation(
+    personalDataMutationIntent("bookmark_remove", { title: existing.title, id }),
+  );
+  await api.remove(id);
+  return personalDataMutationResult("bookmarks", "remove", { removedId: id });
+}
+
+async function addReadingListEntry(
+  params: GatewayCommand["params"],
+): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const title = typeof params?.title === "string" ? params.title : undefined;
+  const url = typeof params?.url === "string" ? params.url : undefined;
+  if (!title || !url) throw new GatewayError("bad_params", "title and url required");
+  await approvePersonalDataMutation(personalDataMutationIntent("reading_list_add", { title, url }));
+  await api.addEntry({ title, url, hasBeenRead: params?.hasBeenRead === true });
+  return personalDataMutationResult("readingList", "add", { url });
+}
+
+async function updateReadingListEntry(
+  params: GatewayCommand["params"],
+): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const url = typeof params?.url === "string" ? params.url : undefined;
+  if (!url) throw new GatewayError("bad_params", "url required");
+  const title = typeof params?.title === "string" ? params.title : undefined;
+  const hasBeenRead = typeof params?.hasBeenRead === "boolean" ? params.hasBeenRead : undefined;
+  if (title === undefined && hasBeenRead === undefined) {
+    throw new GatewayError("bad_params", "title or hasBeenRead required");
+  }
+  await approvePersonalDataMutation(
+    personalDataMutationIntent("reading_list_update", { title, url }),
+  );
+  await api.updateEntry({ url, title, hasBeenRead });
+  return personalDataMutationResult("readingList", "update", { url });
+}
+
+async function removeReadingListEntry(
+  params: GatewayCommand["params"],
+): Promise<Record<string, unknown>> {
+  const api = await requireReadingListAccess();
+  const url = typeof params?.url === "string" ? params.url : undefined;
+  if (!url) throw new GatewayError("bad_params", "url required");
+  await approvePersonalDataMutation(personalDataMutationIntent("reading_list_remove", { url }));
+  await api.removeEntry({ url });
+  return personalDataMutationResult("readingList", "remove", { url });
 }
 
 async function searchReadingList(
@@ -6927,6 +7093,11 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "set_reading_list_access") {
     await setReadingListAccessEnabled(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_personal_data_mutations") {
+    const current = await getSettings();
+    await browser.storage.local.set({ ...current, personalDataMutationsEnabled: msg.value });
     return { type: "ok" };
   }
   if (msg.type === "annotation_action") {
