@@ -349,9 +349,12 @@ export type ApprovalToBackground =
       type: "approval_decision";
       approvalId: string;
       decision: ApprovalDecision;
-      // Present only for record_start: the tabCapture stream ID minted inside the
+      // Present only for record_start: the capture stream ID minted inside the
       // "Allow" click so the capture gesture stays live.
       streamId?: string;
+      // How the stream ID was minted: tabCapture ("tab", default) or the
+      // desktopCapture tab picker ("desktop"), which all-tabs mode falls back to.
+      streamSource?: "tab" | "desktop";
     };
 
 export type BackgroundToApproval =
@@ -372,6 +375,7 @@ export type BackgroundToOffscreen =
       cmd: "start";
       recordingId: string;
       streamId: string;
+      source?: "tab" | "desktop";
       withMic: boolean;
       timesliceMs?: number;
     }

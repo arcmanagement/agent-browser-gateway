@@ -103,7 +103,7 @@ async function patchManifest(target) {
     delete manifest.minimum_chrome_version;
     // Recording relies on the Chrome-only offscreen + tabCapture APIs.
     manifest.permissions = (manifest.permissions ?? []).filter(
-      (perm) => perm !== "offscreen" && perm !== "tabCapture",
+      (perm) => perm !== "offscreen" && perm !== "tabCapture" && perm !== "desktopCapture",
     );
     // Reading List is Chrome-only in ABG's current extension target set.
     await rm("dist/offscreen.html", { force: true });

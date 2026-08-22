@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { approvalRemainingMs, scriptBlockPresentation } from "../src/approvalLogic.js";
+import {
+  approvalRemainingMs,
+  scriptBlockPresentation,
+  shouldFallBackToTabPicker,
+} from "../src/approvalLogic.js";
 
 describe("approvalLogic", () => {
   it("clamps approval timeout remaining time", () => {
@@ -13,5 +17,20 @@ describe("approvalLogic", () => {
       hidden: false,
       text: "document.title",
     });
+  });
+});
+
+describe("shouldFallBackToTabPicker", () => {
+  it("matches the all-tabs invocation failure", () => {
+    expect(
+      shouldFallBackToTabPicker(
+        "Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match unrelated mint failures", () => {
+    expect(shouldFallBackToTabPicker("could not start tab capture")).toBe(false);
+    expect(shouldFallBackToTabPicker("no current window")).toBe(false);
   });
 });

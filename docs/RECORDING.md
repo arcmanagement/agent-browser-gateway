@@ -77,6 +77,14 @@ identical to every other command (the tab must be in `permittedTabs`), so it
 works the same whether the tab was shared in per-tab `manual` mode or is present
 via `all_tabs` mode. The approval gate is always shown regardless of mode.
 
+The capture stream differs between the modes. Manual sharing's toolbar click carries the
+`activeTab` grant that `tabCapture` needs, so the Allow click mints the stream directly. Tabs
+shared through `all_tabs` mode never received a per-tab action click, so `tabCapture` refuses
+them; the approval window detects this at load and the Allow click opens Chrome's own tab picker
+(`desktopCapture`) instead — choose the tab and enable its audio-sharing toggle to record tab
+audio. Cancelling the picker cancels the recording; leaving the audio toggle off records
+video-only.
+
 ## Output locations and the App Store sandbox
 
 Without `--output`, recordings land in the ABG recordings directory and HAR exports in

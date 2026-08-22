@@ -170,9 +170,10 @@ type Point = { x: number; y: number };
 type ApprovalResolution = {
   decision: ApprovalDecision;
   message: string;
-  // Present only for record_start approvals: the tabCapture stream ID minted
+  // Present only for record_start approvals: the capture stream ID minted
   // inside the "Allow" click gesture.
   streamId?: string;
+  streamSource?: "tab" | "desktop";
 };
 
 type RecordingSession = {
@@ -2424,12 +2425,17 @@ function finalizeApproval(
   return true;
 }
 
-function resolutionForDecision(decision: ApprovalDecision, streamId?: string): ApprovalResolution {
+function resolutionForDecision(
+  decision: ApprovalDecision,
+  streamId?: string,
+  streamSource?: "tab" | "desktop",
+): ApprovalResolution {
   if (decision === "allow") {
     return {
       decision,
       message: "Operation approved.",
       streamId,
+      streamSource,
     };
   }
   if (decision === "timeout") {
@@ -2488,6 +2494,7 @@ async function recordStart(
     cmd: "start",
     recordingId,
     streamId: approval.streamId,
+    source: approval.streamSource ?? "tab",
     withMic,
     timesliceMs: typeof params.timesliceMs === "number" ? params.timesliceMs : undefined,
   })) as OffscreenStartResult | undefined;
@@ -7137,7 +7144,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   const resolved = finalizeApproval(
     msg.approvalId,
-    resolutionForDecision(msg.decision, msg.streamId),
+    resolutionForDecision(msg.decision, msg.streamId, msg.streamSource),
   );
   if (!resolved) {
     return { type: "error", message: "approval request not found" };
@@ -7200,6 +7207,10 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
       approvalId: rawMsg.approvalId,
       decision: rawMsg.decision,
       streamId: typeof rawMsg.streamId === "string" ? rawMsg.streamId : undefined,
+      streamSource:
+        rawMsg.streamSource === "desktop" || rawMsg.streamSource === "tab"
+          ? rawMsg.streamSource
+          : undefined,
     };
   }
   return null;

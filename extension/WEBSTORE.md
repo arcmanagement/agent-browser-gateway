@@ -108,6 +108,7 @@ Suggested permission justifications:
 - `debugger`: Capture screenshots, console messages, network information, file uploads, and input operations for a user-shared tab.
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
 - `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
+- `desktopCapture`: Fallback for recording tabs shared through the opt-in all-tabs sandbox mode, where no per-tab toolbar click exists for `tabCapture`: the Allow click opens Chrome's own tab picker and the user selects the tab to record. Never invoked outside the recording approval flow.
 - `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway.
 - Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
 - Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.

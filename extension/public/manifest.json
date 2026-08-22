@@ -21,6 +21,7 @@
     "alarms",
     "clipboardWrite",
     "tabCapture",
+    "desktopCapture",
     "offscreen"
   ],
   "host_permissions": [],
