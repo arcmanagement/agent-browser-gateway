@@ -15,6 +15,26 @@ actor PairingManager {
     private var listenerApp: Application?
     private var listenerAddress: String?
     private var expiryTask: Task<Void, Never>?
+    /// Plain session tokens awaiting one-time sealed delivery via the status
+    /// endpoint. Never persisted.
+    private var pendingSessionTokens: [String: String] = [:]
+    /// Connected companion sessions by deviceId.
+    private var companionSockets: [String: [WebSocket]] = [:]
+    /// Approvals currently forwarded to companions. First decision wins; the
+    /// extension's own pending registry is the final authority.
+    private var forwardedApprovals: [String: ForwardedApproval] = [:]
+    /// Set by the Coordinator: injects a companion decision into the extension.
+    var decideHandler: (@Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?))?
+
+    struct ForwardedApproval {
+        let summary: CompanionApprovalSummary
+        let extensionId: String
+        var resolved: Bool
+    }
+
+    func setDecideHandler(_ handler: @escaping @Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?)) {
+        decideHandler = handler
+    }
 
     /// The port for the on-demand pairing listener. Distinct from the loopback
     /// gateway port so the loopback-only invariant of the main listener holds.
@@ -57,7 +77,8 @@ actor PairingManager {
 
     func confirm(pairingId: String) async -> Result<CompanionGrant, PairingError> {
         do {
-            let grant = try engine.confirm(pairingId: pairingId)
+            let (grant, sessionToken, _) = try engine.confirm(pairingId: pairingId)
+            pendingSessionTokens[grant.deviceId] = sessionToken
             persistGrants()
             await stopListenerIfIdle()
             await auditLog.log(action: "pairing_confirmed", agent: "cli", details: [
@@ -95,11 +116,13 @@ actor PairingManager {
     func revoke(deviceId: String, by: String) async -> CompanionGrant? {
         guard let grant = engine.revoke(deviceId: deviceId, by: by) else { return nil }
         persistGrants()
+        let closed = await closeSessions(deviceId: deviceId)
+        await stopListenerIfIdle()
         await auditLog.log(action: "pairing_revoked", agent: by, details: [
             "deviceIdHash": AnyCodable(PairingAudit.hashed(deviceId)),
             "revokedScopes": AnyCodable(grant.scopes.map(\.rawValue)),
             "revokedBy": AnyCodable(by),
-            "activeSessionsClosed": AnyCodable(0),
+            "activeSessionsClosed": AnyCodable(closed),
             "ok": AnyCodable(true),
         ])
         return grant
@@ -107,6 +130,48 @@ actor PairingManager {
 
     func activeGrant(deviceId: String) -> CompanionGrant? {
         engine.activeGrant(deviceId: deviceId)
+    }
+
+    func verifySession(deviceId: String, sessionToken: String) -> CompanionGrant? {
+        guard engine.verifySession(deviceId: deviceId, sessionToken: sessionToken) else { return nil }
+        return engine.activeGrant(deviceId: deviceId)
+    }
+
+    /// Status payload for the companion. Delivers the sealed session token
+    /// exactly once after the desktop confirmation.
+    func statusPayload(pairingId: String) -> PairingStatusResponse {
+        switch engine.status(pairingId: pairingId) {
+        case .offerActive:
+            return PairingStatusResponse(state: "offer_active", deviceId: nil, session: nil)
+        case .claimed:
+            return PairingStatusResponse(state: "claimed", deviceId: nil, session: nil)
+        case .paired(let deviceId):
+            var session: PairingCrypto.Sealed?
+            if let token = pendingSessionTokens.removeValue(forKey: deviceId),
+               let grant = engine.activeGrant(deviceId: deviceId),
+               let sealed = try? PairingCrypto.seal(token, toDevicePublicKeyBase64: grant.devicePublicKeyBase64) {
+                engine.markSessionTokenDelivered(deviceId: deviceId)
+                persistGrants()
+                session = sealed
+            }
+            return PairingStatusResponse(state: "paired", deviceId: deviceId, session: session)
+        case .revoked:
+            return PairingStatusResponse(state: "revoked", deviceId: nil, session: nil)
+        case .unknown:
+            return PairingStatusResponse(state: "unknown", deviceId: nil, session: nil)
+        }
+    }
+
+    /// The listener also serves paired companions, so it must run while grants
+    /// exist, not only during an active offer.
+    private func listenerShouldServe() -> Bool {
+        engine.listenerShouldRun() || engine.grants.contains(where: { $0.isActive })
+    }
+
+    /// Starts the companion listener at gateway startup when grants exist.
+    func startIfNeeded() async {
+        guard listenerShouldServe(), let address = Self.privateInterfaceAddress() else { return }
+        await startListener(on: address)
     }
 
     // MARK: - Companion-facing claim (network listener)
@@ -142,6 +207,101 @@ actor PairingManager {
         }
     }
 
+    // MARK: - Approval forwarding
+
+    func forwardApprovalPending(_ summary: CompanionApprovalSummary, extensionId: String) async {
+        forwardedApprovals[summary.approvalId] = ForwardedApproval(summary: summary, extensionId: extensionId, resolved: false)
+        guard !companionSockets.isEmpty else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(CompanionEvent.pending(summary)),
+              let text = String(data: data, encoding: .utf8) else { return }
+        await broadcast(text)
+    }
+
+    func forwardApprovalResolved(approvalId: String, decision: String, decidedBy: String) async {
+        if var entry = forwardedApprovals[approvalId] {
+            entry.resolved = true
+            forwardedApprovals[approvalId] = entry
+        }
+        guard !companionSockets.isEmpty else { return }
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(CompanionEvent.resolved(approvalId: approvalId, decision: decision, decidedBy: decidedBy)),
+              let text = String(data: data, encoding: .utf8) else { return }
+        await broadcast(text)
+    }
+
+    private func broadcast(_ text: String) async {
+        for sockets in companionSockets.values {
+            for socket in sockets {
+                try? await socket.send(text)
+            }
+        }
+    }
+
+    private func handleCompanionText(deviceId: String, ws: WebSocket, text: String) async {
+        guard companionSockets[deviceId]?.contains(where: { $0 === ws }) == true else { return }
+        guard let data = text.data(using: .utf8),
+              let message = try? JSONDecoder().decode(CompanionDecision.self, from: data),
+              message.type == "decision" else { return }
+        let reply: CompanionDecisionResult
+        if message.decision != "allow" && message.decision != "deny" {
+            reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "bad_decision")
+        } else if let entry = forwardedApprovals[message.approvalId], !entry.resolved {
+            if Date() >= entry.summary.expiresAt {
+                reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "approval_expired")
+            } else if message.decision == "allow" && !entry.summary.canAllow {
+                reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "requires_desktop_gesture")
+            } else if let decide = decideHandler {
+                let decidedBy = "companion:\(PairingAudit.hashed(deviceId))"
+                let outcome = await decide(entry.extensionId, message.approvalId, message.decision, decidedBy)
+                if outcome.applied {
+                    await auditLog.log(action: "approval_decided_by_companion", agent: decidedBy, details: [
+                        "approvalId": AnyCodable(message.approvalId),
+                        "decision": AnyCodable(message.decision),
+                        "deviceIdHash": AnyCodable(PairingAudit.hashed(deviceId)),
+                        "ok": AnyCodable(true),
+                    ])
+                }
+                reply = CompanionDecisionResult(
+                    approvalId: message.approvalId,
+                    ok: outcome.applied,
+                    error: outcome.applied ? nil : (outcome.reason ?? "approval_already_decided")
+                )
+            } else {
+                reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "gateway_unavailable")
+            }
+        } else {
+            reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "approval_already_decided")
+        }
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(reply), let text = String(data: data, encoding: .utf8) {
+            try? await ws.send(text)
+        }
+    }
+
+    private func registerCompanion(deviceId: String, ws: WebSocket) {
+        companionSockets[deviceId, default: []].append(ws)
+    }
+
+    private func unregisterCompanion(deviceId: String, ws: WebSocket) {
+        companionSockets[deviceId]?.removeAll { $0 === ws }
+        if companionSockets[deviceId]?.isEmpty == true {
+            companionSockets.removeValue(forKey: deviceId)
+        }
+    }
+
+    private func closeSessions(deviceId: String) async -> Int {
+        let sockets = companionSockets.removeValue(forKey: deviceId) ?? []
+        for socket in sockets {
+            // Hop to the socket's own event loop: WebSocketKit close is loop-bound.
+            socket.eventLoop.execute {
+                _ = socket.close(code: .normalClosure)
+            }
+        }
+        return sockets.count
+    }
+
     // MARK: - Listener lifecycle
 
     private func startListener(on address: String) async {
@@ -164,6 +324,37 @@ actor PairingManager {
                 try response.content.encode(result, as: .json)
                 return response
             }
+            app.get("pairings", ":pairingId", "status") { [weak self] req async throws -> Response in
+                guard let self else { throw Abort(.serviceUnavailable) }
+                let pairingId = req.parameters.get("pairingId") ?? ""
+                let payload = await self.statusFromListener(pairingId: pairingId)
+                let response = Response(status: .ok)
+                try response.content.encode(payload, as: .json)
+                return response
+            }
+            app.webSocket("companion") { [weak self] req, ws in
+                // Handler registration must happen synchronously on the socket's
+                // event loop; authorization runs on the actor afterwards, and the
+                // actor ignores messages from sockets it has not registered.
+                let manager = self
+                let deviceId = req.headers.first(name: "x-abg-device-id") ?? ""
+                let token = req.headers.first(name: "x-abg-session-token") ?? ""
+                ws.onText { ws, text in
+                    Task { await manager?.handleCompanionText(deviceId: deviceId, ws: ws, text: text) }
+                }
+                _ = ws.onClose.always { _ in
+                    Task { await manager?.unregisterCompanion(deviceId: deviceId, ws: ws) }
+                }
+                Task {
+                    guard let manager,
+                          let grant = await manager.verifySession(deviceId: deviceId, sessionToken: token),
+                          grant.hasScope(.approvalForwarding) else {
+                        try? await ws.close(code: .policyViolation)
+                        return
+                    }
+                    await manager.registerCompanionAuthorized(deviceId: deviceId, ws: ws)
+                }
+            }
             try await app.server.start()
             listenerApp = app
             listenerAddress = address
@@ -182,8 +373,16 @@ actor PairingManager {
         await handleClaim(body)
     }
 
+    private func statusFromListener(pairingId: String) async -> PairingStatusResponse {
+        statusPayload(pairingId: pairingId)
+    }
+
+    private func registerCompanionAuthorized(deviceId: String, ws: WebSocket) {
+        registerCompanion(deviceId: deviceId, ws: ws)
+    }
+
     private func stopListenerIfIdle() async {
-        if !engine.listenerShouldRun() {
+        if !listenerShouldServe() {
             await shutdownListener()
         }
     }
@@ -276,6 +475,46 @@ struct ClaimRequest: Content {
     let devicePublicKey: String
     let deviceLabel: String
     let requestedScopes: [String]
+}
+
+enum CompanionEvent: Encodable {
+    case pending(CompanionApprovalSummary)
+    case resolved(approvalId: String, decision: String, decidedBy: String)
+
+    enum CodingKeys: String, CodingKey { case type, approval, approvalId, decision, decidedBy }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .pending(let summary):
+            try container.encode("approval_pending", forKey: .type)
+            try container.encode(summary, forKey: .approval)
+        case .resolved(let approvalId, let decision, let decidedBy):
+            try container.encode("approval_resolved", forKey: .type)
+            try container.encode(approvalId, forKey: .approvalId)
+            try container.encode(decision, forKey: .decision)
+            try container.encode(decidedBy, forKey: .decidedBy)
+        }
+    }
+}
+
+struct CompanionDecision: Decodable {
+    let type: String
+    let approvalId: String
+    let decision: String
+}
+
+struct CompanionDecisionResult: Encodable {
+    var type = "decision_result"
+    let approvalId: String
+    let ok: Bool
+    let error: String?
+}
+
+struct PairingStatusResponse: Content {
+    let state: String
+    let deviceId: String?
+    let session: PairingCrypto.Sealed?
 }
 
 struct ClaimResponse: Content {

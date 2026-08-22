@@ -41,10 +41,12 @@ public enum ExtensionMessage: Codable, Sendable {
     case recordChunk(recordingId: String, seq: Int, dataBase64: String)
     case recordStopped(recordingId: String, durationMs: Int, mime: String, micUsed: Bool, chunkCount: Int)
     case recordFailed(recordingId: String, error: String)
+    case approvalPending(approval: AnyCodable)
+    case approvalResolved(approvalId: String, decision: String, decidedBy: String)
     case response(id: String, result: AnyCodable?, error: ErrorPayload?)
 
-    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error, recordingId, seq, dataBase64, durationMs, mime, micUsed, chunkCount }
-    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", recordChunk = "record_chunk", recordStopped = "record_stopped", recordFailed = "record_failed", response }
+    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error, recordingId, seq, dataBase64, durationMs, mime, micUsed, chunkCount, approval, approvalId, decision, decidedBy }
+    enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", recordChunk = "record_chunk", recordStopped = "record_stopped", recordFailed = "record_failed", approvalPending = "approval_pending", approvalResolved = "approval_resolved", response }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -104,6 +106,14 @@ public enum ExtensionMessage: Codable, Sendable {
             self = .recordFailed(
                 recordingId: try c.decode(String.self, forKey: .recordingId),
                 error: try c.decodeIfPresent(String.self, forKey: .error) ?? "recording failed"
+            )
+        case .approvalPending:
+            self = .approvalPending(approval: try c.decode(AnyCodable.self, forKey: .approval))
+        case .approvalResolved:
+            self = .approvalResolved(
+                approvalId: try c.decode(String.self, forKey: .approvalId),
+                decision: try c.decode(String.self, forKey: .decision),
+                decidedBy: try c.decodeIfPresent(String.self, forKey: .decidedBy) ?? "desktop_window"
             )
         case .response:
             self = .response(
@@ -165,6 +175,14 @@ public enum ExtensionMessage: Codable, Sendable {
             try c.encode(MsgType.recordFailed, forKey: .type)
             try c.encode(recordingId, forKey: .recordingId)
             try c.encode(error, forKey: .error)
+        case .approvalPending(let approval):
+            try c.encode(MsgType.approvalPending, forKey: .type)
+            try c.encode(approval, forKey: .approval)
+        case .approvalResolved(let approvalId, let decision, let decidedBy):
+            try c.encode(MsgType.approvalResolved, forKey: .type)
+            try c.encode(approvalId, forKey: .approvalId)
+            try c.encode(decision, forKey: .decision)
+            try c.encode(decidedBy, forKey: .decidedBy)
         case .response(let id, let result, let error):
             try c.encode(MsgType.response, forKey: .type)
             try c.encode(id, forKey: .id)

@@ -46,7 +46,21 @@ export type ExtToGateway =
       id: string;
       result?: unknown;
       error?: { code: string; message: string; matchCount?: number };
-    };
+    }
+  | {
+      type: "approval_pending";
+      approval: {
+        approvalId: string;
+        method: string;
+        intent: string;
+        tabId: number;
+        origin: string;
+        createdAt: number;
+        timeoutMs: number;
+        scriptPreview?: string;
+      };
+    }
+  | { type: "approval_resolved"; approvalId: string; decision: string; decidedBy: string };
 
 export type GatewayCommand = {
   id: string;
@@ -125,6 +139,9 @@ export type GatewayCommand = {
     includeFolders?: boolean;
     title?: string;
     parentId?: string;
+    approvalId?: string;
+    decision?: string;
+    decidedBy?: string;
     path?: string;
     hasBeenRead?: boolean;
     // wait_for
@@ -193,6 +210,7 @@ export type GatewayMethod =
   | "reading_list_remove"
   | "raise_tab"
   | "revoke"
+  | "approval_decide"
   | "wait_for"
   | "eval_script"
   | "annotation_mode"

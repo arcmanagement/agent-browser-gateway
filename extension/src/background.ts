@@ -1,4 +1,5 @@
 import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
+import { scriptBlockPresentation } from "./approvalLogic.js";
 import {
   type AuditDiffPayload,
   type AuditDiffValue,
@@ -1295,6 +1296,30 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, await updateReadingListEntry(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_remove") {
       reply(cmd.id, await removeReadingListEntry(cmd.params ?? {}));
+    } else if (cmd.method === "approval_decide") {
+      const approvalId = cmd.params?.approvalId;
+      const decision = cmd.params?.decision;
+      const decidedBy = cmd.params?.decidedBy ?? "companion";
+      if (typeof approvalId !== "string" || (decision !== "allow" && decision !== "deny")) {
+        throw new GatewayError("bad_params", "approvalId and decision (allow|deny) required");
+      }
+      const pending = pendingApprovals.get(approvalId);
+      // Recording approvals can only be denied remotely: the capture stream must
+      // be minted inside the desktop approval window's own click gesture.
+      if (pending?.request.method === "record_start" && decision === "allow") {
+        reply(cmd.id, { applied: false, reason: "requires_desktop_gesture" });
+      } else {
+        const applied = finalizeApproval(
+          approvalId,
+          resolutionForDecision(decision as ApprovalDecision),
+          true,
+          decidedBy,
+        );
+        reply(
+          cmd.id,
+          applied ? { applied: true } : { applied: false, reason: "approval_already_decided" },
+        );
+      }
     } else if (cmd.method === "raise_tab") {
       if (!tabId) throw new Error("tab not permitted");
       reply(cmd.id, await raisePermittedBrowserTab(browser, permittedTabs, tabId));
@@ -2364,6 +2389,19 @@ async function requestOperationApproval(
     timeoutId,
   };
   pendingApprovals.set(request.id, pending);
+  sendWS({
+    type: "approval_pending",
+    approval: {
+      approvalId: request.id,
+      method: request.method,
+      intent: request.intent,
+      tabId,
+      origin: originForUrl(request.tab.url) ?? "",
+      createdAt: request.createdAt,
+      timeoutMs: request.timeoutMs,
+      scriptPreview: script ? scriptBlockPresentation(script).text.slice(0, 500) : undefined,
+    },
+  });
 
   try {
     const approvalUrl = new URL(browser.runtime.getURL("approval.html"));
@@ -2413,6 +2451,7 @@ function finalizeApproval(
   approvalId: string,
   resolution: ApprovalResolution,
   closeWindow = false,
+  decidedBy = "desktop_window",
 ): boolean {
   const pending = pendingApprovals.get(approvalId);
   if (!pending) return false;
@@ -2422,6 +2461,12 @@ function finalizeApproval(
     browser.windows.remove(pending.windowId).catch(() => {});
   }
   pending.resolve(resolution);
+  sendWS({
+    type: "approval_resolved",
+    approvalId,
+    decision: resolution.decision,
+    decidedBy: resolution.decision === "timeout" ? "timeout" : decidedBy,
+  });
   return true;
 }
 
