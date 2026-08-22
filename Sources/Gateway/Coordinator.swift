@@ -20,6 +20,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     @Published var statusMessage: String = "Starting…"
 
     private(set) var auditLog = AuditLog()
+    private lazy var pairingManager = PairingManager(auditLog: auditLog)
     private(set) var wsServer: WSServer?
     private(set) var udsServer: UDSServer?
     /// Whether the Unix socket transport is serving the CLI (false = WS /cli only).
@@ -269,6 +270,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 "permittedTabCount": permittedTabs.count,
                 "tabs": tabSummaries(),
             ]))
+        case "pairing_offer_create":
+            return await handlePairingOfferCreate(req: req)
+        case "pairing_pending":
+            return await handlePairingPending(req: req)
+        case "pairing_confirm":
+            return await handlePairingConfirm(req: req)
+        case "pairing_reject":
+            return await handlePairingReject(req: req)
+        case "companion_list":
+            return await handleCompanionList(req: req)
+        case "companion_revoke":
+            return await handleCompanionRevoke(req: req)
         case "bookmarks_list":
             return await handlePersonalDataCommand(req: req, method: "bookmarks_list")
         case "bookmarks_search":
@@ -1788,6 +1801,105 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         let payload: ErrorPayload
 
         var errorDescription: String? { "\(payload.code): \(payload.message)" }
+    }
+
+
+    // MARK: - Companion pairing (local CLI transport only)
+
+    private func handlePairingOfferCreate(req: CLIRequest) async -> CLIResponse {
+        switch await pairingManager.createOffer() {
+        case .success(let payload):
+            let formatter = ISO8601DateFormatter()
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "ok": true,
+                "gatewayBaseUrl": payload.gatewayBaseUrl,
+                "pairingId": payload.pairingId,
+                "pairingNonce": payload.pairingNonce,
+                "desktopPublicKey": payload.desktopPublicKey,
+                "expiresAt": formatter.string(from: payload.expiresAt),
+                "displayCode": payload.displayCode,
+                "requestedScopes": payload.requestedScopes,
+                "manualCode": payload.manualCode,
+                "claimUrl": "\(payload.gatewayBaseUrl)/pairings/\(payload.pairingId)/claim",
+            ] as [String: Any]))
+        case .failure(let error):
+            return CLIResponse(id: req.id, error: ErrorPayload(
+                code: error.reason.rawValue,
+                message: "Could not create a pairing offer.",
+                userMessage: "Tailnet または private LAN の IPv4 アドレスが見つからないため、pairing offer を開始できません。ネットワーク接続を確認してください。"
+            ))
+        }
+    }
+
+    private func handlePairingPending(req: CLIRequest) async -> CLIResponse {
+        if let pending = await pairingManager.pendingClaim() {
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "pending": true,
+                "pairingId": pending.pairingId,
+                "displayCode": pending.displayCode,
+                "deviceLabel": pending.deviceLabel,
+            ] as [String: Any]))
+        }
+        return CLIResponse(id: req.id, result: AnyCodable(["pending": false]))
+    }
+
+    private func handlePairingConfirm(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let pairingId = params["pairingId"] as? String, !pairingId.isEmpty else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "pairingId required"))
+        }
+        switch await pairingManager.confirm(pairingId: pairingId) {
+        case .success(let grant):
+            return CLIResponse(id: req.id, result: AnyCodable([
+                "ok": true,
+                "deviceId": grant.deviceId,
+                "deviceLabel": grant.deviceLabel,
+                "scopes": grant.scopes.map(\.rawValue),
+            ] as [String: Any]))
+        case .failure(let error):
+            return CLIResponse(id: req.id, error: ErrorPayload(code: error.reason.rawValue, message: "Pairing confirmation failed."))
+        }
+    }
+
+    private func handlePairingReject(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let pairingId = params["pairingId"] as? String, !pairingId.isEmpty else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "pairingId required"))
+        }
+        await pairingManager.reject(pairingId: pairingId)
+        return CLIResponse(id: req.id, result: AnyCodable(["ok": true] as [String: Any]))
+    }
+
+    private func handleCompanionList(req: CLIRequest) async -> CLIResponse {
+        let formatter = ISO8601DateFormatter()
+        let rows = await pairingManager.listGrants().map { grant -> [String: Any] in
+            var row: [String: Any] = [
+                "deviceId": grant.deviceId,
+                "deviceLabel": grant.deviceLabel,
+                "scopes": grant.scopes.map(\.rawValue),
+                "pairedAt": formatter.string(from: grant.pairedAt),
+                "active": grant.isActive,
+            ]
+            if let revokedAt = grant.revokedAt { row["revokedAt"] = formatter.string(from: revokedAt) }
+            if let revokedBy = grant.revokedBy { row["revokedBy"] = revokedBy }
+            return row
+        }
+        return CLIResponse(id: req.id, result: AnyCodable(rows))
+    }
+
+    private func handleCompanionRevoke(req: CLIRequest) async -> CLIResponse {
+        guard let params = req.params?.value as? [String: Any],
+              let deviceId = params["deviceId"] as? String, !deviceId.isEmpty else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "bad_params", message: "deviceId required"))
+        }
+        guard let grant = await pairingManager.revoke(deviceId: deviceId, by: "cli") else {
+            return CLIResponse(id: req.id, error: ErrorPayload(code: "device_not_found", message: "no active companion with deviceId \(deviceId)"))
+        }
+        return CLIResponse(id: req.id, result: AnyCodable([
+            "ok": true,
+            "deviceId": grant.deviceId,
+            "revoked": true,
+        ] as [String: Any]))
     }
 
     private func extensionErrorPayload(from error: Error) -> ErrorPayload {
