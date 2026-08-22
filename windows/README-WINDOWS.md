@@ -41,8 +41,9 @@ After cloning the repository or extracting the Windows source zip, run this from
 
 This restores packages, runs tests, builds `dist\agent-browser-gateway-<version>-windows-x64.zip`,
 builds `dist\agent-browser-gateway-<version>-windows-x64-setup.zip`, extracts the non-GUI payload,
-installs to `C:\Tools\AgentBrowserGateway`, runs `abg install-skill --target both`, updates
-the user `PATH`, and starts the tray Gateway.
+installs to `C:\Tools\AgentBrowserGateway`, updates the user `PATH`, and starts the tray
+Gateway. Agent skills install separately with
+`npx skills add arcmanagement/agent-browser-gateway -g`.
 
 WinUI 3 publish must run on Windows or GitHub Actions `windows-latest`. macOS can prepare source
 changes and non-WinUI artifacts, but it cannot publish the WinUI app because `XamlCompiler.exe` is
@@ -104,7 +105,7 @@ To skip tests during an emergency handoff:
    abg tabs --compact
    ```
 
-The installer copies files to `C:\Tools\AgentBrowserGateway` by default, updates the user `PATH`, runs `abg install-skill --target both`, and starts the tray Gateway.
+The installer copies files to `C:\Tools\AgentBrowserGateway` by default, updates the user `PATH`, and starts the tray Gateway. Agent skills install separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
 Both the GUI setup and installer script register a user-scoped Add/Remove Programs entry at
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentBrowserGateway`. The uninstall entry
 points to `Uninstall-AgentBrowserGateway.ps1`, so WinGet can uninstall and upgrade through the

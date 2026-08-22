@@ -6,6 +6,8 @@ description: Scaffold and validate local Agent Browser Gateway plugins under the
 
 # ABG Plugin Creator
 
+Windows specifics are in [WINDOWS.md](WINDOWS.md).
+
 Use this skill when the user asks to create, scaffold, edit, or validate an Agent Browser Gateway plugin.
 
 ## Workflow
