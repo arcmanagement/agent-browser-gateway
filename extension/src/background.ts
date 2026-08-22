@@ -2686,6 +2686,9 @@ type FrameContext = {
   frame?: FrameDescriptor;
   offsetX: number;
   offsetY: number;
+  /** Deep query across open shadow roots (light DOM first, document order per root). */
+  query(selector: string, root?: ParentNode): Element | null;
+  queryAll(selector: string, root?: ParentNode): Element[];
 };
 
 type FrameScriptError = {
@@ -2818,11 +2821,28 @@ function createFrameApiSource(): string {
       collect(document, undefined, 0, 0, []);
       return items;
     };
+    const deepQueryAll = (root, selector) => {
+      const out = [];
+      const visit = (node) => {
+        if (!node || !node.querySelectorAll) return;
+        for (const el of node.querySelectorAll(selector)) out.push(el);
+        for (const el of node.querySelectorAll("*")) {
+          if (el.shadowRoot) visit(el.shadowRoot);
+        }
+      };
+      visit(root);
+      return out;
+    };
+    const withQueries = (ctx) => {
+      ctx.queryAll = (selector, root) => deepQueryAll(root || ctx.doc, selector);
+      ctx.query = (selector, root) => ctx.queryAll(selector, root)[0] || null;
+      return ctx;
+    };
     return {
       listFrames: () => collectFrames().map(publicFrame),
       resolve: (target) => {
         if (!target) {
-          return { doc: document, win: window, frame: undefined, offsetX: 0, offsetY: 0 };
+          return withQueries({ doc: document, win: window, frame: undefined, offsetX: 0, offsetY: 0 });
         }
         const frames = collectFrames();
         let found = null;
@@ -2841,13 +2861,13 @@ function createFrameApiSource(): string {
             "frame is not same-origin or is not accessible for selector targeting: " + target,
           );
         }
-        return {
+        return withQueries({
           doc: found.doc,
           win: found.win,
           frame: publicFrame(found),
           offsetX: found.offsetX,
           offsetY: found.offsetY,
-        };
+        });
       },
       normalize,
     };
@@ -2975,7 +2995,7 @@ async function readDom(
 ): Promise<DomReadResult> {
   return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
     const sel = opts.selector;
-    const root: Element | null = sel ? ctx.doc.querySelector(sel) : ctx.doc.documentElement;
+    const root: Element | null = sel ? ctx.query(sel) : ctx.doc.documentElement;
     if (sel && !root) {
       return {
         url: ctx.win.location.href,
@@ -3020,7 +3040,7 @@ async function getDomValue(
     const sel = opts.selector;
     const attrName = opts.name;
     const styleProps = opts.props;
-    const selected = sel ? Array.from(ctx.doc.querySelectorAll(sel)) : [];
+    const selected = sel ? ctx.queryAll(sel) : [];
     const first = selected[0] as HTMLElement | undefined;
     const textOf = (el: Element): string =>
       ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
@@ -3119,7 +3139,7 @@ async function getPredicate(
   return runFrameScript(tabId, frame, { kind, selector }, (ctx, opts) => {
     const predicate = opts.kind;
     const sel = opts.selector;
-    const el = sel ? (ctx.doc.querySelector(sel) as HTMLElement | null) : null;
+    const el = sel ? (ctx.query(sel) as HTMLElement | null) : null;
     const base = { kind: predicate, selector: sel, frame: ctx.frame, found: !!el };
     if (!el) return { ...base, value: false };
     const visible = (target: HTMLElement): boolean => {
@@ -3451,7 +3471,7 @@ async function findSemanticMatches(
         );
       };
       const selectorFor = (el: Element): string => {
-        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.queryAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of [
@@ -3466,7 +3486,7 @@ async function findSemanticMatches(
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.queryAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -3497,7 +3517,7 @@ async function findSemanticMatches(
         };
       };
       const pushMatch = (matches: LocalMatch[], el: Element): void => {
-        if (matches.some((match) => ctx.doc.querySelector(match.selector) === el)) return;
+        if (matches.some((match) => ctx.query(match.selector) === el)) return;
         matches.push({
           index: matches.length,
           selector: selectorFor(el),
@@ -3512,14 +3532,14 @@ async function findSemanticMatches(
 
       const matches: LocalMatch[] = [];
       if (opts.locator === "css") {
-        for (const el of Array.from(ctx.doc.querySelectorAll(opts.query))) {
+        for (const el of ctx.queryAll(opts.query)) {
           pushMatch(matches, el);
           if (matches.length >= opts.limit) break;
         }
         return matches;
       }
       if (opts.locator === "label") {
-        for (const label of Array.from(ctx.doc.querySelectorAll("label"))) {
+        for (const label of ctx.queryAll("label") as HTMLLabelElement[]) {
           if (!matchesText(label.textContent ?? "")) continue;
           const control =
             label.control ??
@@ -3531,7 +3551,7 @@ async function findSemanticMatches(
       }
 
       const candidates = Array.from(
-        ctx.doc.querySelectorAll(
+        ctx.queryAll(
           [
             "a[href]",
             "button",
@@ -3648,7 +3668,7 @@ async function snapshotTab(
         return "generic";
       };
       const selectorFor = (el: Element): string => {
-        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.queryAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of [
@@ -3663,7 +3683,7 @@ async function snapshotTab(
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.queryAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -3714,7 +3734,7 @@ async function snapshotTab(
           height: Math.round(rect.height),
         };
       };
-      const root = opts.selector ? ctx.doc.querySelector(opts.selector) : ctx.doc.body;
+      const root = opts.selector ? ctx.query(opts.selector) : ctx.doc.body;
       if (!root) {
         return {
           url: ctx.win.location.href,
@@ -3740,7 +3760,7 @@ async function snapshotTab(
         "[contenteditable='true']",
       ].join(",");
       const elements: SnapshotElement[] = [];
-      const candidates = Array.from(root.querySelectorAll(query));
+      const candidates = ctx.queryAll(query, root as ParentNode);
       if (root instanceof Element && root.matches(query)) candidates.unshift(root);
       for (const el of candidates) {
         const interactive = isInteractive(el);
@@ -4017,7 +4037,7 @@ async function extractTables(
       }
       return parts.join(" > ");
     };
-    const root = (sel ? ctx.doc.querySelector(sel) : ctx.doc) as Document | Element | null;
+    const root = (sel ? ctx.query(sel) : ctx.doc) as Document | Element | null;
     const tableElements: HTMLTableElement[] =
       root instanceof HTMLTableElement
         ? [root]
@@ -4103,14 +4123,14 @@ async function describeElements(
       };
       const trimText = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 160);
       const selectorFor = (el: Element): string => {
-        if (el.id && ctx.doc.querySelectorAll(`#${cssEscape(el.id)}`).length === 1) {
+        if (el.id && ctx.queryAll(`#${cssEscape(el.id)}`).length === 1) {
           return `#${cssEscape(el.id)}`;
         }
         for (const attr of ["data-testid", "data-test", "name", "aria-label"]) {
           const value = el.getAttribute(attr);
           if (value) {
             const selector = `${el.tagName.toLowerCase()}[${attr}="${cssEscape(value)}"]`;
-            if (ctx.doc.querySelectorAll(selector).length === 1) return selector;
+            if (ctx.queryAll(selector).length === 1) return selector;
           }
         }
         const parts: string[] = [];
@@ -4158,7 +4178,7 @@ async function describeElements(
         rect.top <= ctx.win.innerHeight &&
         rect.left <= ctx.win.innerWidth;
       const candidates = Array.from(
-        ctx.doc.querySelectorAll(
+        ctx.queryAll(
           [
             "a[href]",
             "button",
@@ -4593,7 +4613,7 @@ async function inspectFramework(
       const detectReactMarkers = (): Record<string, unknown> => {
         let fiberMarkers = 0;
         let propsMarkers = 0;
-        const elements = Array.from(ctx.doc.querySelectorAll("*")).slice(0, 5000);
+        const elements = ctx.queryAll("*").slice(0, 5000);
         for (const element of elements) {
           const names = Object.getOwnPropertyNames(element);
           if (names.some((name) => name.startsWith("__reactFiber$"))) fiberMarkers += 1;
@@ -5204,7 +5224,7 @@ async function selectOption(
     frame,
     { selector, value: choice.value, label: choice.label },
     (ctx, opts) => {
-      const select = ctx.doc.querySelector(opts.selector) as HTMLSelectElement | null;
+      const select = ctx.query(opts.selector) as HTMLSelectElement | null;
       if (!select) return { ok: false, found: false } as const;
       if (!(select instanceof HTMLSelectElement)) {
         return { ok: false, found: true, error: "not_select" } as const;
@@ -5262,7 +5282,7 @@ async function setChecked(
   error?: string;
 }> {
   return runFrameScript(tabId, frame, { selector, checked }, (ctx, opts) => {
-    const input = ctx.doc.querySelector(opts.selector) as HTMLInputElement | null;
+    const input = ctx.query(opts.selector) as HTMLInputElement | null;
     if (!input) return { ok: false, found: false } as const;
     if (!(input instanceof HTMLInputElement)) {
       return { ok: false, found: true, error: "not_input" } as const;
@@ -5344,7 +5364,7 @@ async function resolvePoint(tabId: number, point: DragPoint): Promise<Point> {
     point.frame,
     { selector: point.selector },
     (ctx, opts) => {
-      const el = ctx.doc.querySelector(opts.selector);
+      const el = ctx.query(opts.selector);
       if (!el) return null;
       const rect = el.getBoundingClientRect();
       return {
@@ -5454,11 +5474,7 @@ async function fillField(
       const previewOnly = opts.dryRun === true;
       type LocalKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
       type LocalAuditValue = { text: string; html?: string };
-      const el = ctx.doc.querySelector(sel) as
-        | HTMLInputElement
-        | HTMLTextAreaElement
-        | HTMLElement
-        | null;
+      const el = ctx.query(sel) as HTMLInputElement | HTMLTextAreaElement | HTMLElement | null;
       if (!el) return { ok: false, found: false } as const;
 
       const kindOf = (target: Element): LocalKind => {
@@ -5806,7 +5822,7 @@ async function focusElement(
   frame?: string,
 ): Promise<{ found: boolean; focused: boolean; tag?: string; activeTag?: string }> {
   return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return { found: false, focused: false } as const;
     el.focus({ preventScroll: true });
     const active = ctx.doc.activeElement;
@@ -5826,7 +5842,7 @@ async function focusEditableElement(
   frame?: string,
 ): Promise<{ found: boolean; focused: boolean }> {
   return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return { found: false, focused: false } as const;
     const editable =
       el instanceof HTMLInputElement ||
@@ -5863,7 +5879,7 @@ async function clearWithExecCommand(
   frame?: string,
 ): Promise<void> {
   await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return;
     el.focus({ preventScroll: true });
     ctx.doc.execCommand("selectAll");
@@ -5877,7 +5893,7 @@ async function clearWithSelectionRange(
   frame?: string,
 ): Promise<void> {
   await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as
+    const el = ctx.query(opts.selector) as
       | HTMLInputElement
       | HTMLTextAreaElement
       | HTMLElement
@@ -5907,7 +5923,7 @@ async function clearWithSyntheticInput(
   frame?: string,
 ): Promise<void> {
   await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as
+    const el = ctx.query(opts.selector) as
       | HTMLInputElement
       | HTMLTextAreaElement
       | HTMLElement
@@ -6088,7 +6104,7 @@ async function insertTextWithExecCommand(
   frame?: string,
 ): Promise<void> {
   await runFrameScript(tabId, frame, { selector, value }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return;
     el.focus({ preventScroll: true });
     if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
@@ -6117,7 +6133,7 @@ async function dispatchClipboardPasteEvent(
   frame?: string,
 ): Promise<void> {
   await runFrameScript(tabId, frame, { selector, value }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return;
     el.focus({ preventScroll: true });
     const clipboardData = new DataTransfer();
@@ -6161,7 +6177,7 @@ async function editableTextEmpty(
 
 async function readEditableText(tabId: number, selector: string, frame?: string): Promise<string> {
   return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as
+    const el = ctx.query(opts.selector) as
       | HTMLInputElement
       | HTMLTextAreaElement
       | HTMLElement
@@ -6179,7 +6195,7 @@ async function replaceDom(
   frame?: string,
 ): Promise<{ found: boolean; inserted: number; selector: string }> {
   return runFrameScript(tabId, frame, { selector, html }, (ctx, opts) => {
-    const target = ctx.doc.querySelector(opts.selector);
+    const target = ctx.query(opts.selector);
     if (!target) return { found: false, inserted: 0, selector: opts.selector } as const;
     const template = ctx.doc.createElement("template");
     template.innerHTML = opts.html.trim();
@@ -6513,7 +6529,7 @@ async function waitFor(tabId: number, params: WaitParams): Promise<WaitResult> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const visible = await runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-      const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+      const el = ctx.query(opts.selector) as HTMLElement | null;
       if (!el) return false;
       const rect = el.getBoundingClientRect();
       const style = getComputedStyle(el);
@@ -6823,7 +6839,7 @@ async function scrollElement(
   clientHeight?: number;
 }> {
   return runFrameScript(tabId, frame, { selector, deltaX, deltaY, steps }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) {
       return {
         ok: false,
@@ -6946,7 +6962,7 @@ async function scrollElementIntoView(
   visible?: boolean;
 }> {
   return runFrameScript(tabId, frame, { selector }, (ctx, opts) => {
-    const el = ctx.doc.querySelector(opts.selector) as HTMLElement | null;
+    const el = ctx.query(opts.selector) as HTMLElement | null;
     if (!el) return { ok: false, found: false, selector: opts.selector } as const;
     el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     const rect = el.getBoundingClientRect();

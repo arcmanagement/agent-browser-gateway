@@ -236,6 +236,7 @@ abg read <tab|ref> --frame @f1 --selector "<css>"
 abg read <tab|ref> --selector "<css>" --editable-value
 abg get text <tab|ref> "<css>"                   # Fine-grained getters: text/html/value/attr/title/url/count/box/styles
 abg get editable-value <tab|ref> "<css>"         # Rich-editor visible text + serialized HTML
+# Selector commands pierce open Shadow DOM by default (LWC / Lit / Stencil apps); closed roots stay invisible
 abg get attr <tab|ref> "<css>" --name href
 abg get styles <tab|ref> "<css>" --props display,color
 abg find role <tab|ref> button click --name "Submit"

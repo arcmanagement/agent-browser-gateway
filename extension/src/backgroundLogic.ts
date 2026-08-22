@@ -296,10 +296,18 @@ function commonSuffixLength(a: string, b: string, prefix: number): number {
  * snapshot ref.
  */
 export function clickSelectorFrameFn(
-  ctx: { doc: Pick<Document, "querySelectorAll">; frame?: unknown },
+  ctx: {
+    doc: Pick<Document, "querySelectorAll">;
+    frame?: unknown;
+    queryAll?: (selector: string) => Element[];
+  },
   opts: { selector: string },
 ): { found: boolean; tag?: string; frame?: unknown } {
-  const matches = ctx.doc.querySelectorAll(opts.selector);
+  // ctx.queryAll pierces open shadow roots when the frame API provides it; the
+  // plain document query keeps the function usable in isolation.
+  const matches = ctx.queryAll
+    ? ctx.queryAll(opts.selector)
+    : ctx.doc.querySelectorAll(opts.selector);
   if (matches.length === 0) return { found: false };
   if (matches.length > 1) {
     const error = new Error(
