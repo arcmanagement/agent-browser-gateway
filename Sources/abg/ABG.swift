@@ -44,7 +44,7 @@ struct ABG: AsyncParsableCommand {
         abstract: "Agent Browser Gateway CLI",
         subcommands: [
             Status.self, Tabs.self, Inspect.self, Raise.self,
-            Bookmarks.self, ReadingList.self,
+            Bookmarks.self, ReadingList.self, Companion.self,
             Frames.self, Read.self, Get.self, Find.self, Snapshot.self, Screenshot.self, PDF.self, Annotate.self, Console.self, Eval.self, Table.self, Describe.self, Network.self, WaitResponse.self, HAR.self, State.self, Framework.self, Sandbox.self, Download.self, Dialog.self,
             IsVisible.self, IsEnabled.self, IsChecked.self,
             Click.self, DblClick.self, Focus.self, Hover.self, SelectOption.self, Check.self, Uncheck.self, Fill.self, ReplaceEditable.self, Paste.self, ClipboardWrite.self, PasteRich.self, Clear.self, Replace.self, Type.self, Key.self, KeyDown.self, KeyUp.self, Keyboard.self, ExecCommand.self, Navigate.self, Scroll.self, ScrollIntoView.self, Drag.self, Upload.self,
@@ -58,7 +58,7 @@ struct ABG: AsyncParsableCommand {
 
 private let builtInTopLevelCommands: Set<String> = [
     "status", "tabs", "inspect", "raise",
-    "bookmarks", "reading-list",
+    "bookmarks", "reading-list", "companion",
     "frames", "read", "get", "find", "snapshot", "screenshot", "pdf", "annotate", "console", "eval", "table", "describe", "network", "wait-response", "har", "state", "framework", "sandbox", "download", "dialog",
     "is-visible", "is-enabled", "is-checked",
     "click", "dblclick", "focus", "hover", "select", "check", "uncheck", "fill", "replace-editable", "paste", "clipboard-write", "paste-rich", "clear", "replace", "type", "key", "keydown", "keyup", "keyboard", "exec-command", "navigate", "scroll", "scroll-into-view", "drag", "upload",

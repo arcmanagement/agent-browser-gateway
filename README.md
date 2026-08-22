@@ -230,6 +230,13 @@ abg bookmarks remove <bookmark-id>              # Destructive; stronger approval
 abg reading-list add --title "Article" --url <url>
 abg reading-list update <url> --read
 abg reading-list remove <url>                   # Destructive; stronger approval copy
+
+# iOS companion pairing (see docs/IOS_GATEWAY_PAIRING.md)
+abg companion offer                              # QR + manual code on a private-network listener; waits for the phone's claim
+abg companion offer --manual                     # Typed form instead of the QR code
+abg companion confirm <pairing-id>               # Finish pairing after both devices show the same code
+abg companion list                               # Paired phones with scopes and revocation state
+abg companion revoke <device-id>                 # Revoke a phone and close its session immediately
 abg frames <tab|ref>                             # List iframe/frame refs (@f1, @f2, ...)
 abg read <tab|ref> [--selector "<css>"] [--format markdown|text|html|json]
 abg read <tab|ref> --frame @f1 --selector "<css>"
