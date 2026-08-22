@@ -69,7 +69,7 @@ pnpm run test:coverage
 ## CI and Branch Protection
 
 The `CI` workflow runs the Swift suite in the `Swift tests` job on macOS and the extension suite
-in the `Extension tests` job on Linux. GitHub exposes them as the `CI / Swift tests` and
-`CI / Extension tests` checks. The branch-protection connection is tracked by #23;
+in the `Extension tests` job on Linux. Branch protection requires both check runs (`Swift tests`
+and `Extension tests`) on `main`. The branch-protection connection is tracked by #23;
 the combined test integration and its Swift and extension child issues are tracked by #25, #89,
 and #90.

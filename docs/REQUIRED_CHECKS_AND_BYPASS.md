@@ -16,19 +16,21 @@ gh api repos/arcmanagement/agent-browser-gateway/rulesets/15909681 \
   --jq '{id,name,target,enforcement,bypass_actors,conditions,rules}'
 ```
 
-Observed state:
+Observed state (updated 2026-08-22, required checks enabled):
 
 - Branch `main` reports `protected: true`.
 - Active ruleset: `main branch protection (brain managed)`.
 - Ruleset target: default branch.
-- Rules enforced today: deletion prevention, non-fast-forward prevention, and pull-request-only updates.
+- Rules enforced: deletion prevention, non-fast-forward prevention, pull-request-only updates, and
+  required status checks `Swift tests` and `Extension tests`.
 - Bypass actors: none.
-- Required status checks are not currently configured in the active ruleset.
 - The classic branch-protection endpoint returns `Branch not protected`; use repository rulesets as the source of truth.
 
-Because no required status-check rule is currently configured, a failing-check PR cannot yet be
-proven blocked by GitHub branch protection. Required status checks should be enabled only after the
-CI workflows that produce them are reliable on pull requests.
+Ruleset `required_status_checks` contexts must equal the check-run names — the job names GitHub
+Actions reports (`Swift tests`, `Extension tests`) — not the workflow-prefixed display form
+(`CI / Swift tests`). The initial rule used the prefixed form, never matched any check run, and
+blocked a fully green PR; the corrected contexts verified both directions on PR #406 (failing PR
+BLOCKED with the merge refused, green PR CLEAN).
 
 ## Target Required Checks
 
@@ -39,7 +41,8 @@ The PR test gates are defined in [`.github/workflows/ci.yml`](../.github/workflo
 | Workflow | `CI` | `CI` |
 | Job ID | `swift-tests` | `extension-tests` |
 | Job name | `Swift tests` | `Extension tests` |
-| Required-check display name | `CI / Swift tests` | `CI / Extension tests` |
+| Ruleset required-check context | `Swift tests` | `Extension tests` |
+| PR checks display name | `CI / Swift tests` | `CI / Extension tests` |
 | Runner | `macos-latest` | `ubuntu-latest` |
 
 The gates run these test commands:
@@ -56,10 +59,8 @@ extension Vitest completion by
 [#90](https://github.com/arcmanagement/agent-browser-gateway/issues/90), and their combined test
 gate by [#25](https://github.com/arcmanagement/agent-browser-gateway/issues/25).
 
-When required checks are enabled under
-[#23](https://github.com/arcmanagement/agent-browser-gateway/issues/23), require `CI / Swift tests`
-and `CI / Extension tests`. Both jobs run unconditionally on every pull request, so a required rule
-on them never waits on a skipped job. The other CI jobs stay out of the required set: release-only,
+The ruleset requires the `Swift tests` and `Extension tests` contexts (#23). Both jobs run
+unconditionally on every pull request, so the required rule never waits on a skipped job. The other CI jobs stay out of the required set: release-only,
 tag-only, notarization, Pages deployment, and manual `workflow_dispatch` jobs are release gates,
 and the path-gated auxiliary jobs below are intentionally skipped on unrelated PRs.
 

@@ -964,8 +964,8 @@ make docker-repro                       # pinned Docker rebuild of the Linux abg
 ```
 
 Pull requests run the `CI` workflow's `Swift tests` job on macOS and `Extension tests` job on
-Linux. The GitHub check names used by branch protection are `CI / Swift tests` and
-`CI / Extension tests`. Those jobs run the following test gates:
+Linux. Branch protection requires both checks (ruleset contexts `Swift tests` and
+`Extension tests`) before merging to `main`. Those jobs run the following test gates:
 
 ```bash
 swift test --enable-code-coverage
