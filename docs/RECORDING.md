@@ -77,6 +77,18 @@ identical to every other command (the tab must be in `permittedTabs`), so it
 works the same whether the tab was shared in per-tab `manual` mode or is present
 via `all_tabs` mode. The approval gate is always shown regardless of mode.
 
+## Output locations and the App Store sandbox
+
+Without `--output`, recordings land in the ABG recordings directory and HAR exports in
+the ABG `har` directory. For the sandboxed Mac App Store gateway both resolve inside
+the shared app-group container (`~/Library/Group Containers/group.jp.co.arcm.abg/abg/`),
+where the CLI and the user can read them; unsandboxed builds use the user temp
+directory. The result JSON always carries the resolved `path`/`outputPath`.
+
+An explicit output path the gateway cannot write — typically any location outside the
+group container under the sandbox — is rejected up front with `output_path_unwritable`
+before capture or approval starts, instead of failing mid-recording.
+
 ## Firefox
 
 Chrome-first. The offscreen and `tabCapture` APIs do not exist on Firefox, so

@@ -74,6 +74,32 @@ final class CLITransportTests: XCTestCase {
         XCTAssertFalse(ABGConstants.configuredScreenshotsDir(environment: [:]).path.contains(ABGConstants.appGroupId))
     }
 
+    func testSandboxedHARDirMovesToGroupContainer() {
+        let sandboxed = ["APP_SANDBOX_CONTAINER_ID": ABGConstants.bundleId]
+        XCTAssertTrue(ABGConstants.configuredHARDir(environment: sandboxed).path.contains(ABGConstants.appGroupId))
+        XCTAssertFalse(ABGConstants.configuredHARDir(environment: [:]).path.contains(ABGConstants.appGroupId))
+        XCTAssertEqual(ABGConstants.configuredHARDir(environment: [:]).lastPathComponent, "har")
+    }
+
+    func testCanWriteInDirectoryProbesActualWrites() throws {
+        let writable = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-write-probe-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: writable) }
+        XCTAssertTrue(ABGConstants.canWriteInDirectory(writable))
+        // The probe file is cleaned up after a successful check.
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: writable.path), [])
+
+        let readOnly = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-readonly-probe-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: readOnly, withIntermediateDirectories: true)
+        defer {
+            chmod(readOnly.path, 0o700)
+            try? FileManager.default.removeItem(at: readOnly)
+        }
+        chmod(readOnly.path, 0o500)
+        XCTAssertFalse(ABGConstants.canWriteInDirectory(readOnly))
+    }
+
     // MARK: - /cli upgrade authorization
 
     func testCLIUpgradeRequiresExactToken() {
