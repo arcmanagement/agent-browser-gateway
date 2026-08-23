@@ -31,7 +31,7 @@ actor GatewayClient {
             "pairingNonce": offer.pairingNonce,
             "devicePublicKey": store.devicePublicKeyBase64,
             "deviceLabel": deviceLabel,
-            "requestedScopes": ["approval_forwarding", "pairing_status"],
+            "requestedScopes": ["approval_forwarding", "pairing_status", "tab_sharing"],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 

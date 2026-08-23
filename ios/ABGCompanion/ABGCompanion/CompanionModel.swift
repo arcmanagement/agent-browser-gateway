@@ -97,7 +97,9 @@ final class CompanionModel: ObservableObject {
                 } onClose: { [weak self] reason in
                     Task { @MainActor in
                         self?.connected = false
-                        if reason != nil { self?.errorMessage = "The Gateway closed this session. If you revoked this device, pair again from the desktop." }
+                        if reason != nil {
+                            self?.errorMessage = "The connection to your Gateway ended. Reopen this app to reconnect. Pair again only if this device was revoked on the desktop."
+                        }
                     }
                 }
                 self.connected = true

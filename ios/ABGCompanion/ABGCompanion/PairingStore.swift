@@ -12,6 +12,83 @@ struct PairedGateway: Codable, Equatable, Sendable {
     let pairedAt: Date
 }
 
+private struct SharedPairingSession: Codable, Sendable {
+    let gateway: PairedGateway
+    let sessionToken: String
+}
+
+struct AppGroupPairingSessionStore: Sendable {
+    private let sessionURL: URL?
+
+    init(groupIdentifier: String? = AppGroupPairingSessionStore.configuredGroupIdentifier) {
+        guard let groupIdentifier,
+              let container = FileManager.default.containerURL(
+                  forSecurityApplicationGroupIdentifier: groupIdentifier
+              ) else {
+            sessionURL = nil
+            return
+        }
+        sessionURL = container.appendingPathComponent("pairing-session.json", isDirectory: false)
+    }
+
+    init(sessionURL: URL?) {
+        self.sessionURL = sessionURL
+    }
+
+    private static var configuredGroupIdentifier: String? {
+        let value = Bundle.main.object(forInfoDictionaryKey: "ABGAppGroupIdentifier") as? String
+        return value?.isEmpty == false ? value : nil
+    }
+
+    func load() -> (gateway: PairedGateway, sessionToken: String)? {
+        guard let sessionURL,
+              let data = try? Data(contentsOf: sessionURL),
+              let session = try? JSONDecoder.iso8601.decode(SharedPairingSession.self, from: data) else {
+            return nil
+        }
+        return (session.gateway, session.sessionToken)
+    }
+
+    func save(gateway: PairedGateway, sessionToken: String) {
+        guard let sessionURL,
+              let data = try? JSONEncoder.iso8601.encode(
+                  SharedPairingSession(gateway: gateway, sessionToken: sessionToken)
+              ) else {
+            return
+        }
+        do {
+            try data.write(to: sessionURL, options: [.atomic, .completeFileProtection])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var mutableURL = sessionURL
+            try mutableURL.setResourceValues(values)
+        } catch {
+            try? FileManager.default.removeItem(at: sessionURL)
+        }
+    }
+
+    func clear() {
+        guard let sessionURL else { return }
+        try? FileManager.default.removeItem(at: sessionURL)
+    }
+}
+
+private extension JSONEncoder {
+    static var iso8601: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var iso8601: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
 protocol SecretStoring: Sendable {
     func read(_ account: String) -> Data?
     func write(_ data: Data, account: String)
@@ -20,15 +97,39 @@ protocol SecretStoring: Sendable {
 
 struct KeychainStore: SecretStoring {
     let service = "jp.co.arcm.AgentBrowserGateway.companion"
+    let accessGroup: String?
+
+    init(accessGroup: String? = KeychainStore.configuredAccessGroup) {
+        self.accessGroup = accessGroup
+    }
+
+    private static var configuredAccessGroup: String? {
+        let value = Bundle.main.object(forInfoDictionaryKey: "ABGKeychainAccessGroup") as? String
+        return value?.isEmpty == false ? value : nil
+    }
 
     func read(_ account: String) -> Data? {
-        let query: [String: Any] = [
+        if let data = read(account, accessGroup: accessGroup) {
+            return data
+        }
+        guard accessGroup != nil, let legacyData = read(account, accessGroup: nil) else {
+            return nil
+        }
+        write(legacyData, account: account)
+        return legacyData
+    }
+
+    private func read(_ account: String, accessGroup: String?) -> Data? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
         return item as? Data
@@ -36,7 +137,7 @@ struct KeychainStore: SecretStoring {
 
     func write(_ data: Data, account: String) {
         delete(account)
-        let attributes: [String: Any] = [
+        var attributes: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -45,15 +146,28 @@ struct KeychainStore: SecretStoring {
             // strictest practical protection class applies.
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
+        if let accessGroup {
+            attributes[kSecAttrAccessGroup as String] = accessGroup
+        }
         SecItemAdd(attributes as CFDictionary, nil)
     }
 
     func delete(_ account: String) {
-        let query: [String: Any] = [
+        delete(account, accessGroup: accessGroup)
+        if accessGroup != nil {
+            delete(account, accessGroup: nil)
+        }
+    }
+
+    private func delete(_ account: String, accessGroup: String?) {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -87,9 +201,14 @@ struct PairingStore: Sendable {
     }
 
     let secrets: SecretStoring
+    let sharedSession: AppGroupPairingSessionStore
 
-    init(secrets: SecretStoring = KeychainStore()) {
+    init(
+        secrets: SecretStoring = KeychainStore(),
+        sharedSession: AppGroupPairingSessionStore = AppGroupPairingSessionStore()
+    ) {
         self.secrets = secrets
+        self.sharedSession = sharedSession
     }
 
     /// Stable per-install identity. Generated once, then reused so re-pairing the
@@ -109,10 +228,18 @@ struct PairingStore: Sendable {
     }
 
     func loadGateway() -> PairedGateway? {
+        if let shared = sharedSession.load() {
+            return shared.gateway
+        }
         guard let data = secrets.read(Account.gateway) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(PairedGateway.self, from: data)
+        guard let gateway = try? JSONDecoder.iso8601.decode(PairedGateway.self, from: data) else {
+            return nil
+        }
+        if let tokenData = secrets.read(Account.sessionToken),
+           let sessionToken = String(data: tokenData, encoding: .utf8) {
+            sharedSession.save(gateway: gateway, sessionToken: sessionToken)
+        }
+        return gateway
     }
 
     func saveGateway(_ gateway: PairedGateway, sessionToken: String) {
@@ -122,15 +249,20 @@ struct PairingStore: Sendable {
             secrets.write(data, account: Account.gateway)
         }
         secrets.write(Data(sessionToken.utf8), account: Account.sessionToken)
+        sharedSession.save(gateway: gateway, sessionToken: sessionToken)
     }
 
     func sessionToken() -> String? {
-        secrets.read(Account.sessionToken).flatMap { String(data: $0, encoding: .utf8) }
+        if let shared = sharedSession.load() {
+            return shared.sessionToken
+        }
+        return secrets.read(Account.sessionToken).flatMap { String(data: $0, encoding: .utf8) }
     }
 
     /// Forgets the pairing. The device key survives so the same identity is
     /// reused if the user pairs with the desktop again.
     func clearPairing() {
+        sharedSession.clear()
         secrets.delete(Account.gateway)
         secrets.delete(Account.sessionToken)
     }

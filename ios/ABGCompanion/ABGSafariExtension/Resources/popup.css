@@ -1,0 +1,103 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-width: 300px;
+}
+
+main {
+  padding: 18px;
+}
+
+.brand {
+  align-items: center;
+  color: #777;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.mark {
+  background: #1677ff;
+  border-radius: 7px;
+  color: white;
+  font-weight: 700;
+  padding: 4px 6px;
+}
+
+h1 {
+  font-size: 17px;
+  margin: 16px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+p {
+  color: #777;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 0 0 16px;
+}
+
+button {
+  background: #1677ff;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 11px 14px;
+  width: 100%;
+}
+
+button.revoke {
+  background: #d93936;
+}
+
+button:disabled {
+  opacity: 0.45;
+}
+
+.setting {
+  align-items: flex-start;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.setting input {
+  margin-top: 3px;
+}
+
+.setting span,
+.setting small {
+  display: block;
+}
+
+.setting small {
+  color: #777;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+.status {
+  color: #777;
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.status.connected {
+  color: #238636;
+}
+
+.privacy {
+  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 11px;
+  margin-top: 16px;
+  padding-top: 12px;
+}

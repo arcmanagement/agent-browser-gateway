@@ -8,6 +8,7 @@ import Foundation
 public enum PairingScope: String, Codable, CaseIterable, Sendable {
     case approvalForwarding = "approval_forwarding"
     case pairingStatus = "pairing_status"
+    case tabSharing = "tab_sharing"
 }
 
 public enum PairingFailureReason: String, Sendable {
@@ -115,7 +116,7 @@ public struct PairingEngine: Sendable {
     /// Creates a new offer, replacing any previous one: a single active offer
     /// keeps the confirmation screen unambiguous about what is being approved.
     public mutating func createOffer(
-        scopes: [PairingScope] = [.approvalForwarding, .pairingStatus],
+        scopes: [PairingScope] = [.approvalForwarding, .pairingStatus, .tabSharing],
         lifetime: TimeInterval = PairingEngine.maxOfferLifetime,
         now: Date = Date()
     ) -> PairingOffer {

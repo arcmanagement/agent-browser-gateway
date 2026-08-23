@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model = CompanionModel()
     @State private var showScanner = false
     @State private var showManualEntry = false
@@ -59,6 +60,16 @@ struct ContentView: View {
             #endif
             if model.phase == .paired { model.connect() }
         }
+        .onChange(of: scenePhase) { _, nextPhase in
+            switch nextPhase {
+            case .active:
+                if model.phase == .paired { model.connect() }
+            case .background:
+                model.disconnect()
+            default:
+                break
+            }
+        }
     }
 
     private var navigationTitle: String {
@@ -89,9 +100,9 @@ struct PairingIntroView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
             VStack(spacing: 8) {
-                Text("Approve from your phone")
+                Text("Pair your iPhone with ABG")
                     .font(.title2.weight(.semibold))
-                Text("Pair with your desktop Gateway to review and decide operation requests. Page contents stay on the desktop — this app only sees a summary of each request.")
+                Text("Review operation requests here, and share individual Safari tabs directly with your paired Mac over your private network.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

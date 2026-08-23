@@ -1,7 +1,7 @@
 # iOS Companion and Gateway Pairing Design
 
-This document defines the smallest safe pairing shape for an iOS companion and a desktop Gateway.
-It is a design contract for a later prototype. It does not introduce an ABG-operated relay.
+This document defines the pairing contract for the iOS companion, its Safari Web Extension, and a
+desktop Gateway. It does not introduce an ABG-operated relay.
 
 ## Goals
 
@@ -45,7 +45,7 @@ to enter the desktop address separately when the iOS app cannot infer it.
 ## Desktop Gateway receiving side
 
 The desktop Gateway owns a `PairingManager` and an on-demand private pairing listener. The listener
-is disabled by default and starts only while a pairing offer is active.
+runs while a pairing offer or active companion grant exists.
 
 Minimum receive surface:
 
@@ -57,6 +57,7 @@ Minimum receive surface:
 | `GET /pairings` | Desktop UI or CLI | List paired companions and revoked entries. |
 | `DELETE /pairings/{deviceId}` | Desktop UI or CLI | Revoke a paired companion. |
 | `WS /companion` | iOS companion | Use an active paired session for future approval-forwarding messages. |
+| `WS /browser` | iOS Safari Web Extension | Authenticate with the paired session, then carry tab-share events and supported read and action commands. |
 
 The listener must bind only to an explicit private interface or Tailnet address chosen by the user.
 It must not replace the existing loopback-only browser extension WebSocket or CLI IPC. Normal browser
@@ -99,11 +100,14 @@ The initial companion scope should be narrow:
 | --- | --- |
 | `approval_forwarding` | Receive pending operation approval summaries and submit approve or deny decisions. |
 | `pairing_status` | Read this companion's paired, expired, or revoked state. |
+| `tab_sharing` | Register Safari tabs shared from the extension popup and serve the supported read and action command set. |
 
 The initial pairing must not grant:
 
 - access to unshared tabs,
-- direct tab reads, screenshots, console, network, cookies, or Web Storage,
+- access to any Safari tab that the user did not share from the extension popup,
+- page access before an active tab share, or page changes without action approval or Trusted automation,
+- console, browser-owned network capture, or HTTP-only cookies,
 - all-tabs profile access,
 - plugin execution,
 - eval,
@@ -111,6 +115,28 @@ The initial pairing must not grant:
 
 Future scopes must be added explicitly and shown in the desktop confirmation screen before they are
 stored in a grant.
+
+## Safari tab sharing
+
+The Safari extension obtains the paired Gateway address, device id, and session token through
+extension-initiated native messaging. The native extension reads those values from a shared Keychain
+access group. The JavaScript background keeps the token in memory and sends it only as the first
+message on `WS /browser`; it does not put the token in a URL or extension storage.
+
+The Gateway registers the connection only when the session is active and carries `tab_sharing`.
+Revocation closes both the approval-forwarding and Safari sessions. The existing browser extension
+route at `127.0.0.1:8765/ws` remains loopback-only.
+
+The Safari target supports tab listing, DOM reads, getters, predicates, semantic find, snapshots,
+tables, visible-tab screenshots, activating an already shared tab, waits, editable validation,
+storage inspection, approved eval, and DOM-level page actions. Actions use the existing companion
+approval channel by default. The user can explicitly enable Trusted automation in the Safari popup
+to skip per-action approval. An origin change or tab close revokes the share.
+
+Safari does not expose Chrome DevTools Protocol equivalents for console and network capture, HAR,
+PDF, emulation, download metadata, native low-level input, or tab recording. Mac clipboard payloads
+and Mac file paths are also unavailable inside iPhone Safari. Those commands return
+`unsupported_on_safari` with the platform-specific reason instead of silently doing nothing.
 
 ## Revocation
 

@@ -18,7 +18,7 @@ final class PairingEngineTests: XCTestCase {
         XCTAssertEqual(payload?.pairingNonce, offer.nonce)
         XCTAssertEqual(payload?.displayCode, offer.displayCode)
         XCTAssertEqual(payload?.desktopPublicKey, offer.desktopPublicKeyBase64)
-        XCTAssertEqual(payload?.requestedScopes, ["approval_forwarding", "pairing_status"])
+        XCTAssertEqual(payload?.requestedScopes, ["approval_forwarding", "pairing_status", "tab_sharing"])
         XCTAssertEqual(offer.displayCode.count, 6)
         XCTAssertTrue(payload?.manualCode.hasPrefix("ABG-PAIR-\(offer.pairingId)-\(offer.displayCode)-") == true)
     }
@@ -51,6 +51,21 @@ final class PairingEngineTests: XCTestCase {
         XCTAssertEqual(grant.scopes, [.approvalForwarding])
         XCTAssertNil(engine.activeOffer)
         XCTAssertFalse(engine.listenerShouldRun())
+    }
+
+    func testTabSharingRequiresAnExplicitGrantScope() throws {
+        var engine = PairingEngine()
+        let offer = engine.createOffer()
+        _ = try engine.applyClaim(
+            pairingId: offer.pairingId,
+            nonce: offer.nonce,
+            devicePublicKeyBase64: devicePublicKey(),
+            deviceLabel: "iPhone Safari",
+            requestedScopes: [.approvalForwarding, .pairingStatus, .tabSharing]
+        )
+        let (grant, _, _) = try engine.confirm(pairingId: offer.pairingId)
+        XCTAssertTrue(grant.hasScope(.tabSharing))
+        XCTAssertEqual(PairingManager.safariExtensionId(deviceId: grant.deviceId), "safari-ios:\(grant.deviceId)")
     }
 
     func testNonceMismatchIsRejected() {

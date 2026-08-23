@@ -77,8 +77,8 @@ pluginはGatewayが読み込むローカルJavaScript moduleです。ブラウ�
 
 ## platform roadmap
 
-最初の対象ブラウザーはChromeです。Firefoxはbrowser adapterとFirefox extension targetで追加中です。Safari、mobile browser、
-remote pairingは将来trackであり、別途permissionとpairing designが必要です。
+最初の対象ブラウザーはChromeです。Firefoxはbrowser adapterとFirefox extension targetを使います。iPhone Safariはpaired companion経由でDOM確認とpage actionを扱います。
+desktop SafariとAndroidは別のplatform trackです。
 
 ## mobile consent と pairing design
 
@@ -89,46 +89,43 @@ desktop per-tab consentとは違い、mobileではtab共有の前に、どのdes
 
 | method | fit | decision |
 | --- | --- | --- |
-| QR code | desktopが短命のpairing URLを表示でき、phone側でcameraを使える初回flowに向きます。両deviceで同じcodeを確認してからmobile sessionを作ります。 | MVPのpairing methodです。QR payloadは短時間で失効し、scoped pairing tokenの初期化だけに使います。 |
-| manual token entry | cameraが使えない、screen sharingでQRが隠れる、WebView制約が強い場合のfallbackです。 | MVP fallbackです。長いbearer secretを手入力させず、短いcodeとdesktop confirmationを組み合わせます。 |
-| Tailnet link | 既にprivate Tailnetを運用しているユーザーが、network越しにdesktopとmobileをpairingする場合に向きます。connectivityをユーザー管理にできます。 | local MVPの後に扱うprivate remote boundaryです。ABG運営のrelayにはしません。 |
-| local network discovery | trusted LANでは便利ですが、Gatewayの存在をbroadcastし、office、hotel、shared networkではnoiseと露出が増えます。 | MVPでは採用しません。明示opt-in、authenticated discovery、audit entryを設計した後だけ再検討します。 |
+| QR code | desktopが短命のpairing URLを表示でき、phone側でcameraを使える初回flowに向きます。両deviceで同じcodeを確認してからmobile sessionを作ります。 | 実装済みです。QR payloadは5分で失効し、scoped pairing tokenの初期化だけに使います。 |
+| manual token entry | cameraが使えない、screen sharingでQRが隠れる場合のfallbackです。 | 実装済みです。短いcodeとdesktop confirmationを組み合わせます。 |
+| Tailnet link | 既にprivate Tailnetを運用しているユーザーが、network越しにdesktopとmobileをpairingする場合に向きます。connectivityをユーザー管理にできます。 | 優先するprivate remote boundaryとして実装済みです。ABG運営のrelayは使いません。 |
+| private LAN address | Tailnet addressがない場合にtrusted LANで使います。 | 同じauthenticated pairing listenerで実装済みです。automatic LAN discoveryによるadvertiseは行いません。 |
 
 ### consent と session scope
 
 desktop per-tab consentでは、ユーザーが同じmachineのbrowser popupから1つのtabを共有します。shareはtab referenceにscopeされ、
 tab close、origin change、explicit revokeで自動失効します。mobile consentでは、その前にdevice/session layerが加わります。
 
-- paired mobile deviceはdefaultではtab accessを持ちません。
+- paired mobile deviceはdefaultではtab accessを持ちません。pairingで`tab_sharing` scopeを付与しても、Safari extension popupからactive tabを共有する操作が別に必要です。
 - desktop Gatewayがpairing list、session lifetime、approval state、audit logを持ちます。
 - mobile approval forwardingはdesktop operationの承認または拒否だけを扱い、それだけで広いtab visibilityを付与しません。
-- mobile sessionは1つのGateway、1つのpaired device identity、1つのapproval purposeにscopeします。
+- mobile sessionは1つのGateway、1つのpaired device identity、approval、status、tab sharingの明示capabilityにscopeします。
 - mobile sessionをrevokeすると、そのdeviceをpairing listから外し、未処理のapproval promptとpairing tokenを失効させます。
-- desktop tab shareのrevokeは独立して即時に効き、そのtabをlocalとmobile approval surfaceの両方から消します。
+- iPhone Safari tab shareをrevokeすると、desktop Gatewayからそのtabを即時に削除します。tab closeとorigin changeでも自動revokeします。
 
-MVPはapproval forwardingのためのpairingに限定します。mobileからのread / operate commandは、remote connectivity、browser tab
-visibility、mutation approvalを同時に広げるため、最初のmobile consent boundaryには含めません。
+iPhone Safari targetはtab list、DOM read、getter、predicate、semantic find、snapshot、table、visible-tab screenshot、tab activation、wait、editable validation、storage確認、承認済みeval、DOM操作を扱います。操作はpaired iPhone appで承認します。Safari extension popupでTrusted automationを明示的に有効にした場合だけ、操作ごとの承認を省略します。共有範囲は承認時のorigin内に限定します。
 
 ### network boundary
 
 local-onlyのdesktop workflowはdefaultかつ最も信頼度の高いmodeのままです。通常のCLIとextension trafficではGatewayはloopbackで待ち受け、
 non-loopback networkをすべて塞いでもABGが使える状態を維持します。
 
-Tailnet operationは、local MVP後のprivate remote boundaryとして選びます。Tailnet、device enrollment、DNS、firewall policyは
-ユーザーまたはorganizationが管理します。ABGがremote-pairing listenerをbindするのはユーザーが明示的に有効化した時だけで、
-session作成前に短命pairing tokenとdevice confirmationを要求します。
+Tailnet operationを優先するprivate remote boundaryとして使います。Tailnet、device enrollment、DNS、firewall policyは
+ユーザーまたはorganizationが管理します。ABGはofferまたはactive grantが存在する間だけremote-pairing listenerを起動します。
+pairingにはdevice confirmation、後続接続にはactive scoped session tokenが必要です。
 
-LAN operationは、user-controlled Tailnetの下位transport、または明示設定されたaddressを除き、MVPでは採用しません。automatic LAN
-discoveryは、untrusted networkでGatewayをadvertiseし、lookalike Gatewayによるphishing surfaceを増やし、複数Gatewayがある場合の
-挙動を分かりにくくするためです。
+Tailnet addressがない場合はprivate LAN addressをfallbackとして使います。automatic LAN discoveryは、untrusted networkでGatewayを
+advertiseし、lookalike Gatewayによるphishing surfaceを増やし、複数Gatewayがある場合の挙動を分かりにくくするため使いません。
 
 ABG運営のcloud relayは採用しません。central serviceがmetadataを観測でき、accountやabuse-preventionの境界になり、local-firstの
 security promiseを弱めるためです。
 
-### remaining implementation blockers
+### remaining limits
 
-- pairing token format、expiry、rotation、storage location、audit event schemaを決める。
-- paired deviceのlist、name、revoke、auditを扱うdesktop pairing management surfaceを追加する。
-- redacted operation detailとtimeout behaviorを含むmobile approval UIを決める。
-- 最初のmobile surfaceをGatewayがserveするmobile web page、native app、Safari Web Extension、Android app、WebView debugging bridgeのどれにするか決める。
-- loopback-only default、明示的なremote listener enablement、expired token、revoked device、rejected LAN discoveryのtransport testを追加する。
+- Safariにはconsoleとnetwork capture、HAR、PDF、emulation、download metadata、native low-level input、tab recordingを扱うChrome DevTools Protocol相当のAPIがありません。該当commandはplatform固有の理由と`unsupported_on_safari`を返します。
+- Macのclipboard payloadとfile pathはiPhone Safari tabへ転送できないため、rich pasteとfile uploadは利用できません。
+- sandbox all-tabs accessはChrome限定です。
+- Androidとembedded WebView supportは別のplatform trackです。

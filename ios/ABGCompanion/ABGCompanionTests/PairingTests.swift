@@ -5,12 +5,12 @@ import XCTest
 final class PairingTests: XCTestCase {
     func testOfferPayloadParsesTheDesktopQRJSON() throws {
         let json = """
-        {"gatewayBaseUrl":"http://100.64.0.5:8767","pairingId":"abc123","pairingNonce":"deadbeef","desktopPublicKey":"a2V5","expiresAt":"2026-08-22T09:00:00Z","displayCode":"123456","requestedScopes":["approval_forwarding","pairing_status"]}
+        {"gatewayBaseUrl":"http://100.64.0.5:8767","pairingId":"abc123","pairingNonce":"deadbeef","desktopPublicKey":"a2V5","expiresAt":"2026-08-22T09:00:00Z","displayCode":"123456","requestedScopes":["approval_forwarding","pairing_status","tab_sharing"]}
         """
         let offer = try PairingOfferPayload.parse(qrPayload: json)
         XCTAssertEqual(offer.pairingId, "abc123")
         XCTAssertEqual(offer.displayCode, "123456")
-        XCTAssertEqual(offer.requestedScopes, ["approval_forwarding", "pairing_status"])
+        XCTAssertEqual(offer.requestedScopes, ["approval_forwarding", "pairing_status", "tab_sharing"])
     }
 
     func testMalformedQRPayloadIsRejected() {
@@ -102,6 +102,28 @@ final class PairingTests: XCTestCase {
         XCTAssertNil(store.sessionToken())
         XCTAssertNil(store.loadGateway())
         XCTAssertEqual(store.devicePublicKeyBase64, key1, "unpairing keeps the device identity")
+    }
+
+    func testPairingStoreMigratesAnExistingKeychainSessionToTheAppGroup() throws {
+        let secrets = MemorySecretStore()
+        let legacyStore = PairingStore(secrets: secrets)
+        let gateway = PairedGateway(
+            deviceId: "d1",
+            gatewayBaseUrl: "http://100.64.0.5:8767",
+            gatewayLabel: "mac",
+            pairedAt: Date(timeIntervalSince1970: 1_777_000_000)
+        )
+        legacyStore.saveGateway(gateway, sessionToken: "tok")
+
+        let sessionURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("abg-pairing-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: sessionURL) }
+        let sharedSession = AppGroupPairingSessionStore(sessionURL: sessionURL)
+        let migratedStore = PairingStore(secrets: secrets, sharedSession: sharedSession)
+
+        XCTAssertEqual(migratedStore.loadGateway(), gateway)
+        XCTAssertEqual(sharedSession.load()?.gateway, gateway)
+        XCTAssertEqual(sharedSession.load()?.sessionToken, "tok")
     }
 }
 

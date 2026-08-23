@@ -20,11 +20,16 @@ actor PairingManager {
     private var pendingSessionTokens: [String: String] = [:]
     /// Connected companion sessions by deviceId.
     private var companionSockets: [String: [WebSocket]] = [:]
+    /// Authenticated Safari Web Extension sessions by Gateway extension ID.
+    private var browserSockets: [String: WebSocket] = [:]
+    private var browserExtensionIdBySocket: [ObjectIdentifier: String] = [:]
     /// Approvals currently forwarded to companions. First decision wins; the
     /// extension's own pending registry is the final authority.
     private var forwardedApprovals: [String: ForwardedApproval] = [:]
     /// Set by the Coordinator: injects a companion decision into the extension.
     var decideHandler: (@Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?))?
+    var browserMessageHandler: (@Sendable (_ message: ExtensionMessage, _ extensionId: String) async -> Void)?
+    var browserDisconnectHandler: (@Sendable (_ extensionId: String) async -> Void)?
 
     struct ForwardedApproval {
         let summary: CompanionApprovalSummary
@@ -34,6 +39,14 @@ actor PairingManager {
 
     func setDecideHandler(_ handler: @escaping @Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?)) {
         decideHandler = handler
+    }
+
+    func setBrowserHandlers(
+        onMessage: @escaping @Sendable (_ message: ExtensionMessage, _ extensionId: String) async -> Void,
+        onDisconnect: @escaping @Sendable (_ extensionId: String) async -> Void
+    ) {
+        browserMessageHandler = onMessage
+        browserDisconnectHandler = onDisconnect
     }
 
     /// The port for the on-demand pairing listener. Distinct from the loopback
@@ -299,7 +312,104 @@ actor PairingManager {
                 _ = socket.close(code: .normalClosure)
             }
         }
+        let extensionId = Self.safariExtensionId(deviceId: deviceId)
+        if let socket = browserSockets.removeValue(forKey: extensionId) {
+            browserExtensionIdBySocket.removeValue(forKey: ObjectIdentifier(socket))
+            socket.eventLoop.execute {
+                _ = socket.close(code: .normalClosure)
+            }
+            if let browserDisconnectHandler {
+                await browserDisconnectHandler(extensionId)
+            }
+            return sockets.count + 1
+        }
         return sockets.count
+    }
+
+    // MARK: - Safari tab sharing
+
+    static func safariExtensionId(deviceId: String) -> String {
+        "safari-ios:\(deviceId)"
+    }
+
+    func sendBrowserCommand(to extensionId: String, command: GatewayCommand) async throws {
+        guard let socket = browserSockets[extensionId] else {
+            throw NSError(
+                domain: "ABG.Pairing",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Safari extension \(extensionId) not connected"]
+            )
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(command)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "ABG.Pairing", code: 5, userInfo: [NSLocalizedDescriptionKey: "encode failed"])
+        }
+        try await socket.send(text)
+    }
+
+    private func handleBrowserText(ws: WebSocket, text: String) async {
+        let socketId = ObjectIdentifier(ws)
+        if let extensionId = browserExtensionIdBySocket[socketId] {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let data = text.data(using: .utf8),
+                  let message = try? decoder.decode(ExtensionMessage.self, from: data) else { return }
+            if case .hello(let claimedExtensionId, _, _, _) = message,
+               claimedExtensionId != extensionId {
+                try? await ws.close(code: .policyViolation)
+                return
+            }
+            if let browserMessageHandler {
+                await browserMessageHandler(message, extensionId)
+            }
+            return
+        }
+
+        guard let data = text.data(using: .utf8),
+              let auth = try? JSONDecoder().decode(BrowserSessionAuth.self, from: data),
+              auth.type == "authenticate",
+              let grant = verifySession(deviceId: auth.deviceId, sessionToken: auth.sessionToken) else {
+            await sendBrowserAuthResult(ws: ws, ok: false, extensionId: nil, error: "session_invalid")
+            try? await ws.close(code: .policyViolation)
+            return
+        }
+        guard grant.hasScope(.tabSharing) else {
+            await sendBrowserAuthResult(ws: ws, ok: false, extensionId: nil, error: "scope_missing")
+            try? await ws.close(code: .policyViolation)
+            return
+        }
+
+        let extensionId = Self.safariExtensionId(deviceId: auth.deviceId)
+        if let previous = browserSockets.updateValue(ws, forKey: extensionId), previous !== ws {
+            browserExtensionIdBySocket.removeValue(forKey: ObjectIdentifier(previous))
+            try? await previous.close(code: .normalClosure)
+        }
+        browserExtensionIdBySocket[socketId] = extensionId
+        await sendBrowserAuthResult(ws: ws, ok: true, extensionId: extensionId, error: nil)
+        await auditLog.log(action: "safari_extension_authenticated", extensionId: extensionId, agent: "safari_extension", details: [
+            "deviceIdHash": AnyCodable(PairingAudit.hashed(auth.deviceId)),
+            "ok": AnyCodable(true),
+        ])
+    }
+
+    private func sendBrowserAuthResult(ws: WebSocket, ok: Bool, extensionId: String?, error: String?) async {
+        let result = BrowserSessionAuthResult(ok: ok, extensionId: extensionId, error: error)
+        guard let data = try? JSONEncoder().encode(result),
+              let text = String(data: data, encoding: .utf8) else { return }
+        try? await ws.send(text)
+    }
+
+    private func unregisterBrowser(ws: WebSocket) async {
+        let socketId = ObjectIdentifier(ws)
+        guard let extensionId = browserExtensionIdBySocket.removeValue(forKey: socketId) else { return }
+        if browserSockets[extensionId] === ws {
+            browserSockets.removeValue(forKey: extensionId)
+            if let browserDisconnectHandler {
+                await browserDisconnectHandler(extensionId)
+            }
+        }
     }
 
     // MARK: - Listener lifecycle
@@ -353,6 +463,15 @@ actor PairingManager {
                         return
                     }
                     await manager.registerCompanionAuthorized(deviceId: deviceId, ws: ws)
+                }
+            }
+            app.webSocket("browser", maxFrameSize: .init(integerLiteral: 32 * 1024 * 1024)) { [weak self] _, ws in
+                let manager = self
+                ws.onText { ws, text in
+                    Task { await manager?.handleBrowserText(ws: ws, text: text) }
+                }
+                _ = ws.onClose.always { _ in
+                    Task { await manager?.unregisterBrowser(ws: ws) }
                 }
             }
             try await app.server.start()
@@ -508,6 +627,19 @@ struct CompanionDecisionResult: Encodable {
     var type = "decision_result"
     let approvalId: String
     let ok: Bool
+    let error: String?
+}
+
+struct BrowserSessionAuth: Decodable {
+    let type: String
+    let deviceId: String
+    let sessionToken: String
+}
+
+struct BrowserSessionAuthResult: Encodable {
+    var type = "auth_result"
+    let ok: Bool
+    let extensionId: String?
     let error: String?
 }
 

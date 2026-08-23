@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Agent Browser Gateway",
+  "version": "0.4.8",
+  "description": "Share one Safari tab at a time with your paired Mac Gateway.",
+  "permissions": [
+    "activeTab",
+    "nativeMessaging",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "action": {
+    "default_title": "Agent Browser Gateway",
+    "default_popup": "popup.html"
+  }
+}

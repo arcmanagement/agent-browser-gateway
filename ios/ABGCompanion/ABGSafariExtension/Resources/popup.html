@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent Browser Gateway</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <div class="brand"><span class="mark">ABG</span><span>Safari tab sharing</span></div>
+      <h1 id="title">Current tab</h1>
+      <p id="detail">Checking the paired Gateway…</p>
+      <button id="action" disabled>Share this tab</button>
+      <label class="setting">
+        <input id="trusted" type="checkbox">
+        <span><strong>Trusted automation</strong><small>Run page actions without asking in the companion app.</small></span>
+      </label>
+      <div id="connection" class="status">Not connected</div>
+      <p class="privacy">Only this tab is shared. Sharing stops when its origin changes or you revoke access.</p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

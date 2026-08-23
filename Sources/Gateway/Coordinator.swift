@@ -80,6 +80,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         // a degraded-but-working state, not a startup error.
         let manager = pairingManager
         Task { [weak self] in
+            await manager.setBrowserHandlers(
+                onMessage: { [weak self] message, extensionId in
+                    await MainActor.run {
+                        self?.handleExtensionMessage(message, from: extensionId)
+                    }
+                },
+                onDisconnect: { [weak self] extensionId in
+                    await MainActor.run {
+                        self?.extensionDisconnected(extensionId)
+                    }
+                }
+            )
             await manager.setDecideHandler { [weak self] extensionId, approvalId, decision, decidedBy in
                 guard let self else { return (false, "gateway_unavailable") }
                 do {
@@ -2169,7 +2181,6 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
-        guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
         let timeoutMs = GatewaySettings.clampedTimeout(timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs)
@@ -2177,7 +2188,16 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             inflight[id] = cont
             Task {
                 do {
-                    try await ws.send(to: extensionId, command: cmd)
+                    if let ws = wsServer {
+                        do {
+                            try await ws.send(to: extensionId, command: cmd)
+                            return
+                        } catch {
+                            try await pairingManager.sendBrowserCommand(to: extensionId, command: cmd)
+                        }
+                    } else {
+                        try await pairingManager.sendBrowserCommand(to: extensionId, command: cmd)
+                    }
                 } catch {
                     await MainActor.run {
                         if let c = self.inflight.removeValue(forKey: id) { c.resume(throwing: error) }
