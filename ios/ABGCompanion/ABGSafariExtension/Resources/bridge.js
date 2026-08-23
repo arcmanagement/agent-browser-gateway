@@ -12,12 +12,16 @@
 
   function sendHeartbeat() {
     if (!tabRecord || !port) return;
-    port.postMessage({
-      type: "heartbeat",
-      url: location.href,
-      title: document.title || tabRecord.title,
-      origin: location.origin,
-    });
+    try {
+      port.postMessage({
+        type: "heartbeat",
+        url: location.href,
+        title: document.title || tabRecord.title,
+        origin: location.origin,
+      });
+    } catch {
+      scheduleReconnect();
+    }
   }
 
   function startHeartbeat() {
@@ -51,6 +55,82 @@
       if (port === candidate) scheduleReconnect();
     });
     startHeartbeat();
+  }
+
+  function waitForPaint() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+
+  function loadImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Safari could not decode the captured image."));
+      image.src = dataUrl;
+    });
+  }
+
+  async function captureVisible() {
+    const captured = await api.runtime.sendMessage({ type: "capture_visible", tabId: tabRecord.tabId });
+    if (!captured?.dataUrl) throw new Error("Safari did not return a screenshot.");
+    return captured.dataUrl;
+  }
+
+  async function cropScreenshot(dataUrl, clip) {
+    const image = await loadImage(dataUrl);
+    const scale = image.naturalWidth / innerWidth;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(clip.width * scale));
+    canvas.height = Math.max(1, Math.round(clip.height * scale));
+    canvas.getContext("2d").drawImage(
+      image,
+      clip.x * scale,
+      clip.y * scale,
+      clip.width * scale,
+      clip.height * scale,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height, clip };
+  }
+
+  async function captureFullPage() {
+    const original = { x: scrollX, y: scrollY };
+    const pageWidth = Math.max(document.documentElement.scrollWidth, document.body?.scrollWidth || 0);
+    const pageHeight = Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+    const columns = Math.ceil(pageWidth / innerWidth);
+    const rows = Math.ceil(pageHeight / innerHeight);
+    if (columns * rows > 64) throw Object.assign(new Error("The page needs more than 64 screenshot tiles."), { code: "screenshot_too_large" });
+    let canvas;
+    let context;
+    let scale = 1;
+    try {
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+          const x = Math.min(column * innerWidth, Math.max(0, pageWidth - innerWidth));
+          const y = Math.min(row * innerHeight, Math.max(0, pageHeight - innerHeight));
+          scrollTo(x, y);
+          await waitForPaint();
+          const image = await loadImage(await captureVisible());
+          if (!canvas) {
+            scale = image.naturalWidth / innerWidth;
+            canvas = document.createElement("canvas");
+            canvas.width = Math.round(pageWidth * scale);
+            canvas.height = Math.round(pageHeight * scale);
+            if (canvas.width > 16384 || canvas.height > 16384) throw Object.assign(new Error("The full-page image exceeds Safari's 16384 pixel canvas limit."), { code: "screenshot_too_large" });
+            context = canvas.getContext("2d");
+          }
+          const sourceWidth = Math.min(innerWidth, pageWidth - x);
+          const sourceHeight = Math.min(innerHeight, pageHeight - y);
+          context.drawImage(image, 0, 0, sourceWidth * scale, sourceHeight * scale, x * scale, y * scale, sourceWidth * scale, sourceHeight * scale);
+        }
+      }
+      return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height, fullPage: true, tiles: columns * rows };
+    } finally {
+      scrollTo(original.x, original.y);
+    }
   }
 
   function readDom(params) {
@@ -139,12 +219,32 @@
         throw Object.assign(new Error("Tab is not shared."), { code: "tab_not_permitted" });
       }
       let result;
+      if (request.frame && request.frame !== "@top" && command.method !== "frames") {
+        result = await api.runtime.sendMessage({ type: "frame_command", tabId: tabRecord.tabId, frame: request.frame, method: command.method, params: request });
+        port?.postMessage({ type: "response", id: command.id, result });
+        return;
+      }
       switch (command.method) {
         case "screenshot":
-          if (request.clip) throw Object.assign(new Error("Clipped screenshots are not supported on iPhone Safari."), { code: "unsupported_on_safari" });
-          result = await api.runtime.sendMessage({ type: "capture_visible", tabId: tabRecord.tabId });
+          if (request.fullPage === true) result = await captureFullPage();
+          else if (request.clip) result = await cropScreenshot(await captureVisible(), request.clip);
+          else result = { dataUrl: await captureVisible() };
           break;
-        case "frames": result = pageCommands.frames(); break;
+        case "frames": result = await api.runtime.sendMessage({ type: "enumerate_frames", tabId: tabRecord.tabId }); break;
+        case "state_inspect": {
+          result = await pageCommands.handlers.state_inspect(request);
+          if ([undefined, "cookies"].includes(request.store)) {
+            const cookieResult = await api.runtime.sendMessage({ type: "get_cookies", tabId: tabRecord.tabId, origin: tabRecord.origin });
+            if (!cookieResult?.ok) throw Object.assign(new Error(cookieResult?.error?.message || "Safari cookie access failed."), { code: cookieResult?.error?.code || "cookie_access_failed" });
+            if (cookieResult.cookies.length > 0 || result.cookies.length === 0) {
+              result.cookies = cookieResult.cookies.map((cookie) => ({ ...cookie, value: request.includeValues === true ? cookie.value : cookie.value ? "[redacted]" : "" }));
+              result.cookieScope = "extension_with_explicit_site_permission";
+            } else {
+              result.cookieScope = "script_visible_fallback_with_explicit_site_permission";
+            }
+          }
+          break;
+        }
         case "raise_tab":
           result = await api.runtime.sendMessage({ type: "raise_bridge_tab", tabId: tabRecord.tabId });
           break;
@@ -179,7 +279,16 @@
 
   function start(message) {
     stop();
-    tabRecord = message.tab;
+    tabRecord = {
+      ...message.tab,
+      capabilities: {
+        trustedAutomationEnabled: false,
+        cookieAccessEnabled: false,
+        readingListEnabled: false,
+        frameAccessOrigins: [],
+        ...(message.tab?.capabilities || {}),
+      },
+    };
     if (!tabRecord || location.origin !== tabRecord.origin) {
       throw new Error("The shared tab no longer matches its approved origin.");
     }
@@ -201,8 +310,29 @@
       stop();
       return Promise.resolve({ ok: true });
     }
+    if (message?.type === "get_bridge_state") {
+      return Promise.resolve({ ok: true, active: Boolean(tabRecord && !stopped), tab: tabRecord });
+    }
+    if (message?.type === "set_bridge_capabilities") {
+      if (!tabRecord || stopped) return Promise.resolve({ ok: false, error: "Tab is not shared." });
+      tabRecord = {
+        ...tabRecord,
+        capabilities: { ...tabRecord.capabilities, ...(message.changes || {}) },
+      };
+      return Promise.resolve({ ok: true, tab: tabRecord });
+    }
     return undefined;
   });
 
   window.addEventListener("pagehide", stop);
+  window.addEventListener("pageshow", () => { if (tabRecord) { stopped = false; connect(); sendHeartbeat(); } });
+  window.addEventListener("focus", () => { if (tabRecord) { stopped = false; connect(); sendHeartbeat(); } });
+  window.addEventListener("online", () => { if (tabRecord) { stopped = false; connect(); sendHeartbeat(); } });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && tabRecord) {
+      stopped = false;
+      connect();
+      sendHeartbeat();
+    }
+  });
 })();

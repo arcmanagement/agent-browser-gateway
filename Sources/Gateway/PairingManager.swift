@@ -1,5 +1,7 @@
 import Foundation
+import CryptoKit
 import GatewayCore
+import UniformTypeIdentifiers
 import Vapor
 
 // Companion pairing per docs/IOS_GATEWAY_PAIRING.md. The desktop-facing surface
@@ -23,11 +25,15 @@ actor PairingManager {
     /// Authenticated Safari Web Extension sessions by Gateway extension ID.
     private var browserSockets: [String: WebSocket] = [:]
     private var browserExtensionIdBySocket: [ObjectIdentifier: String] = [:]
+    /// The verified token is retained only while its Safari extension socket is
+    /// authenticated and is used as the key material for file payloads.
+    private var browserSessionTokens: [String: String] = [:]
     /// Approvals currently forwarded to companions. First decision wins; the
     /// extension's own pending registry is the final authority.
     private var forwardedApprovals: [String: ForwardedApproval] = [:]
     /// Set by the Coordinator: injects a companion decision into the extension.
     var decideHandler: (@Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?))?
+    var nativeDecisionHandler: (@Sendable (_ extensionId: String, _ requestId: String, _ decision: String, _ result: CompanionNativeResult?, _ decidedBy: String) async -> (applied: Bool, reason: String?))?
     var browserMessageHandler: (@Sendable (_ message: ExtensionMessage, _ extensionId: String) async -> Void)?
     var browserDisconnectHandler: (@Sendable (_ extensionId: String) async -> Void)?
 
@@ -39,6 +45,10 @@ actor PairingManager {
 
     func setDecideHandler(_ handler: @escaping @Sendable (_ extensionId: String, _ approvalId: String, _ decision: String, _ decidedBy: String) async -> (applied: Bool, reason: String?)) {
         decideHandler = handler
+    }
+
+    func setNativeDecisionHandler(_ handler: @escaping @Sendable (_ extensionId: String, _ requestId: String, _ decision: String, _ result: CompanionNativeResult?, _ decidedBy: String) async -> (applied: Bool, reason: String?)) {
+        nativeDecisionHandler = handler
     }
 
     func setBrowserHandlers(
@@ -265,6 +275,28 @@ actor PairingManager {
                 reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "approval_expired")
             } else if message.decision == "allow" && !entry.summary.canAllow {
                 reply = CompanionDecisionResult(approvalId: message.approvalId, ok: false, error: "requires_desktop_gesture")
+            } else if let requestId = entry.summary.requestId,
+                      entry.summary.nativeAction != nil,
+                      let complete = nativeDecisionHandler {
+                let decidedBy = "companion:\(PairingAudit.hashed(deviceId))"
+                let outcome = await complete(entry.extensionId, requestId, message.decision, message.nativeResult, decidedBy)
+                if outcome.applied {
+                    var resolved = entry
+                    resolved.resolved = true
+                    forwardedApprovals[message.approvalId] = resolved
+                    await forwardApprovalResolved(approvalId: message.approvalId, decision: message.decision, decidedBy: decidedBy)
+                    await auditLog.log(action: "native_operation_decided_by_companion", agent: decidedBy, details: [
+                        "approvalId": AnyCodable(message.approvalId),
+                        "decision": AnyCodable(message.decision),
+                        "deviceIdHash": AnyCodable(PairingAudit.hashed(deviceId)),
+                        "ok": AnyCodable(message.nativeResult?.ok ?? (message.decision == "deny")),
+                    ])
+                }
+                reply = CompanionDecisionResult(
+                    approvalId: message.approvalId,
+                    ok: outcome.applied,
+                    error: outcome.applied ? nil : (outcome.reason ?? "approval_already_decided")
+                )
             } else if let decide = decideHandler {
                 let decidedBy = "companion:\(PairingAudit.hashed(deviceId))"
                 let outcome = await decide(entry.extensionId, message.approvalId, message.decision, decidedBy)
@@ -293,8 +325,15 @@ actor PairingManager {
         }
     }
 
-    private func registerCompanion(deviceId: String, ws: WebSocket) {
+    private func registerCompanion(deviceId: String, ws: WebSocket) async {
         companionSockets[deviceId, default: []].append(ws)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        for entry in forwardedApprovals.values where !entry.resolved && entry.summary.expiresAt > Date() {
+            guard let data = try? encoder.encode(CompanionEvent.pending(entry.summary)),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+            try? await ws.send(text)
+        }
     }
 
     private func unregisterCompanion(deviceId: String, ws: WebSocket) {
@@ -314,6 +353,7 @@ actor PairingManager {
         }
         let extensionId = Self.safariExtensionId(deviceId: deviceId)
         if let socket = browserSockets.removeValue(forKey: extensionId) {
+            browserSessionTokens.removeValue(forKey: extensionId)
             browserExtensionIdBySocket.removeValue(forKey: ObjectIdentifier(socket))
             socket.eventLoop.execute {
                 _ = socket.close(code: .normalClosure)
@@ -347,6 +387,44 @@ actor PairingManager {
             throw NSError(domain: "ABG.Pairing", code: 5, userInfo: [NSLocalizedDescriptionKey: "encode failed"])
         }
         try await socket.send(text)
+    }
+
+    func encryptedFilePayloads(for extensionId: String, paths: [String]) throws -> [EncryptedFilePayload] {
+        guard let token = browserSessionTokens[extensionId] else {
+            throw NSError(domain: "ABG.Pairing", code: 6, userInfo: [NSLocalizedDescriptionKey: "Safari file-transfer session is not connected"])
+        }
+        guard !paths.isEmpty else {
+            throw NSError(domain: "ABG.Pairing", code: 7, userInfo: [NSLocalizedDescriptionKey: "At least one file is required"])
+        }
+        let maximumFileBytes = 12 * 1024 * 1024
+        let maximumTotalBytes = 32 * 1024 * 1024
+        let keyDigest = SHA256.hash(data: Data("abg-ios-file-transfer-v1:\(token)".utf8))
+        let key = SymmetricKey(data: Data(keyDigest))
+        var totalBytes = 0
+        return try paths.map { path in
+            let url = URL(fileURLWithPath: path)
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values.isRegularFile == true else {
+                throw NSError(domain: "ABG.Pairing", code: 8, userInfo: [NSLocalizedDescriptionKey: "File is not regular: \(path)"])
+            }
+            let size = values.fileSize ?? 0
+            guard size <= maximumFileBytes, totalBytes + size <= maximumTotalBytes else {
+                throw NSError(domain: "ABG.Pairing", code: 9, userInfo: [NSLocalizedDescriptionKey: "Safari file transfer is limited to 12 MB per file and 32 MB total"])
+            }
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            totalBytes += data.count
+            let sealed = try AES.GCM.seal(data, using: key)
+            let ciphertextAndTag = sealed.ciphertext + sealed.tag
+            let type = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+            return EncryptedFilePayload(
+                name: url.lastPathComponent,
+                type: type,
+                size: data.count,
+                sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+                nonceBase64: sealed.nonce.withUnsafeBytes { Data($0).base64EncodedString() },
+                sealedBase64: ciphertextAndTag.base64EncodedString()
+            )
+        }
     }
 
     private func handleBrowserText(ws: WebSocket, text: String) async {
@@ -387,6 +465,7 @@ actor PairingManager {
             try? await previous.close(code: .normalClosure)
         }
         browserExtensionIdBySocket[socketId] = extensionId
+        browserSessionTokens[extensionId] = auth.sessionToken
         await sendBrowserAuthResult(ws: ws, ok: true, extensionId: extensionId, error: nil)
         await auditLog.log(action: "safari_extension_authenticated", extensionId: extensionId, agent: "safari_extension", details: [
             "deviceIdHash": AnyCodable(PairingAudit.hashed(auth.deviceId)),
@@ -406,6 +485,7 @@ actor PairingManager {
         guard let extensionId = browserExtensionIdBySocket.removeValue(forKey: socketId) else { return }
         if browserSockets[extensionId] === ws {
             browserSockets.removeValue(forKey: extensionId)
+            browserSessionTokens.removeValue(forKey: extensionId)
             if let browserDisconnectHandler {
                 await browserDisconnectHandler(extensionId)
             }
@@ -496,8 +576,8 @@ actor PairingManager {
         statusPayload(pairingId: pairingId)
     }
 
-    private func registerCompanionAuthorized(deviceId: String, ws: WebSocket) {
-        registerCompanion(deviceId: deviceId, ws: ws)
+    private func registerCompanionAuthorized(deviceId: String, ws: WebSocket) async {
+        await registerCompanion(deviceId: deviceId, ws: ws)
     }
 
     private func stopListenerIfIdle() async {
@@ -621,6 +701,7 @@ struct CompanionDecision: Decodable {
     let type: String
     let approvalId: String
     let decision: String
+    let nativeResult: CompanionNativeResult?
 }
 
 struct CompanionDecisionResult: Encodable {
@@ -641,6 +722,26 @@ struct BrowserSessionAuthResult: Encodable {
     let ok: Bool
     let extensionId: String?
     let error: String?
+}
+
+struct EncryptedFilePayload: Sendable {
+    let name: String
+    let type: String
+    let size: Int
+    let sha256: String
+    let nonceBase64: String
+    let sealedBase64: String
+
+    var dictionary: [String: Any] {
+        [
+            "name": name,
+            "type": type,
+            "size": size,
+            "sha256": sha256,
+            "nonceBase64": nonceBase64,
+            "sealedBase64": sealedBase64,
+        ]
+    }
 }
 
 struct PairingStatusResponse: Content {

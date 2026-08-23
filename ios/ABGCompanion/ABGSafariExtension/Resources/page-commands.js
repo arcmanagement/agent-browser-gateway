@@ -531,6 +531,23 @@
     return { ok: true, found: true, from: selectorFor(from), to: selectorFor(to), synthetic: true };
   }
 
+  function uploadFile(params) {
+    const element = uniqueElement(params);
+    if (!element) throw gatewayError("selector_not_found", `selector not found: ${params.selector}`);
+    if (!(element instanceof HTMLInputElement) || element.type !== "file") throw gatewayError("not_file_input", "selector must match one file input");
+    if (!Array.isArray(params.files) || params.files.length === 0) throw gatewayError("bad_params", "encrypted file contents are required");
+    const transfer = new DataTransfer();
+    for (const item of params.files) {
+      const binary = atob(item.dataBase64 || "");
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      transfer.items.add(new File([bytes], item.name || "upload", { type: item.type || "application/octet-stream", lastModified: Date.now() }));
+    }
+    element.files = transfer.files;
+    element.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    return { ok: true, found: true, count: transfer.files.length, files: [...transfer.files].map((file) => ({ name: file.name, type: file.type, size: file.size })) };
+  }
+
   function validateEditable(params) {
     const element = params.selection ? null : queryAll(params)[0];
     const text = params.selection ? String(frameContext(params).win.getSelection()?.toString() || "") : editableText(element);
@@ -617,7 +634,7 @@
       host.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
       const shadow = host.attachShadow({ mode: "open" });
       const style = document.createElement("style");
-      style.textContent = ":host{all:initial}.layer,.capture{position:fixed;inset:0}.layer{pointer-events:none}.capture{display:none;pointer-events:auto;touch-action:none;cursor:crosshair}.toolbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:none;gap:8px;padding:8px;background:#111;color:#fff;border-radius:12px;font:600 13px -apple-system,sans-serif;pointer-events:auto}.toolbar button{border:0;border-radius:8px;padding:7px 12px}.mark{position:fixed;border:3px solid #1677ff;background:rgba(22,119,255,.12);box-sizing:border-box}.badge{position:absolute;left:-3px;top:-24px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#1677ff;color:#fff;font:700 13px/22px -apple-system,sans-serif;text-align:center}.draft{position:fixed;border:2px dashed #1677ff;background:rgba(22,119,255,.08);display:none}";
+      style.textContent = ":host{all:initial}.layer,.capture{position:fixed;inset:0}.layer{pointer-events:none}.capture{display:none;pointer-events:auto;touch-action:none;cursor:crosshair}.toolbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:none;gap:6px;padding:8px;background:#111;color:#fff;border-radius:12px;font:600 13px -apple-system,sans-serif;pointer-events:auto}.toolbar button{border:0;border-radius:8px;padding:7px 10px}.toolbar button.active{background:#1677ff;color:#fff}.mark{position:fixed;border:3px solid #1677ff;background:rgba(22,119,255,.12);box-sizing:border-box;pointer-events:auto;touch-action:none}.mark.selected{outline:2px solid #fff;outline-offset:2px}.badge{position:absolute;left:-3px;top:-24px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#1677ff;color:#fff;font:700 13px/22px -apple-system,sans-serif;text-align:center}.comment{position:absolute;left:0;top:100%;max-width:220px;padding:4px 7px;background:#111;color:#fff;font:12px/1.3 -apple-system,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.handle{position:absolute;right:-8px;bottom:-8px;width:18px;height:18px;border-radius:9px;background:#1677ff;border:2px solid #fff;box-sizing:border-box}.draft{position:fixed;border:2px dashed #1677ff;background:rgba(22,119,255,.08);display:none}";
       const layer = document.createElement("div");
       layer.className = "layer";
       const capture = document.createElement("div");
@@ -626,21 +643,26 @@
       draft.className = "draft";
       const toolbar = document.createElement("div");
       toolbar.className = "toolbar";
-      const label = document.createElement("span");
-      label.textContent = "Drag to annotate";
+      const areaButton = document.createElement("button");
+      areaButton.textContent = "Area";
+      const textButton = document.createElement("button");
+      textButton.textContent = "Text";
+      const selectButton = document.createElement("button");
+      selectButton.textContent = "Move";
       const clearButton = document.createElement("button");
       clearButton.textContent = "Clear";
       const doneButton = document.createElement("button");
       doneButton.textContent = "Done";
-      toolbar.append(label, clearButton, doneButton);
+      toolbar.append(areaButton, textButton, selectButton, clearButton, doneButton);
       shadow.append(style, layer, capture, draft, toolbar);
       document.documentElement.append(host);
-      annotationState = { enabled: false, nextId: 1, annotations: [], host, layer, capture, draft, toolbar, dragStart: null };
+      annotationState = { enabled: false, mode: "area", selectedId: null, nextId: 1, annotations: [], host, layer, capture, draft, toolbar, dragStart: null };
       const render = () => {
         layer.replaceChildren();
         for (const item of annotationState.annotations) {
           const mark = document.createElement("div");
           mark.className = "mark";
+          if (item.id === annotationState.selectedId) mark.classList.add("selected");
           mark.style.left = `${item.rect.x}px`;
           mark.style.top = `${item.rect.y}px`;
           mark.style.width = `${item.rect.width}px`;
@@ -649,13 +671,61 @@
           badge.className = "badge";
           badge.textContent = String(item.id);
           mark.append(badge);
+          if (item.comment) {
+            const comment = document.createElement("span");
+            comment.className = "comment";
+            comment.textContent = item.comment;
+            mark.append(comment);
+          }
+          const handle = document.createElement("span");
+          handle.className = "handle";
+          mark.append(handle);
+          const beginTransform = (event, resizing) => {
+            if (annotationState.mode !== "select") return;
+            annotationState.selectedId = item.id;
+            const start = { x: event.clientX, y: event.clientY, rect: { ...item.rect } };
+            try { mark.setPointerCapture?.(event.pointerId); } catch {}
+            const move = (next) => {
+              if (resizing) {
+                item.rect.width = Math.max(8, start.rect.width + next.clientX - start.x);
+                item.rect.height = Math.max(8, start.rect.height + next.clientY - start.y);
+              } else {
+                item.rect.x = start.rect.x + next.clientX - start.x;
+                item.rect.y = start.rect.y + next.clientY - start.y;
+              }
+              item.viewportRect = { ...item.rect };
+              mark.style.left = `${item.rect.x}px`;
+              mark.style.top = `${item.rect.y}px`;
+              mark.style.width = `${item.rect.width}px`;
+              mark.style.height = `${item.rect.height}px`;
+            };
+            const up = () => { mark.removeEventListener("pointermove", move); mark.removeEventListener("pointerup", up); render(); };
+            mark.addEventListener("pointermove", move);
+            mark.addEventListener("pointerup", up);
+            event.preventDefault();
+            event.stopPropagation();
+          };
+          handle.addEventListener("pointerdown", (event) => beginTransform(event, true));
+          mark.addEventListener("pointerdown", (event) => {
+            if (event.target === handle) return;
+            beginTransform(event, false);
+          });
           layer.append(mark);
         }
       };
       const setEnabled = (enabled) => {
         annotationState.enabled = enabled;
-        capture.style.display = enabled ? "block" : "none";
         toolbar.style.display = enabled ? "flex" : "none";
+        if (enabled) setMode(annotationState.mode);
+        else capture.style.display = "none";
+      };
+      const setMode = (mode) => {
+        annotationState.mode = mode;
+        capture.style.display = annotationState.enabled && mode === "area" ? "block" : "none";
+        layer.style.pointerEvents = annotationState.enabled && mode === "select" ? "auto" : "none";
+        areaButton.classList.toggle("active", mode === "area");
+        textButton.classList.toggle("active", mode === "text");
+        selectButton.classList.toggle("active", mode === "select");
       };
       const addRegion = (rect, source, comment = "") => {
         const item = { id: annotationState.nextId++, kind: "screenshot", source, comment, rect, viewportRect: rect, scroll: { x: scrollX, y: scrollY }, createdAt: new Date().toISOString(), url: location.href, title: document.title };
@@ -684,7 +754,40 @@
         draft.style.display = "none";
         if (!start) return;
         const rect = { x: Math.min(start.x, event.clientX), y: Math.min(start.y, event.clientY), width: Math.abs(event.clientX - start.x), height: Math.abs(event.clientY - start.y) };
-        if (rect.width >= 4 && rect.height >= 4) addRegion(rect, "drag");
+        if (rect.width >= 4 && rect.height >= 4) addRegion(rect, "drag", prompt("Comment", "") || "");
+        event.preventDefault();
+      });
+      document.addEventListener("pointerup", () => {
+        if (!annotationState?.enabled || annotationState.mode !== "text") return;
+        const selection = getSelection();
+        if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (host.contains(range.commonAncestorContainer)) return;
+        const rect = range.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return;
+        const item = addRegion({ x: rect.x, y: rect.y, width: rect.width, height: rect.height }, "selection", prompt("Comment", "") || "");
+        item.kind = "text";
+        item.text = selection.toString().slice(0, 500);
+        item.range = { startOffset: range.startOffset, endOffset: range.endOffset };
+        selection.removeAllRanges();
+        render();
+      });
+      areaButton.addEventListener("click", () => setMode("area"));
+      textButton.addEventListener("click", () => setMode("text"));
+      selectButton.addEventListener("click", () => setMode("select"));
+      shadow.addEventListener("dblclick", (event) => {
+        const mark = event.target.closest?.(".mark");
+        if (!mark) return;
+        const id = Number(mark.querySelector(".badge")?.textContent);
+        const item = annotationState.annotations.find((candidate) => candidate.id === id);
+        if (item) item.comment = prompt("Comment", item.comment || "") ?? item.comment;
+        render();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (!annotationState?.enabled || !["Backspace", "Delete"].includes(event.key) || annotationState.selectedId === null) return;
+        annotationState.annotations = annotationState.annotations.filter((item) => item.id !== annotationState.selectedId);
+        annotationState.selectedId = null;
+        render();
         event.preventDefault();
       });
       clearButton.addEventListener("click", () => { annotationState.annotations = []; annotationState.nextId = 1; render(); });
@@ -692,6 +795,7 @@
       annotationState.render = render;
       annotationState.setEnabled = setEnabled;
       annotationState.addRegion = addRegion;
+      annotationState.setMode = setMode;
       return annotationState;
     };
 
@@ -714,6 +818,19 @@
       item.selector = params.selector;
       item.element = { tag: element.tagName.toLowerCase(), selector: params.selector, text: textOf(element).slice(0, 180) };
       state.render();
+    } else if (action === "update") {
+      const item = state.annotations.find((candidate) => candidate.id === Number(params.id));
+      if (!item) throw gatewayError("annotation_not_found", `annotation ${params.id} was not found`);
+      if (typeof params.comment === "string") item.comment = params.comment;
+      for (const key of ["x", "y", "width", "height"]) if (Number.isFinite(params[key])) item.rect[key] = params[key];
+      item.viewportRect = { ...item.rect };
+      state.render();
+    } else if (action === "remove") {
+      state.annotations = state.annotations.filter((item) => item.id !== Number(params.id));
+      state.render();
+    } else if (action === "mode") {
+      if (!["area", "text", "select"].includes(params.mode)) throw gatewayError("bad_params", "mode must be area, text, or select");
+      state.setMode(params.mode);
     } else if (action !== "list") throw gatewayError("bad_params", `unsupported annotation action: ${action}`);
     return { ok: true, enabled: state.enabled, count: state.annotations.length, annotations: state.annotations };
   }
@@ -760,6 +877,7 @@
     scroll,
     scroll_into_view: scrollIntoView,
     drag,
+    upload_file: uploadFile,
   };
 
   const unsupportedReasons = {
@@ -778,11 +896,9 @@
     bookmarks_remove: "Safari does not expose browser bookmarks to this Web Extension",
     reading_list_list: "Safari does not expose Reading List to this Web Extension",
     reading_list_search: "Safari does not expose Reading List to this Web Extension",
-    reading_list_add: "Safari does not expose Reading List to this Web Extension",
     reading_list_update: "Safari does not expose Reading List to this Web Extension",
     reading_list_remove: "Safari does not expose Reading List to this Web Extension",
     paste_rich: "the Mac clipboard cannot be transferred into iPhone Safari",
-    upload_file: "Mac file paths are not available to iPhone Safari",
     sandbox_action: "iOS Safari has no isolated all-tabs browser profile",
     dialog_state: "Safari Web Extensions do not expose JavaScript dialog state",
     dialog_action: "Safari Web Extensions cannot accept or dismiss page dialogs",

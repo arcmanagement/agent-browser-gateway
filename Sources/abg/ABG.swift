@@ -734,6 +734,7 @@ struct Screenshot: AsyncParsableCommand {
     @Option(name: .long, help: "部分キャプチャ Y (px)") var y: Double?
     @Option(name: .long, help: "部分キャプチャ幅 (px)") var width: Double?
     @Option(name: .long, help: "部分キャプチャ高さ (px)") var height: Double?
+    @Flag(name: .long, help: "スクロールしてページ全体を1枚に結合") var fullPage: Bool = false
 
     func run() async throws {
         if latest {
@@ -758,9 +759,14 @@ struct Screenshot: AsyncParsableCommand {
             FileHandle.standardError.write(Data("--x, --y, --width, --height are all required when clipping\n".utf8))
             throw ExitCode.failure
         }
+        if fullPage && clipCount > 0 {
+            FileHandle.standardError.write(Data("--full-page cannot be combined with clipping options\n".utf8))
+            throw ExitCode.failure
+        }
         if clipCount == 4 {
             params["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
+        if fullPage { params["fullPage"] = true }
         let result = try client.call(method: "screenshot_tab", params: params)
         let outPath: String = {
             if let o = out { return (o as NSString).expandingTildeInPath }
@@ -772,6 +778,7 @@ struct Screenshot: AsyncParsableCommand {
         if clipCount == 4 {
             step["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
+        if fullPage { step["fullPage"] = true }
         appendRecordedStep(step)
         printJSON(resultJson)
     }

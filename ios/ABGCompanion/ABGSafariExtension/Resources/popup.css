@@ -58,6 +58,13 @@ button.revoke {
   background: #d93936;
 }
 
+button.secondary {
+  background: color-mix(in srgb, #1677ff 16%, transparent);
+  color: #1677ff;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
 button:disabled {
   opacity: 0.45;
 }

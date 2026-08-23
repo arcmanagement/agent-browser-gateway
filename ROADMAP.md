@@ -9,7 +9,11 @@ Current repo version: **v0.4.8**.
 ### v0.4.8 — iPhone Safari tab sharing and page actions (2026-08-23)
 - Bundled a Safari Web Extension in the iPhone companion app. The popup shares and revokes only the active tab, and an origin change or tab close revokes access.
 - Added the `tab_sharing` pairing scope and an authenticated `WS /browser` route on the private pairing listener. The main extension route remains bound to loopback.
-- Added Safari support for tab listing, DOM reads, getters, predicates, semantic find, snapshots, tables, visible-tab screenshots, tab activation, waits, editable validation, storage inspection, approved eval, and DOM-level page actions.
+- Added Safari support for tab listing, DOM reads, getters, predicates, semantic find, snapshots, tables, clipped and full-page screenshots, tab activation, waits, editable validation, storage inspection, approved eval, and DOM-level page actions.
+- Added text and area annotations with comments, move and resize controls, explicit site-scoped cookie inspection, and user-granted cross-origin iframe access.
+- Added AES-256-GCM file transfer from the Mac into shared Safari file inputs, without exposing the Mac file path to the phone.
+- Added native Reading List insertion through the containing iOS app. Each insertion requires the Safari toggle and an iPhone approval.
+- Preserved shared tab references while iOS suspends the Safari extension, then resumed queued commands after Safari reconnects.
 - Page actions use companion approval by default. Trusted automation is a separate explicit Safari popup setting. Chrome-only browser services return `unsupported_on_safari` with a platform-specific reason.
 - Shared the paired Gateway session with the Safari native extension through a Keychain access group. Existing pairings require the user to open the updated app once for migration and pair again to approve the new scope.
 
@@ -326,10 +330,10 @@ Capability mapping:
 
 | ABG capability | iOS Safari extension-only status | Native companion requirement | MVP decision |
 |---|---|---|---|
-| Per-page read state (`read`, `get`, `snapshot`) | Available after the user shares the active tab and grants Safari website access. | The paired desktop Gateway provides the agent command channel and audit surface. | Shipped. Cross-origin frames and Chrome-only features remain unsupported. |
-| Screenshots (`screenshot`, visual annotations) | Visible-tab capture is available when the shared tab is active. Clip capture and annotation coordination remain unsupported. | The desktop CLI persists the returned image. | Visible-tab screenshot shipped; other screenshot modes remain unsupported. |
+| Per-page read state (`read`, `get`, `snapshot`) | Available after the user shares the active tab and grants Safari website access. Cross-origin frames require a separate permission for each embedded site. | The paired desktop Gateway provides the agent command channel and audit surface. | Shipped, including user-granted cross-origin frames. Chrome-only browser services remain unsupported. |
+| Screenshots (`screenshot`, visual annotations) | Visible, clipped, and scroll-joined full-page capture are available when the shared tab is active. | The desktop CLI persists the returned image. | Shipped with area and text annotations, comments, move, and resize. |
 | Operation approval (`click`, `fill`, `type`, `navigate`, eval) | DOM-level actions run in the shared page. Native low-level input and page dialog control have no equivalent iOS path. | The companion receives approval summaries and returns the decision. Trusted automation is a separate explicit Safari setting. | DOM actions and isolated-world eval shipped. Native low-level input and dialog control return explicit unsupported errors. |
-| Network, downloads, sandbox/all-tabs, PDF, HAR, emulation, and file operations | Not feasible as extension-only ABG parity. Apple documents `webRequest` as unsupported on iOS, storage and window API limits, and App Store updates instead of `update_url`. ABG also uses Chrome-only permissions including `debugger`, `downloads`, `tabCapture`, and `offscreen`. | A companion can provide app storage, export, and approval UI, but cannot recreate missing Safari extension APIs. | Explicitly unsupported on iOS. Script-visible cookies and Web Storage inspection are available. |
+| Network, downloads, sandbox/all-tabs, PDF, HAR, and emulation | Not feasible as extension-only ABG parity. Apple documents `webRequest` as unsupported on iOS, storage and window API limits, and App Store updates instead of `update_url`. ABG also uses Chrome-only permissions including `debugger`, `downloads`, `tabCapture`, and `offscreen`. | A companion can provide app storage, export, and approval UI, but cannot recreate missing Safari extension APIs. | Explicitly unsupported on iOS. Site-scoped cookie inspection, Web Storage inspection, encrypted file upload, and native Reading List insertion are available. |
 
 Browser-extension scope shipped in v0.4.8:
 
@@ -337,7 +341,9 @@ Browser-extension scope shipped in v0.4.8:
   permission guidance.
 - DOM and text extraction plus DOM-level actions on a user-granted page using supported `tabs` and
   `scripting` APIs, with clear errors for unsupported frames or missing website permission.
-- Visible-tab capture on the active shared tab.
+- Visible, clipped, and scroll-joined full-page capture on the active shared tab.
+- Text and area annotations with comments, move, and resize controls.
+- Explicit site permissions for cookie inspection and cross-origin iframe commands.
 - Local extension storage for transient share state, within Safari's storage limits.
 
 Native-companion scope shipped in v0.4.8:
@@ -348,13 +354,16 @@ Native-companion scope shipped in v0.4.8:
   cannot send unsolicited messages to extension JavaScript.
 - The existing desktop Gateway and CLI remain the agent command and audit surface.
 - The native approval list remains available for forwarded approval requests.
+- The containing app performs approved Reading List insertion and reports the native result to the pending Mac command.
+- Mac file bytes are encrypted before private-network transfer and decrypted only inside the paired Safari extension.
 
 Unsupported behavior for iOS Safari:
 
 - No Chrome DevTools Protocol or `chrome.debugger` automation parity.
 - No sandbox/all-tabs profile mode equivalent.
-- No browser-owned network interception, HAR export, download lifecycle, PDF generation, HTTP-only
-  cookie inspection, emulation, file upload, or dialog handling parity.
+- No browser-owned network interception, HAR export, download lifecycle, PDF generation, emulation,
+  or dialog handling parity. Cookie visibility still depends on Safari returning a value from its
+  extension cookie API; the fallback covers only cookies visible to page scripts.
 - No hidden eval or write operation without explicit user approval.
 
 ### WKWebView debugging support design note

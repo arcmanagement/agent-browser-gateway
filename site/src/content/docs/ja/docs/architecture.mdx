@@ -106,7 +106,7 @@ tab close、origin change、explicit revokeで自動失効します。mobile con
 - mobile sessionをrevokeすると、そのdeviceをpairing listから外し、未処理のapproval promptとpairing tokenを失効させます。
 - iPhone Safari tab shareをrevokeすると、desktop Gatewayからそのtabを即時に削除します。tab closeとorigin changeでも自動revokeします。
 
-iPhone Safari targetはtab list、DOM read、getter、predicate、semantic find、snapshot、table、visible-tab screenshot、tab activation、wait、editable validation、storage確認、承認済みeval、DOM操作を扱います。操作はpaired iPhone appで承認します。Safari extension popupでTrusted automationを明示的に有効にした場合だけ、操作ごとの承認を省略します。共有範囲は承認時のorigin内に限定します。
+iPhone Safari targetはtab list、DOM read、getter、predicate、semantic find、snapshot、table、範囲指定とfull-page screenshot、text/area annotation、明示許可したcross-origin frame、site単位のcookie確認、暗号化file upload、native Reading List追加、tab activation、wait、editable validation、storage確認、承認済みeval、DOM操作を扱います。操作はpaired iPhone appで承認します。Safari extension popupでTrusted automationを明示的に有効にした場合だけ、操作ごとの承認を省略します。共有範囲は承認時のorigin内に限定し、Safari休止後も同じMac側refへ再接続します。
 
 ### network boundary
 
@@ -126,6 +126,6 @@ security promiseを弱めるためです。
 ### remaining limits
 
 - Safariにはconsoleとnetwork capture、HAR、PDF、emulation、download metadata、native low-level input、tab recordingを扱うChrome DevTools Protocol相当のAPIがありません。該当commandはplatform固有の理由と`unsupported_on_safari`を返します。
-- Macのclipboard payloadとfile pathはiPhone Safari tabへ転送できないため、rich pasteとfile uploadは利用できません。
+- Mac clipboardは利用できません。file uploadはMacでbytesを暗号化し、file名、MIME type、digest、ciphertextだけをpaired Safari extensionへ転送します。Mac file pathは送信しません。
 - sandbox all-tabs accessはChrome限定です。
 - Androidとembedded WebView supportは別のplatform trackです。

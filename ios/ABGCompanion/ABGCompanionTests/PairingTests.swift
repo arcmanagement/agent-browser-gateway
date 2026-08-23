@@ -65,6 +65,16 @@ final class PairingTests: XCTestCase {
         XCTAssertFalse(click.isDestructive)
     }
 
+    func testNativeReadingListApprovalDecoding() throws {
+        let text = #"{"type":"approval_pending","approval":{"approvalId":"a2","method":"reading_list_add","intent":"Add an item","targetOrigin":"https://example.com","targetTabRef":"t1","requester":"cli","gatewayLabel":"dev@mac","createdAt":"2026-08-22T09:00:00Z","expiresAt":"2026-08-22T09:01:00Z","scriptPreview":null,"requestId":"request-2","nativeAction":{"kind":"reading_list_add","url":"https://example.com/article","title":"Article"},"canAllow":true}}"#
+        guard case .pending(let summary)? = CompanionEvent.decode(text) else {
+            return XCTFail("expected native approval_pending")
+        }
+        XCTAssertEqual(summary.requestId, "request-2")
+        XCTAssertEqual(summary.nativeAction?.kind, "reading_list_add")
+        XCTAssertEqual(summary.nativeAction?.url, "https://example.com/article")
+    }
+
     func testDecisionEventsDecode() {
         guard case .resolved(let id, let decision, let by)? = CompanionEvent.decode(
             #"{"type":"approval_resolved","approvalId":"a1","decision":"allow","decidedBy":"companion:abc"}"#

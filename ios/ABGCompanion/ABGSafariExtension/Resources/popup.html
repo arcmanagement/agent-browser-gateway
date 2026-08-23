@@ -16,8 +16,17 @@
         <input id="trusted" type="checkbox">
         <span><strong>Trusted automation</strong><small>Run page actions without asking in the companion app.</small></span>
       </label>
+      <label class="setting">
+        <input id="cookies" type="checkbox">
+        <span><strong>Site cookies</strong><small>Allow cookie inspection for this site only.</small></span>
+      </label>
+      <label class="setting">
+        <input id="readingList" type="checkbox">
+        <span><strong>Reading List</strong><small>Allow native Reading List additions from the paired Mac.</small></span>
+      </label>
+      <button id="frames" class="secondary" disabled>Enable embedded sites</button>
       <div id="connection" class="status">Not connected</div>
-      <p class="privacy">Only this tab is shared. Sharing stops when its origin changes or you revoke access.</p>
+      <p class="privacy">Only tabs you share are available. Sharing stops when an origin changes or you revoke access.</p>
     </main>
     <script src="popup.js"></script>
   </body>

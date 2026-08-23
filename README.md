@@ -104,7 +104,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.4.7` yet. If this command reports no matching package, that is the
+   WinGet is not live for `v0.4.8` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -116,7 +116,7 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows package-manager install and release ZIPs are pending for `v0.4.7` while the signed Windows
+Windows package-manager install and release ZIPs are pending for `v0.4.8` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.
 
@@ -851,7 +851,7 @@ Currently shipped:
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Firefox extension MVP target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md))
-- ✅ iPhone Safari target with explicit active-tab share, DOM reads, inspection, visible screenshots, approved eval, and DOM-level page actions
+- ✅ iPhone Safari target with explicit active-tab share, DOM reads, cross-origin iframe grants, clipped and full-page screenshots, annotations, encrypted file upload, native Reading List insertion, approved eval, and DOM-level page actions
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
@@ -881,7 +881,7 @@ In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
 - 📋 Desktop Safari, Edge, and Android expansion (Phase 3+)
-- 📋 iPhone Safari cross-origin frames and Chrome-only browser-service parity
+- 📋 Chrome-only browser-service parity where Safari exposes an equivalent API
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---

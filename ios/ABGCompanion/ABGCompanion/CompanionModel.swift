@@ -1,4 +1,5 @@
 import Foundation
+import SafariServices
 import SwiftUI
 
 @MainActor
@@ -117,13 +118,36 @@ final class CompanionModel: ObservableObject {
     }
 
     func decide(_ approval: ApprovalSummary, decision: String) {
+        let nativeResult = decision == "allow" ? Self.performNativeAction(approval.nativeAction) : nil
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.client.decide(approvalId: approval.approvalId, decision: decision)
+                try await self.client.decide(
+                    approvalId: approval.approvalId,
+                    decision: decision,
+                    nativeResult: nativeResult
+                )
             } catch {
                 self.errorMessage = "Could not send the decision. Check the connection to your Gateway."
             }
+        }
+    }
+
+    private static func performNativeAction(_ action: NativeAction?) -> NativeResult? {
+        guard let action else { return nil }
+        guard action.kind == "reading_list_add",
+              let url = URL(string: action.url),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              SSReadingList.supportsURL(url),
+              let readingList = SSReadingList.default()
+        else {
+            return NativeResult(ok: false, url: nil, error: "invalid_or_unsupported_native_action")
+        }
+        do {
+            try readingList.addItem(with: url, title: action.title, previewText: nil)
+            return NativeResult(ok: true, url: url.absoluteString, error: nil)
+        } catch {
+            return NativeResult(ok: false, url: nil, error: error.localizedDescription)
         }
     }
 

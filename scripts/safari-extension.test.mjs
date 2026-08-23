@@ -4,25 +4,47 @@ import test from "node:test";
 import vm from "node:vm";
 
 const resourceRoot = new URL("../ios/ABGCompanion/ABGSafariExtension/Resources/", import.meta.url);
+const iconRoot = new URL("../extension/public/icons/", import.meta.url);
+const projectSpec = new URL("../ios/ABGCompanion/project.yml", import.meta.url);
 
 test("Safari manifest keeps access user-scoped", async () => {
   const manifest = JSON.parse(await readFile(new URL("manifest.json", resourceRoot), "utf8"));
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.permissions.includes("nativeMessaging"), true);
+  assert.equal(manifest.permissions.includes("cookies"), true);
   assert.equal(manifest.permissions.includes("debugger"), false);
   assert.equal(manifest.host_permissions, undefined);
-  assert.equal(manifest.optional_host_permissions, undefined);
+  assert.deepEqual(manifest.optional_host_permissions, ["http://*/*", "https://*/*"]);
   assert.deepEqual(manifest.background.scripts, ["background.js"]);
   assert.equal(manifest.background.persistent, false);
   assert.equal(manifest.background.service_worker, undefined);
   assert.equal(manifest.web_accessible_resources, undefined);
+  assert.deepEqual(manifest.icons, {
+    16: "icons/16.png",
+    48: "icons/48.png",
+    128: "icons/128.png",
+  });
+  assert.deepEqual(manifest.action.default_icon, manifest.icons);
+
+  for (const filename of Object.values(manifest.icons)) {
+    const icon = await readFile(new URL(filename.replace("icons/", ""), iconRoot));
+    assert.equal(icon.length > 0, true);
+  }
+  assert.match(await readFile(projectSpec, "utf8"), /path: \.\.\/\.\.\/extension\/public\/icons/);
+});
+
+test("Safari cookie inspection keeps script-visible cookies when the native API returns none", async () => {
+  const source = await readFile(new URL("bridge.js", resourceRoot), "utf8");
+
+  assert.match(source, /cookieResult\.cookies\.length > 0 \|\| result\.cookies\.length === 0/);
+  assert.match(source, /script_visible_fallback_with_explicit_site_permission/);
 });
 
 test("Safari sharing updates without a site-wide permission request", async () => {
   const source = await readFile(new URL("popup.js", resourceRoot), "utf8");
   const elements = Object.fromEntries(
-    ["title", "detail", "action", "connection", "trusted"].map((id) => [id, {
+    ["title", "detail", "action", "connection", "trusted", "cookies", "readingList", "frames"].map((id) => [id, {
       disabled: id === "action",
       checked: false,
       textContent: "",
@@ -68,10 +90,126 @@ test("Safari sharing updates without a site-wide permission request", async () =
   assert.equal(elements.action.textContent, "Stop sharing");
 });
 
+test("Safari stop sharing updates the button when the active tab disappears during refresh", async () => {
+  const source = await readFile(new URL("popup.js", resourceRoot), "utf8");
+  const elements = Object.fromEntries(
+    ["title", "detail", "action", "connection", "trusted", "cookies", "readingList", "frames"].map((id) => [id, {
+      disabled: id === "action",
+      checked: false,
+      textContent: "",
+      classList: { toggle() {} },
+      listeners: {},
+      addEventListener(type, listener) { this.listeners[type] = listener; },
+    }]),
+  );
+  let shared = true;
+  let queryCount = 0;
+  const messages = [];
+  const browser = {
+    tabs: {
+      query: async () => {
+        queryCount += 1;
+        return queryCount === 1
+          ? [{ id: 7, title: "Docs", url: "https://example.com" }]
+          : [];
+      },
+    },
+    runtime: {
+      sendMessage: async (message) => {
+        messages.push(message);
+        if (message.type === "get_state") {
+          return {
+            paired: true,
+            gatewayLabel: "Mac Gateway",
+            shared,
+            connected: shared,
+            connectionError: null,
+          };
+        }
+        if (message.type === "revoke_tab") shared = false;
+        return { ok: true };
+      },
+    },
+  };
+  const context = {
+    browser,
+    document: { getElementById: (id) => elements[id] },
+    Date,
+    Promise,
+  };
+
+  vm.runInNewContext(source, context, { filename: "popup.js" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(elements.action.textContent, "Stop sharing");
+
+  elements.action.listeners.click();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(messages.filter((message) => message.type === "revoke_tab").length, 1);
+  assert.equal(elements.action.textContent, "Share this tab");
+});
+
+test("Safari stop sharing does not roll back when its background response is lost", async () => {
+  const source = await readFile(new URL("popup.js", resourceRoot), "utf8");
+  const elements = Object.fromEntries(
+    ["title", "detail", "action", "connection", "trusted", "cookies", "readingList", "frames"].map((id) => [id, {
+      disabled: id === "action",
+      checked: false,
+      textContent: "",
+      classList: { toggle() {} },
+      listeners: {},
+      addEventListener(type, listener) { this.listeners[type] = listener; },
+    }]),
+  );
+  let revokeRequested = false;
+  const browser = {
+    tabs: {
+      query: async () => [{ id: 7, title: "Docs", url: "https://example.com" }],
+    },
+    runtime: {
+      sendMessage: async (message) => {
+        if (message.type === "get_state") {
+          return {
+            paired: true,
+            gatewayLabel: "Mac Gateway",
+            shared: true,
+            connected: true,
+            connectionError: null,
+          };
+        }
+        if (message.type === "revoke_tab") {
+          revokeRequested = true;
+          await new Promise((resolve) => setImmediate(resolve));
+          throw new Error("The background response was lost");
+        }
+        return { ok: true };
+      },
+    },
+  };
+  const context = {
+    browser,
+    document: { getElementById: (id) => elements[id] },
+    Date,
+    Promise,
+  };
+
+  vm.runInNewContext(source, context, { filename: "popup.js" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(elements.action.textContent, "Stop sharing");
+
+  elements.action.listeners.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(revokeRequested, true);
+  assert.equal(elements.action.textContent, "Share this tab");
+  assert.equal(elements.action.disabled, false);
+});
+
 test("Safari touch sharing preserves a visible background error", async () => {
   const source = await readFile(new URL("popup.js", resourceRoot), "utf8");
   const elements = Object.fromEntries(
-    ["title", "detail", "action", "connection", "trusted"].map((id) => [id, {
+    ["title", "detail", "action", "connection", "trusted", "cookies", "readingList", "frames"].map((id) => [id, {
       disabled: id === "action",
       checked: false,
       textContent: "",
@@ -140,6 +278,8 @@ test("Safari sharing persists before it installs the tab bridge", async () => {
       local: {
         get: async () => ({}),
         set: async (value) => { persisted = value; },
+        remove: async () => {},
+        clear: async () => {},
       },
     },
     tabs: {
@@ -179,14 +319,218 @@ test("Safari sharing persists before it installs the tab bridge", async () => {
   assert.deepEqual(Array.from(injections[0].files), ["page-commands.js", "bridge.js"]);
 });
 
+test("Safari keeps each explicitly shared tab available", async () => {
+  const source = await readFile(new URL("background.js", resourceRoot), "utf8");
+  const tabs = new Map([
+    [7, { id: 7, url: "https://example.com/one", title: "One" }],
+    [8, { id: 8, url: "https://example.net/two", title: "Two" }],
+  ]);
+  let persisted = null;
+  let connectListener = null;
+  const gatewayMessages = [];
+  const gatewaySocket = {
+    readyState: 1,
+    send(payload) { gatewayMessages.push(JSON.parse(payload)); },
+  };
+  const browser = {
+    runtime: {
+      onMessage: { addListener() {} },
+      onConnect: { addListener(listener) { connectListener = listener; } },
+      sendNativeMessage: async () => ({
+        ok: true,
+        paired: true,
+        deviceId: "d1",
+        gatewayLabel: "Mac Gateway",
+        websocketUrl: "ws://192.0.2.1:8767/browser",
+        sessionToken: "tok",
+      }),
+    },
+    storage: {
+      local: {
+        get: async () => ({}),
+        set: async (value) => { persisted = value; },
+        remove: async () => {},
+        clear: async () => {},
+      },
+    },
+    tabs: {
+      get: async (tabId) => tabs.get(tabId),
+      sendMessage: async () => ({ ok: true }),
+      onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
+    },
+    scripting: { executeScript: async () => {} },
+  };
+  const context = {
+    browser,
+    crypto: { getRandomValues: (bytes) => bytes.fill(7) },
+    URL,
+    URLSearchParams,
+    Uint8Array,
+    WebSocket: { OPEN: 1, CONNECTING: 0 },
+  };
+  context.__gatewaySocket = gatewaySocket;
+  vm.runInNewContext(
+    `${source}\nglobalThis.__abgMultiTabTest = { shareTab, sharedTabs, activate() { socket = globalThis.__gatewaySocket; authenticated = true; } };`,
+    context,
+    { filename: "background.js" },
+  );
+
+  await context.__abgMultiTabTest.shareTab(7, tabs.get(7));
+  await context.__abgMultiTabTest.shareTab(8, tabs.get(8));
+
+  assert.equal([...context.__abgMultiTabTest.sharedTabs.keys()].join(","), "7,8");
+  assert.equal(persisted.sharedTabs.map((tab) => tab.tabId).join(","), "7,8");
+
+  context.__abgMultiTabTest.activate();
+  const secondTab = context.__abgMultiTabTest.sharedTabs.get(8);
+  const port = {
+    name: `abg-tab:8:${secondTab.bridgeToken}`,
+    sender: { tab: { id: 8 } },
+    onMessage: { addListener() {} },
+    onDisconnect: { addListener() {} },
+    disconnect() {},
+  };
+  connectListener(port);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(gatewayMessages.some((message) => message.type === "tab_permitted" && message.tabId === 8), true);
+});
+
+test("Safari revoke resolves without waiting for the page bridge to disconnect", async () => {
+  const source = await readFile(new URL("background.js", resourceRoot), "utf8");
+  const tab = { id: 7, url: "https://example.com/one", title: "One" };
+  let stopRequested = false;
+  const browser = {
+    runtime: {
+      onMessage: { addListener() {} },
+      onConnect: { addListener() {} },
+      sendNativeMessage: async () => ({
+        ok: true,
+        paired: true,
+        deviceId: "d1",
+        gatewayLabel: "Mac Gateway",
+        websocketUrl: "ws://192.0.2.1:8767/browser",
+        sessionToken: "tok",
+      }),
+    },
+    storage: {
+      local: {
+        get: async () => ({}),
+        set: async () => {},
+        remove: async () => {},
+        clear: async () => {},
+      },
+    },
+    tabs: {
+      get: async () => tab,
+      sendMessage: async (_tabId, message) => {
+        if (message.type === "stop_bridge") {
+          stopRequested = true;
+          return new Promise(() => {});
+        }
+        return { ok: true };
+      },
+      onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
+    },
+    scripting: { executeScript: async () => {} },
+  };
+  const context = {
+    browser,
+    crypto: { getRandomValues: (bytes) => bytes.fill(7) },
+    URL,
+    URLSearchParams,
+    Uint8Array,
+    WebSocket: { OPEN: 1, CONNECTING: 0 },
+  };
+  vm.runInNewContext(
+    `${source}\nglobalThis.__abgRevokeTest = { shareTab, revokeTab };`,
+    context,
+    { filename: "background.js" },
+  );
+
+  await context.__abgRevokeTest.shareTab(7, tab);
+  const outcome = await Promise.race([
+    context.__abgRevokeTest.revokeTab(7).then(() => "resolved"),
+    new Promise((resolve) => setTimeout(() => resolve("timed_out"), 50)),
+  ]);
+
+  assert.equal(stopRequested, true);
+  assert.equal(outcome, "resolved");
+});
+
 test("Safari tab bridge keeps the background active from the shared page", async () => {
   const source = await readFile(new URL("bridge.js", resourceRoot), "utf8");
 
   assert.match(source, /api\.runtime\.connect/);
   assert.match(source, /type: "heartbeat"/);
   assert.match(source, /setInterval\(sendHeartbeat, 5000\)/);
+  assert.match(source, /visibilitychange/);
+  assert.match(source, /pageshow/);
   assert.doesNotMatch(source, /new WebSocket/);
   assert.doesNotMatch(source, /createElement\("iframe"\)/);
+});
+
+test("Safari native messages are sent once through the Promise API", async () => {
+  const source = await readFile(new URL("background.js", resourceRoot), "utf8");
+  const messages = [];
+  const browser = {
+    runtime: {
+      onMessage: { addListener() {} },
+      onConnect: { addListener() {} },
+      sendNativeMessage: async (_applicationId, message) => {
+        messages.push(message);
+        return { ok: true, settings: {} };
+      },
+    },
+    storage: { session: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+    tabs: {
+      onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
+    },
+  };
+  const context = {
+    browser,
+    crypto: { getRandomValues: (bytes) => bytes.fill(1) },
+    URL,
+    URLSearchParams,
+    Uint8Array,
+  };
+  vm.runInNewContext(
+    `${source}\nglobalThis.__abgNativeMessageTest = { sendNativeMessage };`,
+    context,
+    { filename: "background.js" },
+  );
+
+  await context.__abgNativeMessageTest.sendNativeMessage({ type: "get_gateway_session" });
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].type, "get_gateway_session");
+});
+
+test("Safari exposes the requested iPhone capability bridges", async () => {
+  const [background, bridge, commands, companionModel] = await Promise.all([
+    readFile(new URL("background.js", resourceRoot), "utf8"),
+    readFile(new URL("bridge.js", resourceRoot), "utf8"),
+    readFile(new URL("page-commands.js", resourceRoot), "utf8"),
+    readFile(new URL("../../ABGCompanion/CompanionModel.swift", resourceRoot), "utf8"),
+  ]);
+
+  assert.match(bridge, /captureFullPage/);
+  assert.match(bridge, /cropScreenshot/);
+  assert.match(background, /allFrames: true/);
+  assert.match(background, /api\.cookies\.getAll/);
+  assert.match(background, /AES-GCM/);
+  assert.match(background, /requestId: nativeMessage \? command\.id/);
+  assert.match(background, /nativeAction: nativeMessage \? \{ kind: nativeMessage\.type/);
+  assert.match(commands, /upload_file: uploadFile/);
+  assert.match(commands, /prompt\("Comment"/);
+  assert.match(commands, /mode must be area, text, or select/);
+  assert.match(commands, /handle\.addEventListener\("pointerdown", \(event\) => beginTransform\(event, true\)\)/);
+  assert.match(commands, /item\.kind = "text"/);
+  assert.match(companionModel, /SSReadingList\.supportsURL/);
+  assert.match(companionModel, /readingList\.addItem/);
 });
 
 test("Safari classifies every Chrome extension command", async () => {
@@ -199,7 +543,7 @@ test("Safari classifies every Chrome extension command", async () => {
   vm.runInNewContext(commandSource, context, { filename: "page-commands.js" });
 
   const commands = context.__abgSafariPageCommands;
-  const nativeHandlers = new Set(["frames", "screenshot", "raise_tab", "revoke", "approval_decide"]);
+  const nativeHandlers = new Set(["frames", "screenshot", "raise_tab", "revoke", "approval_decide", "reading_list_add"]);
   const classified = new Set([
     ...Object.keys(commands.handlers),
     ...Object.keys(commands.unsupportedReasons),
@@ -350,7 +694,7 @@ test("Safari actions require companion approval unless trusted automation is ena
   assert.equal(sent[0].type, "approval_pending");
   assert.equal(sent[0].approval.method, "fill");
   assert.equal(forwarded.length, 0);
-  assert.equal(isolated.__abgApprovalTest.decideApproval({ params: { approvalId: "approval-1", decision: "allow", decidedBy: "iphone" } }).applied, true);
+  assert.equal((await isolated.__abgApprovalTest.decideApproval({ params: { approvalId: "approval-1", decision: "allow", decidedBy: "iphone" } })).applied, true);
   assert.equal(forwarded[0].command.id, "command-1");
   assert.equal(sent.some((message) => message.type === "approval_resolved"), true);
 
@@ -359,7 +703,7 @@ test("Safari actions require companion approval unless trusted automation is ena
     { tabId: 7, origin: "https://example.com", bridgeToken: "bridge-1" },
   );
   isolated.__abgApprovalTest.sharedTabs.set(7, { tabId: 7, origin: "https://example.com", bridgeToken: "bridge-2" });
-  const stale = isolated.__abgApprovalTest.decideApproval({ params: { approvalId: "approval-1", decision: "allow", decidedBy: "iphone" } });
+  const stale = await isolated.__abgApprovalTest.decideApproval({ params: { approvalId: "approval-1", decision: "allow", decidedBy: "iphone" } });
   assert.equal(stale.applied, false);
   assert.equal(sent.some((message) => message.error?.code === "stale_approval"), true);
 });

@@ -104,9 +104,15 @@ actor GatewayClient {
         socket = nil
     }
 
-    func decide(approvalId: String, decision: String) async throws {
+    func decide(approvalId: String, decision: String, nativeResult: NativeResult? = nil) async throws {
         guard let socket else { throw PairingClientError.notPaired }
-        let payload: [String: Any] = ["type": "decision", "approvalId": approvalId, "decision": decision]
+        var payload: [String: Any] = ["type": "decision", "approvalId": approvalId, "decision": decision]
+        if let nativeResult {
+            var result: [String: Any] = ["ok": nativeResult.ok]
+            if let url = nativeResult.url { result["url"] = url }
+            if let error = nativeResult.error { result["error"] = error }
+            payload["nativeResult"] = result
+        }
         let data = try JSONSerialization.data(withJSONObject: payload)
         guard let text = String(data: data, encoding: .utf8) else { return }
         try await socket.send(.string(text))

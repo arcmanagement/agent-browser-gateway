@@ -119,10 +119,12 @@ explicitly revoked. Mobile consent adds a device/session layer before tab consen
   the tab or changing its origin also revokes it.
 
 The iPhone Safari target supports tab listing, DOM reads, getters, predicates, semantic find,
-snapshots, tables, visible-tab screenshots, tab activation, waits, editable validation, storage
-inspection, approved eval, and DOM-level page actions. Actions require approval in the paired iPhone
-app unless the user enables Trusted automation in the Safari extension popup. A shared tab remains
-scoped to its approved origin.
+snapshots, tables, clipped and full-page screenshots, text and area annotations, explicit
+cross-origin frame grants, site-scoped cookie inspection, encrypted file upload, native Reading
+List insertion, tab activation, waits, editable validation, storage inspection, approved eval, and
+DOM-level page actions. Actions require approval in the paired iPhone app unless the user enables
+Trusted automation in the Safari extension popup. A shared tab remains scoped to its approved
+origin and reconnects to the same Mac-side reference after Safari suspension.
 
 ### Network boundaries
 
@@ -148,7 +150,8 @@ become an account and abuse-prevention boundary, and weaken the local-first secu
 - Safari has no Chrome DevTools Protocol equivalent for console and network capture, HAR, PDF,
   emulation, download metadata, native low-level input, or tab recording. These commands return
   `unsupported_on_safari` with a platform-specific reason.
-- Mac clipboard payloads and Mac file paths cannot be transferred into an iPhone Safari tab, so
-  rich paste and file upload remain unavailable.
+- Mac clipboard payloads remain unavailable. File uploads encrypt bytes on the Mac and transfer only
+  the file name, MIME type, digest, and ciphertext to the paired Safari extension; the Mac path is
+  not sent.
 - Sandbox all-tabs access remains Chrome-only.
 - Android and embedded WebView support remain separate platform tracks.
