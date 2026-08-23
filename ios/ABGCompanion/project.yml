@@ -10,8 +10,8 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     DEVELOPMENT_TEAM: M46W5MVAQP
-    MARKETING_VERSION: "0.4.7"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.4.8"
+    CURRENT_PROJECT_VERSION: "25"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: complete
 
@@ -21,6 +21,8 @@ targets:
     platform: iOS
     sources:
       - path: ABGCompanion
+    dependencies:
+      - target: ABGSafariExtension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway
@@ -30,16 +32,21 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: ABGCompanion/ABGCompanion.entitlements
     info:
       path: ABGCompanion/Info.plist
       properties:
         CFBundleDisplayName: ABG
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ABGAppGroupIdentifier: group.jp.co.arcm.AgentBrowserGateway.shared
+        ABGKeychainAccessGroup: $(AppIdentifierPrefix)jp.co.arcm.AgentBrowserGateway.shared
         ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.developer-tools
         NSCameraUsageDescription: ABG Companion scans the pairing QR code shown by your desktop Gateway. The camera is used only while the scanner is open.
-        NSLocalNetworkUsageDescription: ABG Companion connects to your own desktop Gateway on your private network to receive approval requests. It never contacts servers outside your network.
+        NSLocalNetworkUsageDescription: ABG connects to your own desktop Gateway on your private network to share Safari tabs you explicitly select and receive approval requests. It never contacts servers outside your private network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         NSBonjourServices:
           - _abg._tcp
         UILaunchScreen:
@@ -51,6 +58,39 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+
+  ABGSafariExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ABGSafariExtension
+      - path: ABGCompanion/PairingStore.swift
+      - path: ../../extension/public/icons
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway.companion
+        PRODUCT_NAME: ABG Safari Extension
+        INFOPLIST_FILE: ABGSafariExtension/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ABGSafariExtension/ABGSafariExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    info:
+      path: ABGSafariExtension/Info.plist
+      properties:
+        CFBundleDisplayName: ABG
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ABGAppGroupIdentifier: group.jp.co.arcm.AgentBrowserGateway.shared
+        ABGKeychainAccessGroup: $(AppIdentifierPrefix)jp.co.arcm.AgentBrowserGateway.shared
+        NSLocalNetworkUsageDescription: ABG connects to your paired Mac Gateway on your private network only while you share a Safari tab.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
 
   ABGCompanionTests:
     type: bundle.unit-test
@@ -66,15 +106,31 @@ targets:
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Agent Browser Gateway.app/Agent Browser Gateway
         BUNDLE_LOADER: $(TEST_HOST)
 
+  ABGCompanionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ABGCompanionUITests
+    dependencies:
+      - target: ABGCompanion
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: jp.co.arcm.AgentBrowserGateway.companion.ui-tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ABGCompanion
+
 schemes:
   ABGCompanion:
     build:
       targets:
         ABGCompanion: all
+        ABGSafariExtension: all
         ABGCompanionTests: [test]
+        ABGCompanionUITests: [test]
     test:
       targets:
         - ABGCompanionTests
+        - ABGCompanionUITests
     run:
       config: Debug
     archive:

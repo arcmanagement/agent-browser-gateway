@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.7.zip
+dist/agent-browser-gateway-extension-0.4.8.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.4.8 review notes
+
+- No new Chrome permissions. This release adds iPhone Safari tab sharing and Safari-specific
+  capability bridges in the containing iOS app. The Chrome extension keeps the same permission and
+  consent boundary as 0.4.7.
 
 ## 0.4.7 review notes
 

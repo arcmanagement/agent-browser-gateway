@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Agent Browser Gateway",
+  "version": "0.4.8",
+  "description": "Share selected Safari tabs with your paired Mac Gateway.",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "cookies",
+    "nativeMessaging",
+    "permissions",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "action": {
+    "default_title": "Agent Browser Gateway",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  }
+}

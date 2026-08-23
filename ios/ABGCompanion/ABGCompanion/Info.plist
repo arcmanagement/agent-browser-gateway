@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ABGAppGroupIdentifier</key>
+	<string>group.jp.co.arcm.AgentBrowserGateway.shared</string>
+	<key>ABGKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)jp.co.arcm.AgentBrowserGateway.shared</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -24,6 +28,11 @@
 	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_abg._tcp</string>
@@ -31,7 +40,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>ABG Companion scans the pairing QR code shown by your desktop Gateway. The camera is used only while the scanner is open.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>ABG Companion connects to your own desktop Gateway on your private network to receive approval requests. It never contacts servers outside your network.</string>
+	<string>ABG connects to your own desktop Gateway on your private network to share Safari tabs you explicitly select and receive approval requests. It never contacts servers outside your private network.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

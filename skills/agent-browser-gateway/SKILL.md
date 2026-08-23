@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 0.4.7
+version: 0.4.8
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -18,6 +18,14 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認
 3. 必要に応じて `abg read <ref>` / `abg screenshot <ref>` / `abg annotate <ref>` / `abg console <ref>` を呼ぶ
 4. タブが共有されていない場合は、ユーザーに「Chrome 拡張のアイコンをクリックして対象タブを共有してください」と案内する
+
+iPhone Safari では Safari の「機能拡張を管理」で ABG を有効にし、対象タブの ABG popup から
+`Share this tab` を選ぶ。DOM readとpage actionはChromeと同じCLI commandを使う。page actionは
+paired iPhone appで承認する。Safari popupの`Trusted automation`を明示的に有効にした場合だけ、
+操作ごとの承認を省略する。Safari popupではcookie、Reading List、embedded siteを別々に許可する。
+範囲指定とfull-page screenshot、text/area annotation、cross-origin iframe、暗号化file upload、
+native Reading List追加に対応する。console、network、HAR、PDF、download metadata、recording、
+Mac clipboardを使うcommandは、理由と`unsupported_on_safari`を返す。
 
 ## CLI コマンド
 
@@ -53,6 +61,7 @@ abg is-visible <tab|ref> --selector "<css>"      # false も正常JSONで返す
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
 abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
+abg screenshot <tab|ref> --full-page --out page.png  # iPhone Safariではscrollして1枚に結合
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
 abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299
 abg wait-response <tab|ref> --url-regex "/api/items/\\d+$" --body --max-bytes 8192

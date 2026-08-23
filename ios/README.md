@@ -12,6 +12,12 @@ implementing the pairing and approval-forwarding designs in
   ref, requester, gateway label, expiry. Page contents never leave the desktop.
 - Sends allow / deny decisions. Deny is the default action; Allow needs a second
   deliberate tap, with stronger copy for destructive operations.
+- Bundles the Safari Web Extension used to share selected iPhone tabs with the
+  paired Mac Gateway. Sharing one tab never grants access to other Safari tabs.
+- Performs approved native Reading List additions. The Safari popup toggle and
+  the companion approval are both required.
+- Keeps the Safari extension session in the shared App Group so suspended tabs
+  can reconnect to the same Mac-side reference after Safari returns.
 
 ## Build
 
@@ -33,3 +39,5 @@ xcodebuild -scheme ABGCompanion -destination 'platform=iOS Simulator,name=iPhone
   re-pairing the same phone does not churn keys.
 - Recording approvals are deny-only from the phone: the capture stream must be
   minted inside the desktop approval window's own gesture.
+- File attachments arrive as AES-256-GCM ciphertext and are decrypted in the
+  paired Safari extension. The Mac file path is never sent to the phone.

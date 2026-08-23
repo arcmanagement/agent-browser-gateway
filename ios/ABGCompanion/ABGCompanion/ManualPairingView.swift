@@ -70,7 +70,7 @@ struct ManualPairingView: View {
                 desktopPublicKey: desktopKey.trimmingCharacters(in: .whitespacesAndNewlines),
                 expiresAt: Date().addingTimeInterval(5 * 60),
                 displayCode: parsed.displayCode,
-                requestedScopes: ["approval_forwarding", "pairing_status"]
+                requestedScopes: ["approval_forwarding", "pairing_status", "tab_sharing"]
             )
             onOffer(offer)
         } catch {

@@ -12,9 +12,10 @@ struct Companion: AsyncParsableCommand {
         commandName: "companion",
         abstract: "Pair an iOS companion and manage paired devices",
         discussion: """
-        A paired iPhone can receive operation approval summaries and decide them, within the
-        scopes granted at pairing time. Tab contents never leave the desktop. Pairing offers
-        expire after five minutes, and revocation closes the companion's session immediately.
+        A paired iPhone can receive operation approval summaries and decide them within the
+        granted scopes. The iPhone Safari extension can also share an explicitly selected tab
+        with the paired desktop Gateway. Pairing offers expire after five minutes, and revocation
+        closes the companion and Safari sessions immediately.
         """,
         subcommands: [
             CompanionOffer.self,

@@ -31,6 +31,8 @@ enum ScreenshotMode {
                 createdAt: now,
                 expiresAt: now.addingTimeInterval(3600),
                 scriptPreview: nil,
+                requestId: nil,
+                nativeAction: nil,
                 canAllow: true
             ),
             ApprovalSummary(
@@ -44,6 +46,8 @@ enum ScreenshotMode {
                 createdAt: now,
                 expiresAt: now.addingTimeInterval(3600),
                 scriptPreview: nil,
+                requestId: nil,
+                nativeAction: nil,
                 canAllow: true
             ),
         ]

@@ -80,6 +80,8 @@ struct ApprovalSummary: Codable, Identifiable, Equatable, Sendable {
     let createdAt: Date
     let expiresAt: Date
     let scriptPreview: String?
+    let requestId: String?
+    let nativeAction: NativeAction?
     let canAllow: Bool
 
     var id: String { approvalId }
@@ -96,6 +98,18 @@ struct ApprovalSummary: Codable, Identifiable, Equatable, Sendable {
     }
 
     func isExpired(at date: Date = Date()) -> Bool { date >= expiresAt }
+}
+
+struct NativeAction: Codable, Equatable, Sendable {
+    let kind: String
+    let url: String
+    let title: String?
+}
+
+struct NativeResult: Codable, Equatable, Sendable {
+    let ok: Bool
+    let url: String?
+    let error: String?
 }
 
 enum CompanionEvent: Sendable {

@@ -10,7 +10,7 @@ ABGのrelease artifactはrepositoryからbuildされ、アプリ、CLI、browser
 
 現在のpublic distribution state:
 
-- macOS app: GitHub Releasesでsigned and notarized `v0.4.7` DMGを公開済み
+- macOS app: GitHub Releasesでsigned and notarized `v0.4.8` DMGを公開済み
 - Chrome extension: Chrome Web Storeで`v0.4.4`を公開済み。更新日は2026年8月21日
 - Windows package: signed releaseとWinGet indexing待ち
 
@@ -57,7 +57,7 @@ Windows package identifier:
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-現在の `v0.4.7` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
+現在の `v0.4.8` では、このpackageはまだWinGetにindexされていません。上のcommandがmatching packageなしを
 返す場合、それはsigned Windows release workflowとWinGet submissionが完了するまでの想定動作です。
 
 WinGet releaseの準備完了条件は、public Windows setup ZIPがGitHub Releasesへ公開され、そこから生成された
@@ -68,7 +68,7 @@ WinGet releaseの準備完了条件は、public Windows setup ZIPがGitHub Relea
 maintainer release buildは信頼済みMac上で作成します。
 
 ```bash
-export VERSION=0.4.7
+export VERSION=0.4.8
 make dist VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"

@@ -35,6 +35,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     // In-flight commands: id -> continuation
     private var inflight: [String: CheckedContinuation<AnyCodable?, Error>] = [:]
     private var stableTabTargets = StableTabTargetRegistry()
+    private var suspendedExtensionIds: Set<String> = []
     private var streamTabId: Int?
     private var streamExtensionId: String?
 
@@ -80,6 +81,18 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         // a degraded-but-working state, not a startup error.
         let manager = pairingManager
         Task { [weak self] in
+            await manager.setBrowserHandlers(
+                onMessage: { [weak self] message, extensionId in
+                    await MainActor.run {
+                        self?.handleExtensionMessage(message, from: extensionId)
+                    }
+                },
+                onDisconnect: { [weak self] extensionId in
+                    await MainActor.run {
+                        self?.extensionDisconnected(extensionId)
+                    }
+                }
+            )
             await manager.setDecideHandler { [weak self] extensionId, approvalId, decision, decidedBy in
                 guard let self else { return (false, "gateway_unavailable") }
                 do {
@@ -93,6 +106,32 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                     return (applied, dict?["reason"] as? String)
                 } catch {
                     return (false, "extension_unreachable")
+                }
+            }
+            await manager.setNativeDecisionHandler { [weak self] _, requestId, decision, result, _ in
+                guard let self else { return (false, "gateway_unavailable") }
+                return await MainActor.run {
+                    guard let continuation = self.inflight.removeValue(forKey: requestId) else {
+                        return (false, "approval_already_decided")
+                    }
+                    if decision == "deny" {
+                        continuation.resume(throwing: ExtensionResponseError(payload: ErrorPayload(
+                            code: "user_denied",
+                            message: "Operation denied on iPhone."
+                        )))
+                        return (true, nil)
+                    }
+                    guard result?.ok == true else {
+                        continuation.resume(throwing: ExtensionResponseError(payload: ErrorPayload(
+                            code: "native_operation_failed",
+                            message: result?.error ?? "Native operation failed."
+                        )))
+                        return (true, nil)
+                    }
+                    var payload: [String: Any] = ["ok": true]
+                    if let url = result?.url { payload["url"] = url }
+                    continuation.resume(returning: AnyCodable(payload))
+                    return (true, nil)
                 }
             }
             await manager.startIfNeeded()
@@ -125,11 +164,24 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
 
     func extensionConnected(_ extensionId: String) {
         if !connectedExtensionIds.contains(extensionId) { connectedExtensionIds.append(extensionId) }
+        suspendedExtensionIds.remove(extensionId)
         Task { await auditLog.log(action: "extension_connected", extensionId: extensionId) }
     }
 
     func extensionDisconnected(_ extensionId: String) {
         connectedExtensionIds.removeAll { $0 == extensionId }
+        if extensionBrowsers[extensionId] == "safari-ios" {
+            suspendedExtensionIds.insert(extensionId)
+            Task { await auditLog.log(action: "extension_suspended", extensionId: extensionId) }
+            return
+        }
+        forgetExtension(extensionId)
+        Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
+    }
+
+    private func forgetExtension(_ extensionId: String) {
+        connectedExtensionIds.removeAll { $0 == extensionId }
+        suspendedExtensionIds.remove(extensionId)
         extensionProfiles.removeValue(forKey: extensionId)
         extensionBrowsers.removeValue(forKey: extensionId)
         extensionVersions.removeValue(forKey: extensionId)
@@ -144,7 +196,6 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         if let session = recording, session.extensionId == extensionId {
             handleRecordInterrupted(recordingId: session.recordingId, reason: "extension_disconnected")
         }
-        Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
     }
 
     func handleExtensionMessage(_ msg: ExtensionMessage, from extensionId: String) {
@@ -161,8 +212,9 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 extensionBrowsers[extensionId] = kind
             }
         case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode):
+            let originalPermittedAt = permittedTabs.first(where: { $0.extensionId == extensionId && $0.tabId == tabId })?.permittedAt ?? Date()
             permittedTabs.removeAll { $0.extensionId == extensionId && $0.tabId == tabId }
-            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: Date(), expiresAt: expiresAt, accessMode: accessMode ?? "manual"))
+            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: originalPermittedAt, expiresAt: expiresAt, accessMode: accessMode ?? "manual"))
             Task {
                 await auditLog.log(
                     action: "permit",
@@ -256,6 +308,12 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 tabRef = ""
             }
             let createdAt = Date(timeIntervalSince1970: createdAtMs / 1000)
+            let nativeAction: CompanionNativeAction? = {
+                guard let action = dict["nativeAction"] as? [String: Any],
+                      let kind = action["kind"] as? String,
+                      let url = action["url"] as? String else { return nil }
+                return CompanionNativeAction(kind: kind, url: url, title: action["title"] as? String)
+            }()
             let summary = CompanionApprovalSummary(
                 approvalId: approvalId,
                 method: method,
@@ -267,6 +325,8 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 createdAt: createdAt,
                 expiresAt: createdAt.addingTimeInterval(timeoutMs / 1000),
                 scriptPreview: dict["scriptPreview"] as? String,
+                requestId: dict["requestId"] as? String,
+                nativeAction: nativeAction,
                 canAllow: method != "record_start"
             )
             let manager = pairingManager
@@ -1452,11 +1512,20 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return CLIResponse(id: req.id, error: resolution.error)
         }
         let tabId = tab.tabId
-        let params = extensionParams(rawParams, for: tab)
+        var params = extensionParams(rawParams, for: tab)
         if let response = await policyBlockedResponse(req: req, tab: tab, method: method) {
             return response
         }
         do {
+            if method == "upload_file", extensionBrowsers[tab.extensionId] == "safari-ios" {
+                guard let files = params["files"] as? [String], !files.isEmpty else {
+                    return CLIResponse(id: req.id, error: ErrorPayload(code: "file_required", message: "At least one file is required"))
+                }
+                params.removeValue(forKey: "files")
+                let encryptedFiles = try await pairingManager.encryptedFilePayloads(for: tab.extensionId, paths: files)
+                params["encryptedFiles"] = encryptedFiles.map(\.dictionary)
+                params["transferEncryption"] = "AES-256-GCM"
+            }
             // Pass through all params (selector, value, x/y, etc.) so extension handlers can read them.
             let result = try await sendCommand(
                 to: tab.extensionId,
@@ -1954,6 +2023,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         guard let grant = await pairingManager.revoke(deviceId: deviceId, by: "cli") else {
             return CLIResponse(id: req.id, error: ErrorPayload(code: "device_not_found", message: "no active companion with deviceId \(deviceId)"))
         }
+        forgetExtension(PairingManager.safariExtensionId(deviceId: deviceId))
         return CLIResponse(id: req.id, result: AnyCodable([
             "ok": true,
             "deviceId": grant.deviceId,
@@ -1991,6 +2061,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         ]
         if let label = extensionProfiles[tab.extensionId] { dict["profile"] = label }
         if let kind = extensionBrowsers[tab.extensionId] { dict["browser"] = kind }
+        dict["suspended"] = suspendedExtensionIds.contains(tab.extensionId)
         if let exp = tab.expiresAt {
             dict["expiresAt"] = ISO8601DateFormatter().string(from: exp)
         }
@@ -2169,7 +2240,6 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
     }
 
     func sendCommand(to extensionId: String, method: String, params: AnyCodable?, timeoutMs timeoutOverrideMs: Int? = nil) async throws -> AnyCodable? {
-        guard let ws = wsServer else { throw NSError(domain: "ABG", code: 2, userInfo: [NSLocalizedDescriptionKey: "WS server not started"]) }
         let id = UUID().uuidString
         let cmd = GatewayCommand(id: id, method: method, params: params)
         let timeoutMs = GatewaySettings.clampedTimeout(timeoutOverrideMs ?? GatewaySettingsStore.load().defaultTimeoutMs)
@@ -2177,7 +2247,23 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             inflight[id] = cont
             Task {
                 do {
-                    try await ws.send(to: extensionId, command: cmd)
+                    let reconnectDeadline = Date().addingTimeInterval(Double(timeoutMs) / 1000)
+                    while suspendedExtensionIds.contains(extensionId), Date() < reconnectDeadline {
+                        try await Task.sleep(nanoseconds: 250_000_000)
+                    }
+                    if suspendedExtensionIds.contains(extensionId) {
+                        throw NSError(domain: "ABG", code: 4, userInfo: [NSLocalizedDescriptionKey: "iPhone Safari is suspended; return to Safari to resume the shared tab"])
+                    }
+                    if let ws = wsServer {
+                        do {
+                            try await ws.send(to: extensionId, command: cmd)
+                            return
+                        } catch {
+                            try await pairingManager.sendBrowserCommand(to: extensionId, command: cmd)
+                        }
+                    } else {
+                        try await pairingManager.sendBrowserCommand(to: extensionId, command: cmd)
+                    }
                 } catch {
                     await MainActor.run {
                         if let c = self.inflight.removeValue(forKey: id) { c.resume(throwing: error) }

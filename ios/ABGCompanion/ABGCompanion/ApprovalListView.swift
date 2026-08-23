@@ -9,6 +9,13 @@ struct ApprovalListView: View {
 
     var body: some View {
         List {
+            Section("Safari tab sharing") {
+                Label("Enable ABG in Safari's Manage Extensions screen", systemImage: "safari")
+                Label("Open ABG from the page menu and tap Share this tab", systemImage: "rectangle.and.hand.point.up.left")
+                Text("The first release supports tab listing, page reads, element inspection, and visible screenshots. Page-changing commands stay disabled.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Section {
                 if model.pending.isEmpty {
                     ContentUnavailableView(

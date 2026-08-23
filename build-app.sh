@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.4.7}"
+VERSION="${VERSION:-0.4.8}"
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 APP_VARIANT="${APP_VARIANT:-prod}"
 case "$APP_VARIANT" in

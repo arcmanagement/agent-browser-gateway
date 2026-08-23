@@ -8,6 +8,7 @@ import Foundation
 public enum PairingScope: String, Codable, CaseIterable, Sendable {
     case approvalForwarding = "approval_forwarding"
     case pairingStatus = "pairing_status"
+    case tabSharing = "tab_sharing"
 }
 
 public enum PairingFailureReason: String, Sendable {
@@ -115,7 +116,7 @@ public struct PairingEngine: Sendable {
     /// Creates a new offer, replacing any previous one: a single active offer
     /// keeps the confirmation screen unambiguous about what is being approved.
     public mutating func createOffer(
-        scopes: [PairingScope] = [.approvalForwarding, .pairingStatus],
+        scopes: [PairingScope] = [.approvalForwarding, .pairingStatus, .tabSharing],
         lifetime: TimeInterval = PairingEngine.maxOfferLifetime,
         now: Date = Date()
     ) -> PairingOffer {
@@ -409,10 +410,12 @@ public struct CompanionApprovalSummary: Codable, Sendable {
     public let createdAt: Date
     public let expiresAt: Date
     public let scriptPreview: String?
+    public let requestId: String?
+    public let nativeAction: CompanionNativeAction?
     /// False for operations the phone can only deny (recording in the MVP).
     public let canAllow: Bool
 
-    public init(approvalId: String, method: String, intent: String, targetOrigin: String, targetTabRef: String, requester: String, gatewayLabel: String, createdAt: Date, expiresAt: Date, scriptPreview: String?, canAllow: Bool) {
+    public init(approvalId: String, method: String, intent: String, targetOrigin: String, targetTabRef: String, requester: String, gatewayLabel: String, createdAt: Date, expiresAt: Date, scriptPreview: String?, requestId: String? = nil, nativeAction: CompanionNativeAction? = nil, canAllow: Bool) {
         self.approvalId = approvalId
         self.method = method
         self.intent = intent
@@ -423,6 +426,32 @@ public struct CompanionApprovalSummary: Codable, Sendable {
         self.createdAt = createdAt
         self.expiresAt = expiresAt
         self.scriptPreview = scriptPreview
+        self.requestId = requestId
+        self.nativeAction = nativeAction
         self.canAllow = canAllow
+    }
+}
+
+public struct CompanionNativeAction: Codable, Sendable, Equatable {
+    public let kind: String
+    public let url: String
+    public let title: String?
+
+    public init(kind: String, url: String, title: String?) {
+        self.kind = kind
+        self.url = url
+        self.title = title
+    }
+}
+
+public struct CompanionNativeResult: Codable, Sendable, Equatable {
+    public let ok: Bool
+    public let url: String?
+    public let error: String?
+
+    public init(ok: Bool, url: String? = nil, error: String? = nil) {
+        self.ok = ok
+        self.url = url
+        self.error = error
     }
 }

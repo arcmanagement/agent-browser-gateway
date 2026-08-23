@@ -104,7 +104,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.4.7` yet. If this command reports no matching package, that is the
+   WinGet is not live for `v0.4.8` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -116,7 +116,7 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
 and starts the menubar app.
 
-Windows package-manager install and release ZIPs are pending for `v0.4.7` while the signed Windows
+Windows package-manager install and release ZIPs are pending for `v0.4.8` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
 `.\windows-build-install.cmd` from the repository root.
 
@@ -735,11 +735,12 @@ binaries are barely better. ABG aims for **end-to-end verifiability**:
 
 - **Every byte of code that touches your browser is in this repo.** No proprietary blobs.
 - **Reproducible builds** (target for v1.0): release dry runs use `make reproducible-build` to create unsigned Gateway and extension comparison artifacts, checksums, and an SBOM. The Linux CLI can also be rebuilt through the pinned Docker path in [`docs/REPRODUCIBLE_DOCKER_BUILD.md`](docs/REPRODUCIBLE_DOCKER_BUILD.md). The v1.0 checksum, signing, SBOM, provenance, and user verification plan is in [`docs/RELEASE_ARTIFACT_TRUST.md`](docs/RELEASE_ARTIFACT_TRUST.md).
-- **No analytics, no crash reporter, no auto-update phone-home.** The Gateway's only outbound connection is the loopback WebSocket to its own extension. Inspect with `lsof -i -p <gateway-pid>` at any time.
+- **No analytics, no crash reporter, no auto-update phone-home.** The desktop Gateway accepts browser extension traffic on loopback. A user-created phone pairing also starts a listener on the selected private Tailnet or LAN interface. Inspect active listeners with `lsof -nP -iTCP -sTCP:LISTEN`.
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
 
-If you find ABG transmitting anything outside `127.0.0.1`, that is a bug. Open an issue or, even better, a PR.
+Traffic outside loopback is limited to a paired device connecting to the private listener. Any
+ABG-operated relay or unpaired external connection is a bug. Open an issue or, even better, a PR.
 
 ---
 
@@ -754,10 +755,10 @@ a user-operated connection path, not an ABG-operated relay. Likewise, local or o
 metrics can exist in self-hosted deployments only when the user/team controls the endpoint and the
 configuration. They are not telemetry sent to ABG operators.
 
-The initial iOS companion pairing design is documented in
-[docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md). It defines QR/manual-code pairing,
-the desktop Gateway receiving surface, revocation behavior, and the audit events that must be
-written before an implementation is considered complete.
+The iOS companion pairing and Safari sharing contract is documented in
+[docs/IOS_GATEWAY_PAIRING.md](docs/IOS_GATEWAY_PAIRING.md). It defines QR or manual-code pairing,
+the `tab_sharing` scope, the private Gateway receiving surface, revocation, supported read and
+action commands, approval behavior, platform limits, and audit events.
 
 The approved eval boundary remains explicit: eval is disabled by default, must be enabled in the
 extension, and is limited to already-shared tabs. With Trusted automation / AutoMode off, `--approve`
@@ -850,6 +851,7 @@ Currently shipped:
 - ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Firefox extension MVP target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md))
+- ✅ iPhone Safari target with explicit active-tab share, DOM reads, cross-origin iframe grants, clipped and full-page screenshots, annotations, encrypted file upload, native Reading List insertion, approved eval, and DOM-level page actions
 - ✅ Per-tab consent with auto-revoke on origin change / tab close
 - ✅ Optional all-tabs access for isolated Chrome profiles / sandbox machines
 - ✅ Read and inspection tools: `frames`, `read`, `get`, `find`, `snapshot`, `screenshot`, `pdf`, `console`, `table`, `describe`, `network`, and boolean predicates
@@ -878,9 +880,8 @@ Currently shipped:
 In progress / planned (see [ROADMAP.md](ROADMAP.md)):
 
 - 📋 Reproducible builds (v1.0 target)
-- 📋 Safari / Edge / iOS / Android (Phase 3+)
-- 📋 iOS Safari is blocked research, not MVP scope, until a native iOS companion and reduced
-  Safari-compatible command surface are designed.
+- 📋 Desktop Safari, Edge, and Android expansion (Phase 3+)
+- 📋 Chrome-only browser-service parity where Safari exposes an equivalent API
 - 📋 Remote/multi-machine pairing (Phase 4)
 
 ---
@@ -1001,7 +1002,7 @@ In short:
 
 ## Status
 
-🚧 **v0.4.7 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+🚧 **v0.4.8 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
 
 ---
 
