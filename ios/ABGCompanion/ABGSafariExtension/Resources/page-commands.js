@@ -5,6 +5,7 @@
   const describedElements = new Map();
   let streamObserver = null;
   let streamSender = null;
+  let annotationState = null;
 
   function gatewayError(code, message, matchCount) {
     const error = new Error(message);
@@ -607,6 +608,116 @@
     return { ok: true, enabled };
   }
 
+  function annotationMode(params) {
+    const action = params.action || "list";
+    const ensureState = () => {
+      if (annotationState) return annotationState;
+      const host = document.createElement("div");
+      host.id = "__abg-safari-annotations";
+      host.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none";
+      const shadow = host.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = ":host{all:initial}.layer,.capture{position:fixed;inset:0}.layer{pointer-events:none}.capture{display:none;pointer-events:auto;touch-action:none;cursor:crosshair}.toolbar{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:none;gap:8px;padding:8px;background:#111;color:#fff;border-radius:12px;font:600 13px -apple-system,sans-serif;pointer-events:auto}.toolbar button{border:0;border-radius:8px;padding:7px 12px}.mark{position:fixed;border:3px solid #1677ff;background:rgba(22,119,255,.12);box-sizing:border-box}.badge{position:absolute;left:-3px;top:-24px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#1677ff;color:#fff;font:700 13px/22px -apple-system,sans-serif;text-align:center}.draft{position:fixed;border:2px dashed #1677ff;background:rgba(22,119,255,.08);display:none}";
+      const layer = document.createElement("div");
+      layer.className = "layer";
+      const capture = document.createElement("div");
+      capture.className = "capture";
+      const draft = document.createElement("div");
+      draft.className = "draft";
+      const toolbar = document.createElement("div");
+      toolbar.className = "toolbar";
+      const label = document.createElement("span");
+      label.textContent = "Drag to annotate";
+      const clearButton = document.createElement("button");
+      clearButton.textContent = "Clear";
+      const doneButton = document.createElement("button");
+      doneButton.textContent = "Done";
+      toolbar.append(label, clearButton, doneButton);
+      shadow.append(style, layer, capture, draft, toolbar);
+      document.documentElement.append(host);
+      annotationState = { enabled: false, nextId: 1, annotations: [], host, layer, capture, draft, toolbar, dragStart: null };
+      const render = () => {
+        layer.replaceChildren();
+        for (const item of annotationState.annotations) {
+          const mark = document.createElement("div");
+          mark.className = "mark";
+          mark.style.left = `${item.rect.x}px`;
+          mark.style.top = `${item.rect.y}px`;
+          mark.style.width = `${item.rect.width}px`;
+          mark.style.height = `${item.rect.height}px`;
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = String(item.id);
+          mark.append(badge);
+          layer.append(mark);
+        }
+      };
+      const setEnabled = (enabled) => {
+        annotationState.enabled = enabled;
+        capture.style.display = enabled ? "block" : "none";
+        toolbar.style.display = enabled ? "flex" : "none";
+      };
+      const addRegion = (rect, source, comment = "") => {
+        const item = { id: annotationState.nextId++, kind: "screenshot", source, comment, rect, viewportRect: rect, scroll: { x: scrollX, y: scrollY }, createdAt: new Date().toISOString(), url: location.href, title: document.title };
+        annotationState.annotations.push(item);
+        render();
+        return item;
+      };
+      capture.addEventListener("pointerdown", (event) => {
+        annotationState.dragStart = { x: event.clientX, y: event.clientY };
+        draft.style.display = "block";
+        draft.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+      capture.addEventListener("pointermove", (event) => {
+        if (!annotationState.dragStart) return;
+        const x = Math.min(annotationState.dragStart.x, event.clientX);
+        const y = Math.min(annotationState.dragStart.y, event.clientY);
+        const width = Math.abs(event.clientX - annotationState.dragStart.x);
+        const height = Math.abs(event.clientY - annotationState.dragStart.y);
+        Object.assign(draft.style, { left: `${x}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` });
+        event.preventDefault();
+      });
+      capture.addEventListener("pointerup", (event) => {
+        const start = annotationState.dragStart;
+        annotationState.dragStart = null;
+        draft.style.display = "none";
+        if (!start) return;
+        const rect = { x: Math.min(start.x, event.clientX), y: Math.min(start.y, event.clientY), width: Math.abs(event.clientX - start.x), height: Math.abs(event.clientY - start.y) };
+        if (rect.width >= 4 && rect.height >= 4) addRegion(rect, "drag");
+        event.preventDefault();
+      });
+      clearButton.addEventListener("click", () => { annotationState.annotations = []; annotationState.nextId = 1; render(); });
+      doneButton.addEventListener("click", () => setEnabled(false));
+      annotationState.render = render;
+      annotationState.setEnabled = setEnabled;
+      annotationState.addRegion = addRegion;
+      return annotationState;
+    };
+
+    if (!annotationState && !["start", "add_region", "add_selector"].includes(action)) {
+      return { ok: true, enabled: false, count: 0, annotations: [], nextCommand: "abg annotate <tab>" };
+    }
+    const state = ensureState();
+    if (action === "start") state.setEnabled(true);
+    else if (action === "stop") state.setEnabled(false);
+    else if (action === "clear") { state.annotations = []; state.nextId = 1; state.render(); }
+    else if (action === "add_region") {
+      if (![params.x, params.y, params.width, params.height].every(Number.isFinite) || params.width < 1 || params.height < 1) throw gatewayError("bad_params", "add_region requires x, y, width, and height");
+      state.addRegion({ x: params.x, y: params.y, width: params.width, height: params.height }, "cli", params.comment || "");
+    } else if (action === "add_selector") {
+      const element = uniqueElement(params);
+      if (!element) throw gatewayError("selector_not_found", `selector not found: ${params.selector}`);
+      const rect = boxOf(element);
+      const item = state.addRegion(rect, "cli", params.comment || "");
+      item.kind = "dom";
+      item.selector = params.selector;
+      item.element = { tag: element.tagName.toLowerCase(), selector: params.selector, text: textOf(element).slice(0, 180) };
+      state.render();
+    } else if (action !== "list") throw gatewayError("bad_params", `unsupported annotation action: ${action}`);
+    return { ok: true, enabled: state.enabled, count: state.annotations.length, annotations: state.annotations };
+  }
+
   function unsupported(method, reason) {
     throw gatewayError("unsupported_on_safari", `${method} is unavailable on iPhone Safari: ${reason}`);
   }
@@ -625,6 +736,7 @@
     eval_script: evalScript,
     validate_editable: validateEditable,
     stream_control: streamControl,
+    annotation_mode: annotationMode,
     click_selector: click,
     click_ref: click,
     click_described: click,
@@ -674,7 +786,6 @@
     sandbox_action: "iOS Safari has no isolated all-tabs browser profile",
     dialog_state: "Safari Web Extensions do not expose JavaScript dialog state",
     dialog_action: "Safari Web Extensions cannot accept or dismiss page dialogs",
-    annotation_mode: "the Chrome annotation overlay has not been ported to touch input",
     record_start: "Safari Web Extensions do not expose tab video capture",
     record_stop: "Safari Web Extensions do not expose tab video capture",
     record_status: "Safari Web Extensions do not expose tab video capture",
