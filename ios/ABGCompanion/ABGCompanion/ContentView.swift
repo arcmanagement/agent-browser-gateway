@@ -100,7 +100,7 @@ struct PairingIntroView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
             VStack(spacing: 8) {
-                Text("Pair your iPhone with ABG")
+                Text("Pair this device with ABG")
                     .font(.title2.weight(.semibold))
                 Text("Review operation requests here, and share individual Safari tabs directly with your paired Mac over your private network.")
                     .font(.subheadline)
