@@ -3,6 +3,10 @@
 ABG's Mac App Store path is separate from the Developer ID, Homebrew, and website download paths.
 The Store build must be sandboxed and uploaded to App Store Connect as a signed package.
 
+The iOS platform on the same App Store Connect record is documented in
+[ios-app-store-submission.md](ios-app-store-submission.md). The two share an app record and a bundle
+identifier; the build, signing, and review-notes paths are different.
+
 ## Current Decision
 
 Use the ArcManagement production Bundle ID for the initial App Store record:

@@ -62,6 +62,7 @@ credentials/
 docs/*
 !docs/CLI_JSON_CONTRACT.md
 !docs/app-store-submission.md
+!docs/ios-app-store-submission.md
 !docs/HOMEBREW.md
 !docs/LOCAL_IPC.md
 !docs/MACOS_INSTALL_UPDATE_UNINSTALL.md
