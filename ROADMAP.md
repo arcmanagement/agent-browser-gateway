@@ -1,6 +1,6 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-08-23.
+Living document. Reflects current intent, not commitment. Last updated 2026-09-12.
 
 Current repo version: **v0.4.8**.
 
@@ -16,6 +16,8 @@ Current repo version: **v0.4.8**.
 - Preserved shared tab references while iOS suspends the Safari extension, then resumed queued commands after Safari reconnects.
 - Page actions use companion approval by default. Trusted automation is a separate explicit Safari popup setting. Chrome-only browser services return `unsupported_on_safari` with a platform-specific reason.
 - Shared the paired Gateway session with the Safari native extension through a Keychain access group. Existing pairings require the user to open the updated app once for migration and pair again to approve the new scope.
+- App Store review returned iOS 0.4.8 build 25 on 2026-09-08 under Guideline 2.1, asking why the Safari extension needs read and write access. The question was answered in App Store Connect. The same review, run on an iPad Air, also surfaced pairing copy that named an iPhone on a device family the app ships for, fixed in #429.
+- The iOS binary in App Store review is therefore **build 26**, built from `f98a05f`, which lands after the `v0.4.8` tag at `27c417b`. The tag and its published release are deliberately unchanged: the macOS, extension, and Windows artifacts attached to v0.4.8 still correspond to `27c417b`, and their published checksums stay valid. Only the iOS build differs, and it carries no code change outside four user-facing strings and the build number.
 
 ### v0.4.7 — iOS companion pairing and approval forwarding (2026-08-22)
 - Added the companion pairing surface: a five-minute pairing offer with first-claim-wins nonce checks, scope enforcement, desktop confirmation by display code, and one-shot revocation, served by an on-demand listener on a private (Tailnet or LAN) address while an offer or grant exists. The main gateway listener stays loopback-only.
