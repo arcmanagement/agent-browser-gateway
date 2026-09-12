@@ -500,7 +500,7 @@ async function recoverSharedTab(tabId) {
 
 async function installBridge(tab) {
   const config = nativeConfig ?? (await loadNativeConfig());
-  if (!config) throw new Error("Pair this iPhone with the Mac Gateway first.");
+  if (!config) throw new Error("Pair this device with the Mac Gateway first.");
   await api.scripting.executeScript({
     target: { tabId: tab.tabId },
     files: ["page-commands.js", "bridge.js"],
@@ -519,7 +519,7 @@ async function removeBridge(tabId) {
 
 async function shareTab(tabId, providedTab = null) {
   const config = nativeConfig ?? (await loadNativeConfig());
-  if (!config) throw new Error("Pair this iPhone with the Mac Gateway first.");
+  if (!config) throw new Error("Pair this device with the Mac Gateway first.");
 
   const tab = await activeTabRecord(tabId, providedTab);
   sharedTabs.set(tabId, tab);

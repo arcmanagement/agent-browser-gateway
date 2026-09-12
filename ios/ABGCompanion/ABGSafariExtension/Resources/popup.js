@@ -23,7 +23,7 @@ function renderState() {
     ? `Enable ${state.missingFrameOrigins.length} embedded site${state.missingFrameOrigins.length === 1 ? "" : "s"}`
     : "Embedded sites enabled";
   if (!state?.paired) {
-    detail.textContent = "Open the ABG app and pair this iPhone with your Mac first.";
+    detail.textContent = "Open the ABG app and pair this device with your Mac first.";
     connection.textContent = "Not paired";
     action.disabled = true;
     return;
@@ -36,7 +36,7 @@ function renderState() {
     ? "This tab is available to ABG on your paired Mac."
     : `Paired with ${state.gatewayLabel || "your Mac Gateway"}.`;
   if (state.connectionError === "scope_missing") {
-    detail.textContent = "Pair this iPhone again to grant Safari tab sharing access.";
+    detail.textContent = "Pair this device again to grant Safari tab sharing access.";
   }
   connection.textContent = !state.shared
     ? "Ready to share"
