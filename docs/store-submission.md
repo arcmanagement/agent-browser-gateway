@@ -163,6 +163,30 @@ Required before final submission:
 - Notes for certification
 
 Use screenshot size `1366 x 768` PNG for consistency with the previous Store submission workflow.
+The current English (United States) screenshot is stored at
+`packaging/msix/store-assets/microsoft-store-screenshot-1366x768.png`. Keep its browser frame
+Windows-specific; macOS traffic-light window controls are not valid metadata for the Windows Store
+listing.
+
+## Submission 3 Certification Remediation
+
+Partner Center submission `1152921505701717658` failed certification on August 24, 2026 under
+content requirement policy `10.1.1.3 Inaccurate Representation`.
+
+- Product ID: `9PNWPL4VZB0S`
+- Package: `AgentBrowserGateway_1.4.7.0_win-x64.msix`
+- Package validation: passed
+- Affected metadata: the English (United States) desktop screenshot
+- Reviewer finding: the screenshot used macOS red, yellow, and green window controls and therefore
+  showed non-Windows UI
+- Required remediation: replace only the affected screenshot with the Windows-specific asset, save
+  the listing, and resubmit for certification
+
+The replacement screenshot was uploaded and saved on August 29, 2026. The owner resubmitted the
+update after Partner Center showed `Store listings: Updated`. Partner Center then showed
+`Update in certification`, with submission 3 read-only and in certification.
+
+The package was not identified as the cause of this certification failure.
 
 ## Submitted Submission
 
