@@ -12,16 +12,20 @@ on:
 permissions:
   contents: read
 
-# Cost policy (#94): the two protection jobs below always run, but only Swift
-# needs a macOS runner — extension checks run on Linux. The heavy auxiliary
-# jobs (release smoke, dependency inventory) run only when the files they
-# validate change, so docs-only PRs consume one macOS runner at most.
+# Cost policy (#94): the two protection jobs below always report, because both
+# are required status checks and a check that never reports blocks the merge.
+# Extension checks run on Linux. Swift tests claim a macOS runner only when
+# Swift inputs change; otherwise the job lands on Linux and its steps are
+# skipped, so it still reports success without burning macOS minutes. The
+# heavy auxiliary jobs run only when the files they validate change, so a
+# docs-only PR uses no macOS runner at all.
 jobs:
   changes:
     name: Detect changed paths
     runs-on: ubuntu-latest
     outputs:
       release: ${{ steps.filter.outputs.release }}
+      swift: ${{ steps.filter.outputs.swift }}
       swiftdeps: ${{ steps.filter.outputs.swiftdeps }}
     steps:
       - uses: actions/checkout@v6
@@ -42,6 +46,14 @@ jobs:
               - 'Makefile'
               - 'build-app.sh'
               - '.github/workflows/ci.yml'
+            swift:
+              - 'Sources/**'
+              - 'Tests/**'
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'scripts/**'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
             swiftdeps:
               - 'Package.swift'
               - 'Package.resolved'
@@ -49,22 +61,34 @@ jobs:
 
   swift-tests:
     name: Swift tests
-    runs-on: macos-latest
+    needs: changes
+    # The job always runs so the required check reports, but it only claims a
+    # macOS runner when Swift inputs actually changed.
+    runs-on: ${{ needs.changes.outputs.swift == 'true' && 'macos-latest' || 'ubuntu-latest' }}
     steps:
+      - name: No Swift inputs changed
+        if: needs.changes.outputs.swift != 'true'
+        run: echo "No Swift, script, or CI changes in this pull request. Skipping the Swift build and tests."
+
       - uses: actions/checkout@v6
+        if: needs.changes.outputs.swift == 'true'
         with:
           persist-credentials: false
 
       - name: Show Swift version
+        if: needs.changes.outputs.swift == 'true'
         run: swift --version
 
       - name: Swift debug build
+        if: needs.changes.outputs.swift == 'true'
         run: swift build
 
       - name: Swift tests with coverage
+        if: needs.changes.outputs.swift == 'true'
         run: swift test --enable-code-coverage
 
       - name: Swift service coverage gate
+        if: needs.changes.outputs.swift == 'true'
         run: scripts/swift-coverage-check.sh
 
   extension-tests:
