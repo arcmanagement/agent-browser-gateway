@@ -8,14 +8,22 @@ import GatewayCore
 struct MenuBarView: View {
     @ObservedObject var coordinator: GatewayCoordinator
     var openWindow: () -> Void = {}
+    /// Writes a clicked row's tab ID; the general pasteboard outside tests.
+    var copyTabId: (String) -> Void = Pasteboard.copy
 
     /// `nil` shows every extension's tabs ("All").
     @State private var selectedExtension: String?
     @State private var revoking: Set<String> = []
 
-    init(coordinator: GatewayCoordinator, selectedExtension: String? = nil, openWindow: @escaping () -> Void = {}) {
+    init(
+        coordinator: GatewayCoordinator,
+        selectedExtension: String? = nil,
+        copyTabId: @escaping (String) -> Void = Pasteboard.copy,
+        openWindow: @escaping () -> Void = {}
+    ) {
         self.coordinator = coordinator
         self.openWindow = openWindow
+        self.copyTabId = copyTabId
         _selectedExtension = State(initialValue: selectedExtension)
     }
 
@@ -133,10 +141,10 @@ struct MenuBarView: View {
             ForEach(visibleTabs, id: \.revocationKey) { tab in
                 MenuBarTabRow(
                     tab: tab,
-                    isRevoking: revoking.contains(tab.revocationKey)
-                ) {
-                    revoke(tab)
-                }
+                    isRevoking: revoking.contains(tab.revocationKey),
+                    revoke: { revoke(tab) },
+                    copyTabId: copyTabId
+                )
             }
         }
         .padding(.horizontal, MenuMetrics.rowGutter)
