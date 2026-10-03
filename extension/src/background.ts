@@ -3,8 +3,10 @@ import { scriptBlockPresentation } from "./approvalLogic.js";
 import {
   type AuditDiffPayload,
   type AuditDiffValue,
+  COPY_TAB_ID_COMMAND,
   clickSelectorFrameFn,
   createAuditDiff,
+  decideShareToggle,
   describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
@@ -13,6 +15,9 @@ import {
   personalDataMutationIntent,
   raisePermittedBrowserTab,
   richClipboardPayloadLabel,
+  type ShortcutOutcome,
+  shortcutFeedback,
+  TOGGLE_SHARE_COMMAND,
 } from "./backgroundLogic.js";
 import {
   type BrowserBookmarkTreeNode,
@@ -42,10 +47,13 @@ import type {
   ExtensionSettings,
   ExtToGateway,
   GatewayCommand,
+  OffscreenCopyResult,
   OffscreenStartResult,
   OffscreenStopResult,
   OperationMethod,
   PopupToBackground,
+  RecentShortcutFeedback,
+  ShortcutFeedback,
   TabAccessMode,
 } from "./types.js";
 
@@ -258,7 +266,9 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
 
 // ---------- Bootstrap ----------
 
-(async () => {
+// Keyboard shortcuts can wake the service worker; they wait for this so the
+// permitted-tab state is restored before deciding between share and revoke.
+const bootstrapReady = (async () => {
   extensionId = await getOrCreateExtensionId();
   const settings = await ensureSettingsStored();
   gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
@@ -2624,8 +2634,9 @@ async function ensureOffscreenDocument(): Promise<void> {
     creatingOffscreen = offscreen
       .createDocument({
         url: OFFSCREEN_URL,
-        reasons: ["USER_MEDIA" as chrome.offscreen.Reason],
-        justification: "Record a shared tab (video + audio) to a local file.",
+        reasons: ["USER_MEDIA" as chrome.offscreen.Reason, "CLIPBOARD" as chrome.offscreen.Reason],
+        justification:
+          "Record a shared tab (video + audio) to a local file, and copy a tab ID to the clipboard when the user presses the copy shortcut.",
       })
       .finally(() => {
         creatingOffscreen = null;
@@ -7048,6 +7059,217 @@ async function scrollElementIntoView(
   });
 }
 
+// ---------- Keyboard shortcuts ----------
+//
+// Both shortcuts act only on the active tab. The toggle reuses permitTab /
+// revokeTab exactly like the popup's Share / Revoke button. Copying the tab ID
+// never grants or changes access; it only reports whether the tab is shared.
+
+const SHORTCUT_FEEDBACK_MS = 4_000;
+const shortcutFeedbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+browser.commands.onCommand.addListener((command, tab) => {
+  void handleShortcutCommand(command, tab).catch((error) => {
+    console.warn("[ABG] keyboard shortcut failed", error);
+  });
+});
+
+async function handleShortcutCommand(command: string, commandTab?: BrowserTab): Promise<void> {
+  if (command !== TOGGLE_SHARE_COMMAND && command !== COPY_TAB_ID_COMMAND) return;
+  await bootstrapReady.catch(() => {});
+  const tab = await activeTabForShortcut(commandTab);
+  if (command === TOGGLE_SHARE_COMMAND) {
+    await toggleShareFromShortcut(tab);
+  } else {
+    await copyTabIdFromShortcut(tab);
+  }
+}
+
+async function activeTabForShortcut(commandTab?: BrowserTab): Promise<BrowserTab | undefined> {
+  if (typeof commandTab?.id === "number" && commandTab.id >= 0) return commandTab;
+  const [tab] = await browser.tabs
+    .query({ active: true, lastFocusedWindow: true })
+    .catch(() => [] as BrowserTab[]);
+  return typeof tab?.id === "number" && tab.id >= 0 ? tab : undefined;
+}
+
+async function toggleShareFromShortcut(tab: BrowserTab | undefined): Promise<void> {
+  await reconcileAllTabsAccess();
+  const [allTabsActive, incognitoAccessAllowed] = await Promise.all([
+    isAllTabsAccessActive(),
+    isIncognitoAccessAllowed(),
+  ]);
+  const decision = decideShareToggle({
+    tab,
+    permitted: typeof tab?.id === "number" && permittedTabs.has(tab.id),
+    allTabsActive,
+    incognitoAccessAllowed,
+  });
+  if (decision.action === "blocked") {
+    await showShortcutFeedback(
+      decision.tabId,
+      shortcutFeedback({ kind: "blocked", reason: decision.reason, url: tab?.url }),
+    );
+    return;
+  }
+  let outcome: ShortcutOutcome;
+  try {
+    if (decision.action === "permit") {
+      await permitTab(decision.tabId);
+      outcome = { kind: "shared", tabId: decision.tabId, title: tab?.title };
+    } else {
+      await revokeTab(decision.tabId, "user_revoked");
+      outcome = { kind: "revoked", tabId: decision.tabId, title: tab?.title };
+    }
+  } catch (error) {
+    outcome = {
+      kind: "toggle_failed",
+      action: decision.action,
+      tabId: decision.tabId,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  await showShortcutFeedback(decision.tabId, shortcutFeedback(outcome));
+}
+
+async function copyTabIdFromShortcut(tab: BrowserTab | undefined): Promise<void> {
+  const tabId = tab?.id;
+  if (typeof tabId !== "number") {
+    await showShortcutFeedback(
+      undefined,
+      shortcutFeedback({ kind: "blocked", reason: "no_active_tab" }),
+    );
+    return;
+  }
+  let outcome: ShortcutOutcome;
+  try {
+    await copyTextToClipboard(String(tabId));
+    outcome = {
+      kind: "copied",
+      tabId,
+      title: tab?.title,
+      accessMode: permittedTabs.get(tabId)?.accessMode,
+    };
+  } catch (error) {
+    outcome = {
+      kind: "copy_failed",
+      tabId,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  await showShortcutFeedback(tabId, shortcutFeedback(outcome));
+}
+
+// Copies from an extension context, never from the page: Firefox's background
+// page has navigator.clipboard, while Chrome's service worker copies through
+// the existing offscreen document.
+async function copyTextToClipboard(text: string): Promise<void> {
+  let clipboardError: unknown;
+  if (typeof navigator.clipboard?.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      clipboardError = error;
+    }
+  }
+  if (browser.kind === "firefox") {
+    throw clipboardError ?? new Error("clipboard access is not available");
+  }
+  await ensureOffscreenDocument();
+  const result = (await sendToOffscreen({
+    target: "abg-offscreen",
+    cmd: "copy_text",
+    text,
+  })) as OffscreenCopyResult | undefined;
+  if (!result?.ok) {
+    throw new GatewayError(
+      "clipboard_write_failed",
+      result?.error ?? "failed to write text to the clipboard",
+    );
+  }
+}
+
+async function showShortcutFeedback(
+  tabId: number | undefined,
+  feedback: ShortcutFeedback,
+): Promise<void> {
+  const recent: RecentShortcutFeedback = {
+    tabId,
+    level: feedback.level,
+    message: feedback.message,
+    at: Date.now(),
+  };
+  await browser.storage.session.set({ lastShortcutFeedback: recent }).catch(() => {});
+  if (typeof tabId !== "number") return;
+
+  const previousTimer = shortcutFeedbackTimers.get(tabId);
+  if (previousTimer) clearTimeout(previousTimer);
+  try {
+    const baseTitle = await browser.action.getTitle({});
+    await browser.action.setBadgeText({ tabId, text: feedback.badgeText });
+    await browser.action.setBadgeBackgroundColor({ tabId, color: feedback.badgeColor });
+    await browser.action.setTitle({ tabId, title: `${baseTitle}: ${feedback.message}` });
+  } catch {
+    // The tab may have closed in the meantime.
+  }
+  await showShortcutToast(tabId, feedback);
+  shortcutFeedbackTimers.set(
+    tabId,
+    setTimeout(() => {
+      shortcutFeedbackTimers.delete(tabId);
+      void restoreActionAfterShortcut(tabId);
+    }, SHORTCUT_FEEDBACK_MS),
+  );
+}
+
+async function shortcutFeedbackForTab(tabId: number): Promise<RecentShortcutFeedback | undefined> {
+  const stored = await browser.storage.session.get("lastShortcutFeedback").catch(() => ({}));
+  const recent = (stored as { lastShortcutFeedback?: RecentShortcutFeedback }).lastShortcutFeedback;
+  if (!recent || (recent.tabId !== undefined && recent.tabId !== tabId)) return undefined;
+  return recent;
+}
+
+async function restoreActionAfterShortcut(tabId: number): Promise<void> {
+  await updateBadge(tabId);
+  try {
+    await browser.action.setTitle({ tabId, title: await browser.action.getTitle({}) });
+  } catch {}
+}
+
+// Best-effort, display-only toast. It reads nothing from the page and grants no
+// access. Restricted pages (chrome://, the Web Store, PDF viewer) reject it, so
+// the action badge, tooltip, and popup carry the result there.
+async function showShortcutToast(tabId: number, feedback: ShortcutFeedback): Promise<void> {
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId },
+      func: (message: string, accent: string, durationMs: number) => {
+        const hostId = "__abg_shortcut_toast__";
+        document.getElementById(hostId)?.remove();
+        const host = document.createElement("div");
+        host.id = hostId;
+        host.style.cssText =
+          "all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:none;";
+        const root = host.attachShadow({ mode: "closed" });
+        const box = document.createElement("div");
+        box.setAttribute("role", "status");
+        box.style.cssText = `max-width:360px;padding:10px 12px;border-radius:8px;border-left:4px solid ${accent};background:#1c1c1e;color:#fff;font:13px/1.4 -apple-system,system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
+        const label = document.createElement("strong");
+        label.textContent = "Agent Browser Gateway";
+        label.style.cssText = "display:block;margin-bottom:2px;font-size:11px;opacity:.75;";
+        box.append(label, document.createTextNode(message));
+        root.append(box);
+        (document.body ?? document.documentElement).append(host);
+        setTimeout(() => host.remove(), durationMs);
+      },
+      args: [feedback.message, feedback.badgeColor, SHORTCUT_FEEDBACK_MS],
+    });
+  } catch {
+    // Scripting is not allowed on this page.
+  }
+}
+
 // ---------- Popup messaging ----------
 
 browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
@@ -7125,6 +7347,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
         enabled: annotationState.enabled,
         count: annotationState.count,
       },
+      shortcutFeedback: await shortcutFeedbackForTab(msg.tabId),
     };
   }
   if (msg.type === "permit") {

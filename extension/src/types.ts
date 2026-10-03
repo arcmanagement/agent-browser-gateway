@@ -3,6 +3,24 @@
 export type AnnotationAction = "start" | "stop" | "clear" | "list" | "add_region" | "add_selector";
 export type TabAccessMode = "manual" | "all_tabs";
 
+export type ShortcutFeedbackLevel = "success" | "warning" | "error";
+
+// Result of a keyboard shortcut (chrome.commands), shown on the action badge,
+// the action tooltip, an in-page toast when scripting is possible, and the popup.
+export type ShortcutFeedback = {
+  level: ShortcutFeedbackLevel;
+  badgeText: string;
+  badgeColor: string;
+  message: string;
+};
+
+export type RecentShortcutFeedback = {
+  tabId?: number;
+  level: ShortcutFeedbackLevel;
+  message: string;
+  at: number;
+};
+
 export type ExtToGateway =
   | {
       type: "hello";
@@ -357,6 +375,7 @@ export type BackgroundToPopup =
       };
       settings: ExtensionSettings;
       annotationState: { enabled: boolean; count: number };
+      shortcutFeedback?: RecentShortcutFeedback;
     }
   | { type: "ok" }
   | { type: "error"; message: string };
@@ -397,7 +416,8 @@ export type BackgroundToOffscreen =
       withMic: boolean;
       timesliceMs?: number;
     }
-  | { target: "abg-offscreen"; cmd: "stop"; recordingId: string };
+  | { target: "abg-offscreen"; cmd: "stop"; recordingId: string }
+  | { target: "abg-offscreen"; cmd: "copy_text"; text: string };
 
 export type OffscreenStartResult = {
   ok: boolean;
@@ -406,6 +426,7 @@ export type OffscreenStartResult = {
   error?: string;
 };
 export type OffscreenStopResult = { ok: boolean; error?: string };
+export type OffscreenCopyResult = { ok: boolean; error?: string };
 
 export type OffscreenToBackground =
   | { type: "abg_offscreen_chunk"; recordingId: string; seq: number; dataBase64: string }

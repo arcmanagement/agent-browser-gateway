@@ -1,3 +1,5 @@
+import type { ShortcutFeedback, TabAccessMode } from "./types.js";
+
 export function detectBrowserKind(userAgent: string): string {
   // Lightweight UA sniff. This is only a Gateway UI label, not a security decision.
   if (/Edg\//.test(userAgent)) return "edge";
@@ -360,5 +362,154 @@ export function personalDataMutationIntent(
       return `Update the Reading List entry ${label}. Browser-owned personal data write.`;
     case "reading_list_remove":
       return `PERMANENTLY DELETE the Reading List entry ${label}. This removes saved personal data from the browser and ABG cannot undo it.`;
+  }
+}
+
+// ---------- Keyboard shortcuts (chrome.commands) ----------
+
+export const TOGGLE_SHARE_COMMAND = "toggle-share-current-tab";
+export const COPY_TAB_ID_COMMAND = "copy-current-tab-id";
+
+export type ShortcutTabSnapshot = {
+  id?: number;
+  url?: string;
+  title?: string;
+  incognito?: boolean;
+};
+
+export type ShortcutBlockReason =
+  | "no_active_tab"
+  | "all_tabs_mode"
+  | "incognito_access_disabled"
+  | "unsupported_page";
+
+export type ShareToggleDecision =
+  | { action: "permit"; tabId: number }
+  | { action: "revoke"; tabId: number }
+  | { action: "blocked"; reason: ShortcutBlockReason; tabId?: number };
+
+// Mirrors the popup's Share / Revoke button: all-tabs mode and missing incognito
+// access take precedence, a shared tab is revoked, and an unshared tab is shared
+// only when it is an http, https, or file page.
+export function decideShareToggle(input: {
+  tab: ShortcutTabSnapshot | undefined;
+  permitted: boolean;
+  allTabsActive: boolean;
+  incognitoAccessAllowed: boolean;
+}): ShareToggleDecision {
+  const tabId = input.tab?.id;
+  if (typeof tabId !== "number") return { action: "blocked", reason: "no_active_tab" };
+  if (input.allTabsActive) return { action: "blocked", reason: "all_tabs_mode", tabId };
+  if (input.tab?.incognito && !input.incognitoAccessAllowed) {
+    return { action: "blocked", reason: "incognito_access_disabled", tabId };
+  }
+  if (input.permitted) return { action: "revoke", tabId };
+  if (!isShareableTabUrl(input.tab?.url)) {
+    return { action: "blocked", reason: "unsupported_page", tabId };
+  }
+  return { action: "permit", tabId };
+}
+
+export type ShortcutOutcome =
+  | { kind: "shared"; tabId: number; title?: string }
+  | { kind: "revoked"; tabId: number; title?: string }
+  | { kind: "blocked"; reason: ShortcutBlockReason; url?: string }
+  | { kind: "toggle_failed"; action: "permit" | "revoke"; tabId: number; error: string }
+  | { kind: "copied"; tabId: number; title?: string; accessMode?: TabAccessMode }
+  | { kind: "copy_failed"; tabId: number; error: string };
+
+const BADGE_GREEN = "#34c759";
+const BADGE_BLUE = "#0a84ff";
+const BADGE_GRAY = "#8e8e93";
+const BADGE_ORANGE = "#ff9500";
+const BADGE_RED = "#ff3b30";
+
+function shortcutTabLabel(tabId: number, title: string | undefined): string {
+  const trimmed = title?.trim() ?? "";
+  if (!trimmed) return `tab ${tabId}`;
+  const short = trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
+  return `tab ${tabId} ("${short}")`;
+}
+
+function urlScheme(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url).protocol.replace(/:$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function blockedMessage(reason: ShortcutBlockReason, url: string | undefined): string {
+  switch (reason) {
+    case "no_active_tab":
+      return "No active tab was found. Focus a browser tab and try the shortcut again.";
+    case "all_tabs_mode":
+      return "All-tabs sandbox mode is on, so per-tab share and revoke do not apply. Nothing was changed. Turn off all-tabs access in the popup to manage tabs one by one.";
+    case "incognito_access_disabled":
+      return 'Incognito access is off for Agent Browser Gateway, so this tab cannot be shared. Enable "Allow in incognito" in the extension settings first.';
+    case "unsupported_page": {
+      const scheme = urlScheme(url);
+      const subject = scheme ? `${scheme}: pages` : "This page";
+      return `${subject} cannot be shared. Only http, https, and file pages can be shared. Nothing was changed.`;
+    }
+  }
+}
+
+export function shortcutFeedback(outcome: ShortcutOutcome): ShortcutFeedback {
+  switch (outcome.kind) {
+    case "shared":
+      return {
+        level: "success",
+        badgeText: "ON",
+        badgeColor: BADGE_GREEN,
+        message: `Shared ${shortcutTabLabel(outcome.tabId, outcome.title)} with agents.`,
+      };
+    case "revoked":
+      return {
+        level: "success",
+        badgeText: "OFF",
+        badgeColor: BADGE_GRAY,
+        message: `Revoked ${shortcutTabLabel(outcome.tabId, outcome.title)}. Agents can no longer access it.`,
+      };
+    case "blocked":
+      return {
+        level: "warning",
+        badgeText: "!",
+        badgeColor: BADGE_ORANGE,
+        message: blockedMessage(outcome.reason, outcome.url),
+      };
+    case "toggle_failed":
+      return {
+        level: "error",
+        badgeText: "ERR",
+        badgeColor: BADGE_RED,
+        message: `Could not ${outcome.action === "permit" ? "share" : "revoke"} tab ${outcome.tabId}: ${outcome.error}`,
+      };
+    case "copied": {
+      const label = shortcutTabLabel(outcome.tabId, outcome.title);
+      if (!outcome.accessMode) {
+        return {
+          level: "warning",
+          badgeText: "ID",
+          badgeColor: BADGE_ORANGE,
+          message: `Copied tab ID ${outcome.tabId} for ${label}. This tab is not shared: agents cannot access it until you share it.`,
+        };
+      }
+      const via = outcome.accessMode === "all_tabs" ? " through all-tabs mode" : "";
+      return {
+        level: "success",
+        badgeText: "ID",
+        badgeColor: BADGE_BLUE,
+        message: `Copied tab ID ${outcome.tabId} for ${label}. This tab is shared with agents${via}.`,
+      };
+    }
+    case "copy_failed":
+      return {
+        level: "error",
+        badgeText: "ERR",
+        badgeColor: BADGE_RED,
+        message: `Could not copy tab ID ${outcome.tabId}: ${outcome.error}`,
+      };
   }
 }

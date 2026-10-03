@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  recentShortcutMessage,
+  SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS,
   sharedTabSummary,
+  shortcutHint,
   trustedAutomationNote,
 } from "../src/popupLogic.js";
 import type { ExtensionSettings } from "../src/types.js";
@@ -73,5 +76,33 @@ describe("popupLogic", () => {
         url: "https://example.com",
       }),
     ).toBe("🌐 [7] Example");
+  });
+
+  it("shows the bound shortcut keys and where to change them", () => {
+    const hint = shortcutHint(
+      [
+        { name: "toggle-share-current-tab", shortcut: "⌥⇧S" },
+        { name: "copy-current-tab-id", shortcut: "" },
+        { name: "_execute_action", shortcut: "" },
+      ],
+      "chrome",
+    );
+    expect(hint).toBe(
+      "Shortcuts: ⌥⇧S shares or revokes this tab, (not set) copies its tab ID. Change them at chrome://extensions/shortcuts.",
+    );
+    expect(shortcutHint([], "firefox")).toContain("about:addons > Manage Extension Shortcuts");
+  });
+
+  it("shows only recent shortcut results", () => {
+    const feedback = {
+      tabId: 7,
+      level: "warning" as const,
+      message: "Nothing was changed.",
+      at: 0,
+    };
+    expect(recentShortcutMessage(undefined, 0)).toBeUndefined();
+    expect(recentShortcutMessage(feedback, 1_000)).toBe("Last shortcut: Nothing was changed.");
+    expect(recentShortcutMessage(feedback, SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS + 1)).toBeUndefined();
+    expect(recentShortcutMessage({ ...feedback, at: 5_000 }, 0)).toBeUndefined();
   });
 });

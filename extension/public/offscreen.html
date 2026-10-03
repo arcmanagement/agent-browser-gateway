@@ -5,8 +5,9 @@
     <title>ABG Recorder</title>
   </head>
   <body>
-    <!-- Hidden offscreen document. MV3 service workers cannot run
-         getUserMedia / MediaRecorder, so tab capture happens here. -->
+    <!-- Hidden offscreen document. MV3 service workers have no
+         getUserMedia / MediaRecorder or clipboard access, so tab capture and
+         the copy-tab-ID shortcut run here. -->
     <script src="offscreen.js"></script>
   </body>
 </html>
