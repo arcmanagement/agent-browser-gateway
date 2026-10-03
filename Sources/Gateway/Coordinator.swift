@@ -179,6 +179,45 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         Task { await auditLog.log(action: "extension_disconnected", extensionId: extensionId) }
     }
 
+    // MARK: - Revoking from the Gateway app
+
+    /// Revokes one shared tab from the Gateway app (menu bar or window). The Gateway stops
+    /// serving the tab first and audits it as `revoke` (reason `gateway_app`), then asks the
+    /// owning extension to drop it too. Removing access never waits on the browser, so a
+    /// suspended or unreachable extension can't keep a tab open.
+    func revokeSharedTab(_ tab: PermittedTab) async {
+        guard let current = permittedTabs.first(where: { $0.extensionId == tab.extensionId && $0.tabId == tab.tabId }) else {
+            return
+        }
+        permittedTabs.removeAll { $0.extensionId == current.extensionId && $0.tabId == current.tabId }
+        stableTabTargets.remove(StableTabIdentity(extensionId: current.extensionId, tabId: current.tabId))
+        if streamTabId == current.tabId, streamExtensionId == current.extensionId {
+            streamTabId = nil
+            streamExtensionId = nil
+        }
+        await auditLog.log(
+            action: "revoke",
+            extensionId: current.extensionId,
+            tabId: current.tabId,
+            url: current.url,
+            details: ["reason": AnyCodable("gateway_app")]
+        )
+        _ = try? await sendCommand(
+            to: current.extensionId,
+            method: "revoke",
+            params: AnyCodable(["tabId": current.tabId])
+        )
+    }
+
+    /// Revokes every tab in `tabs` (all shared tabs by default).
+    func revokeAllSharedTabs(_ tabs: [PermittedTab]? = nil) async {
+        await withTaskGroup(of: Void.self) { group in
+            for tab in tabs ?? permittedTabs {
+                group.addTask { await self.revokeSharedTab(tab) }
+            }
+        }
+    }
+
     private func forgetExtension(_ extensionId: String) {
         connectedExtensionIds.removeAll { $0 == extensionId }
         suspendedExtensionIds.remove(extensionId)
