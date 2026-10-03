@@ -1,34 +1,51 @@
 ---
 title: プラグイン
-description: Agent Browser Gateway のローカルプラグインをインストール、管理、作成する。
+description: abg にコマンドやドメイン専用の Markdown 変換を足すローカルの JavaScript プラグインを、入れて管理し、自作します。
 sidebar:
   order: 5
 ---
 
-ABGプラグインはGatewayが読み込むローカルJavaScript moduleです。ブラウザーデータを変換したり、
-高レベルのローカルコマンドを追加したりできます。コードはローカルGateway process内で動くため、
-信頼できるpluginだけをインストールしてください。
+import { Steps } from '@astrojs/starlight/components';
 
-## plugin source
+`abg` にコマンドを足したり、ページの Markdown を整えたりするローカルの JavaScript プラグインを、入れて管理し、自作します。
 
-ABGは次の順序でpluginを探します。
+:::caution
+プラグインはローカルの Gateway プロセス内で JavaScriptCore を使って動きます。信頼できるプラグインだけを入れてください。
+:::
 
-1. `Agent Browser Gateway.app/Contents/Resources/plugins/` に入っているbundled plugin。
-2. `~/.abg/plugins/` にあるuser-installed plugin。
-3. checkoutから実行している場合のrepository内local development plugin。
+## プラグインを入れる
 
-port `8766` のdev Gatewayでは `~/.abg/plugins/` ではなく `~/.abg-dev/plugins/` を使います。
-productionとdevelopmentのplugin stateを分けるためです。
+<Steps>
 
-## インストールと管理
+1. GitHub リポジトリ、git の URL、ローカルのディレクトリから入れます。プラグインのコードは任意の JavaScript なので、`--yes` が必須です。
+
+   ```bash
+   abg plugin install user/repo --yes
+   abg plugin install https://github.com/user/repo.git --yes
+   abg plugin install git@github.com:user/private-plugin.git --yes
+   abg plugin install ./my-plugin --name my-plugin --yes
+   ```
+
+2. Gateway が読み込んだか確かめます。
+
+   ```bash
+   abg plugin list --loaded
+   ```
+
+3. コマンドを実行します。プラグインのコマンドは、プラグイン名をサブコマンドにして呼びます。
+
+   ```bash
+   abg my-plugin greet --name "Ada"
+   ```
+
+</Steps>
+
+リポジトリからのインストールには、手元の `git` コマンドを使います。非公開リポジトリでは、既存の SSH 鍵、git の認証情報ヘルパー、GitHub CLI と連携した git 認証がそのまま使えます。ABG は GitHub のトークンを求めず、保存もしません。認証情報を埋め込んだ HTTPS の URL は拒否します。
+
+## プラグインを管理する
 
 ```bash
 abg plugin list
-abg plugin list --loaded
-abg plugin install user/repo --yes
-abg plugin install https://github.com/user/repo.git --yes
-abg plugin install git@github.com:user/private-plugin.git --yes
-abg plugin install ./my-plugin --name my-plugin --yes
 abg plugin update
 abg plugin update my-plugin
 abg plugin disable my-plugin
@@ -37,87 +54,85 @@ abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 
-`install` に `--yes` が必要なのは、plugin codeがローカルGatewayに読み込まれる任意のJavaScriptだからです。
-repository installはローカルの `git` commandを使います。private repositoryでは、既存のSSH key、git credential helper、
-GitHub CLIに紐づいたgit認証を使います。ABGはGitHub tokenを要求・保存しません。認証情報入りHTTPS URLは拒否します。
+- `update` は、git で入れたユーザープラグインに `git pull --ff-only` を実行します。
+- `disable` はプラグインのディレクトリを残したまま、コマンドと変換の読み込みを止めます。この状態はアプリのデータベースではなく、使用中の ABG ユーザーディレクトリにある `plugin-state.json` に保存します。
+- `reload` は動作中の Gateway でプラグインを読み込み直します。共有中のタブはそのまま残ります。
 
-`update` はgit-backed user pluginに `git pull --ff-only` を実行します。`disable` はplugin directoryを残したまま、
-profile-localな `plugin-state.json` に状態を書きます。plugin enablement用のapp databaseはありません。
+## コマンドプラグインを作る
 
-## plugin layout
+<Steps>
 
-```text
-my-plugin/
-  index.js
-  plugin.json
-```
+1. ファイルを2つ置いたディレクトリを作ります。
 
-`index.js` は必須です。`plugin.json` は任意ですが、一覧表示やcommand helpに使われるため推奨です。
+   ```text
+   hello-plugin/
+     index.js
+     plugin.json
+   ```
 
-```json
-{
-  "name": "my-plugin",
-  "version": "0.1.0",
-  "description": "Short human-readable summary.",
-  "domains": ["https://mail.google.com/*"],
-  "transforms": ["gmail-clean-markdown"],
-  "commands": [
-    {
-      "name": "greet",
-      "description": "Return a greeting.",
-      "args": [
-        { "name": "name", "type": "string", "required": false, "default": "ABG" }
-      ]
-    }
-  ]
-}
-```
+   `index.js` は必須です。`plugin.json` は省略できますが、一覧表示と `--help` に使われます。
 
-## Host API
+2. `plugin.json` にプラグインの情報を書きます。
 
-Host APIは小さく保っています。
+   ```json
+   {
+     "name": "hello-plugin",
+     "version": "0.1.0",
+     "description": "Minimal ABG command plugin.",
+     "commands": [
+       {
+         "name": "greet",
+         "description": "Return a greeting.",
+         "args": [
+           { "name": "name", "type": "string", "required": false, "default": "ABG" }
+         ]
+       }
+     ]
+   }
+   ```
 
-```js
-abg.log("loaded " + abg.plugin.name);
+3. `index.js` でコマンドを登録します。
 
-abg.registerTransform("my-transform", function (input) {
-  return String(input).trim();
-});
-```
+   ```js
+   abg.registerCommand("greet", async function (args) {
+     const name = args.name || "ABG";
+     return { ok: true, message: "Hello, " + name };
+   });
+   ```
 
-transformは同期的なstring-to-string関数です。`abg read --format markdown` ではgeneric Markdown transformを使い、
-共有タブURLがpluginの `domains` globに一致する場合はdomain-specificなMarkdown transformを選べます。
+4. 入れてから、コマンドを実行します。
 
-## Command API
+   ```bash
+   abg plugin install ./hello-plugin --name hello-plugin --yes
+   abg plugin reload
+   abg hello-plugin greet --name "Ada"
+   ```
 
-pluginはCLI commandも追加できます。
+   ```json
+   {
+     "message": "Hello, Ada",
+     "ok": true
+   }
+   ```
 
-```js
-abg.registerCommand("greet", async function (args, context) {
-  return {
-    ok: true,
-    message: "Hello, " + (args.name || "ABG"),
-    plugin: context.plugin.name
-  };
-});
-```
+5. 編集のたびに `abg plugin reload hello-plugin` を実行します。読み込みに失敗した場合は、直前のバージョンが動き続けます。
 
-dynamic ABG subcommandとして実行します。
+</Steps>
+
+引数はいくつかの形で渡せます。
 
 ```bash
-abg my-plugin greet --name "Ada"
-abg my-plugin greet --tab t1
-abg my-plugin greet --json '{"name":"Ada"}'
-printf '{"name":"Ada"}' | abg my-plugin greet --stdin
+abg hello-plugin greet --name "Ada"
+abg hello-plugin greet --tab t1
+abg hello-plugin greet --json '{"name":"Ada"}'
+printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 ```
 
-command resultはJSONです。失敗時もstructured JSON errorとして返します。監査ログにはplugin名、command名、argument key list、
-serialized argument byte lengthを記録します。argument valueは監査ログに書きません。
+`--tab`、`--tab-id`、`--match-url`、`--match-title`、`--first` はコマンドを共有タブに結び付けるためのもので、プラグインには渡りません。コマンドの結果は JSON です。ハンドラーが失敗すると、`error`、`message`、`plugin`、`command` を含む JSON のエラーが返ります。監査ログにはプラグイン名、コマンド名、引数のキー、引数のバイト数を記録し、引数の値は記録しません。
 
-## Tab API
+## 共有タブを操作する
 
-command handlerは `context.tab.<action>(options)` で共有タブを操作できます。このmethodはCLIと同じGateway pathを通るため、
-per-tab consent、operation approval、audit loggingが同じように適用されます。
+コマンドのハンドラーは `context.tab.<action>(options)` で、結び付いたタブを操作できます。呼び出しは CLI と同じ Gateway の経路を通るため、共有、承認、監査ログの仕組みがそのまま働きます。
 
 ```js
 abg.registerCommand("clear-and-paste", async function (args, context) {
@@ -130,4 +145,58 @@ abg.registerCommand("clear-and-paste", async function (args, context) {
 });
 ```
 
-JavaScriptからshell outしてABGのbrowser access pathを迂回しないでください。approvalとaudit logを維持するためにTab APIを使います。
+使えるメソッドは CLI のコマンドに対応する `paste`、`clear`、`fill`、`click`、`key`、`read`、`describe`、`wait`、`screenshot`、`navigate` です。JavaScript からシェルを呼んで別の経路でブラウザーに触れてはいけません。
+
+タブを指定せずにコマンドを実行し、`plugin.json` に `domains` があると、ABG は URL が一致する共有タブ 1つにコマンドを結び付けます。一致するタブがなければ `no_matching_tab` を、複数あれば `candidates` 付きの `ambiguous_tab` を返します。
+
+## ドメイン専用の Markdown 変換を足す
+
+変換は、文字列を受け取って文字列を返す同期関数です。
+
+```js
+abg.log("loaded " + abg.plugin.name);
+
+abg.registerTransform("gmail-clean-markdown", function (input) {
+  return String(input).trim();
+});
+```
+
+`plugin.json` に対象ドメインと変換名を書きます。
+
+```json
+{
+  "name": "gmail-plugin",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"]
+}
+```
+
+共有タブの URL が `domains` に一致すると、`abg read --format markdown` はまずプラグインの変換を試し、次に汎用の `html-to-markdown` 変換に戻ります。変換名には `markdown` を含めてください。
+
+## リファレンス
+
+### プラグインの読み込み元
+
+ABG は次の順にプラグインを探します。
+
+1. `Agent Browser Gateway.app/Contents/Resources/plugins/` に同梱のプラグイン。
+2. `~/.abg/plugins/` に入れたユーザープラグイン。
+3. リポジトリから実行しているときは、リポジトリ内の開発用プラグイン。
+
+ポート `8766` の開発版 Gateway は `~/.abg/plugins/` の代わりに `~/.abg-dev/plugins/` を使うため、本番と開発でプラグインの状態が混ざりません。
+
+### 同梱プラグイン
+
+- `markdown-plugin`: 汎用の HTML から Markdown への変換。
+- `notion-plugin`: `notion.so` と `notion.site` のページ向けの Markdown 変換。
+- `gmail-plugin`、`slack-plugin`、`linear-plugin`: ドメイン専用の Markdown 変換の例。`slack-plugin` は `catch-up`、`pending`、`open-channel` のコマンドも足します。
+- `redaction-plugin`: `abg read --format markdown --redact` で使う任意のマスク処理。
+- `workflow-plugin`: `context.tab.*` を使うコマンドの例。
+- `info-plugin`: 読み込みの動作確認用。
+
+作り方の詳細は [`docs/PLUGINS.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/PLUGINS.md) にあります。
+
+## 関連ページ
+
+- [CLI](../cli/): プラグインの土台になるコマンド
+- [セキュリティ](../security/#防げないこと): プラグインのコードは利用者の責任で入れる理由

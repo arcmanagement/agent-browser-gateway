@@ -1,70 +1,143 @@
 ---
 title: Get Started
-description: Share a browser tab with a local AI agent using Agent Browser Gateway.
+description: Share one Chrome tab with a local AI agent and read it with the abg CLI in about two minutes.
 sidebar:
   order: 1
 ---
 
-Agent Browser Gateway (ABG) is a local bridge between a browser tab you explicitly share and an AI
-coding agent that can run shell commands.
+import { Steps } from '@astrojs/starlight/components';
 
-The default model is simple: the agent sees no tabs until you share one from the browser extension.
-After that, the agent uses the `abg` CLI to read, screenshot, inspect, or operate only that shared
-tab.
+Share one Chrome tab, read it with `abg`, then stop sharing it.
 
-## First workflow
+**You need:** a Mac with Apple Silicon on macOS 14 or newer, Google Chrome 120 or newer, and
+[Homebrew](https://brew.sh/). For Windows or source builds, see [Install](./install/).
 
-1. [Install](./install/) the Gateway app, browser extension, and CLI.
-2. Open the browser tab you want to hand to the agent.
-3. Click the ABG extension icon and choose **Share this tab with agent**.
-4. Confirm the tab appears:
+## Quick start
+
+<Steps>
+
+1. Install the extension from the
+   [Chrome Web Store](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi).
+
+2. Install the Gateway app and the `abg` CLI:
+
+   ```bash
+   brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+   brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
+   brew install --cask agent-browser-gateway
+   ```
+
+3. Start the Gateway and check that the extension is connected:
+
+   ```bash
+   open -a "Agent Browser Gateway"
+   abg status
+   ```
+
+   The menu bar icon appears. In the JSON from `abg status`, `running` is `true` and
+   `extensionCount` is 1 or more.
+
+4. Open the page you want to share. Click the ABG extension icon and choose
+   **Share this tab with agents**. A green `ON` badge appears on the icon.
+
+5. List the shared tab:
 
    ```bash
    abg tabs --compact
    ```
 
-5. Give the tab reference, such as `t1`, to your agent or use it directly:
+   ```json
+   [
+     {
+       "accessMode" : "manual",
+       "browser" : "chrome",
+       "ref" : "t1",
+       "tabId" : 418,
+       "targetId" : -1,
+       "title" : "Example Domain",
+       "url" : "https://example.com/"
+     }
+   ]
+   ```
+
+   `ref` is the short name you pass to other commands. `tabId` and `targetId` will differ on your
+   machine. A `profile` key also appears when you set a profile label in the popup. For one line
+   per tab, run `abg tabs --format text`:
+
+   ```text
+   t1	418	manual	[Example Domain]	https://example.com/
+   ```
+
+6. Read the page as Markdown:
 
    ```bash
    abg read t1 --format markdown
-   abg screenshot t1 --out page.png
+   ```
+
+   The command prints the page content as Markdown. Use the `ref` from step 5 if it is not `t1`.
+
+7. Stop sharing the tab:
+
+   ```bash
    abg revoke t1
    ```
 
-## What ABG installs
+   The command returns `ok: true`, and the tab no longer appears in `abg tabs --compact`.
 
-- A local Gateway app that listens on loopback.
-- A browser extension that can share explicitly selected tabs.
-- The `abg` CLI for agents, scripts, and manual debugging.
-- Claude Code and Codex skills installed by `npx skills add arcmanagement/agent-browser-gateway -g`.
-- A local JSONL audit log for Gateway operations.
+</Steps>
 
-## Access model
+To let Claude Code or Codex use the tab, install the agent skills with
+`npx skills add arcmanagement/agent-browser-gateway -g` and give the agent the tab `ref`. See
+[Agent skills and MCP](./install/#agent-skills-and-mcp).
 
-ABG starts with no visible tabs. The user shares a tab from the extension popup, and ABG revokes that
-share when the tab closes, changes origin, or is explicitly revoked.
+## If it does not work
 
-Two keyboard shortcuts act on the current tab only. `Alt+Shift+S` (`Option+Shift+S` on macOS)
-shares the tab, or revokes it if it is already shared. `Alt+Shift+C` copies the numeric tab ID to
-the clipboard without granting access, and says when the tab is not shared yet. The extension badge,
-its tooltip, and the popup show the result or why nothing changed. Rebind them at
+Every `abg` error is JSON with an `error` code and, in most cases, a `nextCommand` to run next.
+
+- **`gateway_not_running`**: the Gateway app is not running. Run `open -a "Agent Browser Gateway"`,
+  then `abg status`.
+- **The shell cannot find `abg`**: the CLI is not on your `PATH`. Run
+  `brew info --cask agent-browser-gateway` to confirm the cask is installed, then open a new
+  terminal.
+- **`extensionCount` is 0, or the popup says Disconnected**: the extension cannot reach the Gateway.
+  Make sure the extension is enabled at `chrome://extensions` and the Gateway app is running, then
+  open the popup again.
+- **`abg tabs --compact` returns an empty `tabs` list with `permittedTabCount` 0**, or
+  `abg tabs --format text` prints `No permitted tabs.`: nothing is shared. Repeat step 4.
+- **`tab_ref_not_found`**: no shared tab has that ref. Run `abg tabs --compact` and use the current
+  `ref`. A tab shared again after a revoke gets a new ref.
+- **`no_permitted_tabs`** or **`tab_not_permitted`**: the tab is not shared, or its share ended
+  because it closed, changed origin, or was revoked. Share it again, then run
+  `abg tabs --compact`.
+- **The popup asks you to allow ABG in incognito**: Chrome blocks extensions in incognito windows
+  by default. Turn on **Allow in incognito** for the extension. See
+  [Install](./install/#browser-extension).
+
+## How sharing works
+
+- The agent sees no tabs until you share one.
+- A share ends when the tab closes, navigates to another origin, or you revoke it from the popup,
+  the shortcut, or `abg revoke`.
+- Write commands such as `click`, `fill`, `paste`, `navigate`, and `upload` open a local approval
+  window by default. Read-only commands do not prompt, but they still need a shared tab.
+- Every operation is written to a local audit log. Run `abg audit --lines 50` to see recent entries.
+
+Two shortcuts act on the current tab only:
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the tab, or revoke it if it is already shared. |
+| `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the numeric tab ID. This does not share the tab. |
+
+The badge, its tooltip, and the popup show the result. Change the keys at
 `chrome://extensions/shortcuts`.
 
-For isolated profiles or sandbox machines, ABG also has an optional all-tabs profile mode. That mode
-uses a separate consent boundary and can be disabled again from the extension popup.
+For isolated profiles and sandbox machines, an opt-in all-tabs mode shares every tab in the profile.
+See [Security](./security/#consent-boundaries).
 
-Mutating commands, such as click, fill, paste, navigate, upload, and dialog handling, can require a
-local approval prompt. Read-only observation commands do not prompt, but still require a shared tab.
+## Next
 
-The extension popup, approval windows, and annotation overlay are available in English and
-Japanese. Set **Display language** under **Advanced** in the popup; **Auto** follows the browser
-language. Agent-facing output from `abg` stays in English.
-
-## Next pages
-
-- [Install](./install/)
-- [CLI](./cli/)
-- [Plugins](./plugins/)
-- [Architecture](./architecture/)
-- [Security](./security/)
-- [FAQ](./faq/)
+- [Install](./install/): Windows status, DMG download, source builds, agent skills, and MCP.
+- [CLI](./cli/): read, inspect, operate, and annotate shared tabs.
+- [Security](./security/): consent, approvals, audit log, and what ABG does not defend against.
+- [FAQ](./faq/): common questions and fixes.

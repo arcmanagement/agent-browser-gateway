@@ -1,30 +1,53 @@
 ---
 title: Distribution
-description: Release, signing, Homebrew, and artifact verification notes.
+description: Release status for each ABG channel, how to verify downloads, and the maintainer release build.
 sidebar:
   order: 3
 ---
 
-ABG release artifacts are built from the repository and published for the app, CLI, and browser
-extension through GitHub Releases.
+Check which version each channel serves, verify a download, and build a signed release.
 
-Current public distribution state:
+## Current release status
 
-- macOS app: signed and notarized `v0.4.8` DMG on GitHub Releases
-- Chrome extension: `v0.4.4` on the Chrome Web Store, updated August 21, 2026
-- Windows package: pending signed release and WinGet indexing
+| Channel | Status |
+| --- | --- |
+| macOS app (GitHub Releases, Homebrew) | Signed and notarized `v0.4.8` |
+| Chrome Web Store | Extension `v0.4.4`, updated August 21, 2026 |
+| Windows (WinGet, setup ZIP) | Pending the signed Windows release and WinGet indexing |
 
-The app and extension versions can differ while Chrome Web Store review and signed app publication
-complete independently.
+The app and extension versions can differ because Chrome Web Store review and signed app
+publication complete independently.
 
-## Homebrew cask
+## Verify a download
 
-The macOS cask installs:
+Download the artifact and its checksum file from the same release, then check the hash. Replace
+`X.Y.Z` with the release version:
 
-- `Agent Browser Gateway.app` into `/Applications`
-- `abg` into Homebrew's `bin`
+```bash
+shasum -a 256 -c agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
+```
 
-Install test:
+For a release bundle that publishes `SHA256SUMS.txt`:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing
+```
+
+Install only artifacts whose checksum matches. If the checksum file is missing or the hash does not
+match, stop and open a GitHub issue.
+
+After installation, check the app signature before first launch:
+
+```bash
+codesign --verify --strict --verbose=2 "/Applications/Agent Browser Gateway.app"
+spctl --assess --type execute --verbose "/Applications/Agent Browser Gateway.app"
+```
+
+## Channels
+
+### Homebrew cask
+
+The cask installs `Agent Browser Gateway.app` into `/Applications` and `abg` into Homebrew's `bin`.
 
 ```bash
 brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
@@ -32,64 +55,59 @@ brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
 brew install --cask agent-browser-gateway
 ```
 
-If Homebrew reports that the latest version is already installed, the cask install path is working
-and no update is needed.
+If Homebrew reports that the latest version is already installed, the cask install path works and
+no update is needed.
 
-Homebrew is ready for a release when the versioned macOS ZIP is published under the matching
-GitHub Release, and this repository's
-`Casks/agent-browser-gateway.rb` points at that version and SHA-256.
+A release is ready for Homebrew when the versioned macOS ZIP is published under the matching GitHub
+Release and this repository's `Casks/agent-browser-gateway.rb` points at that version and SHA-256.
 
-## Chrome Web Store
+### Chrome Web Store
 
 Install the extension from the
 [public Chrome Web Store listing](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi).
 
-For release verification, confirm that the public listing is available, then record its displayed
-version and update date separately from the latest macOS release. The current listing reports
-version `0.4.4`, updated August 21, 2026.
+To verify a release, confirm the listing is available, then record its displayed version and update
+date separately from the latest macOS release. The listing currently reports version `0.4.4`,
+updated August 21, 2026.
 
-## WinGet
-
-The Windows package identifier is:
+### WinGet
 
 ```powershell
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-Current `v0.4.8` status: this package is not indexed yet, and the command above returns no matching
-package until the signed Windows release workflow and WinGet submission are completed.
+For `v0.4.8`, this package is not indexed yet. The command returns no matching package until the
+signed Windows release workflow and WinGet submission complete.
 
-WinGet is ready for a release after the public Windows setup ZIP is available from GitHub Releases
-and the generated `microsoft/winget-pkgs` PR is merged and indexed.
+A release is ready for WinGet after the public Windows setup ZIP is on GitHub Releases and the
+generated `microsoft/winget-pkgs` PR is merged and indexed.
 
-## Signed local release build
+### Mac App Store
 
-Maintainer release builds are created on a trusted Mac:
+The Mac App Store path is separate from the Developer ID and Homebrew release path. Store builds use
+App Sandbox and App Store distribution signing and are uploaded to App Store Connect. The checklist
+lives in `docs/app-store-submission.md`.
+
+## Maintainer release build
+
+### Build signed artifacts
+
+Build Developer ID signed and notarized artifacts on a trusted Mac:
 
 ```bash
 export VERSION=0.4.8
-make dist VERSION="$VERSION" \
+make release-dmg VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
 ```
 
+`make release-dmg` runs `make dist` first, so it writes the macOS ZIP, the DMG, the extension ZIP,
+and the generated cask under `dist/`.
+
 Keep Developer ID signing local. Do not put the Developer ID private key, certificate password, App
 Store Connect credentials, or `notarytool` credentials into GitHub Actions secrets.
 
-## Reproducible build and release trust
-
-Before a v1.0 release, maintainers can run the unsigned reproducible dry run:
-
-```bash
-make reproducible-build
-```
-
-The dry run writes extension and Gateway comparison artifacts, `SHA256SUMS.txt`, `BUILD_INPUTS.txt`,
-and `agent-browser-gateway-$VERSION.spdx.json` under `dist/reproducible-build/`. The full checksum,
-signing, SBOM, provenance, and user verification plan is tracked in
-[`docs/RELEASE_ARTIFACT_TRUST.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/RELEASE_ARTIFACT_TRUST.md).
-
-## Verify artifacts
+### Verify the artifacts
 
 ```bash
 codesign --verify --strict --verbose=2 \
@@ -103,19 +121,23 @@ shasum -a 256 \
   "dist/agent-browser-gateway-extension-$VERSION.zip"
 ```
 
-CI may build and test unsigned artifacts. Signed release assets should be created on a trusted
-maintainer Mac and uploaded to the draft GitHub Release before publication.
+CI may build and test unsigned artifacts. Create signed release assets on a trusted maintainer Mac
+and upload them to the draft GitHub Release before publication.
 
-Users who download a direct artifact should also download the matching checksum file and verify it
-before installation:
+### Reproducible build dry run
+
+Before a v1.0 release, run the unsigned reproducible dry run:
 
 ```bash
-shasum -a 256 -c agent-browser-gateway-$VERSION-macos-arm64.dmg.sha256.txt
+make reproducible-build
 ```
 
-## Mac App Store
+It writes extension and Gateway comparison artifacts, `SHA256SUMS.txt`, `BUILD_INPUTS.txt`, and
+`agent-browser-gateway-$VERSION.spdx.json` under `dist/reproducible-build/`. The checksum,
+signing, SBOM, provenance, and user verification plan is in
+[`docs/RELEASE_ARTIFACT_TRUST.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/RELEASE_ARTIFACT_TRUST.md).
 
-The Mac App Store path is separate from the Developer ID and Homebrew release path. Store builds
-must use App Sandbox and App Store distribution signing, then be uploaded to App Store Connect.
+## Related
 
-The working checklist lives in `docs/app-store-submission.md`.
+- [Install](../install/): install steps for each channel.
+- [Security](../security/): what the Gateway sends and stores.

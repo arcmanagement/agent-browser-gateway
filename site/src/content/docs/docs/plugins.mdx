@@ -1,36 +1,55 @@
 ---
 title: Plugins
-description: Install, manage, and author local Agent Browser Gateway plugins.
+description: Install, manage, and write local JavaScript plugins that add abg commands or domain-specific Markdown.
 sidebar:
   order: 5
 ---
 
-ABG supports local JavaScript plugins loaded by the Gateway. Plugins can transform browser data or
-add higher-level local commands without moving browser access into a hosted service.
+import { Steps } from '@astrojs/starlight/components';
 
-Plugins run inside the local Gateway process through JavaScriptCore, so install only plugins you
-trust.
+Install, manage, and write local JavaScript plugins that add `abg` commands or clean up page
+Markdown.
 
-## Plugin sources
+:::caution
+Plugins run inside the local Gateway process through JavaScriptCore. Install only plugins you trust.
+:::
 
-ABG searches plugins in this order:
+## Install a plugin
 
-1. Bundled plugins inside `Agent Browser Gateway.app/Contents/Resources/plugins/`.
-2. User-installed plugins under `~/.abg/plugins/`.
-3. Local development plugins from the repository checkout when running from the checkout.
+<Steps>
 
-Development Gateway runs on port `8766` use `~/.abg-dev/plugins/` instead of `~/.abg/plugins/`.
-That keeps production and development plugin state separate.
+1. Install from a GitHub repository, a git URL, or a local directory. `--yes` is required because
+   plugin code is arbitrary JavaScript:
 
-## Install and manage
+   ```bash
+   abg plugin install user/repo --yes
+   abg plugin install https://github.com/user/repo.git --yes
+   abg plugin install git@github.com:user/private-plugin.git --yes
+   abg plugin install ./my-plugin --name my-plugin --yes
+   ```
+
+2. Check that the Gateway loaded it:
+
+   ```bash
+   abg plugin list --loaded
+   ```
+
+3. Run one of its commands. Plugin commands are `abg` subcommands named after the plugin:
+
+   ```bash
+   abg my-plugin greet --name "Ada"
+   ```
+
+</Steps>
+
+Repository installs use your local `git` command. Private repositories work with your existing SSH
+keys, git credential helper, or GitHub CLI-backed git authentication. ABG does not ask for or store
+GitHub tokens, and it rejects HTTPS URLs with embedded credentials.
+
+## Manage plugins
 
 ```bash
 abg plugin list
-abg plugin list --loaded
-abg plugin install user/repo --yes
-abg plugin install https://github.com/user/repo.git --yes
-abg plugin install git@github.com:user/private-plugin.git --yes
-abg plugin install ./my-plugin --name my-plugin --yes
 abg plugin update
 abg plugin update my-plugin
 abg plugin disable my-plugin
@@ -39,93 +58,91 @@ abg plugin reload my-plugin
 abg plugin uninstall my-plugin
 ```
 
-`install` requires `--yes` because plugin code is arbitrary JavaScript loaded by the local Gateway.
-Repository installs use the local `git` command, so private repositories use the user's existing SSH
-keys, git credential helper, or GitHub CLI-backed git authentication. ABG does not ask for or store
-GitHub tokens, and HTTPS URLs with embedded credentials are rejected.
+- `update` runs `git pull --ff-only` for git-backed user plugins.
+- `disable` keeps the plugin directory and stops loading its commands and transforms. The state is
+  stored in `plugin-state.json` under the active ABG user directory, not in an app database.
+- `reload` reloads a plugin in the running Gateway. Existing tab shares stay in place.
 
-Update runs `git pull --ff-only` for git-backed user plugins. Disable keeps the plugin directory in
-place and writes profile-local state to `plugin-state.json`. ABG does not use an app database for
-plugin enablement.
+## Write a command plugin
 
-## Plugin layout
+<Steps>
 
-```text
-my-plugin/
-  index.js
-  plugin.json
-```
+1. Create a directory with two files:
 
-`index.js` is required. `plugin.json` is optional but recommended because it powers plugin listings
-and command help.
+   ```text
+   hello-plugin/
+     index.js
+     plugin.json
+   ```
 
-```json
-{
-  "name": "my-plugin",
-  "version": "0.1.0",
-  "description": "Short human-readable summary.",
-  "domains": ["https://mail.google.com/*"],
-  "transforms": ["gmail-clean-markdown"],
-  "commands": [
-    {
-      "name": "greet",
-      "description": "Return a greeting.",
-      "args": [
-        { "name": "name", "type": "string", "required": false, "default": "ABG" }
-      ]
-    }
-  ]
-}
-```
+   `index.js` is required. `plugin.json` is optional, but listings and `--help` use it.
 
-## Host API
+2. Describe the plugin in `plugin.json`:
 
-The host API is intentionally small:
+   ```json
+   {
+     "name": "hello-plugin",
+     "version": "0.1.0",
+     "description": "Minimal ABG command plugin.",
+     "commands": [
+       {
+         "name": "greet",
+         "description": "Return a greeting.",
+         "args": [
+           { "name": "name", "type": "string", "required": false, "default": "ABG" }
+         ]
+       }
+     ]
+   }
+   ```
 
-```js
-abg.log("loaded " + abg.plugin.name);
+3. Register the command in `index.js`:
 
-abg.registerTransform("my-transform", function (input) {
-  return String(input).trim();
-});
-```
+   ```js
+   abg.registerCommand("greet", async function (args) {
+     const name = args.name || "ABG";
+     return { ok: true, message: "Hello, " + name };
+   });
+   ```
 
-Transforms are synchronous string-to-string functions. For `abg read --format markdown`, ABG uses
-the generic Markdown transform first and can select a domain-specific Markdown transform when the
-shared tab URL matches a plugin's `domains` globs.
+4. Install it and run the command:
 
-## Command API
+   ```bash
+   abg plugin install ./hello-plugin --name hello-plugin --yes
+   abg plugin reload
+   abg hello-plugin greet --name "Ada"
+   ```
 
-Plugins can expose first-class CLI commands:
+   ```json
+   {
+     "message": "Hello, Ada",
+     "ok": true
+   }
+   ```
 
-```js
-abg.registerCommand("greet", async function (args, context) {
-  return {
-    ok: true,
-    message: "Hello, " + (args.name || "ABG"),
-    plugin: context.plugin.name
-  };
-});
-```
+5. After each edit, run `abg plugin reload hello-plugin`. If a reload fails, the previous version
+   stays active.
 
-Invoke commands as dynamic ABG subcommands:
+</Steps>
+
+Commands accept arguments in several forms:
 
 ```bash
-abg my-plugin greet --name "Ada"
-abg my-plugin greet --tab t1
-abg my-plugin greet --json '{"name":"Ada"}'
-printf '{"name":"Ada"}' | abg my-plugin greet --stdin
+abg hello-plugin greet --name "Ada"
+abg hello-plugin greet --tab t1
+abg hello-plugin greet --json '{"name":"Ada"}'
+printf '{"name":"Ada"}' | abg hello-plugin greet --stdin
 ```
 
-Command results are JSON. Handler failures are returned as structured JSON errors. Audit logs record
-the plugin name, command name, argument key list, and serialized argument byte length; argument
-values are not written to the audit log.
+`--tab`, `--tab-id`, `--match-url`, `--match-title`, and `--first` bind the command to a shared tab
+and are not passed to the plugin. Command results are JSON. Handler failures return a JSON error with
+`error`, `message`, `plugin`, and `command`. The audit log records the plugin name, command name,
+argument keys, and argument byte length, but not argument values.
 
-## Tab API
+## Drive the shared tab
 
-Command handlers can drive the shared tab with `context.tab.<action>(options)`. These methods route
-through the same Gateway path as CLI calls, so per-tab consent, operation approval, and audit logging
-apply uniformly.
+Command handlers can operate the bound tab with `context.tab.<action>(options)`. These calls go
+through the same Gateway path as the CLI, so sharing, approvals, and audit logging still apply.
 
 ```js
 abg.registerCommand("clear-and-paste", async function (args, context) {
@@ -138,5 +155,67 @@ abg.registerCommand("clear-and-paste", async function (args, context) {
 });
 ```
 
-Do not shell out from JavaScript to bypass ABG's browser access path. Use the tab API so approvals
-and audit logs remain consistent.
+Available methods mirror CLI commands: `paste`, `clear`, `fill`, `click`, `key`, `read`, `describe`,
+`wait`, `screenshot`, and `navigate`. Do not shell out from JavaScript to reach the browser another
+way.
+
+If a command runs without an explicit tab and `plugin.json` declares `domains`, ABG binds it to the
+one shared tab whose URL matches. No match returns `no_matching_tab`. More than one match returns
+`ambiguous_tab` with `candidates`.
+
+## Add domain-specific Markdown
+
+Transforms are synchronous string-to-string functions:
+
+```js
+abg.log("loaded " + abg.plugin.name);
+
+abg.registerTransform("gmail-clean-markdown", function (input) {
+  return String(input).trim();
+});
+```
+
+Declare the domains and transform in `plugin.json`:
+
+```json
+{
+  "name": "gmail-plugin",
+  "domains": ["https://mail.google.com/*"],
+  "transforms": ["gmail-clean-markdown"]
+}
+```
+
+When a shared tab URL matches `domains`, `abg read --format markdown` tries the plugin's transform
+first, then falls back to the generic `html-to-markdown` transform. The transform name must contain
+`markdown`.
+
+## Reference
+
+### Where plugins load from
+
+ABG searches plugins in this order:
+
+1. Bundled plugins in `Agent Browser Gateway.app/Contents/Resources/plugins/`.
+2. User-installed plugins under `~/.abg/plugins/`.
+3. Local development plugins in the repository checkout, when you run from the checkout.
+
+Development Gateway runs on port `8766` use `~/.abg-dev/plugins/` instead of `~/.abg/plugins/`, so
+production and development plugin state stay separate.
+
+### Bundled plugins
+
+- `markdown-plugin`: generic HTML to Markdown.
+- `notion-plugin`: Markdown for `notion.so` and `notion.site` pages.
+- `gmail-plugin`, `slack-plugin`, `linear-plugin`: per-domain Markdown examples. `slack-plugin` also
+  adds `catch-up`, `pending`, and `open-channel` commands.
+- `redaction-plugin`: opt-in masking with `abg read --format markdown --redact`.
+- `workflow-plugin`: command examples that use `context.tab.*`.
+- `info-plugin`: a loader smoke test.
+
+The full authoring guide is
+[`docs/PLUGINS.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/PLUGINS.md).
+
+## Related
+
+- [CLI](../cli/): commands plugins build on.
+- [Security](../security/#what-abg-does-not-defend-against): why plugin code is your responsibility.

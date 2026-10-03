@@ -1,47 +1,15 @@
 ---
 title: FAQ
-description: Agent Browser Gateway のよくある質問。
+description: タブが見えないときの対処から MCP、プラグインまで、Agent Browser Gateway のよくある質問。
 sidebar:
   order: 8
 ---
 
-## ABGはPlaywrightの代替ですか？
+よくある質問に短く答えます。困ったときに引かれやすい質問を先に並べました。
 
-いいえ。automationが所有するcleanで再現可能なbrowserが必要ならPlaywrightを使います。ABGは、すでに人間が使っている
-browser sessionから、選択した1タブまたは隔離されたall-tabs profileをagentに渡すためのtoolです。
+## エージェントがタブを見つけられません。何を確かめればよいですか？
 
-## エージェントは全タブを見られますか？
-
-デフォルトでは見られません。通常modeでは、明示的に共有したタブだけが見えます。all-tabs modeは隔離プロファイルや
-sandboxマシン向けの別opt-inです。
-
-## ABGはブラウザーデータをcloud serviceに送りますか？
-
-通常のローカルworkflowでは送りません。Gatewayはlocalに待ち受け、ABG-hosted accountやcloud relayはproduct boundaryに含みません。
-
-## なぜ最初にMCPではなくCLIなのですか？
-
-CLIはshell commandを実行できる任意のagentで使え、人間もdebugしやすく、source of truthとして保てます。
-MCP wrapperは同じローカルcommand surfaceの上にあとから作れます。
-
-## pluginはどこに保存されますか？
-
-bundled pluginはapp bundle内にあります。user-installed pluginは `~/.abg/plugins/` に置かれます。
-port `8766` のdevelopment Gatewayでは `~/.abg-dev/plugins/` を使います。
-
-## plugin設定はDBに保存されますか？
-
-いいえ。plugin enablementはactive ABG user directory配下の `plugin-state.json` にあるprofile-local filesystem stateです。
-plugin enablement用のapp databaseはありません。
-
-## private plugin repositoryはどう認証しますか？
-
-`abg plugin install` はローカルの `git` commandを使います。private repositoryでは既存のSSH key、git credential helper、
-GitHub CLIに紐づいたgit認証を使います。ABGはGitHub tokenを要求・保存しません。
-
-## タブが見えなくなったら？
-
-origin遷移、タブclose、revokeのいずれかを確認します。
+次の順に実行します。
 
 ```bash
 abg status
@@ -49,4 +17,50 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
-必要なら拡張popupからもう一度タブを共有してください。
+タブを閉じた、別のオリジンへ移動した、共有を解除した、のいずれかが考えられます。拡張機能のポップアップからタブを共有し直し、`abg tabs --compact` で今の `ref` を確かめます。エラーコードごとの対処は[うまくいかないとき](../#うまくいかないとき)を参照してください。
+
+## タブの ref が変わったのはなぜですか？
+
+`ref` は1回の共有ごとに割り当てられます。共有を解除してから共有し直したタブには、`t2` のような新しい `ref` が付きます。Gateway を再起動したときも変わることがあります。`abg tabs --compact` で今の値を確かめてください。
+
+## シークレットウィンドウでも使えますか？
+
+使えます。拡張機能の詳細画面で **Allow in incognito** をオンにしてください。Chrome は初期設定では、シークレットウィンドウで拡張機能を動かしません。
+
+## ABG を更新するには？
+
+- Homebrew: `brew upgrade --cask agent-browser-gateway`
+- DMG: 新しい DMG をダウンロードし、**Install Agent Browser Gateway.app** をもう一度実行します。
+- エージェントスキル: `npx skills update -g`
+
+## エージェントは全タブを見られますか？
+
+初期設定では見られません。エージェントに見えるのは、共有したタブだけです。全タブ共有モードは、隔離したプロファイルやサンドボックス用のマシン向けに別途オンにするモードです。
+
+## ABG はブラウザーのデータをクラウドに送りますか？
+
+送りません。Gateway は `127.0.0.1` で待ち受け、ABG にはホスト型のアカウントも、クラウドの中継も、テレメトリーもありません。スマートフォンをペアリングした場合は、選んだ非公開の Tailnet か LAN のインターフェースでも待ち受けます。
+
+## どのエージェントで使えますか？
+
+Claude Code、Codex、Cursor、Cline など、シェルのコマンドを実行できるエージェントなら使えます。Claude Code と Codex にはスキルもあります。`npx skills add arcmanagement/agent-browser-gateway -g` で入れてください。
+
+## MCP に対応していますか？
+
+はい。`abg mcp-server` は、ローカルの CLI を呼ぶ `abg_cli` ツールを1つだけ公開する stdio の MCP サーバーです。基準は CLI のままです。シェルを使えるエージェントならどれでも使え、人もそのまま動きを確かめられます。[エージェントスキルと MCP](../install/#エージェントスキルと-mcp) を参照してください。
+
+## ABG は Playwright の代わりになりますか？
+
+なりません。自動化の側が持つ、まっさらで再現できるブラウザーが欲しいなら Playwright を使います。ABG は、すでに使っているブラウザーのセッションから、タブを1つ、または隔離した全タブ共有のプロファイルをエージェントに渡すための道具です。
+
+## プラグインはどこに保存されますか？
+
+同梱のプラグインはアプリの中にあります。ユーザーが入れたプラグインは `~/.abg/plugins/` に置かれます。ポート `8766` の開発版 Gateway では `~/.abg-dev/plugins/` を使います。
+
+## プラグインの設定はデータベースに保存されますか？
+
+されません。プラグインの有効・無効は、使用中の ABG ユーザーディレクトリにある `plugin-state.json` に保存します。
+
+## 非公開のプラグインリポジトリはどう認証しますか？
+
+`abg plugin install` は手元の `git` コマンドを使います。非公開リポジトリでは、既存の SSH 鍵、git の認証情報ヘルパー、GitHub CLI と連携した git 認証を使います。ABG は GitHub のトークンを求めず、保存もしません。

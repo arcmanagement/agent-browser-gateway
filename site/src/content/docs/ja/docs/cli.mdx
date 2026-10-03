@@ -1,13 +1,15 @@
 ---
 title: CLI
-description: 共有済みブラウザータブを観察・操作する abg コマンド。
+description: abg で共有中のブラウザータブを探し、読み取り、操作し、注釈を付け、録画します。
 sidebar:
   order: 4
 ---
 
-CLIはエージェントとスクリプト向けの安定したinterfaceです。
+`abg` を使うと、ターミナル、スクリプト、エージェントから共有中のタブを探し、読み取り、操作できます。
 
-まず状態と共有タブを確認します。
+コマンドは、`--format` で別の形式を選ばない限り JSON を出力します。JSON のキーは安定した契約として扱われます。詳しくは[エラーと出力](#エラーと出力)を参照してください。
+
+## 共有中のタブを探す
 
 ```bash
 abg status
@@ -15,75 +17,162 @@ abg tabs --compact
 abg inspect
 ```
 
-返ってきた `t1` のようなタブ参照をread-onlyコマンドに渡します。
+- `abg status` は Gateway の状態、接続中の拡張機能、共有中のタブ数を返します。
+- `abg tabs --compact` は共有中のタブを `t1` のような短い `ref` 付きで一覧します。
+- `abg inspect` は両方を1つの JSON にまとめて返します。
+
+`ref` は、Gateway が動いている間は同じタブを指し続けます。他のタブを開いたり閉じたりしても番号はずれません。Gateway を再起動したとき、タブを閉じたとき、共有が終わったときは `ref` を取り直します。Chrome のプロファイルを複数つないでいるときは、生の `tabId` ではなく `ref` を使ってください。同じタブ ID が別のプロファイルにも存在すると、ABG は `ambiguous_tab_id` を返します。
+
+## ページを読み取る
+
+次のコマンドは読み取り専用です。共有中のタブは必要ですが、承認ウィンドウは開きません。
 
 ```bash
 abg read t1 --format markdown
 abg read t1 --selector article --format markdown
-abg frames t1
 abg get text t1 "h1"
 abg snapshot t1 --interactive-only --compact
 abg screenshot t1 --out page.png
-abg record start t1 --out demo.webm
-abg record stop
-abg record status
-abg console t1
 abg table t1 --format markdown
+abg console t1
 abg network t1 --url "*api*"
-abg audit --lines 50
 ```
 
-変更系コマンドも同じ共有タブに対して実行します。設定によりローカル承認promptが出ます。
+`--selector` で範囲を絞ると出力が小さくなります。`snapshot` は `@e1` のような参照を振り、`abg click t1 --ref @e1` に渡せます。`--out` を省くと、`screenshot` は `$TMPDIR/abg/screenshots/` に保存します。
+
+## ページを操作する
+
+書き込み系のコマンドも同じ共有タブに作用します。初期設定では、実行前に **許可** と **拒否** を選べるローカルの承認ウィンドウが開きます。
 
 ```bash
 abg click t1 --selector "button.save"
 abg fill t1 --selector "input[name=email]" --value "me@example.com"
-abg paste t1 --selector "[contenteditable=true]" --stdin
 abg key t1 Enter
 abg upload t1 --selector "input[type=file]" --file ./report.pdf
 abg navigate t1 "https://example.com"
 abg revoke t1
 ```
 
-タブ録画は常にapproval-gatedです。`abg record start` はローカル承認windowを開き、
-AllowクリックがChromeの `tabCapture` に必要なgestureを兼ねます。`--mic` は部屋の音も
-混ぜたい場合だけ使います。
+- `click` のセレクターが複数の要素に一致すると、何もクリックせずに `ambiguous_selector` を返します。セレクターを絞るか、`abg find first|last|nth` やスナップショットの参照を使います。
+- `navigate` で別のオリジンへ移動すると共有は終わります。
+- `upload` には、拡張機能の **Allow access to file URLs** をオンにしておく必要があります。オフのままだと `file_access_required` を返します。
+- `revoke` はタブの共有を解除します。承認は求めません。
 
-## タブ指定
+承認をやめるには、拡張機能のポップアップで **書き込み操作の前に承認を求める** をオフにします。
 
-明示的なタブ参照の代わりにmatch flagも使えます。
+## ref を使わずにタブを指定する
+
+`ref` の代わりに URL やタイトルで照合できます。
 
 ```bash
 abg read --match-url "*notion.so*" --format markdown
 abg click --match-title "Dashboard" --selector "button.refresh"
 ```
 
-iframeを扱う前には `frames` を使います。同一originでアクセスできるframeには `@f1` のような参照が付きます。
+複数の共有タブが一致すると `ambiguous_tab_match` を返します。最初に一致したタブでよければ `--first` を付けます。
+
+## iframe の中を扱う
+
+先に frame を一覧します。同一オリジンの frame には `@f1` のような参照が付きます。
 
 ```bash
 abg frames t1
 abg read t1 --frame @f1 --selector "main" --format markdown
 ```
 
-## リッチエディタ
+クロスオリジンの frame も一覧には出ますが、セレクターでアクセスすると `frame_not_accessible` が返ります。
 
-通常のinputや素直なeditableには `fill` を使います。合成inputを無視するリッチエディタでは `paste` を使い、
-空にする必要がある場合は先に `clear` します。
+## リッチエディターを編集する
+
+通常の入力欄や素直な編集領域には `fill` を使います。リッチエディターが `fill` を受け付けないときは、中身を消してから貼り付けます。
 
 ```bash
 abg clear t1 --selector "[contenteditable=true]"
 printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
 ```
 
-監査ログにはselector、action名、byte lengthなどが記録されます。貼り付けた本文は監査ログに書きません。
+監査ログにはセレクター、操作名、バイト数を記録します。貼り付けた本文は記録しません。
 
-## escape hatch
+## ページに注釈を付けて伝える
 
-通常は `get`、`find`、`wait`、`snapshot`、plugin commandのような名前付きprimitiveを優先します。
-どうしても足りないときだけ `eval` を使います。
+注釈を使うと、ページ上の場所に印とコメントを付け、エージェントに読ませられます。
+
+1. 注釈モードを始めます。ポップアップで **このタブに注釈を付ける** を選ぶか、次を実行します。
+
+   ```bash
+   abg annotate t1 --start
+   ```
+
+2. **範囲** で矩形をドラッグするか、**テキスト** で文字列を選びます。注釈ごとにコメントを書きます。
+3. **完了** を押すか、Escape キーを押して終えます。
+4. 注釈を JSON で読み取ります。
+
+   ```bash
+   abg annotate t1
+   ```
+
+ページを再読み込みすると、注釈は保存されますが再描画はされません。このとき `abg annotate t1` は `nextCommand` として `abg annotate t1 --restore` を返します。
+
+## タブを録画する
+
+```bash
+abg record start t1 --out demo.webm
+abg record status
+abg record stop
+```
+
+`abg record start` は、他の承認をオフにしていても必ずローカルの承認ウィンドウを開きます。**許可** を押すと、共有中のタブをタブの音声付きで WebM に録画し始めます。部屋の音も混ぜたいときだけ `--mic` を付けます。
+
+## ブックマークとリーディングリスト
+
+ブックマークとリーディングリストは、共有タブの内容とは別のデータです。先にポップアップで **ブックマークへのアクセス** または **リーディングリストへのアクセス** をオンにします。
+
+```bash
+abg bookmarks list
+abg bookmarks search "docs"
+abg bookmarks get <bookmark-id>
+abg bookmarks open <bookmark-id>
+abg reading-list list
+abg reading-list search "later"
+```
+
+`bookmarks` は Chrome の `chrome.bookmarks` API と、任意の `bookmarks` 権限を使います。`reading-list` は `chrome.readingList` を使います。Chrome のドキュメントでは Chrome 120 以降で任意の `readingList` 権限とともに使える API です。`chrome.readingList` がないブラウザーでは、未対応であることを示すエラーを返します。監査ログには件数、ID、バイト数を残し、ブックマークやリーディングリストの URL そのものは残しません。
+
+## JavaScript は最後の手段にする
+
+`get`、`find`、`wait`、`snapshot`、プラグインのコマンドなど、名前の付いたコマンドを優先します。それで足りないときだけ `eval` を使います。
 
 ```bash
 abg eval t1 --script "document.title" --approve
 ```
 
-evalは拡張popupで初期状態OFFです。Trusted automationがOFFの場合、各eval呼び出しに `--approve` とローカル承認が必要です。
+eval は、ポップアップで **承認制の JavaScript eval を許可** をオンにするまで使えません。**信頼済み自動化（AutoMode）** がオフの間は、eval を呼ぶたびに `--approve` とローカルの承認が必要です。
+
+## エラーと出力
+
+失敗すると JSON オブジェクトを標準エラーに出し、0 以外の終了コードで終わります。次の例では `userMessage` キーを省いています。
+
+```json
+{
+  "error": "tab_ref_not_found",
+  "message": "No shared tab exists for ref t1.",
+  "nextCommand": "abg tabs --compact"
+}
+```
+
+`error` は変わらない snake_case のコードです。`nextCommand` がある場合は、次に実行しても安全なローカルのコマンドが入っています。多くのエラーには、人向けの対処を書いた `userMessage` も付きます。よく出るコードは次のとおりです。
+
+| コード | 意味 | 次の操作 |
+| --- | --- | --- |
+| `gateway_not_running` | Gateway アプリが起動していません。 | アプリを起動し、`abg status` を実行します。 |
+| `extension_not_connected` | 拡張機能が接続されていません。 | 拡張機能を確かめ、`abg status` を実行します。 |
+| `no_permitted_tabs` | 共有中のタブがありません。 | タブを共有し、`abg tabs --compact` を実行します。 |
+| `tab_not_permitted` | タブが共有されていないか、共有が終わりました。 | 共有し直し、`abg tabs --compact` を実行します。 |
+| `tab_ref_not_found` | その `ref` の共有タブがありません。 | `abg tabs --compact` で今の `ref` を確かめます。 |
+
+出力の契約は [`docs/CLI_JSON_CONTRACT.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLI_JSON_CONTRACT.md) にあります。コマンドの全一覧は [README](https://github.com/arcmanagement/agent-browser-gateway#cli) を参照してください。MCP クライアントからは `abg mcp-server` 経由で同じコマンドを呼べます。[インストール](../install/#エージェントスキルと-mcp) を参照してください。
+
+## 関連ページ
+
+- [プラグイン](../plugins/): コマンドやドメイン専用の Markdown 変換を追加する
+- [セキュリティ](../security/): 承認、eval、監査ログ

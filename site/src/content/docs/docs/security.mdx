@@ -1,64 +1,96 @@
 ---
 title: Security
-description: Consent, local transport, approval prompts, audit logs, and official non-goals.
+description: What an agent can reach through ABG, which actions need approval, what the audit log records, and what ABG does not defend against.
 sidebar:
   order: 7
 ---
 
-ABG is designed for human-owned browser sessions. The security model starts from a narrow default:
-the agent sees no tabs until the user shares one.
+Understand what an agent can reach through ABG, what needs your approval, and what ABG records.
+
+ABG is built for browser sessions that a person owns. The agent sees no tabs until you share one.
 
 ## Consent boundaries
 
-- Per-tab sharing is the default.
-- Shares revoke when the tab closes, changes origin, or is explicitly revoked.
-- Optional all-tabs mode is for isolated profiles and sandbox machines.
-- Bookmarks and Reading List inspection require their own popup toggles and optional API permissions.
-  They are browser-owned personal data, not shared-tab page state.
-- Mutating commands can require a local approval prompt before they run.
-- General JavaScript eval is disabled by default and requires explicit opt-in.
-- Tab recording is always approval-gated. It records only an already-shared tab, shows a `REC`
-  badge while active, and writes WebM chunks to a local file.
+- Per-tab sharing is the default. You share a tab from the popup or with the share shortcut.
+- A share ends when the tab closes, changes origin, or you revoke it.
+- The optional all-tabs mode, **Share all tabs (sandbox profiles only)** in the popup, is for isolated
+  profiles and sandbox machines. Do not turn it on in a personal or mixed-use profile. Turning it on
+  asks Chrome for optional `<all_urls>` access. Turning it off revokes every all-tabs entry and
+  removes that permission.
+- Bookmarks and Reading List need their own popup toggles and optional browser permissions. They are
+  browser-owned personal data, not shared-tab content.
 
-## Local transport
+## Approvals
 
-The Gateway listens on loopback. The browser extension connects to the Gateway locally, and the CLI
-talks to the Gateway through local IPC. ABG does not need an ABG-hosted account or cloud relay for
-the normal local workflow.
-
-Official ABG will not operate a cloud relay, collect telemetry, or silently enable broad JavaScript
-execution. User-controlled remote pairing can exist as a future self-operated connection path, but it
-must not become an ABG-operated relay.
+- Write commands such as `click`, `fill`, `paste`, `navigate`, `upload`, and dialog handling open a
+  local approval window by default. The popup setting is **Require approval for write operations**.
+- Read-only commands, `raise`, and `revoke` never prompt.
+- General JavaScript eval is off by default. Turn it on with **Allow approved JavaScript eval**.
+  While **Trusted automation (AutoMode)** is off, every eval call needs `--approve` and a local
+  approval window that shows the exact script.
+- Tab recording always needs approval, even when other approvals are off. It records only an
+  already-shared tab, shows a `REC` badge while active, and writes WebM to a local file.
 
 ## Audit log
 
-Gateway operations are written to a local JSONL audit log. The log records action names, tab
-references, selectors, approval mode, plugin command names, recording start/stop metadata, and byte
-lengths where relevant. It avoids recording sensitive payload values such as pasted text, plugin
-command argument values, and recorded media contents.
-For browser-owned personal data commands such as `bookmarks` and `reading-list`, audit entries record
-the command boundary, ids, counts, and query byte lengths, but not full saved URLs.
-
-Use:
+The Gateway writes every operation to a local JSONL file at
+`~/Library/Logs/AgentBrowserGateway/audit.jsonl`. To see recent entries:
 
 ```bash
 abg audit --lines 50
 ```
 
+For a daily or weekly summary built from the same log:
+
+```bash
+abg activity --period day
+```
+
+Entries record action names, tab references, selectors, approval mode, plugin command names,
+recording start and stop, and byte lengths where relevant. They do not record pasted text, plugin
+argument values, or recorded media. For `bookmarks` and `reading-list`, entries record ids, counts,
+and query byte lengths, but not full saved URLs.
+
+## Local transport
+
+- The Gateway listens on `127.0.0.1`. The normal local workflow needs no ABG account or cloud relay.
+- The Gateway WebSocket accepts only browser-extension origins, so a normal website cannot connect
+  to it from page JavaScript.
+- The CLI reaches the Gateway through an owner-only Unix socket, or a loopback WebSocket that needs a
+  per-launch token.
+- If you pair a phone, ABG also opens a listener on the private Tailnet or LAN interface you choose.
+  It runs only while a pairing offer or active grant exists. See
+  [Architecture](../architecture/#network-boundaries).
+
+Official ABG does not operate a cloud relay, collect telemetry, or silently enable broad JavaScript
+execution. Remote pairing stays a user-controlled connection, not an ABG-operated relay.
+
+## What ABG defends against
+
+- Prompt injection that tries to reach unshared tabs. The Gateway rejects operations on tabs that are
+  not shared.
+- Over-sharing through navigation. A manually shared tab is revoked when its origin changes.
+- Silent agent activity. Every operation goes to the audit log.
+- Silent recording. Recording cannot start from the CLI without your Allow click.
+
 ## What ABG does not defend against
 
-ABG does not claim to protect against:
+- a malicious local user or a root-level compromise
+- malicious browser extensions in the same profile
+- browser vulnerabilities
+- operations you explicitly approve
+- plugin code you choose to install
 
-- a malicious local user or root-level compromise,
-- malicious browser extensions in the same profile,
-- browser vulnerabilities,
-- operations the user explicitly approves,
-- plugin code the user chooses to install.
-
-Install plugins only from sources you trust. Plugins execute in the local Gateway process.
+Plugins run in the local Gateway process. Install them only from sources you trust.
 
 ## Safer automation defaults
 
 Prefer named commands such as `read`, `get`, `find`, `wait`, `snapshot`, and plugin commands. Use
-`eval` only as a last resort. When eval is enabled, keep AutoMode off unless the profile is trusted
+`eval` only as a last resort. If you turn eval on, keep AutoMode off unless the profile is trusted
 and isolated enough for that workflow.
+
+## Report a vulnerability
+
+Do not open a public GitHub issue for security vulnerabilities. See
+[SECURITY.md](https://github.com/arcmanagement/agent-browser-gateway/blob/main/SECURITY.md) for the
+current reporting status and threat model.

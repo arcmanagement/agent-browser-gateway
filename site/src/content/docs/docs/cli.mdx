@@ -1,13 +1,16 @@
 ---
 title: CLI
-description: Common abg commands for observing and operating shared browser tabs.
+description: Use abg to find, read, operate, annotate, and record shared browser tabs.
 sidebar:
   order: 4
 ---
 
-The CLI is the stable interface for agents and scripts.
+Use `abg` to find a shared tab, read it, and operate it from a terminal, a script, or an agent.
 
-Start with status and tab discovery:
+Every command prints JSON unless you choose another `--format`. The JSON keys are a stable contract;
+see [Errors and output](#errors-and-output).
+
+## Find the shared tab
 
 ```bash
 abg status
@@ -15,77 +18,128 @@ abg tabs --compact
 abg inspect
 ```
 
-Use the returned tab reference, such as `t1`, with read-only commands:
+- `abg status` shows Gateway state, connected extensions, and the shared tab count.
+- `abg tabs --compact` lists shared tabs with a short `ref` such as `t1`.
+- `abg inspect` returns both in one JSON object.
+
+A `ref` stays bound to the same tab while the Gateway runs, even when other tabs open or close. Get
+a fresh ref after the Gateway restarts, the tab closes, or its share ends. When several Chrome
+profiles are connected, use refs instead of raw `tabId` values. The same tab ID can exist in two
+profiles, and ABG then returns `ambiguous_tab_id`.
+
+## Read a page
+
+These commands are read-only. They need a shared tab but do not open an approval window.
 
 ```bash
-abg bookmarks list
-abg bookmarks search "reference"
-abg reading-list list
 abg read t1 --format markdown
 abg read t1 --selector article --format markdown
-abg frames t1
 abg get text t1 "h1"
 abg snapshot t1 --interactive-only --compact
 abg screenshot t1 --out page.png
-abg record start t1 --out demo.webm
-abg record stop
-abg record status
-abg console t1
 abg table t1 --format markdown
+abg console t1
 abg network t1 --url "*api*"
-abg audit --lines 50
 ```
 
-Mutating commands operate on the same shared tab and can trigger a local approval prompt:
+Use `--selector` to keep output small. `snapshot` assigns refs such as `@e1` that you can pass to
+`abg click t1 --ref @e1`. Without `--out`, `screenshot` saves to `$TMPDIR/abg/screenshots/`.
+
+## Operate a page
+
+Write commands act on the same shared tab. By default, each one opens a local approval window with
+**Allow** and **Deny** before it runs.
 
 ```bash
 abg click t1 --selector "button.save"
 abg fill t1 --selector "input[name=email]" --value "me@example.com"
-abg paste t1 --selector "[contenteditable=true]" --stdin
 abg key t1 Enter
 abg upload t1 --selector "input[type=file]" --file ./report.pdf
 abg navigate t1 "https://example.com"
 abg revoke t1
 ```
 
-Tab recording is always approval-gated. `abg record start` opens a local approval window, and the
-Allow click supplies the Chrome `tabCapture` gesture needed to start WebM recording with tab audio.
-Use `--mic` only when room audio should be mixed in.
+- A `click` selector that matches more than one element returns `ambiguous_selector` and clicks
+  nothing. Narrow the selector, or use `abg find first|last|nth` or a snapshot ref.
+- `navigate` to another origin ends the share.
+- `upload` needs **Allow access to file URLs** turned on for the extension. Without it, ABG returns
+  `file_access_required`.
+- `revoke` stops sharing the tab and never prompts.
 
-## Targeting
+To turn approvals off, use **Require approval for write operations** in the extension popup.
 
-Commands accept an explicit tab reference or match flags:
+## Target a tab without a ref
+
+Match on URL or title instead of a ref:
 
 ```bash
 abg read --match-url "*notion.so*" --format markdown
 abg click --match-title "Dashboard" --selector "button.refresh"
 ```
 
-Use `frames` before selecting iframe content. Same-origin accessible frames receive refs such as
-`@f1`:
+If more than one shared tab matches, ABG returns `ambiguous_tab_match`. Add `--first` to use the
+first match.
+
+## Work inside iframes
+
+List frames first. Same-origin frames get refs such as `@f1`:
 
 ```bash
 abg frames t1
 abg read t1 --frame @f1 --selector "main" --format markdown
 ```
 
-## Rich editors
+Cross-origin frames appear in the list, but selector access returns `frame_not_accessible`.
 
-Use `fill` for normal inputs and plain editable fields. Use `paste` when a rich editor ignores
-synthetic value updates, and `clear` when you need to empty an editor first:
+## Edit rich editors
+
+Use `fill` for normal inputs and plain editable fields. When a rich editor ignores `fill`, clear it
+and paste instead:
 
 ```bash
 abg clear t1 --selector "[contenteditable=true]"
 printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
 ```
 
-The audit log records selectors, action names, and byte lengths. It does not write pasted text into
-the audit log.
+The audit log records the selector, action, and byte length. It does not record the pasted text.
 
-## Browser-Owned Personal Data
+## Annotate a page for the agent
 
-Bookmarks and Reading List entries are separate from shared-tab page state. Enable the Bookmarks or
-Reading List toggle in the extension popup before using:
+Annotations let you mark parts of a page and add comments that the agent can read.
+
+1. Start annotation mode. In the popup, choose **Annotate this tab**, or run:
+
+   ```bash
+   abg annotate t1 --start
+   ```
+
+2. Use **Area** to drag a rectangle or **Text** to select text. Add a comment to each annotation.
+3. Click **Done** or press Escape.
+4. Read the annotations as JSON:
+
+   ```bash
+   abg annotate t1
+   ```
+
+After a page reload, annotations are saved but not redrawn. `abg annotate t1` then returns a
+`nextCommand` of `abg annotate t1 --restore`.
+
+## Record a tab
+
+```bash
+abg record start t1 --out demo.webm
+abg record status
+abg record stop
+```
+
+`abg record start` always opens a local approval window, even when other approvals are off. The
+**Allow** click starts a WebM recording of the shared tab with tab audio. Add `--mic` only when room
+audio should be mixed in.
+
+## Bookmarks and Reading List
+
+Bookmarks and Reading List entries are separate from shared-tab content. Turn on
+**Bookmarks access** or **Reading List access** in the popup first:
 
 ```bash
 abg bookmarks list
@@ -96,20 +150,55 @@ abg reading-list list
 abg reading-list search "later"
 ```
 
-`bookmarks` uses Chrome's `chrome.bookmarks` API and optional `bookmarks` permission. `reading-list`
-uses `chrome.readingList`, documented by Chrome for Chrome 120+ with the optional `readingList`
-permission. Browsers that do not expose `chrome.readingList` return an explicit unsupported error.
-Audit logs store command metadata, counts, ids, and byte lengths, not full bookmark or Reading List
-URLs.
+`bookmarks` uses Chrome's `chrome.bookmarks` API and the optional `bookmarks` permission.
+`reading-list` uses `chrome.readingList`, which Chrome documents for Chrome 120 and newer with the
+optional `readingList` permission. Browsers without `chrome.readingList` return an explicit
+unsupported error. Audit entries store counts, ids, and byte lengths, not full bookmark or Reading
+List URLs.
 
-## Escape hatch
+## Run JavaScript as a last resort
 
-Prefer named primitives such as `get`, `find`, `wait`, `snapshot`, and plugin commands. Use `eval`
-only when those primitives are not enough:
+Prefer named commands such as `get`, `find`, `wait`, `snapshot`, and plugin commands. Use `eval`
+only when they are not enough:
 
 ```bash
 abg eval t1 --script "document.title" --approve
 ```
 
-Eval is disabled by default in the extension popup. When Trusted automation is off, `--approve` and
-a local approval prompt are required for each eval call.
+Eval is off until you turn on **Allow approved JavaScript eval** in the popup. While
+**Trusted automation (AutoMode)** is off, every eval call needs `--approve` and a local approval.
+
+## Errors and output
+
+Failures print a JSON object to stderr and exit with a non-zero status. This example omits the
+`userMessage` key:
+
+```json
+{
+  "error": "tab_ref_not_found",
+  "message": "No shared tab exists for ref t1.",
+  "nextCommand": "abg tabs --compact"
+}
+```
+
+`error` is a stable snake_case code. `nextCommand`, when present, is a safe local command to run
+next. Many errors also include a `userMessage` with recovery steps for a person. Common codes:
+
+| Code | Meaning | Next step |
+| --- | --- | --- |
+| `gateway_not_running` | The Gateway app is not running. | Start the app, then run `abg status`. |
+| `extension_not_connected` | No browser extension is connected. | Check the extension, then run `abg status`. |
+| `no_permitted_tabs` | No tab is shared. | Share a tab, then run `abg tabs --compact`. |
+| `tab_not_permitted` | The tab is not shared or its share ended. | Share it again, then run `abg tabs --compact`. |
+| `tab_ref_not_found` | No shared tab has that ref. | Run `abg tabs --compact` for current refs. |
+
+The full output contract is in
+[`docs/CLI_JSON_CONTRACT.md`](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLI_JSON_CONTRACT.md).
+The complete command list is in the
+[README](https://github.com/arcmanagement/agent-browser-gateway#cli). MCP clients can call the same
+commands through `abg mcp-server`; see [Install](../install/#agent-skills-and-mcp).
+
+## Related
+
+- [Plugins](../plugins/): add commands and domain-specific Markdown.
+- [Security](../security/): approvals, eval, and the audit log.

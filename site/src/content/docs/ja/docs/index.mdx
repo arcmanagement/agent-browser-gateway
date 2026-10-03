@@ -1,58 +1,120 @@
 ---
 title: はじめに
-description: Agent Browser Gateway でブラウザータブをローカルAIエージェントに共有する。
+description: Chrome のタブを1つローカルのAIエージェントと共有し、abg CLI で読み取るまでを2分ほどで済ませます。
 sidebar:
   order: 1
 ---
 
-Agent Browser Gateway (ABG) は、ユーザーが明示的に共有したブラウザータブと、`abg` CLI
-を実行できるAIコーディングエージェントをつなぐローカルブリッジです。デフォルトでは、
-エージェントから見えるタブはありません。ユーザーが拡張機能のpopupからタブを共有して初めて、
-そのタブだけをCLI経由で扱えるようになります。
+import { Steps } from '@astrojs/starlight/components';
 
-## 最初の流れ
+Chrome のタブを1つ共有し、`abg` で読み取ってから共有を解除します。
 
-1. [インストール](./install/)でGatewayアプリ、ブラウザー拡張、CLIを用意します。
-2. エージェントに渡したいタブを開きます。
-3. ABG拡張アイコンから **Share this tab with agent** を選びます。
-4. 共有状態を確認します。
+**必要なもの:** macOS 14 以降の Apple Silicon 搭載 Mac、Google Chrome 120 以降、[Homebrew](https://brew.sh/)。Windows やソースからのビルドは[インストール](./install/)を参照してください。
+
+## クイックスタート
+
+<Steps>
+
+1. [Chrome ウェブストア](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi)から拡張機能を入れます。
+
+2. Gateway アプリと `abg` CLI を入れます。
+
+   ```bash
+   brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+   brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
+   brew install --cask agent-browser-gateway
+   ```
+
+3. Gateway を起動し、拡張機能とつながったか確かめます。
+
+   ```bash
+   open -a "Agent Browser Gateway"
+   abg status
+   ```
+
+   メニューバーにアイコンが出ます。`abg status` の JSON で `running` が `true`、`extensionCount` が 1 以上なら接続できています。
+
+4. 共有したいページを開きます。ABG 拡張機能のアイコンを押し、**このタブをエージェントと共有** を選びます。英語表示では **Share this tab with agents** です。アイコンに緑の `ON` バッジが付きます。
+
+5. 共有中のタブを一覧します。
 
    ```bash
    abg tabs --compact
    ```
 
-5. 返ってきた `t1` のような参照を使います。
+   ```json
+   [
+     {
+       "accessMode" : "manual",
+       "browser" : "chrome",
+       "ref" : "t1",
+       "tabId" : 418,
+       "targetId" : -1,
+       "title" : "Example Domain",
+       "url" : "https://example.com/"
+     }
+   ]
+   ```
+
+   `ref` は他のコマンドに渡す短い名前です。`tabId` と `targetId` の値は環境ごとに変わります。ポップアップでプロファイル名を設定すると `profile` キーも付きます。1タブ1行で見たいときは `abg tabs --format text` を使います。
+
+   ```text
+   t1	418	manual	[Example Domain]	https://example.com/
+   ```
+
+6. ページを Markdown で読み取ります。
 
    ```bash
    abg read t1 --format markdown
-   abg screenshot t1 --out page.png
+   ```
+
+   ページの内容が Markdown で出力されます。手順5の `ref` が `t1` でなければ、その値に置き換えます。
+
+7. 共有を解除します。
+
+   ```bash
    abg revoke t1
    ```
 
-## 含まれるもの
+   `ok: true` が返り、`abg tabs --compact` の一覧からタブが消えます。
 
-- loopbackで待ち受けるローカルGatewayアプリ
-- 明示的に選択したタブを共有するブラウザー拡張
-- エージェントやスクリプトから使う `abg` CLI
-- `npx skills add arcmanagement/agent-browser-gateway -g` で入る Claude Code / Codex 向けスキル
-- 操作を確認できるローカル監査ログ
+</Steps>
 
-## アクセスモデル
+Claude Code や Codex にタブを扱わせるには、`npx skills add arcmanagement/agent-browser-gateway -g` でエージェントスキルを入れ、タブの `ref` をエージェントに伝えます。詳しくは [エージェントスキルと MCP](./install/#エージェントスキルと-mcp) を参照してください。
 
-ABGは、最初はどのタブも見えない状態で起動します。ユーザーが拡張のpopupからタブを共有し、
-タブが閉じられたとき、originが変わったとき、または明示的に解除されたときに共有は失効します。
+## うまくいかないとき
 
-隔離プロファイルやsandboxマシン向けには、明示的にONにできるall-tabs modeもあります。通常の
-普段使いプロファイルでは、per-tab共有をデフォルトとして扱います。
+`abg` のエラーは JSON で返り、`error` にコードが入ります。多くの場合、次に実行するコマンドが `nextCommand` に入っています。
 
-click、fill、paste、navigate、upload、dialog操作のような変更系コマンドは、設定によりローカル承認
-promptを挟みます。read-onlyの観察コマンドは承認promptを出しませんが、共有済みタブである必要はあります。
+- **`gateway_not_running`**: Gateway アプリが起動していません。`open -a "Agent Browser Gateway"` を実行してから `abg status` を確かめます。
+- **シェルが `abg` を見つけられない**: CLI が `PATH` にありません。`brew info --cask agent-browser-gateway` で cask が入っているか確かめ、ターミナルを開き直します。
+- **`extensionCount` が 0、またはポップアップに「未接続」と出る**: 拡張機能が Gateway に届いていません。`chrome://extensions` で拡張機能が有効か、Gateway アプリが起動しているかを確かめ、ポップアップを開き直します。
+- **`abg tabs --compact` の `tabs` が空で `permittedTabCount` が 0**、または `abg tabs --format text` が `No permitted tabs.` を出す: 共有中のタブがありません。手順4をやり直します。
+- **`tab_ref_not_found`**: その `ref` の共有タブがありません。`abg tabs --compact` で今の `ref` を確かめます。共有を解除してから共有し直したタブには、新しい `ref` が付きます。
+- **`no_permitted_tabs` または `tab_not_permitted`**: タブが共有されていないか、閉じた・別のオリジンへ移動した・解除されたことで共有が終わりました。共有し直してから `abg tabs --compact` を実行します。
+- **ポップアップでシークレット モードでの実行の許可を求められる**: Chrome は初期設定では、シークレットウィンドウで拡張機能を動かしません。拡張機能の詳細画面で **Allow in incognito** をオンにします。[インストール](./install/#ブラウザー拡張機能)を参照してください。
+
+## 共有の仕組み
+
+- 共有するまで、エージェントにはどのタブも見えません。
+- タブを閉じる、別のオリジンへ移動する、ポップアップ・ショートカット・`abg revoke` で解除する、のいずれかで共有は終わります。
+- `click`、`fill`、`paste`、`navigate`、`upload` などの書き込み系コマンドは、初期設定で実行前にローカルの承認ウィンドウを開きます。読み取り系コマンドは承認を求めませんが、共有中のタブが必要です。
+- 操作はすべてローカルの監査ログに記録されます。`abg audit --lines 50` で直近の記録を見られます。
+
+ショートカットは、表示中のタブだけに作用します。
+
+| ショートカット | 動作 |
+| --- | --- |
+| `Alt+Shift+S`、macOS では `Option+Shift+S` | タブを共有します。共有中なら解除します。 |
+| `Alt+Shift+C`、macOS では `Option+Shift+C` | 数値のタブ ID をコピーします。タブは共有しません。 |
+
+結果はバッジ、ツールチップ、ポップアップに出ます。キーは `chrome://extensions/shortcuts` で変更できます。
+
+隔離したプロファイルやサンドボックス用のマシン向けに、プロファイル内の全タブを共有するオプトインのモードもあります。[セキュリティ](./security/#共有の範囲)を参照してください。
 
 ## 次に読む
 
-- [インストール](./install/)
-- [CLI](./cli/)
-- [プラグイン](./plugins/)
-- [アーキテクチャ](./architecture/)
-- [セキュリティ](./security/)
-- [FAQ](./faq/)
+- [インストール](./install/): Windows の状況、DMG、ソースからのビルド、エージェントスキル、MCP
+- [CLI](./cli/): 共有タブの読み取り、調査、操作、注釈
+- [セキュリティ](./security/): 共有、承認、監査ログ、防げないこと
+- [FAQ](./faq/): よくある質問と対処
