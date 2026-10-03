@@ -142,6 +142,13 @@ jobs:
           GITHUB_RELEASE_DRAFT: "true"
         run: scripts/release/upload-github-release-assets.sh
 
+      - name: Reconcile checksums with the published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: scripts/release/reconcile-release-checksums.sh
+
       - uses: actions/upload-artifact@v7
         with:
           name: agent-browser-gateway-release-${{ steps.version.outputs.version }}

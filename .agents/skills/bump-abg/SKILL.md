@@ -162,13 +162,16 @@ git commit -m "Release v<new-version>"
 git push origin main
 ```
 
-Create a GitHub Release only when requested:
+Create a GitHub Release only when requested. Pushing the tag starts `release-artifacts.yml`, which
+builds adhoc-signed archives, submits the extension to the Chrome Web Store (staged publish), and runs
+Windows CI. Create the draft release with the signed assets right after pushing the tag, before CI
+reaches its upload step, so CI keeps them:
 
 ```bash
 VERSION=<new-version>
-git tag "v$VERSION"
+git tag -a "v$VERSION" -m "Agent Browser Gateway v$VERSION"
 git push origin "v$VERSION"
-gh release create "v$VERSION" \
+gh release create "v$VERSION" --draft \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.zip" \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.zip.sha256.txt" \
   "dist/agent-browser-gateway-$VERSION-macos-arm64.dmg" \
@@ -179,7 +182,29 @@ gh release create "v$VERSION" \
   --notes-file release-notes.md
 ```
 
-If the release asset already exists, inspect with `gh release view "v$VERSION"` and use the least destructive upload/update path.
+CI never replaces existing assets or notes. After uploading, it runs
+`scripts/release/reconcile-release-checksums.sh`, which rewrites `SHA256SUMS.txt`, the
+`*.sha256.txt` files, and the `agent-browser-gateway.rb` asset from the assets the release actually
+serves. If signed assets were uploaded after CI finished, rerun it:
+
+```bash
+gh workflow run reconcile-release-checksums.yml -f version="$VERSION"
+# or locally: VERSION="$VERSION" scripts/release/reconcile-release-checksums.sh
+```
+
+Verify, then publish:
+
+```bash
+dir="$(mktemp -d)" && gh release download "v$VERSION" --dir "$dir" \
+  && (cd "$dir" && shasum -a 256 -c SHA256SUMS.txt) && rm -rf "$dir"
+gh release edit "v$VERSION" --draft=false --latest
+```
+
+`main` requires a pull request, so land the release bump through a PR before tagging.
+
+If `codesign` reports the Developer ID identity as ambiguous (two certificates with the same name in
+the keychain), pass the SHA-1 hash of the certificate used for the previous release as
+`SIGN_IDENTITY`.
 
 ## Local Install Refresh
 
