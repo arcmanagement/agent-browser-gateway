@@ -113,8 +113,8 @@ CLI. Install the browser extension first, then install the local Gateway.
    **Install Agent Browser Gateway.app**.
 
 The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, installs
-`abg` under `/usr/local/bin`, installs the bundled Claude Code and Codex skills,
-and starts the menubar app.
+`abg` under `/usr/local/bin`, and starts the menubar app. Install the Claude Code and Codex skills
+separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
 
 Windows package-manager install and release ZIPs are pending for `v0.4.8` while the signed Windows
 release workflow is completed. For current Windows testing, clone the repository on Windows and run
@@ -167,7 +167,7 @@ pages, on incognito tabs until "Allow in incognito" is enabled, and while all-ta
 on. Rebind or clear either shortcut at `chrome://extensions/shortcuts` (Firefox:
 `about:addons` → Manage Extension Shortcuts); the popup shows the current keys.
 
-For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs (sandbox profiles only)**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
 Short refs from `abg tabs --compact` are the pin-equivalent for a running Gateway session. A ref is
 bound to the pair of browser profile and Chrome tab ID, so adding/removing other tabs does not
@@ -897,7 +897,7 @@ Currently shipped:
 - ✅ Operation approval mode (default ON, popup-gated)
 - ✅ Multi-Chrome-profile labelling
 - ✅ Local audit log (JSONL)
-- ✅ `abg` CLI with Claude Code and Codex Skills bundled
+- ✅ `abg` CLI with Claude Code and Codex skills (installed via `npx skills add`)
 - ✅ Stdio MCP wrapper over the same CLI (`abg mcp-server`)
 - ✅ JS plugin system (Obsidian-style; bundled generic Markdown and Notion per-domain plugins)
 - ✅ Gateway runtime/macOS shell boundary for future desktop OS ports (see [docs/GATEWAY_CORE_BOUNDARY.md](docs/GATEWAY_CORE_BOUNDARY.md))

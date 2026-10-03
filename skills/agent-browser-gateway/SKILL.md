@@ -8,9 +8,9 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 Windows では `abg.exe` を使う。パス、profile、制限の差分は [WINDOWS.md](WINDOWS.md) を参照。
 
-ユーザーは Chrome 拡張アイコンをクリックして「このタブを共有」を**明示的に許可**したタブだけを、`abg` CLI 経由で参照できる。許可されていないタブには触れない (エラーになる)。
+ユーザーは Chrome 拡張アイコンをクリックして「このタブをエージェントと共有」を**明示的に許可**したタブだけを、`abg` CLI 経由で参照できる。許可されていないタブには触れない (エラーになる)。
 
-例外として、隔離した Chrome プロファイル / sandbox マシンでは、拡張 popup の `Share all tabs in this profile` をユーザーが明示的に ON にできる。この場合のみ Chrome の optional `<all_urls>` 権限を要求し、`abg tabs` に `accessMode: "all_tabs"` のタブが並ぶ。普段使いプロファイルでは per-tab 明示許可を前提にする。
+例外として、隔離した Chrome プロファイル / sandbox マシンでは、拡張 popup の `Share all tabs (sandbox profiles only)` をユーザーが明示的に ON にできる。この場合のみ Chrome の optional `<all_urls>` 権限を要求し、`abg tabs` に `accessMode: "all_tabs"` のタブが並ぶ。普段使いプロファイルでは per-tab 明示許可を前提にする。
 
 ## 基本フロー
 

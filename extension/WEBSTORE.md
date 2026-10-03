@@ -133,7 +133,7 @@ Suggested permission justifications:
 - `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway, and copy the current tab ID to the clipboard when the user presses the copy-tab-ID keyboard shortcut.
 - Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
 - Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.
-- Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs in this profile"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.
+- Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs (sandbox profiles only)"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.
 
 Remote code declaration:
 
@@ -162,7 +162,7 @@ browser data on ABG-operated servers.
 Suggested reviewer test instructions:
 
 ```text
-No account is required. To test: download the signed macOS gateway package from the latest GitHub Release at https://github.com/arcmanagement/agent-browser-gateway/releases, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. To test optional all-tabs mode, use an isolated Chrome profile, open the ABG popup, enable "Share all tabs in this profile", accept Chrome's permission prompt, then confirm `abg tabs --compact` shows `accessMode` as `all_tabs`. For help, contact contact@arcm.co.jp.
+No account is required. To test: download the signed macOS gateway package from the latest GitHub Release at https://github.com/arcmanagement/agent-browser-gateway/releases, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. To test optional all-tabs mode, use an isolated Chrome profile, open the ABG popup, enable "Share all tabs (sandbox profiles only)", accept Chrome's permission prompt, then confirm `abg tabs --compact` shows `accessMode` as `all_tabs`. For help, contact contact@arcm.co.jp.
 ```
 
 ## Stable Chrome extension ID
