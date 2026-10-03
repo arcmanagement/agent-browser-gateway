@@ -25,6 +25,7 @@ import {
   tabHost,
   tabRiskFlags,
   trustedAutomationNote,
+  visibleSharedTabs,
 } from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
@@ -75,6 +76,8 @@ let lang: Language = "en";
 // when the state really changes (never on first paint).
 let lastGate: GateMode | null = null;
 let transitionTimer: number | null = null;
+// Whether the shared-tabs list shows every row; it stays as the user left it across refreshes.
+let sharedTabsExpanded = false;
 
 function setLanguage(next: Language): void {
   if (next === lang && document.documentElement.lang === next) return;
@@ -190,7 +193,9 @@ function renderSharedTabs(state: PopupState, currentTabId: number): void {
 
   const list = document.createElement("ul");
   list.className = "list";
-  for (const sharedTab of state.sharedTabs) {
+  list.id = "sharedTabsList";
+  const { rows, hidden } = visibleSharedTabs(state.sharedTabs, currentTabId, sharedTabsExpanded);
+  for (const sharedTab of rows) {
     const item = document.createElement("li");
     const allTabs = sharedTab.accessMode === "all_tabs";
     item.className = allTabs ? "list-item all-tabs" : "list-item";
@@ -240,6 +245,26 @@ function renderSharedTabs(state: PopupState, currentTabId: number): void {
       item.append(revoke);
     }
     list.append(item);
+  }
+  // Collapsing only applies when there is something to hide or to fold back.
+  if (hidden > 0 || sharedTabsExpanded) {
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "list-more";
+    toggle.setAttribute("aria-controls", list.id);
+    toggle.setAttribute("aria-expanded", String(sharedTabsExpanded));
+    toggle.textContent = sharedTabsExpanded
+      ? t(lang, "popup.sharedTabs.showLess")
+      : t(lang, "popup.sharedTabs.showMore", { count: hidden });
+    toggle.onclick = () => {
+      sharedTabsExpanded = !sharedTabsExpanded;
+      renderSharedTabs(state, currentTabId);
+      document.querySelector<HTMLButtonElement>("#sharedList .list-more")?.focus();
+    };
+    const row = document.createElement("li");
+    row.className = "list-item list-more-row";
+    row.append(toggle);
+    list.append(row);
   }
   sharedListEl.replaceChildren(head, list);
 }

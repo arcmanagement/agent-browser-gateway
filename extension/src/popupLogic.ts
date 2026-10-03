@@ -264,6 +264,32 @@ export function tabHost(url: string | undefined): string {
   }
 }
 
+export const SHARED_TABS_COLLAPSED_LIMIT = 4;
+
+/**
+ * Rows for the shared-tabs list: the current tab first, then the others in their existing
+ * order. Collapsed, the list shows at most SHARED_TABS_COLLAPSED_LIMIT rows (all-tabs mode can
+ * share dozens) and reports how many are hidden behind "Show more".
+ */
+export function visibleSharedTabs<T extends { tabId: number }>(
+  tabs: readonly T[],
+  currentTabId: number,
+  expanded: boolean,
+): { rows: T[]; hidden: number } {
+  const ordered = [
+    ...tabs.filter((tab) => tab.tabId === currentTabId),
+    ...tabs.filter((tab) => tab.tabId !== currentTabId),
+  ];
+  // Hiding a single row saves no space over the "Show more" row that replaces it.
+  if (expanded || ordered.length <= SHARED_TABS_COLLAPSED_LIMIT + 1) {
+    return { rows: ordered, hidden: 0 };
+  }
+  return {
+    rows: ordered.slice(0, SHARED_TABS_COLLAPSED_LIMIT),
+    hidden: ordered.length - SHARED_TABS_COLLAPSED_LIMIT,
+  };
+}
+
 export function sharedTabAccessLabel(
   tab: PopupState["sharedTabs"][number],
   lang: Language,

@@ -74,6 +74,8 @@ export const ja: MessageCatalog = {
   "popup.sharedTabs.thisTab": "このタブ",
   "popup.sharedTabs.revoke": "解除",
   "popup.sharedTabs.revokeLabel": "タブ {tabId}（{title}）の共有を解除",
+  "popup.sharedTabs.showMore": "ほか {count} 件を表示",
+  "popup.sharedTabs.showLess": "表示を減らす",
   "popup.permissions.heading": "権限",
   "popup.permissions.group.everyday": "基本",
   "popup.permissions.group.automation": "自動化",

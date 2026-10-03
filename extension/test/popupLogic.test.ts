@@ -19,6 +19,7 @@ import {
   tabHost,
   tabRiskFlags,
   trustedAutomationNote,
+  visibleSharedTabs,
 } from "../src/popupLogic.js";
 import type { ExtensionSettings } from "../src/types.js";
 
@@ -319,6 +320,19 @@ describe("popupLogic", () => {
     expect(tabHost("chrome://settings/")).toBe("chrome://settings/");
     expect(tabHost(undefined)).toBe("");
     expect(tabHost("not a url")).toBe("not a url");
+  });
+
+  it("caps the shared-tabs list with the current tab first", () => {
+    const tabs = Array.from({ length: 9 }, (_, i) => ({ tabId: 100 + i }));
+    const collapsed = visibleSharedTabs(tabs, 106, false);
+    expect(collapsed.rows.map((tab) => tab.tabId)).toEqual([106, 100, 101, 102]);
+    expect(collapsed.hidden).toBe(5);
+    const expanded = visibleSharedTabs(tabs, 106, true);
+    expect(expanded.rows).toHaveLength(9);
+    expect(expanded.hidden).toBe(0);
+    // Five rows fit: hiding one would cost the same space as the "Show more" row.
+    expect(visibleSharedTabs(tabs.slice(0, 5), 999, false)).toMatchObject({ hidden: 0 });
+    expect(visibleSharedTabs(tabs.slice(0, 6), 999, false).hidden).toBe(2);
   });
 
   it("labels shared-tab rows", () => {

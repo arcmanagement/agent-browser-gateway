@@ -80,6 +80,8 @@ export const en = {
   "popup.sharedTabs.thisTab": "this tab",
   "popup.sharedTabs.revoke": "Revoke",
   "popup.sharedTabs.revokeLabel": "Revoke access to tab {tabId}: {title}",
+  "popup.sharedTabs.showMore": "Show {count} more",
+  "popup.sharedTabs.showLess": "Show fewer",
   "popup.permissions.heading": "Permissions",
   "popup.permissions.group.everyday": "Everyday",
   "popup.permissions.group.automation": "Automation",

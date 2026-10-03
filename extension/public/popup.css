@@ -778,6 +778,32 @@ html:not(.ready) .top * {
   border-color: var(--warning-line);
   color: var(--warning-text);
 }
+.list-more-row {
+  min-height: 0;
+  padding: 0;
+}
+.list-more {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px 0 28px;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.list-more:hover:not(:disabled) {
+  background: var(--ink-3);
+  color: var(--text);
+}
+.list-more:active:not(:disabled) {
+  transform: none;
+}
+.list-more:focus-visible {
+  outline-offset: -2px;
+}
 .list-item button.revoke {
   flex: 0 0 auto;
   min-height: 26px;
