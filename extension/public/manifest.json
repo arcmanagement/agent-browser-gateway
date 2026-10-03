@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Agent Browser Gateway",
+  "name": "__MSG_extName__",
   "version": "0.4.8",
-  "description": "Share Chrome tabs with AI coding agents via explicit local permission.",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
   "homepage_url": "https://agent-browser-gateway.com/",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArPR/lUgvlST8qBzTXZqgQFC9vybUUmG3F8fgK6W5n2Tnko9fOc98kLW8vi2ZGvvCwWjPlkYrx4e6kidd67cFw05uGVst5awKgNYB2nYQgwFVC2oy8dhZOwJsxzLziNNtetpS1UBGh3RAjSGzIx/5LC0V6uLbojIg5kKhFSsB0kyPXtbSfwWJLbAG5jwOAPVKiKtK61we1tLQfuLpMCK1gY2z9BrK8g5ZZzJvf6D8i60tNvBgo9d9zuaoeoEE5g4c9gFHgrb3gQo0yXuzAR4HeEttu4hj8aHpK4An2EJFH97sAFUYHK+W88/2j7MkAtmBphofbOExwXU6SocnK6jSMQIDAQAB",
   "minimum_chrome_version": "120",
@@ -37,7 +38,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Agent Browser Gateway",
+    "default_title": "__MSG_extName__",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/16.png",
@@ -51,14 +52,14 @@
         "default": "Alt+Shift+S",
         "mac": "Alt+Shift+S"
       },
-      "description": "Share or revoke the current tab"
+      "description": "__MSG_commandToggleShare__"
     },
     "copy-current-tab-id": {
       "suggested_key": {
         "default": "Alt+Shift+C",
         "mac": "Alt+Shift+C"
       },
-      "description": "Copy the current tab ID (does not share the tab)"
+      "description": "__MSG_commandCopyTabId__"
     }
   }
 }

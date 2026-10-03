@@ -1,0 +1,26 @@
+{
+  "extName": {
+    "message": "Agent Browser Gateway",
+    "description": "Extension name. Product name; keep it in English."
+  },
+  "extNameFirefox": {
+    "message": "Agent Browser Gateway for Firefox",
+    "description": "Extension name in the Firefox build."
+  },
+  "extDescription": {
+    "message": "Share Chrome tabs with AI coding agents via explicit local permission.",
+    "description": "Extension description shown in chrome://extensions and the Chrome Web Store. Max 132 characters."
+  },
+  "extDescriptionFirefox": {
+    "message": "Share Firefox tabs with AI coding agents via explicit local permission.",
+    "description": "Extension description in the Firefox build."
+  },
+  "commandToggleShare": {
+    "message": "Share or revoke the current tab",
+    "description": "Keyboard shortcut description for toggle-share-current-tab."
+  },
+  "commandCopyTabId": {
+    "message": "Copy the current tab ID (does not share the tab)",
+    "description": "Keyboard shortcut description for copy-current-tab-id."
+  }
+}
