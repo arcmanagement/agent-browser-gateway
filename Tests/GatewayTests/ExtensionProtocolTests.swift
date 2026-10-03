@@ -151,10 +151,12 @@ final class ExtensionProtocolTests: XCTestCase {
 
         let message = try JSONDecoder().decode(ExtensionMessage.self, from: json)
 
-        guard case .tabPermitted(_, _, _, _, _, let accessMode) = message else {
+        guard case .tabPermitted(_, _, _, _, _, let accessMode, let favicon) = message else {
             return XCTFail("expected tab_permitted")
         }
         XCTAssertEqual(accessMode, "all_tabs")
+        // Older extensions send no icon; the share still decodes.
+        XCTAssertNil(favicon)
     }
 
     func testDecodesTabRevokedWithSafeFallbackReason() throws {

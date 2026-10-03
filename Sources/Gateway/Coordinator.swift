@@ -250,10 +250,13 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             if let kind = browserKind, !kind.isEmpty {
                 extensionBrowsers[extensionId] = kind
             }
-        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode):
-            let originalPermittedAt = permittedTabs.first(where: { $0.extensionId == extensionId && $0.tabId == tabId })?.permittedAt ?? Date()
+        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode, let favicon):
+            let existing = permittedTabs.first(where: { $0.extensionId == extensionId && $0.tabId == tabId })
+            let originalPermittedAt = existing?.permittedAt ?? Date()
+            let icon = TabFavicon.resolve(favicon, current: existing?.favicon, sameOrigin: existing?.origin == origin)
             permittedTabs.removeAll { $0.extensionId == extensionId && $0.tabId == tabId }
-            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: originalPermittedAt, expiresAt: expiresAt, accessMode: accessMode ?? "manual"))
+            permittedTabs.append(PermittedTab(extensionId: extensionId, tabId: tabId, url: url, title: title, origin: origin, permittedAt: originalPermittedAt, expiresAt: expiresAt, accessMode: accessMode ?? "manual", favicon: icon))
+            // The icon is display-only and never written to the audit log.
             Task {
                 await auditLog.log(
                     action: "permit",
@@ -276,8 +279,13 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
                 }
                 Task { await auditLog.log(action: "revoke", extensionId: extensionId, tabId: tabId, url: url, details: ["reason": AnyCodable(reason)]) }
             }
-        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
+        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode, let favicon):
             if let idx = permittedTabs.firstIndex(where: { $0.extensionId == extensionId && $0.tabId == tabId }) {
+                permittedTabs[idx].favicon = TabFavicon.resolve(
+                    favicon,
+                    current: permittedTabs[idx].favicon,
+                    sameOrigin: permittedTabs[idx].origin == origin
+                )
                 permittedTabs[idx].url = url
                 permittedTabs[idx].title = title
                 permittedTabs[idx].origin = origin

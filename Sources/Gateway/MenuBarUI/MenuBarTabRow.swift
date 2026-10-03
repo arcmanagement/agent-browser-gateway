@@ -1,7 +1,7 @@
 import SwiftUI
 import GatewayCore
 
-/// One shared tab, styled like a system menu row (Sound > Output): monogram circle with a
+/// One shared tab, styled like a system menu row (Sound > Output): site icon with a
 /// live dot, title, and a secondary line. Revoke appears on hover and is always offered
 /// to VoiceOver as a row action. Tabs from all-tabs mode show an amber tag instead, as in
 /// the extension popup.
@@ -16,7 +16,7 @@ struct MenuBarTabRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            SiteMonogram(host: tab.displayHost, tone: tab.isAllTabsShare ? .warning : .signal)
+            SiteIcon(tab: tab)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(tab.displayTitle)

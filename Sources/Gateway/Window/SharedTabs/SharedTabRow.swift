@@ -8,7 +8,7 @@ struct SharedTabRow: View {
 
     var body: some View {
         HStack(spacing: GateMetrics.space3) {
-            SiteMonogram(host: tab.displayHost, tone: tab.isAllTabsShare ? .warning : .signal, size: 30)
+            SiteIcon(tab: tab, size: 30)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(tab.displayTitle)
