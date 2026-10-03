@@ -354,6 +354,11 @@ The notes below are the draft for the 0.4.4 submission (the notes saved in App S
 shipped without a CLI path). 0.4.4 bundles a sandboxed CLI, so the notes explain it up front to
 preempt automated entitlement questions like the 2.4.5 flag we answered for 0.4.2.
 
+Before the next submission, update the launch note and review steps 2–3 for the redesigned
+Gateway app (#445): the menu bar item is an icon-only ABG gate mark (no "ABG" text), its popover
+lists only shared tabs and connected extensions (with "Open Agent Browser Gateway…" and "Quit
+Gateway"), and the window sections are Overview, Shared Tabs, Audit, Plugins, and Settings.
+
 > LAUNCH NOTE: Agent Browser Gateway is a menu bar utility (LSUIElement). On first launch it
 > does not open a window or add a Dock icon. A shield icon labeled "ABG" appears at the right
 > side of the macOS menu bar. Click it to open the status popover. Launching the app again from

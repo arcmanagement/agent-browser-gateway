@@ -6,6 +6,7 @@ import GatewayCore
 @MainActor
 final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
     private let coordinator = GatewayCoordinator.shared
+    private let router = GatewayWindowRouter()
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var dashboardWindowController: NSWindowController?
@@ -24,7 +25,7 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showDashboardWindow()
-        return true
+        return false
     }
 
     private func configureStatusItem() {
@@ -36,35 +37,47 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             button.target = self
             button.action = #selector(togglePopover(_:))
-            button.imagePosition = .imageLeft
-            button.image = statusImage()
-            button.title = menuBarTitle
-            button.toolTip = menuBarTitle
-            button.font = .systemFont(ofSize: 12, weight: .semibold)
+            // Icon only, like system status items; state lives in the glyph, the count in
+            // the tooltip and accessibility label.
+            button.imagePosition = .imageOnly
+            button.title = ""
         }
+        refreshStatusItem()
 
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 390, height: 640)
-        popover.contentViewController = NSHostingController(
+        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let host = NSHostingController(
             rootView: MenuBarView(coordinator: coordinator) { [weak self] in
                 self?.popover.performClose(nil)
                 self?.showDashboardWindow()
             }
         )
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
     }
 
     private func observeCoordinator() {
-        coordinator.$permittedTabs
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.refreshStatusItem() }
-            .store(in: &cancellables)
+        Publishers.CombineLatest3(
+            coordinator.$permittedTabs,
+            coordinator.$connectedExtensionIds,
+            coordinator.$statusMessage
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in self?.refreshStatusItem() }
+        .store(in: &cancellables)
     }
 
     private func refreshStatusItem() {
         guard let button = statusItem?.button else { return }
-        button.image = statusImage()
-        button.title = menuBarTitle
-        button.toolTip = menuBarTitle
+        let state = GateState(
+            permittedTabs: coordinator.permittedTabs,
+            connectedExtensionCount: coordinator.connectedExtensionIds.count,
+            statusMessage: coordinator.statusMessage
+        )
+        let profile = ABGConstants.runtimeProfile
+        button.image = StatusItemImage.image(for: state, profile: profile)
+        button.toolTip = StatusItemImage.accessibilityDescription(for: state, profile: profile)
+        button.setAccessibilityLabel(button.toolTip)
     }
 
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
@@ -72,10 +85,24 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
             popover.performClose(sender)
         } else {
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
         }
     }
 
-    private func showDashboardWindow() {
+    @objc func showSettingsSection(_ sender: Any?) {
+        showDashboardWindow(section: .settings)
+    }
+
+    @objc func showSection(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let section = GatewaySection(rawValue: raw) else { return }
+        showDashboardWindow(section: section)
+    }
+
+    func showDashboardWindow(section: GatewaySection? = nil) {
+        if let section {
+            router.section = section
+        }
         if dashboardWindowController == nil {
             dashboardWindowController = makeDashboardWindowController()
         }
@@ -86,39 +113,25 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeDashboardWindowController() -> NSWindowController {
-        let window = NSWindow(
-            contentViewController: NSHostingController(
-                rootView: GatewayWindowView(coordinator: coordinator)
-            )
+        let host = NSHostingController(
+            rootView: GatewayWindowView(coordinator: coordinator, router: router)
         )
-        window.title = windowTitle
+        // Bridge SwiftUI toolbars and titles into this AppKit-owned window.
+        host.sceneBridgingOptions = [.toolbars, .title]
+        // Each section's navigationTitle becomes the window title ("Overview", "Audit", …).
+        // Bridging applies on change, so seed the first one.
+        let window = NSWindow(contentViewController: host)
+        window.title = router.section.title
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unifiedCompact
-        window.setContentSize(NSSize(width: 1040, height: 700))
-        window.minSize = NSSize(width: 820, height: 560)
+        window.toolbarStyle = .unified
+        window.setContentSize(NSSize(width: 1180, height: 760))
+        window.minSize = NSSize(width: 880, height: 580)
         window.isReleasedWhenClosed = false
-        window.center()
+        window.setFrameAutosaveName(windowAutosaveName)
+        if !window.setFrameUsingName(windowAutosaveName) {
+            window.center()
+        }
         return NSWindowController(window: window)
-    }
-
-    private func statusImage() -> NSImage? {
-        let name = coordinator.permittedTabs.isEmpty ? "shield" : "shield.lefthalf.filled"
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: menuBarTitle)
-        image?.isTemplate = true
-        return image
-    }
-
-    private var menuBarTitle: String {
-        let base = ABGConstants.runtimeProfile.map { "ABG \($0)" } ?? "ABG"
-        if coordinator.permittedTabs.count == 1,
-           let tab = coordinator.permittedTabs.first {
-            return "\(base) \(menuTabLabel(tab))"
-        }
-        if coordinator.permittedTabs.count > 1 {
-            return "\(base) \(coordinator.permittedTabs.count)"
-        }
-        return base
     }
 
     private var statusItemAutosaveName: NSStatusItem.AutosaveName {
@@ -126,32 +139,26 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
         return "jp.co.arcm.AgentBrowserGateway.\(profile).statusItem.v2"
     }
 
-    private var windowTitle: String {
-        ABGConstants.runtimeProfile.map { "Agent Browser Gateway \($0)" } ?? "Agent Browser Gateway"
-    }
-
-    private func menuTabLabel(_ tab: PermittedTab) -> String {
-        let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let value: String
-        if !title.isEmpty {
-            value = title
-        } else if let host = URL(string: tab.url)?.host, !host.isEmpty {
-            value = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-        } else {
-            value = tab.url
-        }
-        guard value.count > 18 else { return value }
-        return "\(value.prefix(17))..."
+    private var windowAutosaveName: String {
+        let profile = ABGConstants.runtimeProfile ?? "prod"
+        return "jp.co.arcm.AgentBrowserGateway.\(profile).window.v3"
     }
 }
 
+/// AppKit entry point. The Gateway is a menu bar utility whose only window is AppKit-owned,
+/// so a SwiftUI `App` added nothing but an empty Settings scene, which macOS opened at
+/// launch. The main menu is never shown for an accessory app, but it routes the standard
+/// key equivalents (⌘C/⌘V in text fields, ⌘W, ⌘Q, ⌘, and ⌘1…⌘5) while the window is key.
 @main
-struct GatewayApp: App {
-    @NSApplicationDelegateAdaptor(GatewayAppDelegate.self) var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
+enum GatewayMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = GatewayAppDelegate()
+        app.delegate = delegate
+        app.mainMenu = GatewayMainMenu.make(target: delegate)
+        withExtendedLifetime(delegate) {
+            app.run()
         }
     }
 }

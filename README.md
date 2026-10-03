@@ -191,7 +191,10 @@ error codes and messages returned to `abg`, `nextCommand`, and audit entries sta
 Tab recording is stricter than normal operations: `abg record start` always opens a local approval window, even when operation approvals or Trusted automation would skip other prompts. The **Allow** click supplies Chrome's `tabCapture` gesture, recording only the already-shared tab to a local WebM file.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).
-The Gateway window includes an Audit view for recent local entries with time, command, tab, and search filters.
+The menu bar popover lists shared tabs per connected browser profile, each with **Revoke**. The Gateway
+window adds an Overview of what agents can reach right now, a Shared Tabs view with per-tab revoke, and an
+Audit view of recent local entries (time, agent, action, tab, site, result) with time, action, tab, and
+search filters.
 The Gateway window also has Settings for profile-local timeout defaults, approval defaults, and
 per-domain policy drafts stored in `gateway-settings.json` under `~/.abg/` or `~/.abg-dev/`.
 The file is local JSON with owner-only permissions and no app database. Persistent defaults live at
@@ -876,7 +879,7 @@ readiness predicates and returns only success or timeout state, not arbitrary ex
 
 Currently shipped:
 
-- ✅ macOS 14+ menubar app (Swift + SwiftUI `MenuBarExtra`)
+- ✅ macOS 14+ menubar app (Swift; AppKit status item with SwiftUI views)
 - ✅ Chrome extension (Manifest V3, `activeTab` by default, optional `<all_urls>` only for all-tabs profile mode)
 - ✅ Firefox extension MVP target (WebExtensions MV3; see [extension/FIREFOX.md](extension/FIREFOX.md))
 - ✅ iPhone Safari target with explicit active-tab share, DOM reads, cross-origin iframe grants, clipped and full-page screenshots, annotations, encrypted file upload, native Reading List insertion, approved eval, and DOM-level page actions
@@ -934,7 +937,7 @@ mise install
 
 ```bash
 ./build-app.sh                          # produces Agent Browser Gateway.app and .build/release/abg
-open "Agent Browser Gateway.app"        # menubar shield icon appears
+open "Agent Browser Gateway.app"        # the ABG gate icon appears in the menu bar
 ln -sf $(pwd)/.build/release/abg /usr/local/bin/abg
 
 CONFIG=debug APP_VARIANT=dev ./build-app.sh  # produces Agent Browser Gateway Dev.app on port 8766
@@ -961,7 +964,7 @@ Chrome disables extension access to incognito windows by default; normal tabs do
 
 1. Open the tab you want to share
 2. Click the ABG extension icon → **Share this tab with agents**
-3. A green `ON` badge appears on the icon; the menubar shield icon fills in
+3. A green `ON` badge appears on the icon; the menu bar gate icon opens with a dot between its pillars
 4. Verify with `abg tabs`
 
 ### Hand it to Claude Code or Codex
