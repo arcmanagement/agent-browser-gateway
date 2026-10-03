@@ -13,13 +13,11 @@ struct GatewaySidebar: View {
         List(selection: selectionBinding) {
             Section("Gateway") {
                 row(.overview)
-                row(.sharedTabs)
-                    .badge(sharedCount)
+                row(.sharedTabs, badge: sharedCount)
                 row(.audit)
             }
             Section("Configure") {
-                row(.plugins)
-                    .badge(pluginCount)
+                row(.plugins, badge: pluginCount)
                 row(.settings)
             }
         }
@@ -29,8 +27,11 @@ struct GatewaySidebar: View {
         }
     }
 
-    private func row(_ section: GatewaySection) -> some View {
+    // The tag must be the outermost modifier: a badge applied after it hides the tag from
+    // List selection, and the row stops responding to clicks.
+    private func row(_ section: GatewaySection, badge: Int = 0) -> some View {
         Label(section.title, systemImage: section.systemImage)
+            .badge(badge)
             .tag(section)
     }
 
