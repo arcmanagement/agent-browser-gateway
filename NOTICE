@@ -12,7 +12,8 @@ This product includes software developed at:
 
 Their license terms are reproduced in their respective source distributions.
 
-The browser extension bundles these fonts, unmodified, from the `geist` npm package (v1.7.2):
+The browser extension and the website bundle these fonts, unmodified, from the `geist` npm package (v1.7.2):
 
 * Geist and Geist Mono (https://vercel.com/font) — Copyright (c) 2023 Vercel, in collaboration
   with basement.studio — SIL Open Font License 1.1, reproduced in extension/public/fonts/OFL.txt
+  and site/public/fonts/OFL.txt

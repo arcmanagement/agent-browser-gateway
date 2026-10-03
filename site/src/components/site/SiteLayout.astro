@@ -1,0 +1,167 @@
+---
+import "../../styles/tokens.css";
+import "../../styles/site.css";
+import GateMark from "./GateMark.astro";
+import { copy, type Lang } from "../../i18n/landing";
+import { release } from "../../data/release";
+
+interface Props {
+  lang: Lang;
+  title: string;
+  description: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogType?: string;
+  path: string;
+  alternates?: { lang: string; path: string }[];
+  bodyClass?: string;
+  home?: boolean;
+}
+
+const SITE = "https://agent-browser-gateway.com";
+const {
+  lang,
+  title,
+  description,
+  ogTitle = title,
+  ogDescription = description,
+  ogType = "website",
+  path,
+  alternates = [],
+  bodyClass,
+  home = false,
+} = Astro.props;
+const t = copy[lang];
+const root = lang === "ja" ? "/ja/" : "/";
+const docs = lang === "ja" ? "/ja/docs/" : "/docs/";
+const anchor = (id: string) => (home ? `#${id}` : `${root}#${id}`);
+const ogImage = `${SITE}/assets/social-card.png`;
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      (() => {
+        const root = document.documentElement;
+        let stored = "";
+        try {
+          stored = localStorage.getItem("starlight-theme") || "";
+        } catch {}
+        const pref = stored === "light" || stored === "dark" ? stored : "auto";
+        root.dataset.themePref = pref;
+        root.dataset.theme =
+          pref === "auto"
+            ? matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark"
+            : pref;
+      })();
+    </script>
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#07090a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)" />
+    <link rel="canonical" href={`${SITE}${path}`} />
+    {alternates.map((a) => <link rel="alternate" hreflang={a.lang} href={`${SITE}${a.path}`} />)}
+    <meta property="og:site_name" content="Agent Browser Gateway" />
+    <meta property="og:title" content={ogTitle} />
+    <meta property="og:description" content={ogDescription} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={`${SITE}${path}`} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Agent Browser Gateway: hand your agent one tab. Nothing else." />
+    <meta property="og:locale" content={lang === "ja" ? "ja_JP" : "en_US"} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={ogTitle} />
+    <meta name="twitter:description" content={ogDescription} />
+    <meta name="twitter:image" content={ogImage} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body class={bodyClass} data-lang={lang}>
+    <a class="skip-link" href="#main">{t.skip}</a>
+    <header class="nav" data-nav>
+      <div class="nav__inner">
+        <a class="brand" href={root} aria-label="Agent Browser Gateway">
+          <GateMark size={26} />
+          <span class="brand__name">Agent Browser Gateway</span>
+        </a>
+        <nav class="nav__links" aria-label={t.nav.primary} id="site-menu">
+          <a href={anchor("consent")}>{t.nav.how}</a>
+          <a href={anchor("local")}>{t.nav.security}</a>
+          <a href={docs}>{t.nav.docs}</a>
+          <a href={release.repoUrl} rel="noopener">{t.nav.github}</a>
+          <a class="nav__lang" href={t.nav.langHref} hreflang={lang === "ja" ? "en" : "ja"} lang={lang === "ja" ? "en" : "ja"}>
+            {t.nav.langLabel}
+          </a>
+        </nav>
+        <div class="nav__actions">
+          <button
+            class="icon-btn theme-toggle"
+            type="button"
+            data-theme-toggle
+            data-label-dark={t.nav.themeToDark}
+            data-label-light={t.nav.themeToLight}
+            aria-label={t.nav.themeToLight}
+          >
+            <svg class="icon icon--sun" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6" /></svg>
+            <svg class="icon icon--moon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>
+          </button>
+          <a class="btn btn--signal btn--sm nav__cta" href={anchor("download")}>{t.nav.download}</a>
+          <button class="icon-btn nav__menu" type="button" aria-expanded="false" aria-controls="site-menu" data-menu-toggle data-label-open={t.nav.menu} data-label-close={t.nav.close} aria-label={t.nav.menu}>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 8h16M4 16h16" /></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer__inner">
+        <div class="footer__brand">
+          <a class="brand" href={root} aria-label="Agent Browser Gateway">
+            <GateMark size={26} />
+            <span class="brand__name">Agent Browser Gateway</span>
+          </a>
+          <p class="footer__tagline">{t.footer.tagline}</p>
+          <p class="footer__managed">
+            {t.footer.managed} <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
+          </p>
+        </div>
+        <nav class="footer__links" aria-label="Footer">
+          <a href={docs}>{t.footer.docs}</a>
+          <a href={release.repoUrl} rel="noopener">{t.footer.source}</a>
+          <a href="/privacy/">{t.footer.privacy}</a>
+          <a href="mailto:contact@arcm.co.jp">{t.footer.contact}</a>
+          <a href={t.nav.langHref} hreflang={lang === "ja" ? "en" : "ja"} lang={lang === "ja" ? "en" : "ja"}>{t.nav.langLabel}</a>
+        </nav>
+        <fieldset class="theme-picker" data-theme-picker>
+          <legend>{t.footer.theme}</legend>
+          {(["auto", "dark", "light"] as const).map((v) => (
+            <label>
+              <input type="radio" name="theme-pref" value={v} />
+              <span>{t.footer.themes[v]}</span>
+            </label>
+          ))}
+        </fieldset>
+      </div>
+    </footer>
+
+    <p class="sr-only" aria-live="polite" data-copy-live></p>
+    <script>
+      import "../../scripts/site";
+    </script>
+  </body>
+</html>

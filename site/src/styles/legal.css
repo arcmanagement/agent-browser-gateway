@@ -1,0 +1,315 @@
+/* Privacy / legal page. Presentation only: the policy text lives in src/pages/privacy. */
+
+.legal-hero {
+  position: relative;
+  padding: clamp(56px, 8vw, 104px) 0 clamp(40px, 5vw, 64px);
+  border-bottom: 1px solid var(--line);
+  isolation: isolate;
+}
+
+.legal-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 60% 90% at 80% 20%, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 90% at 80% 20%, black 10%, transparent 70%);
+}
+
+.legal-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legal-hero h1 {
+  margin-top: 18px;
+  font-size: var(--step-80);
+  font-weight: 620;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.legal-hero p {
+  max-width: 40em;
+  margin-top: 18px;
+  color: var(--text-2);
+  font-size: var(--step-18);
+}
+
+.legal-hero p + p {
+  margin-top: 12px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.legal-hero .legal-eyebrow {
+  margin-top: 0;
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
+.legal-hero strong {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.legal-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+  padding-block: clamp(40px, 6vw, 80px) clamp(72px, 10vw, 128px);
+}
+
+@media (min-width: 1000px) {
+  .legal-content {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: clamp(48px, 6vw, 96px);
+  }
+}
+
+.toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: start;
+}
+
+.toc a {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  transition: color var(--t-ui) var(--ease), border-color var(--t-ui) var(--ease);
+}
+
+.toc a:hover {
+  color: var(--text);
+}
+
+@media (min-width: 1000px) {
+  .toc {
+    position: sticky;
+    top: 96px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .toc a {
+    margin-left: -1px;
+    padding: 7px 16px;
+    border: 0;
+    border-left: 1px solid transparent;
+    border-radius: 0;
+  }
+
+  .toc a.is-current {
+    color: var(--text);
+    border-left-color: var(--signal);
+  }
+}
+
+.policy {
+  max-width: 76ch;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.policy section {
+  scroll-margin-top: 88px;
+}
+
+.policy section + section {
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid var(--line);
+}
+
+.policy h2 {
+  color: var(--text);
+  font-size: var(--step-28);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.policy h3 {
+  margin-top: 32px;
+  color: var(--text);
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.policy p,
+.policy ul,
+.policy .data-table {
+  margin-top: 16px;
+}
+
+.policy ul {
+  display: grid;
+  gap: 10px;
+}
+
+.policy li {
+  position: relative;
+  padding-left: 22px;
+}
+
+.policy li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.8em;
+  width: 8px;
+  height: 1.5px;
+  background: var(--signal);
+}
+
+.policy a {
+  color: var(--text);
+  text-decoration-color: var(--signal-line);
+}
+
+.policy a:hover {
+  text-decoration-color: var(--signal);
+}
+
+.policy code {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--ink-1);
+  color: var(--text);
+  font-size: 0.84em;
+  overflow-wrap: anywhere;
+}
+
+.policy .note {
+  padding: 16px 18px;
+  border: 1px solid var(--signal-line);
+  border-radius: 12px;
+  background: var(--signal-wash);
+  color: var(--text);
+}
+
+.data-table {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.data-table table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.data-table th {
+  padding: 12px 16px;
+  background: var(--ink-1);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+
+.data-table td {
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.data-table tr:first-child td {
+  border-top: 0;
+}
+
+.data-table td:first-child {
+  color: var(--text);
+  font-weight: 550;
+}
+
+@media (max-width: 640px) {
+  .data-table table {
+    min-width: 0;
+  }
+
+  .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .data-table tr,
+  .data-table td {
+    display: block;
+  }
+
+  .data-table tr {
+    padding: 14px 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  .data-table tbody tr:first-child {
+    border-top: 0;
+  }
+
+  .data-table td {
+    padding: 2px 0;
+    border: 0;
+  }
+
+  .data-table td:first-child {
+    margin-bottom: 4px;
+  }
+
+  .data-table td:not(:first-child)::before {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-3);
+    font-family: var(--font-mono);
+    font-size: 0.65625rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .data-table table:has(th:nth-child(4)) td:nth-child(2)::before {
+    content: "Examples";
+  }
+
+  .data-table table:has(th:nth-child(4)) td:nth-child(3)::before {
+    content: "Purpose";
+  }
+
+  .data-table table:has(th:nth-child(4)) td:nth-child(4)::before {
+    content: "Where it is stored or processed";
+  }
+
+  .data-table table:not(:has(th:nth-child(3))) td:nth-child(2)::before {
+    content: "Why ABG uses it";
+  }
+}

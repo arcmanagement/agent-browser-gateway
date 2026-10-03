@@ -1,0 +1,28 @@
+---
+// The gate mark: a line through an aperture, lit by the signal. Same geometry as the
+// extension's popup mark (extension/public/popup.html) so both surfaces share one glyph.
+// Decorative by default; pass `label` to expose it as an image.
+interface Props {
+  size?: number;
+  label?: string;
+  class?: string;
+}
+const { size = 24, label, class: className } = Astro.props;
+---
+
+<svg
+  class:list={["gate-mark", className]}
+  width={size}
+  height={size}
+  viewBox="0 0 20 20"
+  fill="none"
+  role={label ? "img" : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+  focusable="false"
+>
+  <path class="gate-mark__line" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" />
+  <rect class="gate-mark__post" x="6.75" y="3" width="2" height="14" rx="1" />
+  <rect class="gate-mark__post" x="11.25" y="3" width="2" height="14" rx="1" />
+  <circle class="gate-mark__signal" cx="10" cy="10" r="1.25" />
+</svg>

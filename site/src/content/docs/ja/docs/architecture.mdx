@@ -1,20 +1,16 @@
 ---
 title: アーキテクチャ
-description: ブラウザー拡張、Gatewayアプリ、CLI、監査ログ、プラグインの関係。
+description: ブラウザー拡張機能、Gateway アプリ、abg CLI、監査ログ、プラグイン、モバイルのペアリングのつながり。
 sidebar:
   order: 6
 ---
 
-ABGはローカルの3要素で構成されます。
-
-- ユーザーのブラウザープロファイルで動く拡張機能。
-- ユーザーのマシンで動くnative Gateway app。
-- エージェント、script、人間が使う `abg` CLI。
+ABG は、ブラウザー拡張機能、Gateway アプリ、`abg` CLI という3つのローカルの部品で、ブラウザーのタブとエージェントをつなぎます。
 
 ```text
 Browser tab + ABG extension
         |
-        | WebSocket on 127.0.0.1
+        | WebSocket on 127.0.0.1:8765
         v
 Gateway app
   - permission manager
@@ -29,33 +25,9 @@ abg CLI
 AI coding agent
 ```
 
-## 拡張機能
+## エージェントがタブを見つけられないとき
 
-拡張機能はブラウザー側のconsent surfaceです。通常のper-tab modeでは、ABG起動直後に見えるタブはありません。
-ユーザーがpopupから特定タブを共有すると、拡張がtab metadataとcommand responseをローカルGatewayへ送ります。
-
-all-tabs modeは隔離プロファイルやsandboxマシン向けです。ユーザーが明示的に有効化したあとだけoptional host accessを要求し、
-OFFにするとall-tabs entryも失効します。
-
-## Gateway
-
-Gatewayはloopbackで待ち受け、runtime stateを持ちます。
-
-- 接続中のextension instance
-- 共有中のタブ
-- operation approval state
-- 読み込まれたplugin
-- ローカル監査ログ
-- app settingとplugin state
-
-production appは通常のGateway state directoryを使います。development appは別portとprofile-specificなstateを使うため、
-開発中のpluginやsettingがproduction stateを変更しません。
-
-## CLI
-
-`abg` はエージェント向けの安定interfaceです。shell commandを実行できるtoolであれば、特定agentに依存せず共有タブを扱えます。
-
-人間のdebugにも使えます。エージェントがタブを見つけられないときは次を確認します。
+各部品の状態はターミナルから確かめられます。
 
 ```bash
 abg status
@@ -63,69 +35,100 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
-内部では、CLI は OS ごとのローカル IPC 上で共通の JSON 契約を使います。macOS と Linux
-では Unix ドメインソケット、Windows では名前付きパイプを使います。macOS ではサンドボックス
-やパス長の制約でソケットを使えない場合、トークン認証付きのループバック WebSocket に切り替えます。
-接続先の解決と後始末は ABG が担うため、呼び出し側が OS 固有の通信方式を知る必要はありません。
+- `abg status` が `gateway_not_running` で失敗する: Gateway アプリが起動していません。
+- `extensionCount` が 0: 拡張機能が Gateway につながっていません。
+- `abg tabs --compact` にタブが出ない: 何も共有していないか、共有が終わりました。
+- `abg audit` には、共有解除を含めて Gateway が何をしたかが残ります。
+
+## 拡張機能
+
+拡張機能は、利用者が同意を示す場所です。タブごとに共有するモードでは、エージェントにはどのタブも見えない状態から始まります。利用者がポップアップからタブを共有すると、拡張機能はそのタブの情報とコマンドの応答をローカルの Gateway に送ります。
+
+全タブ共有モードは、隔離したプロファイルやサンドボックス用のマシン向けのオプションです。利用者がオンにしたときだけ、任意のホスト権限を求めます。オフにすると、全タブ共有で登録したタブはすべて共有が解除されます。
+
+## Gateway
+
+Gateway はループバックで待ち受け、実行中の状態を管理します。
+
+- 接続中の拡張機能
+- 共有中のタブ
+- 操作の承認状態
+- 読み込んだプラグイン
+- ローカルの監査ログ
+- アプリの設定とプラグインの状態
+
+開発版アプリは別のポート `8766` と別の状態を使うため、開発中のプラグインや設定が本番の状態を変えません。
+
+## CLI
+
+`abg` はエージェント向けの安定したインターフェースです。シェルのコマンドを実行できるツールなら、どれでも共有タブを調べて操作できます。人も同じコマンドを実行して、エージェントが見ているものを確かめられます。
+
+CLI は OS ごとのローカル IPC 上で共通の JSON 契約を使います。macOS と Linux では Unix ドメインソケット、Windows では名前付きパイプです。macOS でサンドボックスやパス長の制約によりソケットを使えない場合は、トークン認証付きのループバック WebSocket に切り替えます。接続先の解決と後始末は ABG が受け持つため、呼び出し側は OS ごとの通信方式を知らなくて済みます。
 
 ## プラグイン
 
-pluginはGatewayが読み込むローカルJavaScript moduleです。ブラウザーデータ変換、domain-specific Markdown抽出、
-高レベルcommandの追加に使えます。pluginからのtab operationもCLIと同じapproval/audit pathを通ります。
+プラグインは Gateway が読み込むローカルの JavaScript モジュールです。ブラウザーから取ったデータを変換したり、ドメイン専用の Markdown 抽出やコマンドを足したりします。プラグインからのタブ操作も、CLI と同じ承認と監査の経路を通ります。[プラグイン](../plugins/)を参照してください。
 
-詳しくは[プラグイン](./plugins/)を参照してください。
+## 対応プラットフォーム
 
-## platform roadmap
+最初の対象ブラウザーは Chrome です。Firefox はブラウザーアダプターと Firefox 向けの拡張機能で対応します。iPhone の Safari は、ペアリングしたコンパニオンアプリを通じて、DOM の確認と Safari Web Extensions で扱えるページ操作に対応します。デスクトップの Safari と Android は別の取り組みとして進めます。
 
-最初の対象ブラウザーはChromeです。Firefoxはbrowser adapterとFirefox extension targetを使います。iPhone Safariはpaired companion経由でDOM確認とpage actionを扱います。
-desktop SafariとAndroidは別のplatform trackです。
+## モバイルのペアリング
 
-## mobile consent と pairing design
+モバイルのペアリングは、スマートフォンを同じ利用者のデスクトップの Gateway につなぎます。タブの共有や承認を扱える状態になる前に、スマートフォンがどの Gateway を信頼するかをペアリングで確かめます。
 
-mobile / WebView supportでは、phone、tablet、embedded browser surfaceを、同じユーザーが持つdesktop Gatewayへ接続します。
-desktop per-tab consentとは違い、mobileではtab共有の前に、どのdesktop Gatewayを信頼するかをpairingで確認する必要があります。
+ペアリングのコマンドは次のとおりです。
 
-### pairing method
+```bash
+abg companion offer
+abg companion offer --manual
+abg companion confirm <pairing-id>
+abg companion list
+abg companion revoke <device-id>
+```
 
-| method | fit | decision |
+`offer` は QR コードと手入力用のコードを表示します。`confirm` は、両方の端末に同じコードが表示されたことを確かめてからペアリングを完了します。`revoke` はスマートフォンを外し、そのセッションを閉じます。
+
+### ペアリングの方法
+
+| 方法 | 向いている場面 | 状況 |
 | --- | --- | --- |
-| QR code | desktopが短命のpairing URLを表示でき、phone側でcameraを使える初回flowに向きます。両deviceで同じcodeを確認してからmobile sessionを作ります。 | 実装済みです。QR payloadは5分で失効し、scoped pairing tokenの初期化だけに使います。 |
-| manual token entry | cameraが使えない、screen sharingでQRが隠れる場合のfallbackです。 | 実装済みです。短いcodeとdesktop confirmationを組み合わせます。 |
-| Tailnet link | 既にprivate Tailnetを運用しているユーザーが、network越しにdesktopとmobileをpairingする場合に向きます。connectivityをユーザー管理にできます。 | 優先するprivate remote boundaryとして実装済みです。ABG運営のrelayは使いません。 |
-| private LAN address | Tailnet addressがない場合にtrusted LANで使います。 | 同じauthenticated pairing listenerで実装済みです。automatic LAN discoveryによるadvertiseは行いません。 |
+| QR コード | デスクトップで短時間だけ有効なペアリング URL を表示でき、スマートフォンでカメラを使える場面。両方の端末で同じコードを確かめます。 | 対応済み。QR の内容は5分で失効し、範囲を限ったペアリング用トークンを作るためだけに使います。 |
+| 手入力のコード | カメラが使えない、または画面共有で QR コードが隠れる場面。 | 代替手段として対応済み。短いコードとデスクトップでの確認を組み合わせます。 |
+| Tailnet | すでに自前の Tailnet を運用していて、ネットワークをまたいでペアリングしたい場面。 | 推奨する非公開のリモート経路として対応済み。ABG が運営する中継は使いません。 |
+| 非公開の LAN アドレス | Tailnet のアドレスがなく、信頼できる LAN にいる場面。 | 同じ認証付きのペアリング用リスナーで対応済み。LAN の自動検出で Gateway を知らせることはしません。 |
 
-### consent と session scope
+### 同意とセッションの範囲
 
-desktop per-tab consentでは、ユーザーが同じmachineのbrowser popupから1つのtabを共有します。shareはtab referenceにscopeされ、
-tab close、origin change、explicit revokeで自動失効します。mobile consentでは、その前にdevice/session layerが加わります。
+デスクトップでの同意は、同じマシンのブラウザー操作から始まります。利用者がタブを1つ共有し、タブを閉じる、オリジンが変わる、解除する、のいずれかで共有は終わります。モバイルでは、タブの同意の前に端末とセッションの層が加わります。
 
-- paired mobile deviceはdefaultではtab accessを持ちません。pairingで`tab_sharing` scopeを付与しても、Safari extension popupからactive tabを共有する操作が別に必要です。
-- desktop Gatewayがpairing list、session lifetime、approval state、audit logを持ちます。
-- mobile approval forwardingはdesktop operationの承認または拒否だけを扱い、それだけで広いtab visibilityを付与しません。
-- mobile sessionは1つのGateway、1つのpaired device identity、approval、status、tab sharingの明示capabilityにscopeします。
-- mobile sessionをrevokeすると、そのdeviceをpairing listから外し、未処理のapproval promptとpairing tokenを失効させます。
-- iPhone Safari tab shareをrevokeすると、desktop Gatewayからそのtabを即時に削除します。tab closeとorigin changeでも自動revokeします。
+- ペアリングしただけの端末は、タブにアクセスできません。ペアリングで `tab_sharing` の範囲は付きますが、Safari のタブを共有するには拡張機能のポップアップでの操作が別に要ります。
+- ペアリングの一覧、セッションの期限、承認状態、監査ログは、デスクトップの Gateway が管理します。
+- モバイルへの承認の転送では、保留中のデスクトップの操作を承認または拒否できます。転送だけでタブが見えるようにはなりません。
+- モバイルのセッションは、1つの Gateway、ペアリングした1台の端末、明示した承認・状態確認・タブ共有の機能に限られます。
+- モバイルのセッションを取り消すと、その端末はペアリングの一覧から外れ、保留中の承認とペアリング用トークンも無効になります。
+- iPhone の Safari でタブの共有を解除すると、デスクトップの Gateway からそのタブはすぐに消えます。タブを閉じたときやオリジンが変わったときも共有は解除されます。
 
-iPhone Safari targetはtab list、DOM read、getter、predicate、semantic find、snapshot、table、範囲指定とfull-page screenshot、text/area annotation、明示許可したcross-origin frame、site単位のcookie確認、暗号化file upload、native Reading List追加、tab activation、wait、editable validation、storage確認、承認済みeval、DOM操作を扱います。操作はpaired iPhone appで承認します。Safari extension popupでTrusted automationを明示的に有効にした場合だけ、操作ごとの承認を省略します。共有範囲は承認時のorigin内に限定し、Safari休止後も同じMac側refへ再接続します。
+iPhone の Safari では、タブの一覧、DOM の読み取り、値の取得、条件判定、意味に基づく要素の検索、スナップショット、表の抽出、範囲指定と全体のスクリーンショット、テキストと範囲の注釈、明示的に許可したクロスオリジンの frame、サイト単位の Cookie の確認、暗号化したファイルのアップロード、リーディングリストへの追加、タブの前面表示、待機、編集内容の検証、ストレージの確認、承認済みの eval、DOM 上のページ操作に対応します。操作には、ペアリングした iPhone アプリでの承認が必要です。Safari 拡張機能のポップアップで信頼済み自動化をオンにした場合だけ、操作ごとの承認を省きます。共有したタブは承認したオリジンの中に限られ、Safari が一時停止したあとも Mac 側の同じ `ref` につながり直します。
 
-### network boundary
+### ネットワークの境界
 
-local-onlyのdesktop workflowはdefaultかつ最も信頼度の高いmodeのままです。通常のCLIとextension trafficではGatewayはloopbackで待ち受け、
-non-loopback networkをすべて塞いでもABGが使える状態を維持します。
+ローカルだけで完結するデスクトップの使い方が既定で、最も信頼度の高い形です。Gateway は CLI と拡張機能の通信をループバックで受け、ループバック以外の通信をすべて止めても ABG は使えます。
 
-Tailnet operationを優先するprivate remote boundaryとして使います。Tailnet、device enrollment、DNS、firewall policyは
-ユーザーまたはorganizationが管理します。ABGはofferまたはactive grantが存在する間だけremote-pairing listenerを起動します。
-pairingにはdevice confirmation、後続接続にはactive scoped session tokenが必要です。
+Tailnet は推奨する非公開のリモート経路です。Tailnet、端末の登録、DNS、ファイアウォールの方針は、利用者か組織が管理します。ABG はペアリングの申し出か有効な許可があるときだけ、リモートペアリング用のリスナーを起動します。ペアリングには端末での確認が、その後の接続には有効なセッショントークンが必要です。
 
-Tailnet addressがない場合はprivate LAN addressをfallbackとして使います。automatic LAN discoveryは、untrusted networkでGatewayを
-advertiseし、lookalike Gatewayによるphishing surfaceを増やし、複数Gatewayがある場合の挙動を分かりにくくするため使いません。
+Tailnet のアドレスがないときは、非公開の LAN アドレスで代用します。LAN の自動検出は使いません。信頼できないネットワークで Gateway の存在を知らせてしまい、偽の Gateway による詐欺の余地が広がり、Gateway が複数あると動きも分かりにくくなるためです。
 
-ABG運営のcloud relayは採用しません。central serviceがmetadataを観測でき、accountやabuse-preventionの境界になり、local-firstの
-security promiseを弱めるためです。
+ABG はクラウドの中継を運営しません。中継があると、メタデータを見られる中央のサービスができ、アカウントや不正対策の管理が必要になり、ローカルで完結するという設計を弱めます。
 
-### remaining limits
+### 制限
 
-- Safariにはconsoleとnetwork capture、HAR、PDF、emulation、download metadata、native low-level input、tab recordingを扱うChrome DevTools Protocol相当のAPIがありません。該当commandはplatform固有の理由と`unsupported_on_safari`を返します。
-- Mac clipboardは利用できません。file uploadはMacでbytesを暗号化し、file名、MIME type、digest、ciphertextだけをpaired Safari extensionへ転送します。Mac file pathは送信しません。
-- sandbox all-tabs accessはChrome限定です。
-- Androidとembedded WebView supportは別のplatform trackです。
+- Safari には、コンソールとネットワークの取得、HAR、PDF、エミュレーション、ダウンロード情報、低レベルの入力、タブの録画を扱える Chrome DevTools Protocol 相当の仕組みがありません。これらのコマンドは、プラットフォーム固有の理由を添えて `unsupported_on_safari` を返します。
+- Mac のクリップボードの内容は使えません。ファイルのアップロードでは Mac 上でデータを暗号化し、ファイル名、MIME タイプ、ダイジェスト、暗号文だけをペアリングした Safari 拡張機能に送ります。Mac のファイルパスは送りません。
+- サンドボックス用の全タブ共有は Chrome だけで使えます。
+- Android と埋め込み WebView への対応は、別の取り組みとして進めます。
+
+## 関連ページ
+
+- [セキュリティ](../security/): 共有の範囲と監査ログ
+- [CLI](../cli/): 各部品を確かめるコマンド

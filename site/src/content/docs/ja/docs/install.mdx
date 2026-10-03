@@ -1,87 +1,165 @@
 ---
 title: インストール
-description: Gatewayアプリ、ブラウザー拡張、CLI、エージェントスキルをインストールする。
+description: ABG のブラウザー拡張機能、Gateway アプリ、abg CLI、エージェントスキルを macOS、Windows、ソースから入れます。
 sidebar:
   order: 2
 ---
 
+import { Steps } from '@astrojs/starlight/components';
+
+ABG を動かすには、ブラウザー拡張機能、Gateway アプリ、`abg` CLI の3つを入れます。
+
 ## 必要なもの
 
-- 現行Gatewayアプリは macOS 14 以上。
-- Chrome拡張は Google Chrome 120 以上。
-- `abg` CLIを実行できるターミナル。
-- 開発ビルドでは Xcode 16 以上、`mise`、Node.js、pnpm。
+- 現行の Gateway アプリは macOS 14 以降の Apple Silicon 搭載 Mac で動きます。Homebrew の cask と DMG は arm64 専用です。
+- Chrome 拡張機能には Google Chrome 120 以降が必要です。
+- `abg` を実行できるターミナル。
+- ソースからビルドする場合は Xcode 16 以降、`mise`、Node.js、pnpm。
 
-## macOSアプリとCLI
+## macOS: Homebrew
 
-Homebrewからインストールできます。
+Homebrew は `Agent Browser Gateway.app` を `/Applications` に、`abg` を Homebrew の `bin` に入れます。
 
-```bash
-brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
-brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
-brew install --cask agent-browser-gateway
-```
+<Steps>
 
-Homebrew が `Not upgrading agent-browser-gateway, the latest version is already installed` と表示する場合、
-cask はすでにインストール済みです。`brew info --cask agent-browser-gateway` または `abg --help` で確認できます。
-強制的に入れ直す場合だけ `brew reinstall --cask agent-browser-gateway` を使います。
-Homebrew が無関係な tap の trust warning を表示することもあります。ABG の状態は最後の install 行と
-`brew info --cask agent-browser-gateway` で確認してください。
-以前に一時的なpublic Homebrew repositoryまたはprivate source repositoryをtapしていた場合は、一度
-`brew untap arcmanagement/agent-browser-gateway` を実行してから、上の明示URL付きcommandでtapし直してください。
+1. リポジトリを tap し、cask を信頼してからインストールします。
 
-[download page](/#download) から現在のDMGを取得し、SHA-256 checksumを確認してから手動インストールすることもできます。
-インストール後、アプリを一度起動してメニューバーにアイコンが出ることを確認します。
+   ```bash
+   brew tap arcmanagement/agent-browser-gateway https://github.com/arcmanagement/agent-browser-gateway
+   brew trust --cask arcmanagement/agent-browser-gateway/agent-browser-gateway
+   brew install --cask agent-browser-gateway
+   ```
 
-CLIから接続を確認します。
+2. アプリを一度起動し、メニューバーにアイコンを出します。
 
-```bash
-abg status
-```
+   ```bash
+   open -a "Agent Browser Gateway"
+   ```
 
-`abg` が `PATH` にない場合はrelease artifact内のCLIを配置するか、Homebrew caskからインストールします。
+3. CLI から Gateway に届くか確かめます。
 
-## Windows
+   ```bash
+   abg status
+   ```
 
-対象releaseの `microsoft/winget-pkgs` PR がmergeされ、indexされたあと、WinGetからインストールできます。
+   JSON の `running` が `true` なら接続できています。
 
-```powershell
-winget install --id ArcManagement.AgentBrowserGateway --source winget
-```
+</Steps>
 
-現在の `v0.4.8` では、WinGet はまだ公開されておらず、Windows release ZIP もまだ公開されていません。
-`winget` が matching package なしと表示する場合、それは
-signed Windows releaseとMicrosoft indexingが完了するまでの想定動作です。
+更新するときは `brew upgrade --cask agent-browser-gateway` を実行します。
 
-現時点でWindows上で試す場合は、repositoryをcloneして次を実行します。
+### Homebrew で困ったとき
 
-```powershell
-.\windows-build-install.cmd
-```
+- **`Not upgrading agent-browser-gateway, the latest version is already installed` と出る**: cask はインストール済みです。`brew info --cask agent-browser-gateway` か `abg --help` で確かめます。入れ直したいときだけ `brew reinstall --cask agent-browser-gateway` を使います。
+- **他の tap について trust の警告が出る**: ABG とは関係のない tap の警告です。ABG の状態は最後の install 行と `brew info --cask agent-browser-gateway` で確かめます。
+- **以前に別の ABG リポジトリを tap していた**: 一時的な公開 Homebrew リポジトリや非公開のソースリポジトリを tap していた場合は、`brew untap arcmanagement/agent-browser-gateway` を一度実行し、上の URL 付きのコマンドで tap し直します。
 
-## ブラウザー拡張
+## macOS: DMG
 
-通常利用では
-[Chrome Web Store](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi)
-から Agent Browser Gateway をインストールします。public listingでは現在extension `v0.4.4`を提供しています。
-ローカル開発ではrepositoryで拡張をbuildし、`extension/dist/` をunpacked extensionとして読み込みます。
+<Steps>
 
-incognito windowで使う場合は、拡張の詳細画面で **Allow in incognito** を有効にします。通常windowだけで
-使う場合、この設定は不要です。
+1. [ダウンロードページ](/#download)か [GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases) から、現行の DMG と対応する `.sha256.txt` ファイルをダウンロードします。
 
-## エージェントスキル
+2. 2つのファイルを保存したフォルダーでチェックサムを検証します。
 
-GatewayとCLIを用意したあと、Claude CodeとCodex向けのskillを [skills CLI](https://github.com/vercel-labs/skills) でインストールまたは更新します。
+   ```bash
+   shasum -a 256 -c agent-browser-gateway-X.Y.Z-macos-arm64.dmg.sha256.txt
+   ```
+
+   `X.Y.Z` はダウンロードしたバージョンに置き換えます。出力の末尾が `OK` でなければ、そのファイルはインストールしないでください。
+
+3. DMG を開き、**Install Agent Browser Gateway.app** をダブルクリックします。インストーラーはアプリを `/Applications` にコピーし、`abg` を `/usr/local/bin` に入れ、メニューバーのアプリを起動します。
+
+4. 接続を確かめます。
+
+   ```bash
+   abg status
+   ```
+
+</Steps>
+
+更新するときは、新しい DMG をダウンロードしてインストーラーをもう一度実行します。`abg` が `PATH` にない場合は、リリース成果物の CLI を配置するか、Homebrew の cask から入れます。
+
+## ブラウザー拡張機能
+
+通常は [Chrome ウェブストア](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi) から Agent Browser Gateway を入れます。公開中のストア掲載は拡張機能 `v0.4.4` で、`v0.4.8` は審査中です。
+
+シークレットウィンドウで使うには、拡張機能の詳細画面で **Allow in incognito** をオンにします。Chrome は初期設定では、シークレットウィンドウで拡張機能を動かしません。通常のウィンドウだけで使うなら、この設定は要りません。
+
+ポップアップ、承認ウィンドウ、注釈の画面は、英語か日本語で表示できます。ポップアップの **詳細設定** にある **表示言語** で切り替えます。**自動** を選ぶとブラウザーの言語に合わせます。`abg` の出力、エラーコード、監査ログは英語のままです。
+
+拡張機能を開発するときは、展開済みのビルドを読み込みます。[ソースからのビルド](#ソースからのビルド)を参照してください。
+
+## エージェントスキルと MCP
+
+Gateway と CLI が動いたら、[skills CLI](https://github.com/vercel-labs/skills) で Claude Code と Codex 向けのスキルを入れるか更新します。
 
 ```bash
 npx skills add arcmanagement/agent-browser-gateway -g
 ```
 
-片方だけ入れる場合は `-a claude-code` または `-a codex` を使います。更新は `npx skills update -g` です。
+片方のエージェントだけに入れるときは `-a claude-code` か `-a codex` を付けます。あとから更新するときは `npx skills update -g` を実行します。
 
-## 開発版アプリ
+MCP クライアントからは `abg mcp-server` を使います。stdio で動く MCP サーバーで、`abg_cli` というツールを1つだけ公開します。中身は同じローカル CLI を呼ぶだけなので、共有、承認、監査ログの仕組みはそのまま働きます。
 
-開発版は別のメニューバーアプリとして port `8766` で動き、ローカル状態も分離します。
+Claude Code:
+
+```bash
+claude mcp add abg -- abg mcp-server
+```
+
+Codex は `~/.codex/config.toml` に追加します。
+
+```toml
+[mcp_servers.abg]
+command = "abg"
+args = ["mcp-server"]
+```
+
+## Windows
+
+WinGet でインストールできるようにする予定です。
+
+```powershell
+winget install --id ArcManagement.AgentBrowserGateway --source winget
+```
+
+:::caution[v0.4.8 はまだ入れられません]
+WinGet にはまだ ABG が登録されておらず、Windows 版のリリース ZIP も公開していません。`winget` が一致するパッケージなしと返すのは、署名済みの Windows リリースと Microsoft 側の登録が済むまでの想定どおりの結果です。
+:::
+
+いま Windows で試すには、Windows 上でリポジトリを clone し、リポジトリのルートで次を実行します。
+
+```powershell
+.\windows-build-install.cmd
+```
+
+## ソースからのビルド
+
+### Gateway と CLI
+
+```bash
+mise trust
+mise install
+./build-app.sh
+open "Agent Browser Gateway.app"
+```
+
+`./build-app.sh` は `Agent Browser Gateway.app` と `.build/release/abg` を作ります。
+
+### 展開済みの拡張機能
+
+```bash
+cd extension
+pnpm install
+pnpm run build
+```
+
+Chrome で `chrome://extensions` を開き、**デベロッパー モード** をオンにして **パッケージ化されていない拡張機能を読み込む** を選び、`extension/dist/` を指定します。
+
+### 開発版アプリ
+
+開発版はポート `8766` で動く別のメニューバーアプリです。ローカルの状態も本番とは別に持ちます。
 
 ```bash
 CONFIG=debug APP_VARIANT=dev ./build-app.sh
@@ -89,4 +167,9 @@ open "Agent Browser Gateway Dev.app"
 ABG_PORT=8766 .build/debug/abg status
 ```
 
-productionのuser pluginは `~/.abg/plugins/`、`ABG_PORT=8766` のdev実行では `~/.abg-dev/plugins/` を使います。
+本番のユーザープラグインは `~/.abg/plugins/` に置かれます。`ABG_PORT=8766` の開発版は `~/.abg-dev/plugins/` を使うため、手元の実験が本番のプラグインの状態を変えません。
+
+## 次に読む
+
+- [はじめに](../): タブを共有して読み取る
+- [配布](../distribution/): リリースの状況と成果物の検証

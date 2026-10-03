@@ -1,20 +1,17 @@
 ---
 title: Architecture
-description: How the browser extension, Gateway app, CLI, audit log, and plugins fit together.
+description: How the browser extension, Gateway app, abg CLI, audit log, plugins, and mobile pairing fit together.
 sidebar:
   order: 6
 ---
 
-ABG is built from three local pieces:
-
-- A browser extension in the user's browser profile.
-- A native Gateway app that runs on the user's machine.
-- The `abg` CLI used by agents, scripts, and humans.
+ABG connects a browser tab to an agent through three local pieces: the browser extension, the
+Gateway app, and the `abg` CLI.
 
 ```text
 Browser tab + ABG extension
         |
-        | WebSocket on 127.0.0.1
+        | WebSocket on 127.0.0.1:8765
         v
 Gateway app
   - permission manager
@@ -29,35 +26,9 @@ abg CLI
 AI coding agent
 ```
 
-## Extension
+## When the agent cannot see a tab
 
-The extension is the browser-side consent surface. In normal per-tab mode, ABG starts with no visible
-tabs. The user shares a specific tab from the popup, and the extension sends tab metadata and command
-responses to the local Gateway.
-
-The optional all-tabs mode is for isolated profiles and sandbox machines. It requests optional host
-access only after the user enables it, and turning it off revokes the all-tabs entries again.
-
-## Gateway
-
-The Gateway listens on loopback and owns the runtime state:
-
-- connected extension instances,
-- shared tabs,
-- operation approval state,
-- loaded plugins,
-- local audit logging,
-- app settings and plugin state.
-
-The production app uses the normal Gateway state directory. The development app uses a separate port
-and profile-specific state so development plugins and settings do not mutate production state.
-
-## CLI
-
-`abg` is the stable interface for agents. It keeps the integration agent-agnostic: any tool that can
-run shell commands can inspect and operate a shared tab.
-
-The CLI also makes debugging simple. If an agent says it cannot see a tab, the human can run:
+Each piece can be checked from the terminal:
 
 ```bash
 abg status
@@ -65,93 +36,138 @@ abg tabs --compact
 abg audit --lines 20
 ```
 
-Internally, the CLI uses one JSON contract over platform-local IPC: Unix domain sockets on macOS and
-Linux, and named pipes on Windows. macOS can fall back to a token-authenticated loopback WebSocket
-when sandbox or path-length constraints prevent a usable socket. Endpoint resolution and cleanup
-are owned by ABG, so callers do not need OS-specific transport details.
+- `abg status` fails with `gateway_not_running`: the Gateway app is not running.
+- `extensionCount` is 0: the extension is not connected to the Gateway.
+- `abg tabs --compact` lists no tabs: nothing is shared, or the share ended.
+- `abg audit` shows what the Gateway did, including revokes.
+
+## Extension
+
+The extension is where the user gives consent. In per-tab mode, the agent starts with no visible
+tabs. When the user shares a tab from the popup, the extension sends that tab's metadata and command
+responses to the local Gateway.
+
+The optional all-tabs mode is for isolated profiles and sandbox machines. It requests optional host
+access only after the user turns it on. Turning it off revokes every all-tabs entry.
+
+## Gateway
+
+The Gateway listens on loopback and owns the runtime state:
+
+- connected extension instances
+- shared tabs
+- operation approval state
+- loaded plugins
+- the local audit log
+- app settings and plugin state
+
+The development app uses a separate port, `8766`, and separate state, so development plugins and
+settings do not change production state.
+
+## CLI
+
+`abg` is the stable interface for agents. Any tool that can run shell commands can inspect and
+operate a shared tab, and a person can run the same commands to see what the agent sees.
+
+The CLI uses one JSON contract over platform-local IPC: Unix domain sockets on macOS and Linux, and
+named pipes on Windows. On macOS, when sandbox or path-length limits prevent a usable socket, it
+falls back to a token-authenticated loopback WebSocket. ABG resolves and cleans up the endpoint, so
+callers do not need OS-specific transport details.
 
 ## Plugins
 
-Plugins are local JavaScript modules loaded by the Gateway. They can transform browser data, add
-domain-specific Markdown extraction, or register higher-level commands. Plugin-issued tab operations
-use the same approval and audit path as CLI operations.
+Plugins are local JavaScript modules loaded by the Gateway. They transform browser data, add
+domain-specific Markdown extraction, or register commands. Tab operations from plugins use the same
+approval and audit path as CLI operations. See [Plugins](../plugins/).
 
-See [Plugins](./plugins/) for install and authoring details.
-
-## Platform roadmap
+## Platforms
 
 Chrome is the first browser target. Firefox uses a browser adapter and a Firefox extension target.
-The iPhone Safari target uses the paired companion for DOM inspection and page actions supported by
-Safari Web Extensions. Desktop Safari and Android remain separate platform tracks.
+The iPhone Safari target uses the paired companion app for DOM inspection and the page actions that
+Safari Web Extensions support. Desktop Safari and Android are separate platform tracks.
 
-## Mobile consent and pairing design
+## Mobile pairing
 
-Mobile and WebView support connects a phone, tablet, or embedded browser surface to a desktop
-Gateway owned by the same user. This is different from desktop per-tab consent: the desktop extension
-can share a tab through a browser popup on the same machine, while mobile pairing must first prove
-which desktop Gateway is being trusted before any tab or approval surface becomes available.
+Mobile pairing connects a phone to a desktop Gateway owned by the same user. Before any tab or
+approval surface is available, pairing proves which desktop Gateway the phone trusts.
+
+The pairing commands are:
+
+```bash
+abg companion offer
+abg companion offer --manual
+abg companion confirm <pairing-id>
+abg companion list
+abg companion revoke <device-id>
+```
+
+`offer` shows a QR code and a manual code. `confirm` finishes pairing after both devices show the
+same code. `revoke` removes the phone and closes its session.
 
 ### Pairing methods
 
-| Method | Fit | Decision |
+| Method | When to use it | Status |
 | --- | --- | --- |
-| QR code | Best first-run flow when the desktop can show a short-lived pairing URL and the phone has a camera. The user confirms the same code on both devices before the mobile session is created. | Shipped. The QR payload expires after five minutes and only bootstraps a scoped pairing token. |
-| Manual token entry | Works when camera access is unavailable or screen sharing hides the QR code. | Shipped as a fallback. It uses a short code plus desktop confirmation. |
-| Tailnet link | Good for users who already operate a private Tailnet and need desktop-to-mobile pairing across networks. It keeps connectivity user-controlled. | Shipped as the preferred private remote boundary. It never routes through an ABG-operated relay. |
-| Private LAN address | Works on a trusted LAN when no Tailnet address is available. | Shipped through the same authenticated pairing listener. ABG does not advertise the Gateway through automatic LAN discovery. |
+| QR code | The desktop can show a short-lived pairing URL and the phone has a camera. The user confirms the same code on both devices. | Shipped. The QR payload expires after five minutes and only starts a scoped pairing token. |
+| Manual code | The camera is unavailable or screen sharing hides the QR code. | Shipped as a fallback. It uses a short code plus desktop confirmation. |
+| Tailnet link | The user already runs a private Tailnet and needs pairing across networks. | Shipped as the preferred private remote boundary. It never routes through an ABG-operated relay. |
+| Private LAN address | No Tailnet address is available on a trusted LAN. | Shipped through the same authenticated pairing listener. ABG does not advertise the Gateway through automatic LAN discovery. |
 
 ### Consent and session scope
 
-Desktop per-tab consent starts from a local browser action: the user shares one tab, the share is
-scoped to that tab reference, and it automatically revokes when the tab closes, changes origin, or is
-explicitly revoked. Mobile consent adds a device/session layer before tab consent:
+Desktop consent starts from a browser action on the same machine: the user shares one tab, and the
+share ends when the tab closes, changes origin, or is revoked. Mobile adds a device and session layer
+before tab consent:
 
-- A paired mobile device receives no tab access by default. Pairing grants the separate
-  `tab_sharing` scope, but the user must still share the active Safari tab from the extension popup.
+- A paired device gets no tab access by default. Pairing grants the `tab_sharing` scope, but the
+  user must still share the active Safari tab from the extension popup.
 - The desktop Gateway owns the pairing list, session lifetime, approval state, and audit log.
-- Mobile approval forwarding can approve or reject a pending desktop operation, but it must not grant
-  broad tab visibility by itself.
-- A mobile session is scoped to one Gateway, one paired device identity, and explicit approval,
-  status, and tab-sharing capabilities.
-- Revoking the mobile session removes the device from the pairing list and invalidates all outstanding
-  approval prompts and pairing tokens for that device.
-- Revoking an iPhone Safari tab share immediately removes that tab from the desktop Gateway. Closing
-  the tab or changing its origin also revokes it.
+- Mobile approval forwarding can approve or reject a pending desktop operation. It cannot grant tab
+  visibility by itself.
+- A mobile session is scoped to one Gateway, one paired device, and explicit approval, status, and
+  tab-sharing capabilities.
+- Revoking the mobile session removes the device from the pairing list and invalidates its pending
+  approval prompts and pairing tokens.
+- Revoking an iPhone Safari tab share removes that tab from the desktop Gateway immediately.
+  Closing the tab or changing its origin also revokes it.
 
 The iPhone Safari target supports tab listing, DOM reads, getters, predicates, semantic find,
 snapshots, tables, clipped and full-page screenshots, text and area annotations, explicit
 cross-origin frame grants, site-scoped cookie inspection, encrypted file upload, native Reading
 List insertion, tab activation, waits, editable validation, storage inspection, approved eval, and
-DOM-level page actions. Actions require approval in the paired iPhone app unless the user enables
-Trusted automation in the Safari extension popup. A shared tab remains scoped to its approved
-origin and reconnects to the same Mac-side reference after Safari suspension.
+DOM-level page actions. Actions need approval in the paired iPhone app unless the user turns on
+Trusted automation in the Safari extension popup. A shared tab stays scoped to its approved origin
+and reconnects to the same Mac-side ref after Safari suspends it.
 
 ### Network boundaries
 
-The local-only desktop workflow remains the default and highest-trust mode. The Gateway continues to
-listen on loopback for normal CLI and extension traffic, and the product must remain usable with all
-non-loopback networking blocked.
+The local-only desktop workflow is the default and the highest-trust mode. The Gateway listens on
+loopback for CLI and extension traffic, and ABG works with all non-loopback networking blocked.
 
-Tailnet operation is the preferred private remote boundary. The user or organization controls the
-Tailnet, device enrollment, DNS, and firewall policy. ABG starts the remote-pairing listener only
-while an offer or active grant exists. The listener requires device confirmation for pairing and an
-active scoped session token for later connections.
+Tailnet is the preferred private remote boundary. The user or organization controls the Tailnet,
+device enrollment, DNS, and firewall policy. ABG starts the remote-pairing listener only while an
+offer or active grant exists. Pairing requires device confirmation, and later connections require
+an active scoped session token.
 
 A private LAN address is the fallback when no Tailnet address is available. ABG does not use
-automatic LAN discovery because it would advertise the Gateway on untrusted networks, increase the
-phishing surface for lookalike Gateways, and create confusing behavior when multiple Gateways are
-present.
+automatic LAN discovery. It would advertise the Gateway on untrusted networks, make lookalike
+Gateways easier to phish with, and confuse setups with several Gateways.
 
-An ABG-operated cloud relay is rejected. It would add a central service that can observe metadata,
-become an account and abuse-prevention boundary, and weaken the local-first security promise.
+ABG does not operate a cloud relay. A relay would be a central service that can observe metadata,
+would need accounts and abuse prevention, and would weaken the local-first design.
 
-### Remaining limits
+### Limits
 
 - Safari has no Chrome DevTools Protocol equivalent for console and network capture, HAR, PDF,
   emulation, download metadata, native low-level input, or tab recording. These commands return
   `unsupported_on_safari` with a platform-specific reason.
-- Mac clipboard payloads remain unavailable. File uploads encrypt bytes on the Mac and transfer only
-  the file name, MIME type, digest, and ciphertext to the paired Safari extension; the Mac path is
-  not sent.
-- Sandbox all-tabs access remains Chrome-only.
-- Android and embedded WebView support remain separate platform tracks.
+- Mac clipboard payloads are unavailable. File uploads encrypt bytes on the Mac and send only the
+  file name, MIME type, digest, and ciphertext to the paired Safari extension. The Mac path is not
+  sent.
+- Sandbox all-tabs access is Chrome only.
+- Android and embedded WebView support are separate platform tracks.
+
+## Related
+
+- [Security](../security/): consent boundaries and the audit log.
+- [CLI](../cli/): commands for each piece.

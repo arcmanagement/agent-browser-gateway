@@ -1,54 +1,74 @@
 ---
 title: セキュリティ
-description: consent、local transport、approval prompt、audit log、公式non-goal。
+description: エージェントが ABG を通じて触れられる範囲、承認が必要な操作、監査ログに残る内容、ABG が防げないこと。
 sidebar:
   order: 7
 ---
 
-ABGは人間が所有しているbrowser sessionを前提に設計しています。セキュリティモデルは狭いdefaultから始まります。
-ユーザーが共有するまで、エージェントから見えるタブはありません。
+エージェントが ABG を通じて何に触れられ、何に承認が要り、何が記録されるかを説明します。
 
-## consent boundary
+ABG は、人が普段使っているブラウザーのセッションで使う道具です。タブを共有するまで、エージェントにはどのタブも見えません。
 
-- per-tab共有がデフォルトです。
-- タブが閉じられる、originが変わる、明示的にrevokeされると共有は失効します。
-- all-tabs modeは隔離プロファイルやsandboxマシン向けです。
-- 変更系commandは実行前にローカル承認promptを要求できます。
-- 汎用JavaScript evalは初期状態OFFで、明示的なopt-inが必要です。
-- タブ録画は常にapproval-gatedです。共有済みタブだけを録画し、録画中は `REC` badgeを表示し、
-  WebM chunkをローカルfileへ書き出します。
+## 共有の範囲
 
-## local transport
+- 既定はタブごとの共有です。ポップアップか共有のショートカットでタブを共有します。
+- タブを閉じる、オリジンが変わる、共有を解除する、のいずれかで共有は終わります。
+- 全タブ共有モードは、隔離したプロファイルやサンドボックス用のマシン向けです。ポップアップでは **全タブ共有（サンドボックス専用）** と表示されます。普段使いのプロファイルや用途の混ざったプロファイルではオンにしないでください。オンにすると Chrome に任意の `<all_urls>` 権限を求めます。オフにすると全タブ共有で登録したタブの共有をすべて解除し、その権限も外します。
+- ブックマークとリーディングリストは、ポップアップの専用スイッチと任意のブラウザー権限が別に要ります。共有タブの内容ではなく、ブラウザーが持つ個人データだからです。
 
-Gatewayはloopbackで待ち受けます。ブラウザー拡張はローカルGatewayに接続し、CLIはlocal IPCでGatewayと通信します。
-通常のローカルworkflowにABG-hosted accountやcloud relayは不要です。
+## 承認
 
-公式ABGはcloud relayを運営せず、telemetryを集めず、広いJavaScript実行をsilentに有効化しません。将来のremote pairingは
-ユーザーが運用するconnection pathとして設計できますが、ABG運営のrelayにしてはいけません。
+- `click`、`fill`、`paste`、`navigate`、`upload`、ダイアログの操作などの書き込み系コマンドは、初期設定で実行前にローカルの承認ウィンドウを開きます。ポップアップの設定名は **書き込み操作の前に承認を求める** です。
+- 読み取り系のコマンド、`raise`、`revoke` は承認を求めません。
+- 汎用の JavaScript eval は初期設定でオフです。**承認制の JavaScript eval を許可** でオンにします。**信頼済み自動化（AutoMode）** がオフの間は、eval を呼ぶたびに `--approve` と、実行するスクリプトをそのまま表示した承認ウィンドウでの許可が必要です。
+- タブの録画は、他の承認をオフにしていても必ず承認が要ります。録画できるのは共有中のタブだけで、録画中は `REC` バッジが付き、WebM をローカルのファイルに書き出します。
 
 ## 監査ログ
 
-Gateway操作はローカルJSONL監査ログに書かれます。action名、tab参照、selector、approval mode、plugin command名、
-録画start/stop metadata、必要に応じたbyte lengthを記録します。貼り付け本文、plugin command argument value、
-録画media本体のようなsensitive payloadは記録しません。
+Gateway はすべての操作を `~/Library/Logs/AgentBrowserGateway/audit.jsonl` に JSONL で書き込みます。直近の記録は次のコマンドで見られます。
 
 ```bash
 abg audit --lines 50
 ```
 
-## 防御対象外
+同じログから日ごと、週ごとの集計を出すこともできます。
 
-ABGは次のものを防ぐとは主張しません。
+```bash
+abg activity --period day
+```
 
-- 悪意あるローカルユーザーやroot権限の侵害
-- 同じプロファイル内の悪意あるブラウザー拡張
-- browser vulnerability
-- ユーザーが明示的に承認した操作
-- ユーザーがインストールしたplugin code
+記録するのは、操作名、タブの参照、セレクター、承認の方式、プラグインのコマンド名、録画の開始と終了、必要に応じたバイト数です。貼り付けた本文、プラグインの引数の値、録画した映像や音声は記録しません。`bookmarks` と `reading-list` では ID、件数、検索語のバイト数を記録し、保存された URL そのものは記録しません。
 
-pluginは信頼できるsourceからだけインストールしてください。pluginはローカルGateway process内で実行されます。
+## ローカルの通信
 
-## 安全なautomation default
+- Gateway は `127.0.0.1` で待ち受けます。通常のローカルでの使い方に、ABG のアカウントやクラウドの中継は要りません。
+- Gateway の WebSocket はブラウザー拡張機能からの接続だけを受け付けます。普通の Web サイトは、ページの JavaScript から接続できません。
+- CLI は、所有者だけが使える Unix ソケットか、起動ごとのトークンが必要なループバックの WebSocket で Gateway に接続します。
+- スマートフォンをペアリングすると、ABG は選んだ非公開の Tailnet か LAN のインターフェースでも待ち受けます。このリスナーは、ペアリングの申し出か有効な許可があるときだけ動きます。[アーキテクチャ](../architecture/#ネットワークの境界)を参照してください。
 
-`read`、`get`、`find`、`wait`、`snapshot`、plugin commandのような名前付きcommandを優先します。
-`eval` は最後の手段です。evalを有効にする場合も、そのprofileが十分に信頼・隔離されていない限りAutoModeはOFFにします。
+公式の ABG は、クラウドの中継を運営せず、テレメトリーを集めず、広い範囲の JavaScript 実行を黙って有効にすることもしません。リモートのペアリングも利用者が管理する接続であり、ABG が運営する中継にはしません。
+
+## 防げること
+
+- 共有していないタブに触れようとするプロンプトインジェクション。Gateway は、共有していないタブへの操作を拒否します。
+- 移動による共有の広がりすぎ。手動で共有したタブは、オリジンが変わると共有が解除されます。
+- エージェントによる気付かれない操作。すべての操作が監査ログに残ります。
+- 気付かれない録画。利用者が許可を押さない限り、CLI だけでは録画を始められません。
+
+## 防げないこと
+
+- 悪意のあるローカルの利用者や、root 権限の奪取
+- 同じプロファイルに入った悪意のあるブラウザー拡張機能
+- ブラウザー自体の脆弱性
+- 利用者が明示的に承認した操作
+- 利用者が自分で入れたプラグインのコード
+
+プラグインはローカルの Gateway プロセス内で動きます。信頼できる入手元のものだけを入れてください。
+
+## 安全に自動化するための既定
+
+`read`、`get`、`find`、`wait`、`snapshot`、プラグインのコマンドなど、名前の付いたコマンドを優先します。`eval` は最後の手段です。eval をオンにする場合も、そのプロファイルが十分に信頼でき、隔離されているとき以外は AutoMode をオフのままにします。
+
+## 脆弱性の報告
+
+セキュリティの脆弱性を GitHub の公開 issue に書かないでください。現在の報告の受け付け状況と脅威モデルは [SECURITY.md](https://github.com/arcmanagement/agent-browser-gateway/blob/main/SECURITY.md) にあります。
