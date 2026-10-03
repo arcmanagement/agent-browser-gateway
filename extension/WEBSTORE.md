@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.4.8.zip
+dist/agent-browser-gateway-extension-0.5.0.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,19 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.5.0 review notes
+
+- No new permissions and no new host access. The release adds two keyboard shortcuts (`commands`):
+  share or revoke the current tab, and copy the current tab's numeric ID. Both act only on the
+  active tab after the user presses the key; copying the ID never grants access.
+- The existing offscreen document now also declares the `CLIPBOARD` reason, used only to write the
+  tab ID for the copy shortcut from the extension context instead of the page.
+- Annotations on a shared tab are kept in `chrome.storage.session` so the user can restore them
+  after a reload. They are never written to page-visible storage and are deleted when the tab
+  closes or the user clears them.
+- The popup, approval window, and annotation overlay are redesigned and localized (English and
+  Japanese); the consent and approval boundary is unchanged.
 
 ## 0.4.8 review notes
 
