@@ -224,7 +224,7 @@ site-search dialog {
 }
 
 :root[data-theme="light"] site-search dialog {
-  background: #ffffff !important;
+  background: #f6f7f5 !important;
 }
 
 site-search {
