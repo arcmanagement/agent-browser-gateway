@@ -1,4 +1,6 @@
 import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
+import { parseAnnotationSnapshotMessage } from "./annotationPersistenceLogic.js";
+import { AnnotationSnapshotStore, runAnnotationModeWithSnapshots } from "./annotationSnapshots.js";
 import { scriptBlockPresentation } from "./approvalLogic.js";
 import {
   type AuditDiffPayload,
@@ -228,6 +230,7 @@ const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
 const pendingApprovals = new Map<string, PendingApproval>();
 let recordingSession: RecordingSession | null = null;
+const annotationSnapshots = new AnnotationSnapshotStore(browser.storage.session);
 
 let extensionId: string | null = null;
 let wsConnected = false;
@@ -874,6 +877,8 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
+  // Saved annotations outlive a revoke but not the tab itself.
+  await annotationSnapshots.delete(tabId).catch(() => undefined);
   if (permittedTabs.has(tabId)) {
     permittedTabs.delete(tabId);
     consoleBuffers.delete(tabId);
@@ -1395,7 +1400,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
     } else if (cmd.method === "annotation_mode") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
-      reply(cmd.id, await manageAnnotationMode(tabId, readAnnotationCommand(cmd.params)));
+      reply(cmd.id, await runAnnotationCommand(tabId, readAnnotationCommand(cmd.params)));
     } else if (cmd.method === "validate_editable") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await validateEditable(tabId, cmd.params ?? {}));
@@ -7270,6 +7275,59 @@ async function showShortcutToast(tabId: number, feedback: ShortcutFeedback): Pro
   }
 }
 
+// ---------- Annotation retention across reloads ----------
+
+// Callers must check that the tab is shared first. Restoring never changes permission state.
+function runAnnotationCommand(tabId: number, command: AnnotationCommand) {
+  return runAnnotationModeWithSnapshots(
+    {
+      store: annotationSnapshots,
+      run: manageAnnotationMode,
+      currentPage: async (id) => {
+        const tab = await browser.tabs.get(id).catch(() => undefined);
+        const permitted = permittedTabs.get(id);
+        return { url: tab?.url ?? permitted?.url, title: tab?.title ?? permitted?.title };
+      },
+    },
+    tabId,
+    command,
+  );
+}
+
+function restorableCountFromSummary(saved: unknown): number {
+  if (!isRecord(saved) || saved.urlMatches !== true) return 0;
+  return typeof saved.count === "number" ? saved.count : 0;
+}
+
+// The overlay reports its annotation list after each change. Only the isolated-world overlay
+// in the top frame of a currently shared tab is accepted; the tab and URL come from the
+// sender, never from the message body.
+async function handleAnnotationSnapshotMessage(
+  rawMsg: unknown,
+  sender: chrome.runtime.MessageSender,
+): Promise<RuntimeResponse> {
+  const tabId = sender.tab?.id;
+  if (
+    sender.id !== browser.runtime.id ||
+    typeof tabId !== "number" ||
+    (sender.frameId ?? 0) !== 0 ||
+    !permittedTabs.has(tabId)
+  ) {
+    return { type: "error", message: "annotation snapshot rejected" };
+  }
+  const parsed = parseAnnotationSnapshotMessage(rawMsg);
+  const url = sender.url ?? sender.tab?.url;
+  if (!parsed || !url) return { type: "error", message: "invalid annotation snapshot" };
+  await annotationSnapshots.apply(tabId, {
+    pageSessionId: parsed.pageSessionId,
+    url,
+    title: sender.tab?.title ?? "",
+    annotations: parsed.annotations,
+    cleared: parsed.cleared,
+  });
+  return { type: "ok" };
+}
+
 // ---------- Popup messaging ----------
 
 browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
@@ -7291,6 +7349,10 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
     ) {
       handleOffscreenEvent(rawMsg);
       sendResponse({ type: "ok" });
+      return;
+    }
+    if (isRecord(rawMsg) && rawMsg.type === "abg_annotation_snapshot") {
+      sendResponse(await handleAnnotationSnapshotMessage(rawMsg, sender));
       return;
     }
     const msg = parseRuntimeMessage(rawMsg);
@@ -7324,13 +7386,14 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       sharedTabs.push({ tabId, title: p.title, url: p.url, accessMode: p.accessMode });
     }
     const annotationState = permittedTabs.has(msg.tabId)
-      ? await manageAnnotationMode(msg.tabId, { action: "list" }).catch(() => ({
+      ? await runAnnotationCommand(msg.tabId, { action: "list" }).catch(() => ({
           ok: true as const,
           enabled: false,
           count: 0,
           annotations: [],
+          saved: undefined,
         }))
-      : { ok: true as const, enabled: false, count: 0, annotations: [] };
+      : { ok: true as const, enabled: false, count: 0, annotations: [], saved: undefined };
     return {
       type: "state",
       permitted: permittedTabs.has(msg.tabId),
@@ -7346,6 +7409,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       annotationState: {
         enabled: annotationState.enabled,
         count: annotationState.count,
+        restorableCount: restorableCountFromSummary(annotationState.saved),
       },
       shortcutFeedback: await shortcutFeedbackForTab(msg.tabId),
     };
@@ -7400,8 +7464,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       return { type: "error", message: "tab is not shared with ABG" };
     }
     await attachDebugger(msg.tabId);
-    await manageAnnotationMode(msg.tabId, { action: msg.action });
-    return { type: "ok" };
+    const result = await runAnnotationCommand(msg.tabId, { action: msg.action });
+    return msg.action === "restore" && result.userMessage
+      ? { type: "ok", message: result.userMessage }
+      : { type: "ok" };
   }
   if (msg.type === "get_approval_request") {
     const pending = pendingApprovals.get(msg.approvalId);
@@ -7499,7 +7565,9 @@ function isAnnotationAction(value: unknown): value is AnnotationAction {
     value === "clear" ||
     value === "list" ||
     value === "add_region" ||
-    value === "add_selector"
+    value === "add_selector" ||
+    value === "restore" ||
+    value === "saved"
   );
 }
 

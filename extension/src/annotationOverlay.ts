@@ -11,6 +11,46 @@ export type AnnotationCommand = {
   y?: number;
   width?: number;
   height?: number;
+  /** Saved annotations to re-anchor; set by the background for `restore` only. */
+  saved?: unknown[];
+  /**
+   * True only when the command runs in the extension's isolated world, where the overlay can
+   * report changes to the background through chrome.runtime. The debugger fallback runs in the
+   * page's main world and must never try to message the extension from there.
+   */
+  persist?: boolean;
+};
+
+export type AnnotationRestoredBy = "selector" | "text" | "anchor" | "coordinates";
+
+export type AnnotationRestoreReport = {
+  status:
+    | "restored"
+    | "partial"
+    | "none_restored"
+    | "already_present"
+    | "no_saved_annotations"
+    | "url_mismatch";
+  restored: {
+    uid: string;
+    displayNumber: number;
+    savedDisplayNumber?: number;
+    kind: string;
+    comment: string;
+    restoredBy: AnnotationRestoredBy;
+  }[];
+  unrestored: {
+    uid: string;
+    savedDisplayNumber?: number;
+    kind: string;
+    comment: string;
+    selector?: string;
+    text?: string;
+    reason: string;
+  }[];
+  alreadyPresent: number;
+  savedUrl?: string;
+  currentUrl?: string;
 };
 
 export type AnnotationModeResult = {
@@ -20,6 +60,10 @@ export type AnnotationModeResult = {
   annotations: unknown[];
   userMessage?: string;
   nextCommand?: string;
+  /** Opaque overlay instance id; the background strips it before replying to the Gateway. */
+  pageSessionId?: string;
+  restore?: AnnotationRestoreReport;
+  saved?: unknown;
 };
 
 function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationModeResult {
@@ -30,7 +74,10 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     | { type: "element"; selector: string };
   type Annotation = {
     id: number;
+    uid: string;
     displayNumber?: number;
+    restoredBy?: AnnotationRestoredBy;
+    restoredAt?: string;
     kind: "screenshot" | "dom" | "text";
     source: "drag" | "selection" | "cli";
     comment: string;
@@ -90,6 +137,8 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     } | null;
     suppressClickId: number | null;
     lastSelectionSignature: string | null;
+    pageSessionId: string;
+    persist: boolean;
   };
   type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
@@ -869,12 +918,45 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       url: location.href,
       title: document.title,
     }));
+  const makeUid = (): string => {
+    const cryptoApi = (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto;
+    try {
+      if (typeof cryptoApi?.randomUUID === "function") return cryptoApi.randomUUID();
+    } catch {
+      // randomUUID is unavailable on some insecure origins; fall through.
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  };
+  // Reports the annotation list to the background so it survives a reload. The background
+  // keeps it in chrome.storage.session, which page scripts and content scripts cannot read.
+  // Nothing is written to page-visible storage.
+  const reportAnnotationsChanged = (state: AnnotationState, cleared = false) => {
+    if (!state.persist) return;
+    const runtime = (
+      globalThis as unknown as {
+        chrome?: { runtime?: { id?: string; sendMessage?: (message: unknown) => unknown } };
+      }
+    ).chrome?.runtime;
+    if (!runtime?.id || typeof runtime.sendMessage !== "function") return;
+    try {
+      const pending = runtime.sendMessage({
+        type: "abg_annotation_snapshot",
+        pageSessionId: state.pageSessionId,
+        cleared,
+        annotations: cleared ? [] : snapshotAnnotations(state),
+      });
+      void Promise.resolve(pending).catch(() => undefined);
+    } catch {
+      // The extension may have been reloaded; the overlay keeps working without persistence.
+    }
+  };
   const makeResult = (state: AnnotationState, action: AnnotationAction): AnnotationModeResult => {
     const annotations = snapshotAnnotations(state);
     return {
       ok: true,
       enabled: state.enabled,
       count: annotations.length,
+      pageSessionId: state.pageSessionId,
       annotations,
       userMessage:
         action === "start"
@@ -945,11 +1027,13 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       annotation.comment = input.value.trim();
       closeEditor(state);
       renderAnnotations(state);
+      reportAnnotationsChanged(state);
     });
     remove.addEventListener("click", () => {
       state.annotations = state.annotations.filter((item) => item.id !== annotation.id);
       closeEditor(state);
       renderAnnotations(state);
+      reportAnnotationsChanged(state);
     });
     state.editor.append(form);
     state.editor.hidden = false;
@@ -1099,6 +1183,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     const anchored = viewportToAnchoredRect(state, viewportRect);
     const annotation: Annotation = {
       id: state.nextId++,
+      uid: makeUid(),
       kind: options.kind,
       source: options.source,
       comment: options.comment?.trim() ?? "",
@@ -1116,6 +1201,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     };
     state.annotations.push(annotation);
     renderAnnotations(state);
+    reportAnnotationsChanged(state);
     if (options.openEditor ?? annotation.comment.length === 0) editAnnotation(state, annotation);
     return annotation;
   };
@@ -1579,6 +1665,8 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       editGesture: null,
       suppressClickId: null,
       lastSelectionSignature: null,
+      pageSessionId: makeUid(),
+      persist: requestedCommand.persist === true,
     };
     capture.addEventListener("mousedown", (event) => {
       if (!state.enabled || event.button !== 0) return;
@@ -1646,6 +1734,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
         state.lastSelectionSignature = null;
         closeEditor(state);
         renderAnnotations(state);
+        reportAnnotationsChanged(state, true);
       }
       if (action) {
         event.preventDefault();
@@ -1699,7 +1788,10 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
         const didMove = state.editGesture.didMove;
         if (didMove) state.suppressClickId = state.editGesture.annotationId;
         state.editGesture = null;
-        if (didMove) renderAnnotations(state);
+        if (didMove) {
+          renderAnnotations(state);
+          reportAnnotationsChanged(state);
+        }
         event.preventDefault();
         event.stopPropagation();
       },
@@ -1719,6 +1811,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           state.editGesture = null;
           closeEditor(state);
           renderAnnotations(state);
+          reportAnnotationsChanged(state);
           event.preventDefault();
           event.stopPropagation();
         }
@@ -1740,11 +1833,350 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     return state;
   };
 
+  // ---------- Restore after reload (issue #440) ----------
+  // Re-anchors saved annotations against the live DOM. An annotation is placed only when its
+  // target can be identified unambiguously; everything else is reported as unrestored with a
+  // reason and is never drawn at a guessed position.
+  type SavedInput = {
+    uid?: unknown;
+    kind?: unknown;
+    source?: unknown;
+    comment?: unknown;
+    displayNumber?: unknown;
+    selector?: unknown;
+    text?: unknown;
+    textAnchor?: unknown;
+    rect?: unknown;
+    anchor?: unknown;
+    createdAt?: unknown;
+    element?: unknown;
+  };
+  type RestoreOutcome =
+    | { ok: true; annotation: Annotation }
+    | { ok: false; reason: string; selector?: string };
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+  const savedRect = (value: unknown): Rect | null => {
+    if (!isPlainObject(value)) return null;
+    const { x, y, width, height } = value;
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      typeof width !== "number" ||
+      typeof height !== "number" ||
+      ![x, y, width, height].every(Number.isFinite)
+    ) {
+      return null;
+    }
+    return { x, y, width, height };
+  };
+  const queryUnique = (selector: string): { element: Element } | { reason: string } => {
+    let matches: NodeListOf<Element>;
+    try {
+      matches = document.querySelectorAll(selector);
+    } catch {
+      return { reason: "selector_invalid" };
+    }
+    if (matches.length === 0) return { reason: "selector_not_found" };
+    if (matches.length > 1) return { reason: "selector_ambiguous" };
+    return { element: matches[0] as Element };
+  };
+  const restoredBase = (state: AnnotationState, saved: SavedInput, uid: string) => ({
+    id: state.nextId++,
+    uid,
+    source: (saved.source === "drag" || saved.source === "selection" || saved.source === "cli"
+      ? saved.source
+      : "cli") as Annotation["source"],
+    comment: typeof saved.comment === "string" ? saved.comment : "",
+    createdAt: typeof saved.createdAt === "string" ? saved.createdAt : new Date().toISOString(),
+    url: location.href,
+    title: document.title,
+    restoredAt: new Date().toISOString(),
+  });
+  const restoreDomAnnotation = (
+    state: AnnotationState,
+    saved: SavedInput,
+    uid: string,
+  ): RestoreOutcome => {
+    const savedElement = isPlainObject(saved.element) ? saved.element : null;
+    const candidates = [saved.selector, savedElement?.selector].filter(
+      (value, index, list): value is string =>
+        typeof value === "string" && value.length > 0 && list.indexOf(value) === index,
+    );
+    if (candidates.length === 0) return { ok: false, reason: "selector_missing" };
+    let lastFailure: { reason: string; selector?: string } = { reason: "selector_not_found" };
+    for (const selector of candidates) {
+      const lookup = queryUnique(selector);
+      if ("reason" in lookup) {
+        lastFailure = { reason: lookup.reason, selector };
+        continue;
+      }
+      const metadata = metadataForElement(lookup.element);
+      if (typeof savedElement?.tag === "string" && savedElement.tag !== metadata.tag) {
+        lastFailure = { reason: "element_changed", selector };
+        continue;
+      }
+      if (
+        typeof savedElement?.text === "string" &&
+        savedElement.text.length > 0 &&
+        trimText(savedElement.text) !== metadata.text
+      ) {
+        lastFailure = { reason: "element_text_changed", selector };
+        continue;
+      }
+      let viewportRect: Rect;
+      try {
+        viewportRect = rectForElement(lookup.element);
+      } catch {
+        lastFailure = { reason: "target_not_visible", selector };
+        continue;
+      }
+      const anchored = viewportToAnchoredRect(state, viewportRect);
+      return {
+        ok: true,
+        annotation: {
+          ...restoredBase(state, saved, uid),
+          kind: "dom",
+          selector,
+          rect: anchored.rect,
+          viewportRect: anchored.viewportRect,
+          scroll: anchored.scroll,
+          anchor: anchored.anchor,
+          element: metadata,
+          restoredBy: "selector",
+        },
+      };
+    }
+    return { ok: false, ...lastFailure };
+  };
+  const restoreTextAnnotation = (
+    state: AnnotationState,
+    saved: SavedInput,
+    uid: string,
+  ): RestoreOutcome => {
+    const savedAnchor = isPlainObject(saved.textAnchor)
+      ? (saved.textAnchor as NonNullable<Annotation["textAnchor"]>)
+      : null;
+    const text = typeof saved.text === "string" ? saved.text : "";
+    const needle = normalizeSelectionText(text);
+    if (!savedAnchor || typeof savedAnchor.selector !== "string" || !needle) {
+      return { ok: false, reason: "text_anchor_missing" };
+    }
+    const lookup = queryUnique(savedAnchor.selector);
+    if ("reason" in lookup) {
+      return {
+        ok: false,
+        reason: lookup.reason.replace("selector_", "text_container_"),
+        selector: savedAnchor.selector,
+      };
+    }
+    const root = lookup.element;
+    let range: Range | null = null;
+    let index = typeof savedAnchor.index === "number" ? savedAnchor.index : undefined;
+    const direct = rangeForTextAnchor(root, savedAnchor);
+    if (direct && normalizeSelectionText(direct.toString()) === needle) range = direct;
+    if (!range) {
+      // Exact text match only. With several matches, the saved match index must still point
+      // at one of them; otherwise the annotation is ambiguous and is not placed.
+      const map = normalizedTextMapFor(root);
+      const indexes: number[] = [];
+      let fromIndex = 0;
+      while (indexes.length < 100) {
+        const found = map.text.indexOf(needle, fromIndex);
+        if (found < 0) break;
+        indexes.push(found);
+        fromIndex = found + Math.max(1, needle.length);
+      }
+      if (indexes.length === 0) {
+        return { ok: false, reason: "text_not_found", selector: savedAnchor.selector };
+      }
+      const chosen =
+        index !== undefined && indexes.includes(index)
+          ? index
+          : indexes.length === 1
+            ? indexes[0]
+            : undefined;
+      if (chosen === undefined) {
+        return { ok: false, reason: "text_ambiguous", selector: savedAnchor.selector };
+      }
+      index = chosen;
+      range = rangeForTextMapSpan(map.points, chosen, needle.length);
+      if (!range) return { ok: false, reason: "text_not_found", selector: savedAnchor.selector };
+    }
+    const bounding = range.getBoundingClientRect();
+    if (bounding.width < 1 || bounding.height < 1) {
+      return { ok: false, reason: "target_not_visible", selector: savedAnchor.selector };
+    }
+    const viewportRect: Rect = {
+      x: Math.round(bounding.left),
+      y: Math.round(bounding.top),
+      width: Math.round(bounding.width),
+      height: Math.round(bounding.height),
+    };
+    const anchored = viewportToAnchoredRect(state, viewportRect);
+    const textAnchor = rangeAnchorFor(root, range, rangeRects(range)?.rect ?? viewportRect) ?? {
+      selector: selectorInfoFor(root).selector,
+    };
+    textAnchor.index = index;
+    return {
+      ok: true,
+      annotation: {
+        ...restoredBase(state, saved, uid),
+        kind: "text",
+        text,
+        textAnchor,
+        rect: anchored.rect,
+        viewportRect: anchored.viewportRect,
+        scroll: anchored.scroll,
+        anchor: anchored.anchor,
+        element: metadataForTextSelection(root, text),
+        restoredBy: "text",
+      },
+    };
+  };
+  const restoreScreenshotAnnotation = (
+    state: AnnotationState,
+    saved: SavedInput,
+    uid: string,
+  ): RestoreOutcome => {
+    const rect = savedRect(saved.rect);
+    if (!rect || rect.width < 1 || rect.height < 1) return { ok: false, reason: "rect_invalid" };
+    const savedAnchor = isPlainObject(saved.anchor) ? saved.anchor : null;
+    let anchor: ScrollAnchor = { type: "window" };
+    let restoredBy: AnnotationRestoredBy = "coordinates";
+    if (
+      (savedAnchor?.type === "frame" || savedAnchor?.type === "element") &&
+      typeof savedAnchor.selector === "string"
+    ) {
+      const lookup = queryUnique(savedAnchor.selector);
+      if ("reason" in lookup) {
+        return {
+          ok: false,
+          reason: lookup.reason.replace("selector_", "anchor_"),
+          selector: savedAnchor.selector,
+        };
+      }
+      const usable =
+        savedAnchor.type === "frame"
+          ? frameWindowFor(lookup.element) !== null
+          : lookup.element instanceof HTMLElement;
+      if (!usable) {
+        return { ok: false, reason: "anchor_not_accessible", selector: savedAnchor.selector };
+      }
+      anchor = { type: savedAnchor.type, selector: savedAnchor.selector };
+      restoredBy = "anchor";
+    } else {
+      // Window-anchored regions have no DOM target to verify. They come back at the same
+      // document coordinates, marked restoredBy: "coordinates", unless the page is now
+      // too small to contain them.
+      const root = document.documentElement;
+      const pageWidth = Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0);
+      const pageHeight = Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0);
+      if (rect.x >= pageWidth || rect.y >= pageHeight) {
+        return { ok: false, reason: "outside_page" };
+      }
+    }
+    const savedElement = isPlainObject(saved.element)
+      ? (saved.element as Annotation["element"])
+      : undefined;
+    const annotation: Annotation = {
+      ...restoredBase(state, saved, uid),
+      kind: "screenshot",
+      rect,
+      viewportRect: rect,
+      scroll: scrollForAnchor(anchor),
+      anchor,
+      element: savedElement,
+      restoredBy,
+    };
+    annotation.viewportRect = storedAnnotationRectToViewport(annotation);
+    return { ok: true, annotation };
+  };
+  // Restore is additive and idempotent: saved annotations whose uid is already live in the page
+  // are skipped (counted in alreadyPresent), so running restore twice never duplicates them.
+  const restoreSavedAnnotations = (
+    state: AnnotationState,
+    savedList: unknown[],
+  ): AnnotationRestoreReport => {
+    const report: AnnotationRestoreReport = {
+      status: "already_present",
+      restored: [],
+      unrestored: [],
+      alreadyPresent: 0,
+    };
+    const seen = new Set(state.annotations.map((annotation) => annotation.uid));
+    for (const item of savedList) {
+      if (!isPlainObject(item) || typeof item.uid !== "string") continue;
+      const saved = item as SavedInput;
+      const uid = item.uid;
+      if (seen.has(uid)) {
+        report.alreadyPresent += 1;
+        continue;
+      }
+      seen.add(uid);
+      const kind = typeof saved.kind === "string" ? saved.kind : "unknown";
+      let outcome: RestoreOutcome;
+      try {
+        outcome =
+          kind === "dom"
+            ? restoreDomAnnotation(state, saved, uid)
+            : kind === "text"
+              ? restoreTextAnnotation(state, saved, uid)
+              : kind === "screenshot"
+                ? restoreScreenshotAnnotation(state, saved, uid)
+                : { ok: false, reason: "unsupported_kind" };
+      } catch (error) {
+        outcome = {
+          ok: false,
+          reason: `restore_error: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+      const savedDisplayNumber =
+        typeof saved.displayNumber === "number" ? saved.displayNumber : undefined;
+      const comment = typeof saved.comment === "string" ? saved.comment : "";
+      if (outcome.ok) {
+        state.annotations.push(outcome.annotation);
+        report.restored.push({
+          uid,
+          displayNumber: state.annotations.length,
+          savedDisplayNumber,
+          kind,
+          comment,
+          restoredBy: outcome.annotation.restoredBy ?? "coordinates",
+        });
+      } else {
+        const selector =
+          outcome.selector ?? (typeof saved.selector === "string" ? saved.selector : undefined);
+        report.unrestored.push({
+          uid,
+          savedDisplayNumber,
+          kind,
+          comment,
+          selector,
+          text: typeof saved.text === "string" ? saved.text.slice(0, 180) : undefined,
+          reason: outcome.reason,
+        });
+      }
+    }
+    const restored = report.restored.length;
+    const unrestored = report.unrestored.length;
+    report.status =
+      restored > 0 && unrestored === 0
+        ? "restored"
+        : restored > 0
+          ? "partial"
+          : unrestored > 0
+            ? "none_restored"
+            : "already_present";
+    return report;
+  };
+
   const existingState = stateWindow.__abgAnnotationMode;
   const needsState =
     requestedAction === "start" ||
     requestedAction === "add_region" ||
-    requestedAction === "add_selector";
+    requestedAction === "add_selector" ||
+    requestedAction === "restore";
   if (!existingState && !needsState) {
     return {
       ok: true,
@@ -1762,6 +2194,9 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
   state.mode ??= "area";
   state.lastSelectionSignature ??= null;
   state.renderTimer ??= null;
+  state.pageSessionId ??= makeUid();
+  state.persist = requestedCommand.persist === true;
+  for (const annotation of state.annotations) annotation.uid ??= makeUid();
   ensureRenderTimer(state);
 
   if (requestedAction === "start") setEnabled(state, true);
@@ -1773,6 +2208,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     state.editGesture = null;
     closeEditor(state);
     renderAnnotations(state);
+    reportAnnotationsChanged(state, true);
   }
   if (requestedAction === "add_region") {
     const { x, y, width, height } = requestedCommand;
@@ -1815,8 +2251,18 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     });
   }
   if (requestedAction === "list") renderAnnotations(state);
+  let restoreReport: AnnotationRestoreReport | undefined;
+  if (requestedAction === "restore") {
+    restoreReport = restoreSavedAnnotations(
+      state,
+      Array.isArray(requestedCommand.saved) ? requestedCommand.saved : [],
+    );
+    renderAnnotations(state);
+    if (restoreReport.restored.length > 0) reportAnnotationsChanged(state);
+  }
 
-  return makeResult(state, requestedAction);
+  const result = makeResult(state, requestedAction);
+  return restoreReport ? { ...result, restore: restoreReport } : result;
 }
 
 export async function manageAnnotationMode(
@@ -1827,7 +2273,7 @@ export async function manageAnnotationMode(
     const [res] = await browser.scripting.executeScript({
       target: { tabId },
       func: runAnnotationCommand,
-      args: [command],
+      args: [{ ...command, persist: true }],
     });
     return normalizeAnnotationResult(res?.result);
   } catch (error) {
@@ -1868,10 +2314,15 @@ async function evaluateAnnotationModeWithDebugger(
   tabId: number,
   command: AnnotationCommand,
 ): Promise<AnnotationModeResult> {
-  const commandSource = JSON.stringify(command).replace(/[<>&\u2028\u2029]/g, (char) => {
-    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
-    return `\\u${code}`;
-  });
+  // The main world cannot reach the extension safely, so the overlay does not report changes
+  // from here; the background still saves the annotations returned by each command.
+  const commandSource = JSON.stringify({ ...command, persist: false }).replace(
+    /[<>&\u2028\u2029]/g,
+    (char) => {
+      const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+      return `\\u${code}`;
+    },
+  );
   const expression = `
     (() => {
       const runAnnotationCommand = ${runAnnotationCommand.toString()};
