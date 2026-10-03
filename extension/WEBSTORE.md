@@ -87,7 +87,7 @@ multi-file upload hardening change. The user-visible changes are:
 ## Store listing fields
 
 - Name: `Agent Browser Gateway`
-- Short description: `Share Chrome tabs with AI coding agents via explicit local permission.`
+- Short description: `Share the Chrome tabs you choose with AI coding agents. Nothing is shared until you allow it.`
 - Category: `Developer Tools`
 - Language: `English`
 - Homepage URL: `https://agent-browser-gateway.com/`
