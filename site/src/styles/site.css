@@ -2579,7 +2579,8 @@ body[data-lang="ja"] .flow__outside-k {
 .cmd__row code {
   min-width: 0;
   font-size: 0.78125rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 /* Tokens */
@@ -3718,6 +3719,8 @@ body[data-lang="ja"] .compare thead th {
 }
 
 .theme-picker {
+  justify-self: start;
+  align-self: start;
   display: inline-flex;
   align-items: center;
   gap: 2px;
