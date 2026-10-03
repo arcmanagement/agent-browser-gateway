@@ -8,6 +8,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  personalDataApiSupported,
   personalDataMutationIntent,
   personalDataMutationIntentText,
   raiseBrowserTab,
@@ -512,5 +513,26 @@ describe("shortcutFeedback", () => {
     const copied = shortcutFeedback({ kind: "copied", tabId: 42, title: "Docs" }, "ja");
     expect(copied).toMatchObject({ level: "warning", badgeText: "ID" });
     expect(copied.message).toContain("このタブは共有していないため");
+  });
+});
+
+describe("personalDataApiSupported", () => {
+  const chromeManifest = {
+    permissions: ["tabs"],
+    optional_permissions: ["bookmarks", "readingList"],
+  };
+  const firefoxManifest = { permissions: ["tabs"], optional_permissions: ["bookmarks"] };
+
+  it("treats an optional permission as supported before it is granted", () => {
+    expect(personalDataApiSupported(false, "bookmarks", chromeManifest)).toBe(true);
+    expect(personalDataApiSupported(false, "readingList", chromeManifest)).toBe(true);
+  });
+
+  it("is unsupported when the build omits the permission and the API is absent", () => {
+    expect(personalDataApiSupported(false, "readingList", firefoxManifest)).toBe(false);
+  });
+
+  it("is supported whenever the API namespace is present", () => {
+    expect(personalDataApiSupported(true, "readingList", {})).toBe(true);
   });
 });

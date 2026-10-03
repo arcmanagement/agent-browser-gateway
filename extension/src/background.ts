@@ -14,6 +14,7 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
+  personalDataApiSupported,
   personalDataMutationIntentText,
   raisePermittedBrowserTab,
   richClipboardPayloadText,
@@ -740,16 +741,20 @@ async function personalDataAccessState(): Promise<{
     hasBookmarksPermission(),
     hasReadingListPermission(),
   ]);
+  const manifest = browser.runtime.getManifest() as {
+    permissions?: string[];
+    optional_permissions?: string[];
+  };
   return {
     bookmarks: {
       permissionGranted: bookmarksPermissionGranted,
       active: settings.bookmarksAccessEnabled && bookmarksPermissionGranted,
-      supported: !!browser.bookmarks,
+      supported: personalDataApiSupported(!!browser.bookmarks, BOOKMARKS_PERMISSION, manifest),
     },
     readingList: {
       permissionGranted: readingListPermissionGranted,
       active: settings.readingListAccessEnabled && readingListPermissionGranted,
-      supported: !!browser.readingList,
+      supported: personalDataApiSupported(!!browser.readingList, READING_LIST_PERMISSION, manifest),
     },
   };
 }

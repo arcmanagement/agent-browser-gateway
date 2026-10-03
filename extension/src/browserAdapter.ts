@@ -69,7 +69,7 @@ export type BrowserAdapter = {
   readonly permissions: Pick<typeof chrome.permissions, "contains" | "remove" | "request">;
   readonly runtime: Pick<
     typeof chrome.runtime,
-    "getURL" | "id" | "onInstalled" | "onMessage" | "onStartup" | "sendMessage"
+    "getManifest" | "getURL" | "id" | "onInstalled" | "onMessage" | "onStartup" | "sendMessage"
   >;
   readonly scripting: Pick<typeof chrome.scripting, "executeScript">;
   readonly storage: {

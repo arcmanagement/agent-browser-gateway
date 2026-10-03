@@ -1,6 +1,20 @@
 import { formatText, type Language, type LocalizedText, msg } from "./i18n.js";
 import type { ShortcutFeedback, TabAccessMode } from "./types.js";
 
+// Optional API permissions (bookmarks, readingList) hide their namespace until the user grants
+// them, so a missing namespace alone does not mean the browser lacks the API. The build drops a
+// permission from the manifest for targets that do not support it (e.g. readingList on Firefox).
+export function personalDataApiSupported(
+  apiPresent: boolean,
+  permission: string,
+  manifest: { permissions?: string[]; optional_permissions?: string[] },
+): boolean {
+  if (apiPresent) return true;
+  return [...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])].includes(
+    permission,
+  );
+}
+
 export function detectBrowserKind(userAgent: string): string {
   // Lightweight UA sniff. This is only a Gateway UI label, not a security decision.
   if (/Edg\//.test(userAgent)) return "edge";
