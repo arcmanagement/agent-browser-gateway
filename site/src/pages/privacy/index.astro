@@ -1,47 +1,21 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Privacy Policy | Agent Browser Gateway</title>
-    <meta
-      name="description"
-      content="Privacy Policy for Agent Browser Gateway, including Chrome extension permissions, local storage, user data handling, and Chrome Web Store Limited Use disclosure."
-    />
-    <meta property="og:title" content="Privacy Policy | Agent Browser Gateway" />
-    <meta
-      property="og:description"
-      content="How Agent Browser Gateway handles browser data, local logs, extension permissions, and user choices."
-    />
-    <meta property="og:type" content="article" />
-    <meta property="og:url" content="https://agent-browser-gateway.com/privacy/" />
-    <meta property="og:image" content="https://agent-browser-gateway.com/assets/social-card.png" />
-    <link rel="canonical" href="https://agent-browser-gateway.com/privacy/" />
-    <link rel="icon" href="../favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="32x32" href="../assets/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="../assets/favicon-16x16.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
-    <link rel="stylesheet" href="../styles.css" />
-  </head>
-  <body class="legal-page">
-    <header class="nav" aria-label="Primary navigation">
-      <div class="nav-inner">
-        <a class="brand" href="../">
-          <img src="../assets/logo-shield.png" alt="" width="31" height="31" />
-          <span>Agent Browser Gateway</span>
-        </a>
-        <nav class="nav-links" aria-label="Site links">
-          <a href="../">Home</a>
-          <a href="../docs/">Docs</a>
-          <a href="./" aria-current="page">Privacy</a>
-        </nav>
-      </div>
-    </header>
+---
+import SiteLayout from "../../components/site/SiteLayout.astro";
+import "../../styles/legal.css";
+---
 
-    <main>
+<SiteLayout
+  lang="en"
+  title="Privacy Policy | Agent Browser Gateway"
+  description="Privacy Policy for Agent Browser Gateway, including Chrome extension permissions, local storage, user data handling, and Chrome Web Store Limited Use disclosure."
+  ogTitle="Privacy Policy | Agent Browser Gateway"
+  ogDescription="How Agent Browser Gateway handles browser data, local logs, extension permissions, and user choices."
+  ogType="article"
+  path="/privacy/"
+  bodyClass="legal-page"
+>
       <section class="legal-hero">
-        <div class="section-inner">
-          <div class="eyebrow">Privacy Policy</div>
+        <div class="wrap">
+          <p class="legal-eyebrow"><span class="signal-dot" aria-hidden="true"></span>Legal</p>
           <h1>Privacy Policy</h1>
           <p>
             This policy explains how Agent Browser Gateway handles browser data, extension
@@ -51,7 +25,7 @@
         </div>
       </section>
 
-      <div class="section-inner legal-content">
+      <div class="wrap legal-content">
         <aside class="toc" aria-label="Privacy policy sections">
           <a href="#scope">Scope</a>
           <a href="#summary">Summary</a>
@@ -108,7 +82,7 @@
               to run. The table below describes the main categories of data involved.
             </p>
 
-            <div class="data-table">
+            <div class="data-table" role="region" aria-label="Scrollable table" tabindex="0">
               <table>
                 <thead>
                   <tr>
@@ -188,7 +162,7 @@
               Optional <code>&lt;all_urls&gt;</code> access is requested only when the user enables
               all-tabs mode from the extension popup.
             </p>
-            <div class="data-table">
+            <div class="data-table" role="region" aria-label="Scrollable table" tabindex="0">
               <table>
                 <thead>
                   <tr>
@@ -348,20 +322,4 @@
           </section>
         </article>
       </div>
-    </main>
-
-      <footer class="footer">
-        <div class="section-inner footer-inner">
-          <span>
-            Agent Browser Gateway is managed by
-            <a href="https://arcm.co.jp" rel="noopener">ArcManagement, Inc.</a>
-          </span>
-          <span>
-            <a href="mailto:contact@arcm.co.jp">Contact</a>
-            <a href="../docs/">Docs</a>
-            <a href="../">Home</a>
-          </span>
-        </div>
-      </footer>
-  </body>
-</html>
+</SiteLayout>
