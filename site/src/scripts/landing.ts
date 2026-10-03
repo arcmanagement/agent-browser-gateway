@@ -171,11 +171,10 @@ function setupStage() {
       await wait(800, gen);
       set({ cursor: "press" });
       await wait(180, gen);
-      set({ cursor: "button", lit: "true", step: "shared", toast: "shared" });
+      set({ cursor: "button", lit: "true", step: "shared" });
       await wait(1100, gen);
       set({ pop: "closed", cursor: "away" });
       await wait(500, gen);
-      set({ toast: "" });
 
       // 3. The agent lists and reads the shared tab.
       await type("abg tabs --format text", gen);

@@ -137,18 +137,23 @@ const auditRows = [
             </div>
             <div class="win__body">
               <div class="page">
-                <div class="page__main">
-                  <span class="page__h"></span>
-                  <span class="page__row"><span></span><span></span></span>
-                  <span class="page__row"><span></span><span></span></span>
-                  <span class="page__row page__row--total"><span></span><span></span></span>
-                  <span class="page__btn"></span>
+                <div class="page__bar">
+                  <span class="page__logo"><i></i>Acme Cloud</span>
+                  <span class="page__steps"><b>Cart</b><b class="is-on">Checkout</b><b>Done</b></span>
                 </div>
-                <div class="page__side">
-                  <span></span>
-                  <span></span>
-                  <span class="page__field"></span>
-                  <span class="page__field"></span>
+                <div class="page__grid">
+                  <div class="page__main">
+                    <p class="page__h">Checkout</p>
+                    <p class="page__label">Order summary</p>
+                    <div class="page__line"><span>Team plan × 3 seats</span><span>$96.00</span></div>
+                    <div class="page__line page__line--total"><span>Total</span><span>$96.00 / month</span></div>
+                    <span class="page__cta">Place order</span>
+                  </div>
+                  <div class="page__side">
+                    <p class="page__label">Billing</p>
+                    <span class="page__field"><em>Email</em>ops@example.com</span>
+                    <span class="page__field"><em>Card</em>•••• 4242</span>
+                  </div>
                 </div>
               </div>
               <div class="pop">
@@ -171,7 +176,6 @@ const auditRows = [
                   <span class="pop__btn pop__btn--revoke">{t.stage.revoke}</span>
                 </div>
               </div>
-              <span class="toast toast--shared">{t.stage.toastShared}</span>
               <span class="toast toast--revoked">{t.stage.toastRevoked}</span>
               <span class="keys"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>S</kbd></span>
               <svg class="cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6.2 1.6L10 19z" /></svg>
@@ -454,6 +458,7 @@ const auditRows = [
             <p class="anno__status" aria-live="polite" data-anno-status data-restored={t.annotate.restored}></p>
           </div>
         </div>
+        <div class="anno__aside">
         <div class="anno__json">
           <pre class="anno__code anno__code--annotated"><code><span class="ln ln--cmd"><span class="ps">$</span>abg annotate t1</span>
 {`{ "ok": true, "count": 2,
@@ -475,10 +480,11 @@ const auditRows = [
             {t.annotate.steps.map((s, i) => <li data-i={i}>{s}</li>)}
           </ol>
         </div>
+        <ul class="ticks ticks--aside">
+          {t.annotate.facts.map((f) => <li>{f}</li>)}
+        </ul>
+        </div>
       </div>
-      <ul class="ticks reveal">
-        {t.annotate.facts.map((f) => <li>{f}</li>)}
-      </ul>
     </div>
   </section>
 
