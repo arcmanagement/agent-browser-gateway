@@ -13,6 +13,7 @@ const pages = [
   { path: "/docs/security/", priority: "0.7", changefreq: "monthly" },
   { path: "/docs/faq/", priority: "0.6", changefreq: "monthly" },
   { path: "/privacy/", priority: "0.6", changefreq: "monthly" },
+  { path: "/ja/", priority: "0.8", changefreq: "weekly" },
   { path: "/ja/docs/", priority: "0.6", changefreq: "monthly" },
   { path: "/ja/docs/install/", priority: "0.6", changefreq: "monthly" },
   { path: "/ja/docs/distribution/", priority: "0.5", changefreq: "monthly" },

@@ -1,0 +1,638 @@
+---
+import SiteLayout from "../site/SiteLayout.astro";
+import GateMark from "../site/GateMark.astro";
+import GateRule from "./GateRule.astro";
+import CopyButton from "./CopyButton.astro";
+import { copy, type Lang } from "../../i18n/landing";
+import { release } from "../../data/release";
+
+interface Props {
+  lang: Lang;
+}
+const { lang } = Astro.props;
+const t = copy[lang];
+const docs = lang === "ja" ? "/ja/docs/" : "/docs/";
+const installDocs = `${docs}install/`;
+const brew = release.brewCommands.join("\n");
+const maxTokens = Math.max(...t.tokens.rows.map((r) => r.tokens));
+const path = lang === "ja" ? "/ja/" : "/";
+// Headlines use "|" to mark the intended line break.
+const lines = (text: string) => text.split("|");
+
+// Hero demo script. Lines are typed by /src/scripts/landing.ts; the same data renders the
+// static (reduced-motion / no-JS) composition below.
+const demo = {
+  empty: "No permitted tabs.",
+  tabsLine: "t1  418  manual  [Checkout · staging]  https://staging.example.com/checkout",
+  md: ["# Checkout", "## Order summary", "- Team plan × 3 seats", "- Total: $96.00 / month", "[Place order](/checkout/confirm)"],
+  err: ['{ "error": "tab_not_permitted",', '  "message": "tabId 418 is not shared or has expired.",', '  "nextCommand": "abg tabs --compact" }'],
+};
+const stageTabs = [
+  { label: t.stage.tabs[0], target: false },
+  { label: t.stage.tabs[3], target: true },
+  { label: t.stage.tabs[2], target: false },
+  { label: t.stage.tabs[1], target: false },
+];
+const consentTabs = [
+  { id: 418, title: "Checkout · staging", url: "https://staging.example.com/checkout", host: "staging.example.com" },
+  { id: 402, title: "Issue #482", url: "https://tracker.example.com/issues/482", host: "tracker.example.com" },
+  { id: 377, title: lang === "ja" ? "受信トレイ" : "Inbox", url: "https://mail.example.com/inbox", host: "mail.example.com" },
+  { id: 351, title: lang === "ja" ? "銀行" : "Bank", url: "https://bank.example.com/accounts", host: "bank.example.com" },
+];
+const shotLang = lang === "ja" ? "ja" : "en";
+const shot = (name: string, theme: "dark" | "light") =>
+  `/media/product/${name}-${shotLang === "ja" ? "ja-dark" : `en-${theme}`}.webp`;
+const realShots = [
+  { name: "01-popup-not-shared", kind: "popup", w: 720, h: 1200 },
+  { name: "02-popup-shared-with-annotations", kind: "popup", w: 720, h: 1200 },
+  { name: "03-approval-request", kind: "approval", w: 800, h: 544 },
+].map((s) => ({ ...s, dark: shot(s.name, "dark"), light: shot(s.name, "light") }));
+const auditRows = [
+  { time: "09:41:02", action: "permit", tab: "418", agent: "—", detail: "accessMode: manual" },
+  { time: "09:41:06", action: "read_dom", tab: "418", agent: "cli", detail: "staging.example.com/checkout" },
+  { time: "09:41:09", action: "screenshot", tab: "418", agent: "cli", detail: "staging.example.com/checkout" },
+  { time: "09:41:15", action: "click", tab: "418", agent: "cli", detail: "staging.example.com/checkout" },
+  { time: "09:41:21", action: "paste", tab: "418", agent: "cli", detail: "selector · textBytes: 42" },
+  { time: "09:41:30", action: "revoke", tab: "418", agent: "—", detail: "reason: user_revoked" },
+];
+---
+
+<SiteLayout
+  lang={lang}
+  title={t.meta.title}
+  description={t.meta.description}
+  ogTitle={t.meta.ogTitle}
+  ogDescription={t.meta.ogDescription}
+  path={path}
+  alternates={[
+    { lang: "en", path: "/" },
+    { lang: "ja", path: "/ja/" },
+    { lang: "x-default", path: "/" },
+  ]}
+  bodyClass="landing"
+  home
+>
+  <!-- HERO -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero__bg" aria-hidden="true"></div>
+    <div class="wrap hero__grid">
+      <div class="hero__copy">
+        <p class="eyebrow reveal" style="--d: 0">
+          <span class="signal-dot" aria-hidden="true"></span>{t.hero.eyebrow}
+        </p>
+        <h1 id="hero-title" class="hero__title reveal" style="--d: 1">
+          <span class="hero__title-a">{t.hero.titleA.split("|").map((part, i) => i === 0 ? part : <> <span class="nobr">{part}</span></>)}</span>
+          <span class="hero__title-b">{t.hero.titleB}</span>
+        </h1>
+        <p class="hero__sub reveal" style="--d: 2">{t.hero.sub}</p>
+        <div class="hero__actions reveal" style="--d: 3">
+          <a class="btn btn--signal btn--lg" href="#download">
+            <svg class="icon icon--apple" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.9-3-.8c-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.2.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.2.9-1.3 1.3-2.5 1.3-2.6 0 0-2.5-1-2.5-3.8ZM14.1 5.9c.6-.8 1.1-1.8 1-2.9-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.8 1 .1 2.1-.5 2.7-1.3Z" /></svg>
+            {t.hero.primary}
+          </a>
+          <a class="btn btn--ghost btn--lg" href={docs}>{t.hero.secondary}<span class="btn__arrow" aria-hidden="true">→</span></a>
+        </div>
+        <div class="install reveal" style="--d: 4">
+          <div class="install__head">
+            <span class="install__label">{t.hero.installLabel}</span>
+            <CopyButton text={brew} label={t.hero.copy} copiedLabel={t.hero.copied} ariaLabel={t.hero.copyLabel} />
+          </div>
+          <pre class="install__code" tabindex="0" aria-label={t.hero.installLabel}><code>{release.brewCommands.map((c) => <span class="install__line"><span class="prompt" aria-hidden="true">$</span>{c}</span>)}</code></pre>
+          <a class="install__store" href={release.chromeStoreUrl} rel="noopener">
+            <span class="install__plus" aria-hidden="true">+</span>{t.hero.store}<span aria-hidden="true">↗</span>
+          </a>
+        </div>
+        <ul class="trust reveal" style="--d: 5" aria-label="ABG guarantees">
+          {t.hero.trust.map((item) => <li><span class="trust__tick" aria-hidden="true"></span>{item}</li>)}
+        </ul>
+      </div>
+
+      <figure class="stage" data-stage data-step="static" data-lit="true" data-pop="closed" data-audit="on" aria-labelledby="stage-label" aria-describedby="stage-desc">
+        <figcaption class="sr-only">
+          <span id="stage-label">{t.hero.demoLabel}</span>
+          <span id="stage-desc">{t.hero.demoDesc}</span>
+        </figcaption>
+        <div class="stage__frame" aria-hidden="true">
+          <div class="stage__glow"></div>
+          <!-- Browser -->
+          <div class="win">
+            <div class="win__bar">
+              <span class="win__dots"><i></i><i></i><i></i></span>
+              <div class="win__tabs">
+                {stageTabs.map((tab) => (
+                  <span class:list={["chip", { "chip--target": tab.target }]} data-target={tab.target ? "" : undefined}>
+                    <span class="chip__led"></span>
+                    <span class="chip__label">{tab.label}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div class="win__tool">
+              <span class="win__nav">‹ ›</span>
+              <span class="win__url"><span class="win__lock"></span>{t.stage.url}</span>
+              <span class="win__ext">
+                <GateMark size={16} />
+                <b class="win__badge">ON</b>
+              </span>
+            </div>
+            <div class="win__body">
+              <div class="page">
+                <div class="page__main">
+                  <span class="page__h"></span>
+                  <span class="page__row"><span></span><span></span></span>
+                  <span class="page__row"><span></span><span></span></span>
+                  <span class="page__row page__row--total"><span></span><span></span></span>
+                  <span class="page__btn"></span>
+                </div>
+                <div class="page__side">
+                  <span></span>
+                  <span></span>
+                  <span class="page__field"></span>
+                  <span class="page__field"></span>
+                </div>
+              </div>
+              <div class="pop">
+                <div class="pop__head">
+                  <GateMark size={14} />
+                  <span class="pop__title">{t.stage.popupTitle}</span>
+                  <span class="pop__conn"><i></i>{t.stage.connected}</span>
+                </div>
+                <div class="pop__card">
+                  <div class="pop__row">
+                    <span class="pop__state pop__state--off">{t.stage.notShared}</span>
+                    <span class="pop__state pop__state--on">{t.stage.shared}</span>
+                    <span class="pop__id">tab 418</span>
+                  </div>
+                  <div class="pop__tab">
+                    <i></i>
+                    <span><b>Checkout · staging</b><em>staging.example.com</em></span>
+                  </div>
+                  <span class="pop__btn pop__btn--share">{t.stage.share}</span>
+                  <span class="pop__btn pop__btn--revoke">{t.stage.revoke}</span>
+                </div>
+              </div>
+              <span class="toast toast--shared">{t.stage.toastShared}</span>
+              <span class="toast toast--revoked">{t.stage.toastRevoked}</span>
+              <span class="keys"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>S</kbd></span>
+              <svg class="cursor" viewBox="0 0 24 24"><path d="M5 3l14 8-6.2 1.6L10 19z" /></svg>
+            </div>
+          </div>
+          <!-- Gate -->
+          <div class="gate">
+            <span class="gate__line gate__line--l"></span>
+            <span class="gate__ap">
+              <span class="gate__jaw gate__jaw--l"></span>
+              <span class="gate__jaw gate__jaw--r"></span>
+            </span>
+            <span class="gate__line gate__line--r"></span>
+            <span class="gate__label">{t.stage.gate}</span>
+            <span class="beam"><span class="beam__pulse"></span></span>
+          </div>
+          <!-- Terminal -->
+          <div class="term">
+            <div class="term__bar">
+              <span class="term__title">{t.stage.agent} — zsh</span>
+              <span class="term__audit" data-audit><span class="term__audit-file">{t.stage.audit}</span><span data-audit-text>read_dom · tab 418 · cli</span></span>
+            </div>
+            <div class="term__body" data-term>
+              <span class="ln ln--cmd"><span class="ps">$</span>abg tabs --format text</span>
+              <span class="ln ln--out">{demo.tabsLine}</span>
+              <span class="ln ln--cmd"><span class="ps">$</span>abg read t1 --format markdown</span>
+              {demo.md.map((l) => <span class="ln ln--md">{l}</span>)}
+              <span class="ln ln--cmd ln--caret"><span class="ps">$</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="stage__ctrl">
+          <span class="stage__live" aria-hidden="true"><i></i>{lang === "ja" ? "製品デモ" : "Product demo"}</span>
+          <button class="stage__toggle" type="button" data-stage-toggle data-label-pause={t.hero.pause} data-label-play={t.hero.play} aria-label={t.hero.pause} hidden>
+            <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14M16 5v14" /></svg>
+            <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4.5v15l12-7.5z" /></svg>
+          </button>
+        </div>
+        <script type="application/json" data-demo set:html={JSON.stringify(demo)} />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 01 CONSENT -->
+  <section class="chapter" id="consent" aria-labelledby="consent-title">
+    <GateRule index="01" label={t.chapters.consent} />
+    <div class="wrap chapter__grid">
+      <div class="chapter__copy">
+        <h2 id="consent-title" class="h2 reveal">{lines(t.consent.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.consent.lead}</p>
+        <dl class="facts reveal">
+          {t.consent.facts.map((f) => (
+            <div class="facts__row">
+              <dt>{f.k}</dt>
+              <dd>{f.v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div class="demo-card consent reveal" data-consent>
+        <div class="demo-card__head">
+          <span class="demo-card__title">Chrome</span>
+          <span class="demo-card__hint" id="consent-tabs-label">{t.consent.tabsLabel}</span>
+        </div>
+        <div class="consent__tabs" role="group" aria-labelledby="consent-tabs-label">
+          {consentTabs.map((tab) => (
+            <button
+              class="tabchip"
+              type="button"
+              aria-pressed="false"
+              data-tab-id={tab.id}
+              data-title={tab.title}
+              data-url={tab.url}
+            >
+              <span class="tabchip__led" aria-hidden="true"></span>
+              <span class="tabchip__text">
+                <span class="tabchip__title">{tab.title}</span>
+                <span class="tabchip__host">{tab.host}</span>
+              </span>
+              <span class="tabchip__act" aria-hidden="true">
+                <span class="tabchip__act-share">{t.consent.shareHint}</span>
+                <span class="tabchip__act-revoke">{t.consent.revokeHint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <div class="consent__gate" aria-hidden="true">
+          <span class="consent__gate-line"></span>
+          <span class="consent__gate-ap"></span>
+          <span class="consent__gate-line"></span>
+        </div>
+        <div class="consent__term">
+          <div class="consent__term-head">
+            <span>{t.consent.agentSees}</span>
+            <span class="consent__count" data-consent-count>0</span>
+          </div>
+          <pre class="consent__out" data-consent-out><span class="ln ln--cmd"><span class="ps">$</span>abg tabs --format text</span><span class="ln ln--dim">No permitted tabs.</span></pre>
+        </div>
+        <p class="sr-only" aria-live="polite" data-consent-live
+          data-none={t.consent.live.none}
+          data-some={t.consent.live.some}
+          data-many={t.consent.live.many}
+          data-revoked={t.consent.live.revokedOrigin}></p>
+        <div class="consent__actions">
+          <button class="btn btn--ghost btn--sm" type="button" data-consent-navigate disabled>
+            <span aria-hidden="true">↪</span>{t.consent.navigate}
+          </button>
+          <button class="btn btn--quiet btn--sm" type="button" data-consent-reset>{t.consent.reset}</button>
+        </div>
+        <p class="consent__note">{t.consent.navigateNote}</p>
+      </div>
+    </div>
+    <div class="wrap">
+      <div class="shortcuts reveal">
+        <h3 class="shortcuts__title">{t.consent.shortcutsTitle}</h3>
+        <ul class="shortcuts__list">
+          {t.consent.shortcuts.map((s) => (
+            <li>
+              <span class="keycaps" aria-label={s.alt}>{s.keys.map((k) => <kbd aria-hidden="true">{k}</kbd>)}</span>
+              <span>{s.label}</span>
+            </li>
+          ))}
+        </ul>
+        <p class="shortcuts__note">{t.consent.shortcutNote}</p>
+      </div>
+      <div class="real reveal">
+        <div class="real__head">
+          <h3 class="real__title">{t.consent.realTitle}</h3>
+          <p class="real__note">{t.consent.realNote}</p>
+        </div>
+        <ul class="real__list">
+          {realShots.map((shot, i) => (
+            <li class:list={["real__item", `real__item--${shot.kind}`]}>
+              <figure>
+                <div class="real__frame">
+                  <img class="real__img real__img--dark" src={shot.dark} alt={t.consent.real[i].alt} width={shot.w} height={shot.h} loading="lazy" decoding="async" />
+                  {shot.light !== shot.dark && (
+                    <img class="real__img real__img--light" src={shot.light} alt={t.consent.real[i].alt} width={shot.w} height={shot.h} loading="lazy" decoding="async" />
+                  )}
+                </div>
+                <figcaption>
+                  <span class="real__t">{t.consent.real[i].t}</span>
+                  <span class="real__d">{t.consent.real[i].d}</span>
+                </figcaption>
+              </figure>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 LOCAL -->
+  <section class="chapter" id="local" aria-labelledby="local-title">
+    <GateRule index="02" label={t.chapters.local} />
+    <div class="wrap">
+      <div class="chapter__head">
+        <h2 id="local-title" class="h2 reveal">{lines(t.local.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.local.lead}</p>
+      </div>
+      <div class="flow reveal" data-flow>
+        <div class="flow__machine">
+          <span class="flow__machine-label">{t.local.machine}</span>
+          <ol class="flow__nodes">
+            <li class="node">
+              <span class="node__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.2" /><path d="M12 8.8h8M9.2 13.6l-4 6.9M14.8 13.6l4-6.9" /></svg></span>
+              <span class="node__t">{t.local.nodes.chrome.t}</span>
+              <span class="node__d">{t.local.nodes.chrome.d}</span>
+            </li>
+            <li class="link"><span class="link__line"><i></i></span><span class="link__label" set:html={t.local.links.ws} /></li>
+            <li class="node node--gate">
+              <span class="node__icon" aria-hidden="true"><GateMark size={22} /></span>
+              <span class="node__t">{t.local.nodes.gateway.t}</span>
+              <span class="node__d">{t.local.nodes.gateway.d}</span>
+            </li>
+            <li class="link"><span class="link__line"><i></i></span><span class="link__label" set:html={t.local.links.ipc} /></li>
+            <li class="node">
+              <span class="node__icon node__icon--mono" aria-hidden="true">abg</span>
+              <span class="node__t">{t.local.nodes.cli.t}</span>
+              <span class="node__d">{t.local.nodes.cli.d}</span>
+            </li>
+            <li class="link"><span class="link__line"><i></i></span><span class="link__label" set:html={t.local.links.shell} /></li>
+            <li class="node">
+              <span class="node__icon node__icon--mono" aria-hidden="true">&gt;_</span>
+              <span class="node__t">{t.local.nodes.agent.t}</span>
+              <span class="node__d">{t.local.nodes.agent.d}</span>
+            </li>
+          </ol>
+        </div>
+        <div class="flow__outside">
+          <span class="flow__outside-k">{t.local.outside}</span>
+          <span class="flow__outside-v">{t.local.none}</span>
+          <ul class="flow__no">
+            {t.local.noList.map((n) => <li>{n}</li>)}
+          </ul>
+        </div>
+      </div>
+      <div class="local__foot">
+        <p class="local__honest reveal">{t.local.honest}</p>
+        <div class="cmd reveal">
+          <span class="cmd__label">{t.local.verify}</span>
+          <div class="cmd__row">
+            <code><span class="prompt" aria-hidden="true">$</span>lsof -nP -iTCP -sTCP:LISTEN</code>
+            <CopyButton text="lsof -nP -iTCP -sTCP:LISTEN" label={t.hero.copy} copiedLabel={t.hero.copied} compact />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 TOKENS -->
+  <section class="chapter" id="tokens" aria-labelledby="tokens-title">
+    <GateRule index="03" label={t.chapters.tokens} />
+    <div class="wrap chapter__grid chapter__grid--even">
+      <div class="chapter__copy">
+        <h2 id="tokens-title" class="h2 reveal">{lines(t.tokens.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.tokens.lead}</p>
+        <div class="readout reveal">
+          <div class="readout__cmd"><span class="prompt" aria-hidden="true">$</span><code>{t.tokens.command}</code></div>
+          <pre class="readout__out"><code><span class="md-h"># Reset your password</span>
+<span class="md-p">Open Settings, then choose Security.</span>
+
+<span class="md-h">## Steps</span>
+<span class="md-l">1. Choose **Reset password**</span>
+<span class="md-l">2. Check your inbox for the link</span>
+<span class="md-l">- [Contact support](https://example.com/support)</span></code></pre>
+        </div>
+      </div>
+      <figure class="chart reveal" aria-labelledby="chart-title">
+        <figcaption id="chart-title" class="chart__title">{t.tokens.chartTitle}</figcaption>
+        <ol class="chart__rows">
+          {t.tokens.rows.map((r) => (
+            <li class:list={["bar", { "bar--accent": r.accent }]} style={`--w: ${(r.tokens / maxTokens).toFixed(4)}`}>
+              <span class="bar__label">{r.label}</span>
+              <span class="bar__track"><span class="bar__fill"></span></span>
+              <span class="bar__value">{r.display}</span>
+              <span class="bar__note">{r.chars} {t.tokens.chars} · {r.note}</span>
+            </li>
+          ))}
+        </ol>
+        <div class="chart__stat">
+          <span class="chart__stat-n">{t.tokens.stat}</span>
+          <span class="chart__stat-l">{t.tokens.statLabel}</span>
+        </div>
+        <p class="chart__note">{t.tokens.chartNote}</p>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 04 ANNOTATE -->
+  <section class="chapter" id="annotate" aria-labelledby="annotate-title">
+    <GateRule index="04" label={t.chapters.annotate} />
+    <div class="wrap">
+      <div class="chapter__head">
+        <h2 id="annotate-title" class="h2 reveal">{lines(t.annotate.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.annotate.lead}</p>
+      </div>
+      <div class="anno reveal" data-anno data-state="annotated">
+        <div class="anno__page">
+          <div class="anno__bar">
+            <span class="win__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="anno__url">staging.example.com/checkout</span>
+          </div>
+          <div class="anno__canvas">
+            <p class="anno__h">{t.annotate.pageTitle}</p>
+            <div class="anno__line"><span>Plan</span><span class="anno__text">Team plan<mark class="anno__mark" data-n="2"></mark></span></div>
+            <div class="anno__line"><span>Seats</span><span>3</span></div>
+            <div class="anno__line anno__line--total"><span>Total</span><span>$96.00 / month</span>
+              <span class="anno__box" data-n="1"></span>
+            </div>
+            <span class="anno__cta">Place order</span>
+            <span class="anno__note anno__note--1"><b>1</b>{t.annotate.note1}</span>
+            <span class="anno__note anno__note--2"><b>2</b>{t.annotate.note2}</span>
+            <span class="anno__reload" aria-hidden="true"></span>
+          </div>
+          <div class="anno__controls">
+            <button class="btn btn--ghost btn--sm" type="button" data-anno-reload>↻ {t.annotate.reload}</button>
+            <button class="btn btn--signal btn--sm" type="button" data-anno-restore>{t.annotate.restore}</button>
+            <button class="btn btn--quiet btn--sm" type="button" data-anno-again>{t.annotate.again}</button>
+            <p class="anno__status" aria-live="polite" data-anno-status data-restored={t.annotate.restored}></p>
+          </div>
+        </div>
+        <div class="anno__json">
+          <pre class="anno__code anno__code--annotated"><code><span class="ln ln--cmd"><span class="ps">$</span>abg annotate t1</span>
+{`{ "ok": true, "count": 2,
+  "annotations": [
+    { "kind": "dom", "comment": "${t.annotate.note1}",
+      "selector": ".summary .total" },
+    { "kind": "text", "comment": "${t.annotate.note2}",
+      "text": "Team plan" } ] }`}</code></pre>
+          <pre class="anno__code anno__code--reloaded"><code><span class="ln ln--cmd"><span class="ps">$</span>abg annotate t1</span>
+{`{ "ok": true, "count": 0,
+  "saved": { "count": 2, "urlMatches": true },
+  "nextCommand": "abg annotate t1 --restore" }`}</code></pre>
+          <pre class="anno__code anno__code--restored"><code><span class="ln ln--cmd"><span class="ps">$</span>abg annotate t1 --restore</span>
+{`{ "ok": true, "count": 2,
+  "restore": { "status": "restored",
+    "restored": [ … 2 ], "unrestored": [],
+    "alreadyPresent": 0 } }`}</code></pre>
+          <ol class="anno__steps" aria-hidden="true">
+            {t.annotate.steps.map((s, i) => <li data-i={i}>{s}</li>)}
+          </ol>
+        </div>
+      </div>
+      <ul class="ticks reveal">
+        {t.annotate.facts.map((f) => <li>{f}</li>)}
+      </ul>
+    </div>
+  </section>
+
+  <!-- 05 AUDIT -->
+  <section class="chapter" id="audit" aria-labelledby="audit-title">
+    <GateRule index="05" label={t.chapters.audit} />
+    <div class="wrap chapter__grid">
+      <div class="chapter__copy">
+        <h2 id="audit-title" class="h2 reveal">{lines(t.audit.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.audit.lead}</p>
+        <ul class="cmd-list reveal">
+          {t.audit.cmds.map((c) => <li><span class="prompt" aria-hidden="true">$</span><code>{c}</code></li>)}
+        </ul>
+        <p class="fine reveal">{t.audit.footnote}</p>
+      </div>
+      <div class="log reveal" data-log>
+        <div class="log__head">
+          <span class="log__file">{t.audit.file}</span>
+          <span class="log__perm">{t.audit.perms}</span>
+        </div>
+        <table class="log__table">
+          <caption class="sr-only">{t.chapters.audit}</caption>
+          <thead>
+            <tr>{t.audit.cols.map((c) => <th scope="col">{c}</th>)}</tr>
+          </thead>
+          <tbody data-log-body>
+            {auditRows.map((r) => (
+              <tr data-action={r.action}>
+                <td>{r.time}</td>
+                <td><span class="act">{r.action}</span></td>
+                <td>{r.tab}</td>
+                <td>{r.agent}</td>
+                <td>{r.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <pre class="log__raw"><code>{`{"ts":"2026-10-03T09:41:06Z","extensionId":"…","tabId":418,"url":"https://staging.example.com/checkout","action":"read_dom","agent":"cli"}`}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 COMPARE -->
+  <section class="chapter" id="compare" aria-labelledby="compare-title">
+    <GateRule index="06" label={t.chapters.compare} />
+    <div class="wrap">
+      <div class="chapter__head">
+        <h2 id="compare-title" class="h2 reveal">{lines(t.compare.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.compare.lead}</p>
+      </div>
+      <div class="compare reveal" role="region" aria-labelledby="compare-title" tabindex="0">
+        <table>
+          <thead>
+            <tr>{t.compare.head.map((h) => <th scope="col">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {t.compare.rows.map((row, i) => (
+              <tr class:list={{ "is-abg": i === 0 }}>
+                <th scope="row">{i === 0 && <GateMark size={16} />}{row[0]}</th>
+                <td data-label={t.compare.head[1]}>{row[1]}</td>
+                <td data-label={t.compare.head[2]}>{row[2]}</td>
+                <td data-label={t.compare.head[3]}>{row[3]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div class="agents reveal">
+        <h3 class="agents__title">{t.compare.agentsTitle}</h3>
+        <ul class="agents__list">
+          {t.compare.agents.map((a) => <li>{a}</li>)}
+        </ul>
+        <p class="agents__note">{t.compare.agentsNote}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 DOWNLOAD -->
+  <section class="chapter chapter--download" id="download" aria-labelledby="download-title">
+    <GateRule index="07" label={t.chapters.download} open />
+    <div class="wrap">
+      <div class="chapter__head">
+        <h2 id="download-title" class="h2 reveal">{lines(t.download.title).map((l) => <span class="h2__line">{l}</span>)}</h2>
+        <p class="lead reveal">{t.download.lead}</p>
+      </div>
+      <ol class="first-run reveal" aria-label={t.download.first}>
+        {t.download.steps.map((s, i) => <li><span class="first-run__n">{i + 1}</span>{s}</li>)}
+      </ol>
+      <div class="dl">
+        <article class="dl__card dl__card--brew reveal">
+          <header class="dl__head">
+            <h3>{t.download.brewTitle}</h3>
+            <CopyButton text={brew} label={t.hero.copy} copiedLabel={t.hero.copied} ariaLabel={t.hero.copyLabel} />
+          </header>
+          <p class="dl__note">{t.download.brewNote}</p>
+          <pre class="dl__code" tabindex="0"><code>{release.brewCommands.map((c) => <span class="install__line"><span class="prompt" aria-hidden="true">$</span>{c}</span>)}</code></pre>
+          <p class="dl__note dl__note--sub" set:html={t.download.brewCheck} />
+        </article>
+        <article class="dl__card reveal">
+          <header class="dl__head">
+            <h3>{t.download.dmg}</h3>
+            <span class="dl__meta">{t.download.dmgMeta}</span>
+          </header>
+          <a class="btn btn--signal dl__btn" href={release.dmgUrl}>
+            <svg class="icon icon--apple" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.4 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.9-3-.8c-1.6 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.2.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.2.9-1.3 1.3-2.5 1.3-2.6 0 0-2.5-1-2.5-3.8ZM14.1 5.9c.6-.8 1.1-1.8 1-2.9-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.7-1 2.8 1 .1 2.1-.5 2.7-1.3Z" /></svg>
+            {t.download.dmg} · v{release.version}
+          </a>
+          <div class="sha">
+            <div class="sha__head">
+              <a href={release.dmgShaUrl} rel="noopener">{t.download.sha}<span aria-hidden="true"> ↗</span></a>
+              <CopyButton text={release.dmgSha256} label={t.hero.copy} copiedLabel={t.hero.copied} ariaLabel={`${t.hero.copy} SHA-256`} compact />
+            </div>
+            <code class="sha__value">{release.dmgSha256}</code>
+          </div>
+          <p class="dl__note">{t.download.shaNote}</p>
+        </article>
+        <article class="dl__card reveal">
+          <header class="dl__head">
+            <h3>{t.download.store}</h3>
+            <span class="dl__meta">v{release.chromeStoreVersion}</span>
+          </header>
+          <a class="btn btn--ghost dl__btn" href={release.chromeStoreUrl} rel="noopener">
+            <img src="/assets/chrome-logo.svg" alt="" width="18" height="18" />
+            {t.download.store}<span aria-hidden="true">↗</span>
+          </a>
+          <p class="dl__note">{t.download.storeMeta}</p>
+        </article>
+        <article class="dl__card reveal">
+          <header class="dl__head">
+            <h3>{t.download.windows}</h3>
+            <span class="dl__meta dl__meta--pending">{t.download.windowsMeta}</span>
+          </header>
+          <pre class="dl__code dl__code--muted" tabindex="0"><code><span class="install__line"><span class="prompt" aria-hidden="true">&gt;</span>{release.wingetCommand}</span></code></pre>
+          <p class="dl__note">{t.download.windowsNote}</p>
+          <a class="dl__link" href={`${installDocs}#windows`}>{t.download.windowsLink}<span aria-hidden="true"> →</span></a>
+        </article>
+        <article class="dl__card reveal">
+          <header class="dl__head"><h3>{t.download.cliTitle}</h3></header>
+          <p class="dl__note">{t.download.cliNote}</p>
+          <div class="cmd__row">
+            <code><span class="prompt" aria-hidden="true">$</span>{release.skillsCommand}</code>
+            <CopyButton text={release.skillsCommand} label={t.hero.copy} copiedLabel={t.hero.copied} compact />
+          </div>
+        </article>
+      </div>
+      <div class="dl__foot reveal">
+        <p><strong>{t.download.uninstallTitle}.</strong> {t.download.uninstall}</p>
+        <p>{t.download.publisher}</p>
+        <p>{t.download.license} <a href={release.commercialUrl} rel="noopener">{t.download.licenseLink}</a></p>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    import "../../scripts/landing";
+  </script>
+</SiteLayout>

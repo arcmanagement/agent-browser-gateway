@@ -1,0 +1,20 @@
+---
+// Section divider: the gate line. Its aperture opens when the section scrolls into view.
+interface Props {
+  index: string;
+  label: string;
+  open?: boolean;
+}
+const { index, label, open = false } = Astro.props;
+---
+
+<div class:list={["gate-rule", { "is-open": open }]} data-gate-rule>
+  <div class="wrap gate-rule__inner">
+    <span class="gate-rule__label"><span class="gate-rule__index">{index}</span>{label}</span>
+    <span class="gate-rule__track" aria-hidden="true">
+      <span class="gate-rule__seg gate-rule__seg--l"></span>
+      <span class="gate-rule__ap"><span class="gate-rule__dot"></span></span>
+      <span class="gate-rule__seg gate-rule__seg--r"></span>
+    </span>
+  </div>
+</div>
