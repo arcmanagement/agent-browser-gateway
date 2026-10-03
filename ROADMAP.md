@@ -1,10 +1,19 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-09-12.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
 
-Current repo version: **v0.4.8**.
+Current repo version: **v0.5.0**.
 
 ## Shipped
+
+### v0.5.0 — Shortcuts, annotation restore, Japanese UI, and the gate redesign (2026-10-04)
+- Added extension keyboard shortcuts: Alt/Option+Shift+S shares or revokes the active tab through the existing consent path, and Alt/Option+Shift+C copies the active tab's numeric ID without granting access (#435, #436).
+- Annotations on a shared tab survive a reload: the extension keeps a per-tab snapshot in `chrome.storage.session`, and `abg annotate <tab> --restore` re-anchors them against the live DOM, listing anything it cannot identify instead of drawing it in the wrong place. `--saved` prints the snapshot without touching the page (#440).
+- Added English and Japanese display languages for the extension UI with an Auto / English / 日本語 setting; agent-facing output stays English (#439).
+- Redesigned the extension popup, approval window, and annotation overlay, the website and Starlight docs (with a Japanese landing page and task-oriented docs), and the macOS Gateway app (icon-only menu bar item, tabs-first popover, and a sidebar window with Overview, Shared Tabs, Audit, Plugins, and Settings) around one "gate" design language (#437, #441, #445).
+- Revoking from the Gateway app now stops serving the tab immediately and audits the revoke before notifying the extension.
+- Fixed the Bookmarks and Reading List toggles showing as unsupported before their optional permission was granted, and aligned CLI hints and docs with the current UI and installer.
+- Moved cloud-hosted Gateway work to a private repository; the public client side is tracked in #442.
 
 ### v0.4.8 — iPhone Safari tab sharing and page actions (2026-08-23)
 - Bundled a Safari Web Extension in the iPhone companion app. The popup shares and revokes only the active tab, and an origin change or tab close revokes access.
