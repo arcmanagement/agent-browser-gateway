@@ -3,86 +3,70 @@
   <head>
     <meta charset="utf-8" />
     <title>Agent Browser Gateway</title>
+    <link rel="stylesheet" href="ui.css" />
     <style>
-      :root {
-        color-scheme: light dark;
-        font-family: -apple-system, system-ui, sans-serif;
-      }
       body {
-        width: 280px;
-        margin: 0;
-        padding: 12px;
+        width: 320px;
+        padding: var(--abg-space-3);
       }
-      h1 {
-        font-size: 13px;
+      .header {
+        display: flex;
+        align-items: center;
+        gap: var(--abg-space-2);
+        margin-bottom: var(--abg-space-3);
+      }
+      .header img {
+        width: 18px;
+        height: 18px;
+      }
+      .header h1 {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        overflow: hidden;
+        font-size: var(--abg-text-md);
         font-weight: 600;
-        margin: 0 0 8px;
-        color: #888;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: var(--abg-space-2);
+      }
+      .tab-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--abg-space-2);
       }
       .tab-info {
-        font-size: 12px;
-        color: #555;
-        margin-bottom: 8px;
-        word-break: break-all;
-      }
-      button {
-        width: 100%;
-        padding: 8px;
-        border: 0;
-        border-radius: 6px;
-        font-size: 13px;
+        display: -webkit-box;
+        min-width: 0;
+        overflow: hidden;
+        font-size: var(--abg-text-sm);
         font-weight: 500;
-        cursor: pointer;
-      }
-      button.primary {
-        background: #007aff;
-        color: white;
-      }
-      button.danger {
-        background: #ff3b30;
-        color: white;
-      }
-      button.secondary {
-        border: 1px solid #c7c7cc;
-        background: transparent;
-        color: #555;
-      }
-      button:disabled {
-        cursor: not-allowed;
-        opacity: 0.55;
-      }
-      .notice {
-        margin: 8px 0;
-        padding: 8px;
-        border: 1px solid #ffcc00;
-        border-radius: 6px;
-        background: rgba(255, 204, 0, 0.14);
-        color: #5c4600;
-        font-size: 12px;
         line-height: 1.35;
+        overflow-wrap: anywhere;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
       }
-      .notice strong {
-        display: block;
-        margin-bottom: 4px;
-        font-size: 12px;
-      }
-      .notice p {
-        margin: 0 0 8px;
+      #actionBtn {
+        width: 100%;
       }
       .notice button {
-        padding: 6px;
-        font-size: 12px;
+        min-height: 28px;
+        font-size: var(--abg-text-sm);
       }
       .annotation-actions {
         display: grid;
-        grid-template-columns: 1fr 74px;
-        gap: 6px;
-        margin-top: 8px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--abg-space-2);
       }
       .annotation-actions button {
         min-width: 0;
+        min-height: 28px;
+        font-size: var(--abg-text-sm);
       }
       .annotation-actions button.restore-annotations {
         grid-column: 1 / -1;
@@ -90,61 +74,180 @@
       .annotation-actions button[hidden] {
         display: none;
       }
-      .annotation-actions button.annotation-on {
-        background: #a444ff;
-        color: white;
+      /* Result of the last keyboard shortcut; level classes come from shortcutFeedback. */
+      .shortcut-result {
+        padding: 6px var(--abg-space-2);
+        border: 1px solid var(--abg-neutral-line);
+        border-radius: var(--abg-radius-sm);
+        background: var(--abg-neutral-bg);
+        color: var(--abg-neutral-text);
+        font-size: var(--abg-text-xs);
+        line-height: 1.4;
+        overflow-wrap: anywhere;
       }
-      .status {
-        font-size: 11px;
-        color: #888;
-        margin-top: 8px;
+      .shortcut-result[hidden] {
+        display: none;
+      }
+      .shortcut-result.success {
+        border-color: var(--abg-success-line);
+        background: var(--abg-success-bg);
+        color: var(--abg-success-text);
+      }
+      .shortcut-result.warning {
+        border-color: var(--abg-warning-line);
+        background: var(--abg-warning-bg);
+        color: var(--abg-warning-text);
+      }
+      .shortcut-result.error {
+        border-color: var(--abg-danger-line);
+        background: var(--abg-danger-bg);
+        color: var(--abg-danger-text);
+      }
+      .shortcut-hint {
+        margin-top: var(--abg-space-2);
+      }
+      .shortcut-hint:empty {
+        display: none;
+      }
+      .section {
+        margin-top: var(--abg-space-4);
+      }
+      .section > .label {
+        margin-bottom: var(--abg-space-2);
+      }
+      .shared-list:empty {
+        display: none;
+      }
+      .shared-list ul {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        border: 1px solid var(--abg-line);
+        border-radius: var(--abg-radius);
+        background: var(--abg-surface);
+        list-style: none;
+      }
+      .shared-item {
+        display: flex;
+        align-items: center;
+        gap: var(--abg-space-2);
+        min-height: 30px;
+        padding: 4px var(--abg-space-3);
+        font-size: var(--abg-text-sm);
+      }
+      .shared-item + .shared-item {
+        border-top: 1px solid var(--abg-line);
+      }
+      .shared-item .tab-id {
+        flex: 0 0 auto;
+        color: var(--abg-muted);
+        font: 500 var(--abg-text-xs) / 1 var(--abg-mono);
+      }
+      .shared-item .tab-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .shared-item .pill {
+        height: 18px;
+        padding: 0 6px;
+        font-size: 10px;
+      }
+      .shared-item .pill::before {
+        display: none;
+      }
+      .settings {
+        overflow: hidden;
+        border: 1px solid var(--abg-line);
+        border-radius: var(--abg-radius);
+        background: var(--abg-surface);
+      }
+      .setting {
+        padding: 10px var(--abg-space-3);
+      }
+      .setting + .setting {
+        border-top: 1px solid var(--abg-line);
       }
       .setting-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid #ddd;
-        color: #555;
-        font-size: 12px;
+        justify-content: space-between;
+        gap: var(--abg-space-3);
+        font-size: var(--abg-text-sm);
+        font-weight: 500;
         line-height: 1.3;
-      }
-      .setting-row input[type="checkbox"] {
-        flex: 0 0 auto;
-        width: 16px;
-        height: 16px;
-        margin: 0;
+        cursor: pointer;
       }
       .setting-note {
-        margin: 4px 0 0 24px;
-        color: #777;
-        font-size: 11px;
-        line-height: 1.35;
+        margin-top: var(--abg-space-1);
+        padding-right: 44px;
+        color: var(--abg-muted);
+        font-size: var(--abg-text-xs);
+        line-height: 1.4;
+      }
+      .setting-note:empty {
+        display: none;
+      }
+      .setting.warning-active {
+        background: var(--abg-warning-bg);
+      }
+      .setting.warning-active .setting-note {
+        color: var(--abg-warning-text);
+      }
+      details.advanced {
+        margin-top: var(--abg-space-4);
+      }
+      details.advanced summary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: fit-content;
+        border-radius: 4px;
+        cursor: pointer;
+        list-style: none;
+      }
+      details.advanced summary::-webkit-details-marker {
+        display: none;
+      }
+      details.advanced summary::before {
+        content: "";
+        width: 0;
+        height: 0;
+        border-top: 4px solid transparent;
+        border-bottom: 4px solid transparent;
+        border-left: 5px solid currentColor;
+        transition: transform 120ms ease;
+      }
+      details.advanced[open] summary::before {
+        transform: rotate(90deg);
       }
       .profile-row {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid #ddd;
-        color: #555;
-        font-size: 12px;
+        gap: 6px;
+        margin-top: var(--abg-space-3);
       }
       .profile-row label {
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        font-size: 10px;
-        color: #888;
+        font-size: var(--abg-text-sm);
+        font-weight: 500;
       }
       .profile-row input {
         width: 100%;
-        padding: 6px 8px;
-        font-size: 12px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        box-sizing: border-box;
+        min-height: 30px;
+        padding: 5px var(--abg-space-2);
+        border: 1px solid var(--abg-line-strong);
+        border-radius: var(--abg-radius-sm);
+        background: var(--abg-surface);
+        color: var(--abg-text);
+        font: var(--abg-text-sm) / 1.3 var(--abg-font);
+      }
+      .profile-row input::placeholder {
+        color: var(--abg-muted);
+      }
+      .profile-row input:focus-visible {
+        outline-offset: 0;
       }
       .input-with-action {
         display: grid;
@@ -152,132 +255,134 @@
         gap: 6px;
       }
       .input-with-action button {
-        width: auto;
-        padding: 6px 10px;
-        font-size: 12px;
+        min-height: 30px;
+        font-size: var(--abg-text-sm);
       }
       .field-note {
-        color: #777;
-        font-size: 11px;
-        line-height: 1.35;
+        color: var(--abg-muted);
+        font-size: var(--abg-text-xs);
+        line-height: 1.4;
       }
-      .shortcut-hint {
-        margin-top: 6px;
+      .status {
+        margin-top: var(--abg-space-3);
+        color: var(--abg-muted);
+        font-size: var(--abg-text-xs);
+        overflow-wrap: anywhere;
       }
-      .shortcut-result {
-        margin-top: 8px;
-        padding: 6px 8px;
-        border-radius: 6px;
-        background: rgba(127, 127, 127, 0.12);
-        color: #555;
-        font-size: 11px;
-        line-height: 1.35;
-        word-break: break-word;
-      }
-      .shortcut-result.warning {
-        border: 1px solid #ff9500;
-      }
-      .shortcut-result.error {
-        border: 1px solid #ff3b30;
-      }
-      .ws-ok {
-        color: #34c759;
-      }
-      .ws-err {
-        color: #ff3b30;
-      }
-      .shared-list {
-        margin-top: 12px;
-        font-size: 11px;
-        color: #666;
-      }
-      .shared-list h2 {
-        font-size: 11px;
-        font-weight: 600;
-        margin: 0 0 4px;
-        color: #888;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .shared-item {
-        padding: 2px 0;
-        word-break: break-all;
+      .status:empty {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <h1>Agent Browser Gateway</h1>
-    <div class="tab-info" id="tabInfo">…</div>
-    <div class="notice" id="incognitoNotice" hidden>
-      <strong>Incognito access is off</strong>
-      <p>Chrome blocks ABG in incognito windows until this extension is allowed there.</p>
-      <button id="openExtensionsBtn" class="secondary">Open extension settings</button>
-    </div>
-    <button id="actionBtn">…</button>
-    <div class="annotation-actions">
-      <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>
-      <button id="clearAnnotationsBtn" class="secondary" disabled>Clear</button>
-      <button id="restoreAnnotationsBtn" class="secondary restore-annotations" hidden>
-        Restore saved annotations
-      </button>
-    </div>
-    <div class="shortcut-result" id="shortcutResult" hidden></div>
+    <header class="header">
+      <img src="icons/48.png" alt="" />
+      <h1>Agent Browser Gateway</h1>
+      <span class="pill" id="gatewayStatus" role="status">Checking…</span>
+    </header>
+
+    <section class="card stack" aria-labelledby="tabInfo">
+      <div class="tab-head">
+        <div class="tab-info" id="tabInfo">…</div>
+        <span class="pill" id="tabStatus" hidden></span>
+      </div>
+      <div class="notice" id="incognitoNotice" hidden>
+        <strong>Incognito access is off</strong>
+        <p>Chrome blocks ABG in incognito windows until this extension is allowed there.</p>
+        <button id="openExtensionsBtn" class="secondary">Open extension settings</button>
+      </div>
+      <button id="actionBtn">…</button>
+      <div class="annotation-actions">
+        <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>
+        <button id="clearAnnotationsBtn" class="secondary" disabled>Clear</button>
+        <button id="restoreAnnotationsBtn" class="secondary restore-annotations" hidden>
+          Restore saved annotations
+        </button>
+      </div>
+      <div class="shortcut-result" id="shortcutResult" role="status" hidden></div>
+    </section>
     <div class="field-note shortcut-hint" id="shortcutHint"></div>
-    <label class="setting-row">
-      <input type="checkbox" id="approvalToggle" />
-      <span>Require approval for write operations</span>
-    </label>
-    <label class="setting-row">
-      <input type="checkbox" id="evalToggle" />
-      <span>Enable approved JavaScript eval</span>
-    </label>
-    <label class="setting-row">
-      <input type="checkbox" id="trustedAutomationToggle" />
-      <span>Trusted automation / AutoMode</span>
-    </label>
-    <div class="setting-note" id="trustedAutomationNote"></div>
-    <label class="setting-row">
-      <input type="checkbox" id="allTabsToggle" />
-      <span>Sandbox all-tabs profile mode</span>
-    </label>
-    <div class="setting-note" id="allTabsNote"></div>
-    <label class="setting-row">
-      <input type="checkbox" id="bookmarksToggle" />
-      <span>Bookmarks access</span>
-    </label>
-    <div class="setting-note" id="bookmarksNote"></div>
-    <label class="setting-row">
-      <input type="checkbox" id="readingListToggle" />
-      <span>Reading List access</span>
-    </label>
-    <div class="setting-note" id="readingListNote"></div>
-    <label class="setting-row">
-      <input type="checkbox" id="personalDataMutationsToggle" />
-      <span>Allow bookmark &amp; Reading List changes</span>
-    </label>
-    <div class="setting-note" id="personalDataMutationsNote"></div>
-    <div class="profile-row">
-      <label for="profileLabel">Profile label (shown in menubar)</label>
-      <input type="text" id="profileLabel" placeholder="e.g. personal, work, staging" />
-    </div>
-    <div class="profile-row">
-      <label for="gatewayWebSocketUrl">Gateway WebSocket endpoint</label>
-      <div class="input-with-action">
-        <input
-          type="text"
-          id="gatewayWebSocketUrl"
-          placeholder="ws://127.0.0.1:8765/ws"
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <button id="applyGatewayUrlBtn" class="secondary" type="button">Apply</button>
+
+    <section class="section shared-list" id="sharedList" aria-live="polite"></section>
+
+    <section class="section">
+      <h2 class="label">Permissions</h2>
+      <div class="settings">
+        <div class="setting">
+          <label class="setting-row">
+            <span>Require approval for write operations</span>
+            <input type="checkbox" class="switch" role="switch" id="approvalToggle" />
+          </label>
+        </div>
+        <div class="setting">
+          <label class="setting-row">
+            <span>Enable approved JavaScript eval</span>
+            <input type="checkbox" class="switch" role="switch" id="evalToggle" />
+          </label>
+        </div>
+        <div class="setting">
+          <label class="setting-row">
+            <span>Trusted automation / AutoMode</span>
+            <input type="checkbox" class="switch" role="switch" id="trustedAutomationToggle" />
+          </label>
+          <div class="setting-note" id="trustedAutomationNote"></div>
+        </div>
+        <div class="setting" id="allTabsSetting">
+          <label class="setting-row">
+            <span>Sandbox all-tabs profile mode</span>
+            <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
+          </label>
+          <div class="setting-note" id="allTabsNote"></div>
+        </div>
+        <div class="setting">
+          <label class="setting-row">
+            <span>Bookmarks access</span>
+            <input type="checkbox" class="switch" role="switch" id="bookmarksToggle" />
+          </label>
+          <div class="setting-note" id="bookmarksNote"></div>
+        </div>
+        <div class="setting">
+          <label class="setting-row">
+            <span>Reading List access</span>
+            <input type="checkbox" class="switch" role="switch" id="readingListToggle" />
+          </label>
+          <div class="setting-note" id="readingListNote"></div>
+        </div>
+        <div class="setting">
+          <label class="setting-row">
+            <span>Allow bookmark &amp; Reading List changes</span>
+            <input type="checkbox" class="switch" role="switch" id="personalDataMutationsToggle" />
+          </label>
+          <div class="setting-note" id="personalDataMutationsNote"></div>
+        </div>
       </div>
-      <div class="field-note">
-        Developer and self-hosted diagnostics only. Applying reconnects immediately.
+    </section>
+
+    <details class="advanced">
+      <summary class="label">Advanced</summary>
+      <div class="profile-row">
+        <label for="profileLabel">Profile label (shown in menubar)</label>
+        <input type="text" id="profileLabel" placeholder="e.g. personal, work, staging" />
       </div>
-    </div>
-    <div class="status" id="status">…</div>
-    <div class="shared-list" id="sharedList"></div>
+      <div class="profile-row">
+        <label for="gatewayWebSocketUrl">Gateway WebSocket endpoint</label>
+        <div class="input-with-action">
+          <input
+            type="text"
+            id="gatewayWebSocketUrl"
+            placeholder="ws://127.0.0.1:8765/ws"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="applyGatewayUrlBtn" class="secondary" type="button">Apply</button>
+        </div>
+        <div class="field-note">
+          Developer and self-hosted diagnostics only. Applying reconnects immediately.
+        </div>
+      </div>
+    </details>
+
+    <div class="status" id="status" role="status" aria-live="polite"></div>
     <script src="popup.js"></script>
   </body>
 </html>

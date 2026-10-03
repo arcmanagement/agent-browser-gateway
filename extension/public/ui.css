@@ -1,0 +1,329 @@
+/*
+ * Shared design tokens and components for the extension's own pages (popup, approval).
+ *
+ * Direction: calm, compact tool UI. Neutral surfaces, the ABG brand green as the only
+ * accent, system font stack, 4/8px spacing scale, 8px radii, hairline borders instead of
+ * heavy shadows. Semantic colors carry meaning and are never decorative:
+ *   accent/success (green)  grant access: Share, Allow, "Shared", "Connected"
+ *   danger (red)            remove or refuse access: Revoke, Deny, disable all-tabs
+ *   warning (amber)         sandbox all-tabs mode and other wide-scope states
+ *   mark (blue)             annotation mode, matching the in-page annotation overlay
+ * The annotation overlay (src/annotationOverlay.ts) mirrors these values inside its
+ * shadow root because it cannot load extension stylesheets on arbitrary pages.
+ */
+:root {
+  color-scheme: light dark;
+  --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --abg-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --abg-space-1: 4px;
+  --abg-space-2: 8px;
+  --abg-space-3: 12px;
+  --abg-space-4: 16px;
+  --abg-radius: 8px;
+  --abg-radius-sm: 6px;
+  --abg-text-xs: 11px;
+  --abg-text-sm: 12px;
+  --abg-text-md: 13px;
+  --abg-text-lg: 15px;
+
+  --abg-bg: #fbfbfa;
+  --abg-surface: #ffffff;
+  --abg-surface-2: #f3f4f2;
+  --abg-text: #0a0a0a;
+  --abg-muted: #5c5f66;
+  --abg-line: #dedfdd;
+  --abg-line-strong: #c4c6c2;
+  --abg-focus: #1a73e8;
+
+  --abg-accent: #16823a;
+  --abg-accent-hover: #11692f;
+  --abg-on-accent: #ffffff;
+  --abg-success-text: #136c31;
+  --abg-success-bg: #e7f5ec;
+  --abg-success-line: #a8dbb7;
+
+  --abg-danger: #d92d20;
+  --abg-danger-hover: #b42318;
+  --abg-on-danger: #ffffff;
+  --abg-danger-text: #b42318;
+  --abg-danger-bg: #fdecea;
+  --abg-danger-line: #f4b4ad;
+
+  --abg-warning-text: #7a4d00;
+  --abg-warning-bg: #fff5d9;
+  --abg-warning-line: #f0c45a;
+
+  --abg-mark: #1a73e8;
+  --abg-mark-hover: #155fc0;
+  --abg-on-mark: #ffffff;
+
+  --abg-neutral-text: #4a4d53;
+  --abg-neutral-bg: #eeefed;
+  --abg-neutral-line: #d6d8d4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --abg-bg: #161618;
+    --abg-surface: #1f1f22;
+    --abg-surface-2: #29292d;
+    --abg-text: #f2f2f3;
+    --abg-muted: #a6a8ae;
+    --abg-line: #333338;
+    --abg-line-strong: #4a4a51;
+    --abg-focus: #6ea8ff;
+
+    --abg-accent: #16823a;
+    --abg-accent-hover: #1a9643;
+    --abg-success-text: #5fd67f;
+    --abg-success-bg: rgba(52, 199, 89, 0.14);
+    --abg-success-line: rgba(52, 199, 89, 0.42);
+
+    --abg-danger: #d92d20;
+    --abg-danger-hover: #e8473a;
+    --abg-danger-text: #ff8b80;
+    --abg-danger-bg: rgba(255, 69, 58, 0.14);
+    --abg-danger-line: rgba(255, 69, 58, 0.45);
+
+    --abg-warning-text: #ffcc66;
+    --abg-warning-bg: rgba(255, 176, 32, 0.13);
+    --abg-warning-line: rgba(255, 176, 32, 0.45);
+
+    --abg-mark: #1a73e8;
+    --abg-mark-hover: #2b82f2;
+
+    --abg-neutral-text: #c9cacf;
+    --abg-neutral-bg: #2c2c31;
+    --abg-neutral-line: #3d3d44;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--abg-bg);
+  color: var(--abg-text);
+  font-family: var(--abg-font);
+  font-size: var(--abg-text-md);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--abg-focus);
+  outline-offset: 2px;
+}
+
+/* Section label: small uppercase heading used for groups. */
+.label {
+  margin: 0;
+  color: var(--abg-muted);
+  font-size: var(--abg-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--abg-muted);
+}
+
+/* Buttons */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--abg-space-2);
+  min-height: 32px;
+  padding: 6px var(--abg-space-3);
+  border: 1px solid var(--abg-line-strong);
+  border-radius: var(--abg-radius-sm);
+  background: var(--abg-surface);
+  color: var(--abg-text);
+  font: 500 var(--abg-text-md) / 1.2 var(--abg-font);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+button.primary {
+  border-color: transparent;
+  background: var(--abg-accent);
+  color: var(--abg-on-accent);
+}
+button.primary:hover:not(:disabled) {
+  background: var(--abg-accent-hover);
+}
+button.danger {
+  border-color: transparent;
+  background: var(--abg-danger);
+  color: var(--abg-on-danger);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--abg-danger-hover);
+}
+button.secondary {
+  border-color: var(--abg-line-strong);
+  background: var(--abg-surface);
+  color: var(--abg-text);
+}
+button.secondary:hover:not(:disabled) {
+  background: var(--abg-surface-2);
+}
+button.annotation-on {
+  border-color: transparent;
+  background: var(--abg-mark);
+  color: var(--abg-on-mark);
+}
+button.annotation-on:hover:not(:disabled) {
+  background: var(--abg-mark-hover);
+}
+button.small {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: var(--abg-text-sm);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Status pills */
+.pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 var(--abg-space-2);
+  border: 1px solid var(--abg-neutral-line);
+  border-radius: 999px;
+  background: var(--abg-neutral-bg);
+  color: var(--abg-neutral-text);
+  font-size: var(--abg-text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.pill.success {
+  border-color: var(--abg-success-line);
+  background: var(--abg-success-bg);
+  color: var(--abg-success-text);
+}
+.pill.danger {
+  border-color: var(--abg-danger-line);
+  background: var(--abg-danger-bg);
+  color: var(--abg-danger-text);
+}
+.pill.warning {
+  border-color: var(--abg-warning-line);
+  background: var(--abg-warning-bg);
+  color: var(--abg-warning-text);
+}
+.pill[hidden] {
+  display: none;
+}
+
+/* Notes and callouts */
+.notice {
+  padding: var(--abg-space-2) var(--abg-space-3);
+  border: 1px solid var(--abg-warning-line);
+  border-radius: var(--abg-radius);
+  background: var(--abg-warning-bg);
+  color: var(--abg-warning-text);
+  font-size: var(--abg-text-sm);
+  line-height: 1.4;
+}
+.notice[hidden] {
+  display: none;
+}
+.notice strong {
+  display: block;
+  margin-bottom: 2px;
+}
+.notice p {
+  margin: 0 0 var(--abg-space-2);
+}
+
+/* Cards */
+.card {
+  padding: var(--abg-space-3);
+  border: 1px solid var(--abg-line);
+  border-radius: var(--abg-radius);
+  background: var(--abg-surface);
+}
+
+/* Toggle switch built on a native checkbox so keyboard and form semantics stay intact. */
+input[type="checkbox"].switch {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--abg-line-strong);
+  border-radius: 999px;
+  background: var(--abg-surface-2);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+input[type="checkbox"].switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--abg-muted);
+  transition: transform 120ms ease;
+}
+input[type="checkbox"].switch:checked {
+  border-color: var(--abg-accent);
+  background: var(--abg-accent);
+}
+input[type="checkbox"].switch:checked::after {
+  background: #ffffff;
+  transform: translateX(14px);
+}
+input[type="checkbox"].switch.warning:checked {
+  border-color: #b7791f;
+  background: #b7791f;
+}
+input[type="checkbox"].switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--abg-line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--abg-surface);
+  color: var(--abg-text);
+  font: 600 10px/14px var(--abg-font);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

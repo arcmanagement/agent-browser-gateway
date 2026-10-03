@@ -2,16 +2,23 @@ import { browserAdapter } from "./browserAdapter.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  gatewayStatusPill,
   recentShortcutMessage,
   restoreAnnotationsLabel,
+  type StatusPill,
+  sharedTabAccessLabel,
   sharedTabSummary,
+  sharedTabsHeading,
   shortcutHint,
+  tabAccessStatusPill,
   trustedAutomationNote,
 } from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
 const browser = browserAdapter;
 const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
+const tabStatusEl = document.getElementById("tabStatus") as HTMLSpanElement;
+const gatewayStatusEl = document.getElementById("gatewayStatus") as HTMLSpanElement;
 const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
 const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
 const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
@@ -24,6 +31,7 @@ const trustedAutomationToggleEl = document.getElementById(
 const trustedAutomationNoteEl = document.getElementById("trustedAutomationNote") as HTMLDivElement;
 const allTabsToggleEl = document.getElementById("allTabsToggle") as HTMLInputElement;
 const allTabsNoteEl = document.getElementById("allTabsNote") as HTMLDivElement;
+const allTabsSettingEl = document.getElementById("allTabsSetting") as HTMLDivElement;
 const bookmarksToggleEl = document.getElementById("bookmarksToggle") as HTMLInputElement;
 const bookmarksNoteEl = document.getElementById("bookmarksNote") as HTMLDivElement;
 const readingListToggleEl = document.getElementById("readingListToggle") as HTMLInputElement;
@@ -45,6 +53,15 @@ const shortcutResultEl = document.getElementById("shortcutResult") as HTMLDivEle
 const shortcutHintEl = document.getElementById("shortcutHint") as HTMLDivElement;
 
 let profileLabelTimer: number | null = null;
+
+function renderPill(el: HTMLElement, pill: StatusPill): void {
+  el.textContent = pill.label;
+  el.className = pill.tone === "neutral" ? "pill" : `pill ${pill.tone}`;
+  el.title = pill.description ?? pill.label;
+  if (pill.description) el.setAttribute("aria-label", pill.description);
+  else el.removeAttribute("aria-label");
+  el.hidden = false;
+}
 
 async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
   return (await browser.runtime.sendMessage(msg)) as BackgroundToPopup;
@@ -168,6 +185,7 @@ async function refresh(): Promise<void> {
   allTabsToggleEl.checked = state.allTabsAccess.active;
   allTabsToggleEl.disabled = false;
   allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess);
+  allTabsSettingEl.classList.toggle("warning-active", state.allTabsAccess.active);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
     allTabsToggleEl.disabled = true;
@@ -436,22 +454,36 @@ async function refresh(): Promise<void> {
   const commands = await browser.commands.getAll().catch(() => []);
   shortcutHintEl.textContent = shortcutHint(commands, browser.kind);
 
+  renderPill(tabStatusEl, tabAccessStatusPill(state));
   statusEl.replaceChildren();
-  const wsStateEl = document.createElement("span");
-  wsStateEl.className = state.wsConnected ? "ws-ok" : "ws-err";
-  wsStateEl.textContent = state.wsConnected ? "● Gateway connected" : "● Gateway disconnected";
-  statusEl.append(wsStateEl);
+  renderPill(gatewayStatusEl, gatewayStatusPill(state.wsConnected));
 
   if (state.sharedTabs.length > 0) {
     const heading = document.createElement("h2");
-    heading.textContent = `Shared tabs (${state.sharedTabs.length})`;
-    const items = state.sharedTabs.map((t) => {
-      const item = document.createElement("div");
+    heading.className = "label";
+    heading.textContent = sharedTabsHeading(state.sharedTabs.length);
+    const list = document.createElement("ul");
+    for (const t of state.sharedTabs) {
+      const item = document.createElement("li");
       item.className = "shared-item";
-      item.textContent = sharedTabSummary(t);
-      return item;
-    });
-    sharedListEl.replaceChildren(heading, ...items);
+      item.title = sharedTabSummary(t);
+      const idEl = document.createElement("span");
+      idEl.className = "tab-id";
+      idEl.textContent = String(t.tabId);
+      const titleEl = document.createElement("span");
+      titleEl.className = "tab-title";
+      titleEl.textContent = t.title || t.url;
+      item.append(idEl, titleEl);
+      const accessLabel = sharedTabAccessLabel(t);
+      if (accessLabel) {
+        const modeEl = document.createElement("span");
+        modeEl.className = "pill warning";
+        modeEl.textContent = accessLabel;
+        item.append(modeEl);
+      }
+      list.append(item);
+    }
+    sharedListEl.replaceChildren(heading, list);
   } else {
     sharedListEl.replaceChildren();
   }

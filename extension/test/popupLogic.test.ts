@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  gatewayStatusPill,
   recentShortcutMessage,
   restoreAnnotationsLabel,
   SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS,
+  sharedTabAccessLabel,
   sharedTabSummary,
+  sharedTabsHeading,
   shortcutHint,
+  tabAccessStatusPill,
   trustedAutomationNote,
 } from "../src/popupLogic.js";
 import type { ExtensionSettings } from "../src/types.js";
@@ -108,5 +112,47 @@ describe("popupLogic", () => {
     expect(recentShortcutMessage(feedback, 1_000)).toBe("Last shortcut: Nothing was changed.");
     expect(recentShortcutMessage(feedback, SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS + 1)).toBeUndefined();
     expect(recentShortcutMessage({ ...feedback, at: 5_000 }, 0)).toBeUndefined();
+  });
+
+  it("maps gateway connection to a status pill", () => {
+    expect(gatewayStatusPill(true)).toMatchObject({ label: "Connected", tone: "success" });
+    expect(gatewayStatusPill(false)).toMatchObject({ label: "Disconnected", tone: "danger" });
+  });
+
+  it("keeps the active tab's consent state unambiguous", () => {
+    const allTabsOff = {
+      active: false,
+      permissionGranted: false,
+      shareableTabCount: 0,
+      skippedTabCount: 0,
+    };
+    const normalTab = { incognito: false, incognitoAccessAllowed: true };
+    expect(
+      tabAccessStatusPill({ permitted: false, allTabsAccess: allTabsOff, activeTab: normalTab }),
+    ).toEqual({ label: "Not shared", tone: "neutral" });
+    expect(
+      tabAccessStatusPill({ permitted: true, allTabsAccess: allTabsOff, activeTab: normalTab }),
+    ).toEqual({ label: "Shared", tone: "success" });
+    expect(
+      tabAccessStatusPill({
+        permitted: false,
+        allTabsAccess: allTabsOff,
+        activeTab: { incognito: true, incognitoAccessAllowed: false },
+      }),
+    ).toEqual({ label: "Blocked", tone: "neutral" });
+    expect(
+      tabAccessStatusPill({
+        permitted: true,
+        allTabsAccess: { ...allTabsOff, active: true, permissionGranted: true },
+        activeTab: normalTab,
+      }),
+    ).toEqual({ label: "All tabs shared", tone: "warning" });
+  });
+
+  it("labels shared-tab rows", () => {
+    expect(sharedTabsHeading(2)).toBe("Shared tabs (2)");
+    const tab = { tabId: 7, title: "Example", url: "https://example.com" };
+    expect(sharedTabAccessLabel({ ...tab, accessMode: "all_tabs" })).toBe("all-tabs");
+    expect(sharedTabAccessLabel({ ...tab, accessMode: "manual" })).toBeNull();
   });
 });

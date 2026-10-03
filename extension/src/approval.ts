@@ -170,6 +170,14 @@ denyBtn.onclick = () => {
   });
 };
 
+// Escape is the keyboard shortcut for the safe choice. Allow is never bound to a
+// global key: it needs a deliberate click or Enter/Space on the focused button.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.isComposing || denyBtn.disabled) return;
+  event.preventDefault();
+  denyBtn.click();
+});
+
 load().catch((e) => {
   showError(e instanceof Error ? e.message : String(e));
 });
