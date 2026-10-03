@@ -180,6 +180,14 @@ Operation approval mode adds a second local checkpoint for write operations. By 
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
+The extension UI is available in English and Japanese. Choose **Display language** under
+**Advanced** in the popup: **Auto** (the default) follows the browser UI language and uses English
+for anything other than Japanese. The choice is stored with the other extension settings in local
+extension storage. The popup switches immediately; approval windows, the annotation overlay, and
+shortcut messages use the new language the next time they appear. A message without a translation
+falls back to English. The language covers human-facing extension UI only: Gateway responses,
+error codes and messages returned to `abg`, `nextCommand`, and audit entries stay in English.
+
 Tab recording is stricter than normal operations: `abg record start` always opens a local approval window, even when operation approvals or Trusted automation would skip other prompts. The **Allow** click supplies Chrome's `tabCapture` gesture, recording only the already-shared tab to a local WebM file.
 
 Every operation an agent performs is recorded to a local audit log (`~/Library/Logs/AgentBrowserGateway/audit.jsonl`).

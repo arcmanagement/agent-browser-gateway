@@ -1,3 +1,4 @@
+import { formatText, type Language, type LocalizedText, msg } from "./i18n.js";
 import type { ShortcutFeedback, TabAccessMode } from "./types.js";
 
 export function detectBrowserKind(userAgent: string): string {
@@ -81,9 +82,18 @@ export function richClipboardPayloadLabel(
   mime: string | undefined,
   contentBytes: number | undefined,
 ): string {
-  if (!mime) return " current clipboard payload";
-  const byteSuffix = contentBytes === undefined ? "" : ` (${contentBytes} bytes)`;
-  return ` ${quoteForIntentLabel(mime)} clipboard payload${byteSuffix}`;
+  return ` ${formatText("en", richClipboardPayloadText(mime, contentBytes))}`;
+}
+
+/** The clipboard payload part of a paste_rich approval intent, formatted by the reader. */
+export function richClipboardPayloadText(
+  mime: string | undefined,
+  contentBytes: number | undefined,
+): LocalizedText {
+  if (!mime) return msg("intent.clipboardCurrent");
+  return contentBytes === undefined
+    ? msg("intent.clipboardMime", { mime: quoteForIntentLabel(mime) })
+    : msg("intent.clipboardMimeBytes", { mime: quoteForIntentLabel(mime), bytes: contentBytes });
 }
 
 function quoteForIntentLabel(value: string): string {
@@ -336,33 +346,52 @@ export type PersonalDataMutationKind =
 /**
  * Approval intent for browser-owned personal data mutations. Delete operations
  * carry deliberately stronger copy than create/update so an accidental Allow on
- * a destructive request is harder.
+ * a destructive request is harder. The English text goes to the Gateway; the
+ * approval window formats the same message in the display language.
  */
+export function personalDataMutationIntentText(
+  kind: PersonalDataMutationKind,
+  target: { title?: string; url?: string; id?: string; parentId?: string },
+): LocalizedText {
+  const label: string | LocalizedText = target.title
+    ? `"${target.title}"`
+    : (target.url ?? msg("intent.personal.idLabel", { id: target.id ?? "?" }));
+  const id = target.id ?? "?";
+  switch (kind) {
+    case "bookmark_create":
+      return msg("intent.personal.bookmarkCreate", {
+        label,
+        forUrl: target.url ? msg("intent.personal.forUrl", { url: target.url }) : "",
+        inFolder: target.parentId
+          ? msg("intent.personal.inFolder", { parentId: target.parentId })
+          : "",
+      });
+    case "bookmark_update":
+      return msg("intent.personal.bookmarkUpdate", { label, id });
+    case "bookmark_move":
+      return msg("intent.personal.bookmarkMove", {
+        label,
+        id,
+        toFolder: target.parentId
+          ? msg("intent.personal.toFolder", { parentId: target.parentId })
+          : "",
+      });
+    case "bookmark_remove":
+      return msg("intent.personal.bookmarkRemove", { label, id });
+    case "reading_list_add":
+      return msg("intent.personal.readingListAdd", { label });
+    case "reading_list_update":
+      return msg("intent.personal.readingListUpdate", { label });
+    case "reading_list_remove":
+      return msg("intent.personal.readingListRemove", { label });
+  }
+}
+
 export function personalDataMutationIntent(
   kind: PersonalDataMutationKind,
   target: { title?: string; url?: string; id?: string; parentId?: string },
 ): string {
-  const label = target.title ? `"${target.title}"` : (target.url ?? `id ${target.id ?? "?"}`);
-  switch (kind) {
-    case "bookmark_create":
-      return `Create bookmark ${label}${target.url ? ` for ${target.url}` : ""}${
-        target.parentId ? ` in folder ${target.parentId}` : ""
-      }. Browser-owned personal data write.`;
-    case "bookmark_update":
-      return `Update bookmark ${label} (id ${target.id ?? "?"}). Browser-owned personal data write.`;
-    case "bookmark_move":
-      return `Move bookmark ${label} (id ${target.id ?? "?"})${
-        target.parentId ? ` to folder ${target.parentId}` : ""
-      }. Browser-owned personal data write.`;
-    case "bookmark_remove":
-      return `PERMANENTLY DELETE bookmark ${label} (id ${target.id ?? "?"}). This removes saved personal data from the browser and ABG cannot undo it.`;
-    case "reading_list_add":
-      return `Add ${label} to the Reading List. Browser-owned personal data write.`;
-    case "reading_list_update":
-      return `Update the Reading List entry ${label}. Browser-owned personal data write.`;
-    case "reading_list_remove":
-      return `PERMANENTLY DELETE the Reading List entry ${label}. This removes saved personal data from the browser and ABG cannot undo it.`;
-  }
+  return formatText("en", personalDataMutationIntentText(kind, target));
 }
 
 // ---------- Keyboard shortcuts (chrome.commands) ----------
@@ -424,11 +453,11 @@ const BADGE_GRAY = "#8e8e93";
 const BADGE_ORANGE = "#ff9500";
 const BADGE_RED = "#ff3b30";
 
-function shortcutTabLabel(tabId: number, title: string | undefined): string {
+function shortcutTabLabel(tabId: number, title: string | undefined): LocalizedText {
   const trimmed = title?.trim() ?? "";
-  if (!trimmed) return `tab ${tabId}`;
+  if (!trimmed) return msg("shortcut.tab", { tabId });
   const short = trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
-  return `tab ${tabId} ("${short}")`;
+  return msg("shortcut.tabWithTitle", { tabId, title: short });
 }
 
 function urlScheme(url: string | undefined): string | undefined {
@@ -440,76 +469,73 @@ function urlScheme(url: string | undefined): string | undefined {
   }
 }
 
-function blockedMessage(reason: ShortcutBlockReason, url: string | undefined): string {
+function blockedMessage(reason: ShortcutBlockReason, url: string | undefined): LocalizedText {
   switch (reason) {
     case "no_active_tab":
-      return "No active tab was found. Focus a browser tab and try the shortcut again.";
+      return msg("shortcut.blocked.noActiveTab");
     case "all_tabs_mode":
-      return "All-tabs sandbox mode is on, so per-tab share and revoke do not apply. Nothing was changed. Turn off all-tabs access in the popup to manage tabs one by one.";
+      return msg("shortcut.blocked.allTabsMode");
     case "incognito_access_disabled":
-      return 'Incognito access is off for Agent Browser Gateway, so this tab cannot be shared. Enable "Allow in incognito" in the extension settings first.';
+      return msg("shortcut.blocked.incognito");
     case "unsupported_page": {
       const scheme = urlScheme(url);
-      const subject = scheme ? `${scheme}: pages` : "This page";
-      return `${subject} cannot be shared. Only http, https, and file pages can be shared. Nothing was changed.`;
+      const subject = scheme
+        ? msg("shortcut.blocked.schemePages", { scheme })
+        : msg("shortcut.blocked.thisPage");
+      return msg("shortcut.blocked.unsupportedPage", { subject });
     }
   }
 }
 
-export function shortcutFeedback(outcome: ShortcutOutcome): ShortcutFeedback {
+/** The human-facing message for a shortcut outcome, formatted by the reader. */
+export function shortcutFeedbackText(outcome: ShortcutOutcome): LocalizedText {
   switch (outcome.kind) {
     case "shared":
-      return {
-        level: "success",
-        badgeText: "ON",
-        badgeColor: BADGE_GREEN,
-        message: `Shared ${shortcutTabLabel(outcome.tabId, outcome.title)} with agents.`,
-      };
+      return msg("shortcut.shared", { tab: shortcutTabLabel(outcome.tabId, outcome.title) });
     case "revoked":
-      return {
-        level: "success",
-        badgeText: "OFF",
-        badgeColor: BADGE_GRAY,
-        message: `Revoked ${shortcutTabLabel(outcome.tabId, outcome.title)}. Agents can no longer access it.`,
-      };
+      return msg("shortcut.revoked", { tab: shortcutTabLabel(outcome.tabId, outcome.title) });
     case "blocked":
-      return {
-        level: "warning",
-        badgeText: "!",
-        badgeColor: BADGE_ORANGE,
-        message: blockedMessage(outcome.reason, outcome.url),
-      };
+      return blockedMessage(outcome.reason, outcome.url);
     case "toggle_failed":
-      return {
-        level: "error",
-        badgeText: "ERR",
-        badgeColor: BADGE_RED,
-        message: `Could not ${outcome.action === "permit" ? "share" : "revoke"} tab ${outcome.tabId}: ${outcome.error}`,
-      };
+      return msg(outcome.action === "permit" ? "shortcut.shareFailed" : "shortcut.revokeFailed", {
+        tabId: outcome.tabId,
+        error: outcome.error,
+      });
     case "copied": {
-      const label = shortcutTabLabel(outcome.tabId, outcome.title);
-      if (!outcome.accessMode) {
-        return {
-          level: "warning",
-          badgeText: "ID",
-          badgeColor: BADGE_ORANGE,
-          message: `Copied tab ID ${outcome.tabId} for ${label}. This tab is not shared: agents cannot access it until you share it.`,
-        };
-      }
-      const via = outcome.accessMode === "all_tabs" ? " through all-tabs mode" : "";
-      return {
-        level: "success",
-        badgeText: "ID",
-        badgeColor: BADGE_BLUE,
-        message: `Copied tab ID ${outcome.tabId} for ${label}. This tab is shared with agents${via}.`,
-      };
+      const key = !outcome.accessMode
+        ? "shortcut.copiedNotShared"
+        : outcome.accessMode === "all_tabs"
+          ? "shortcut.copiedSharedAllTabs"
+          : "shortcut.copiedShared";
+      return msg(key, {
+        tabId: outcome.tabId,
+        tab: shortcutTabLabel(outcome.tabId, outcome.title),
+      });
     }
     case "copy_failed":
-      return {
-        level: "error",
-        badgeText: "ERR",
-        badgeColor: BADGE_RED,
-        message: `Could not copy tab ID ${outcome.tabId}: ${outcome.error}`,
-      };
+      return msg("shortcut.copyFailed", { tabId: outcome.tabId, error: outcome.error });
+  }
+}
+
+export function shortcutFeedback(
+  outcome: ShortcutOutcome,
+  lang: Language = "en",
+): ShortcutFeedback {
+  const message = formatText(lang, shortcutFeedbackText(outcome));
+  switch (outcome.kind) {
+    case "shared":
+      return { level: "success", badgeText: "ON", badgeColor: BADGE_GREEN, message };
+    case "revoked":
+      return { level: "success", badgeText: "OFF", badgeColor: BADGE_GRAY, message };
+    case "blocked":
+      return { level: "warning", badgeText: "!", badgeColor: BADGE_ORANGE, message };
+    case "toggle_failed":
+      return { level: "error", badgeText: "ERR", badgeColor: BADGE_RED, message };
+    case "copied":
+      return outcome.accessMode
+        ? { level: "success", badgeText: "ID", badgeColor: BADGE_BLUE, message }
+        : { level: "warning", badgeText: "ID", badgeColor: BADGE_ORANGE, message };
+    case "copy_failed":
+      return { level: "error", badgeText: "ERR", badgeColor: BADGE_RED, message };
   }
 }

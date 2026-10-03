@@ -1,0 +1,26 @@
+{
+  "extName": {
+    "message": "Agent Browser Gateway",
+    "description": "Extension name. Product name; keep it in English."
+  },
+  "extNameFirefox": {
+    "message": "Agent Browser Gateway for Firefox",
+    "description": "Extension name in the Firefox build."
+  },
+  "extDescription": {
+    "message": "明示的なローカル許可のもとで、Chrome のタブを AI コーディングエージェントと共有します。",
+    "description": "Extension description shown in chrome://extensions and the Chrome Web Store. Max 132 characters."
+  },
+  "extDescriptionFirefox": {
+    "message": "明示的なローカル許可のもとで、Firefox のタブを AI コーディングエージェントと共有します。",
+    "description": "Extension description in the Firefox build."
+  },
+  "commandToggleShare": {
+    "message": "現在のタブを共有／共有解除",
+    "description": "Keyboard shortcut description for toggle-share-current-tab."
+  },
+  "commandCopyTabId": {
+    "message": "現在のタブ ID をコピー（タブは共有しません）",
+    "description": "Keyboard shortcut description for copy-current-tab-id."
+  }
+}

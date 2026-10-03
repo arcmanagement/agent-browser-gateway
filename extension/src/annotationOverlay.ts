@@ -1,4 +1,5 @@
 import { browserAdapter } from "./browserAdapter.js";
+import { type AnnotationOverlayStrings, annotationOverlayStrings } from "./i18n.js";
 import type { AnnotationAction } from "./types.js";
 
 const browser = browserAdapter;
@@ -19,7 +20,14 @@ export type AnnotationCommand = {
    * page's main world and must never try to message the extension from there.
    */
   persist?: boolean;
+  /**
+   * Overlay UI strings for the current display language. The background sets them;
+   * manageAnnotationMode falls back to English when a caller does not.
+   */
+  ui?: AnnotationOverlayStrings;
 };
+
+type InjectedAnnotationCommand = AnnotationCommand & { ui: AnnotationOverlayStrings };
 
 export type AnnotationRestoredBy = "selector" | "text" | "anchor" | "coordinates";
 
@@ -66,7 +74,7 @@ export type AnnotationModeResult = {
   saved?: unknown;
 };
 
-function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationModeResult {
+function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): AnnotationModeResult {
   type Rect = { x: number; y: number; width: number; height: number };
   type ScrollAnchor =
     | { type: "window" }
@@ -147,34 +155,40 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
 
   const stateWindow = window as WindowWithABGAnnotation;
   const requestedAction = requestedCommand.action;
-  // User-facing overlay strings live here so they can be localized in one place. This
-  // function is serialized into the page, so the table cannot be imported.
+  // User-facing overlay strings. This function is serialized into the page and cannot import
+  // the i18n module, so the background passes the resolved string table for the current UI
+  // language with every command (see annotationOverlayStrings in i18n.ts).
+  const strings = requestedCommand.ui;
+  const fill = (raw: string, name: "count" | "number", value: number): string =>
+    raw.split(`{${name}}`).join(String(value));
   const ui = {
-    annotating: "Annotating",
-    modeGroup: "Annotation target",
-    modeArea: "Area",
-    modeText: "Text",
-    clear: "Clear",
-    clearConfirm: (count: number) => `Clear ${count}?`,
-    clearConfirmTitle: "Click again to remove every annotation on this page",
-    done: "Done",
-    doneTitle: "Finish annotating (Esc)",
-    count: (count: number) => `${count} annotation${count === 1 ? "" : "s"}`,
-    hintArea: "Drag or click to mark",
-    hintText: "Select text to mark",
-    hintSelected: "Delete to remove",
-    hintFinish: "Esc to finish",
-    annotationLabel: (displayNumber: number) => `Annotation ${displayNumber}`,
-    editorTitle: (displayNumber: number) => `Annotation ${displayNumber}`,
-    editorPlaceholder: "Add a comment for the agent…",
-    editorSave: "Save",
-    editorDelete: "Delete",
-    editorKeysPrimary: "Enter to save · Esc to cancel",
-    editorKeysNewline: "Shift+Enter for a new line",
+    annotating: strings.annotating,
+    modeGroup: strings.modeGroup,
+    modeArea: strings.modeArea,
+    modeText: strings.modeText,
+    clear: strings.clear,
+    clearConfirm: (count: number) => fill(strings.clearConfirm, "count", count),
+    clearConfirmTitle: strings.clearConfirmTitle,
+    done: strings.done,
+    doneTitle: strings.doneTitle,
+    count: (count: number) =>
+      fill(count === 1 ? strings.countOne : strings.countOther, "count", count),
+    hintArea: strings.hintArea,
+    hintText: strings.hintText,
+    hintSelected: strings.hintSelected,
+    hintFinish: strings.hintFinish,
+    annotationLabel: (displayNumber: number) =>
+      fill(strings.annotationLabel, "number", displayNumber),
+    editorTitle: (displayNumber: number) => fill(strings.annotationLabel, "number", displayNumber),
+    editorPlaceholder: strings.editorPlaceholder,
+    editorSave: strings.editorSave,
+    editorDelete: strings.editorDelete,
+    editorKeysPrimary: strings.editorKeysPrimary,
+    editorKeysNewline: strings.editorKeysNewline,
     doneToast: (count: number) =>
       count === 0
-        ? "Annotation mode is off"
-        : `${count} annotation${count === 1 ? "" : "s"} ready for the agent`,
+        ? strings.doneToastNone
+        : fill(count === 1 ? strings.doneToastOne : strings.doneToastOther, "count", count),
   };
 
   const stableSelectorAttrs = [
@@ -1457,7 +1471,8 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           .abg-draft,
           .abg-editor,
           .abg-toast {
-            --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Hiragino Sans",
+              "Yu Gothic UI", "Meiryo UI", sans-serif;
             --abg-mark: #1a73e8;
             --abg-mark-fill: rgba(26, 115, 232, 0.14);
             --abg-mark-fill-hover: rgba(26, 115, 232, 0.22);
@@ -2699,13 +2714,17 @@ export async function manageAnnotationMode(
     const [res] = await browser.scripting.executeScript({
       target: { tabId },
       func: runAnnotationCommand,
-      args: [{ ...command, persist: true }],
+      args: [withOverlayStrings({ ...command, persist: true })],
     });
     return normalizeAnnotationResult(res?.result);
   } catch (error) {
     if (!shouldFallbackToDebuggerRuntime(error)) throw error;
     return evaluateAnnotationModeWithDebugger(tabId, command);
   }
+}
+
+function withOverlayStrings(command: AnnotationCommand): InjectedAnnotationCommand {
+  return { ...command, ui: command.ui ?? annotationOverlayStrings("en") };
 }
 
 function normalizeAnnotationResult(result: unknown): AnnotationModeResult {
@@ -2742,7 +2761,7 @@ async function evaluateAnnotationModeWithDebugger(
 ): Promise<AnnotationModeResult> {
   // The main world cannot reach the extension safely, so the overlay does not report changes
   // from here; the background still saves the annotations returned by each command.
-  const commandSource = JSON.stringify({ ...command, persist: false }).replace(
+  const commandSource = JSON.stringify(withOverlayStrings({ ...command, persist: false })).replace(
     /[<>&\u2028\u2029]/g,
     (char) => {
       const code = char.charCodeAt(0).toString(16).padStart(4, "0");

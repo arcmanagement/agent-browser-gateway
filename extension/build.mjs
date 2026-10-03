@@ -110,8 +110,8 @@ async function patchManifest(target) {
     manifest.optional_permissions = (manifest.optional_permissions ?? []).filter(
       (permission) => permission !== "readingList",
     );
-    manifest.description =
-      "Share Firefox tabs with AI coding agents via explicit local permission.";
+    // Name and description are localized through _locales/*/messages.json.
+    manifest.description = "__MSG_extDescriptionFirefox__";
     manifest.background = {
       scripts: ["background.js"],
       type: "module",
@@ -130,9 +130,10 @@ async function patchManifest(target) {
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     return;
   }
+  // The Firefox name stays localized through _locales; configured and dev names are literals.
   const name =
     configuredName ||
-    (target === "firefox" ? "Agent Browser Gateway for Firefox" : "Agent Browser Gateway Dev");
+    (target === "firefox" ? "__MSG_extNameFirefox__" : "Agent Browser Gateway Dev");
   manifest.name = name;
   if (manifest.action) {
     manifest.action.default_title = name;

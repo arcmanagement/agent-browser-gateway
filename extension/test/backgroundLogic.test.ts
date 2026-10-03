@@ -9,11 +9,14 @@ import {
   normalizeUploadFiles,
   originForUrl,
   personalDataMutationIntent,
+  personalDataMutationIntentText,
   raiseBrowserTab,
   raisePermittedBrowserTab,
   richClipboardPayloadLabel,
+  richClipboardPayloadText,
   shortcutFeedback,
 } from "../src/backgroundLogic.js";
+import { formatText } from "../src/i18n.js";
 import { installChromeMock } from "./chromeMock.js";
 
 afterEach(() => {
@@ -302,6 +305,47 @@ describe("personalDataMutationIntent", () => {
   });
 });
 
+describe("personalDataMutationIntentText", () => {
+  it("keeps the English intent byte-for-byte for the Gateway", () => {
+    expect(
+      personalDataMutationIntent("bookmark_create", {
+        title: "Docs",
+        url: "https://example.com/docs",
+        parentId: "42",
+      }),
+    ).toBe(
+      'Create bookmark "Docs" for https://example.com/docs in folder 42. Browser-owned personal data write.',
+    );
+    expect(personalDataMutationIntent("bookmark_move", { id: "7" })).toBe(
+      "Move bookmark id 7 (id 7). Browser-owned personal data write.",
+    );
+  });
+
+  it("formats the same intent in Japanese for the approval window", () => {
+    const remove = personalDataMutationIntentText("bookmark_remove", { title: "Docs", id: "42" });
+    expect(formatText("ja", remove)).toBe(
+      '【取り消し不可】ブックマーク "Docs"（ID 42）を完全に削除します。ブラウザに保存された個人データが消え、ABG では元に戻せません。',
+    );
+    const move = personalDataMutationIntentText("bookmark_move", {
+      title: "Docs",
+      id: "42",
+      parentId: "9",
+    });
+    expect(formatText("ja", move)).toBe(
+      'ブックマーク "Docs"（ID 42）をフォルダ 9 へ移動します。ブラウザの個人データへの書き込みです。',
+    );
+  });
+
+  it("localizes the paste_rich clipboard payload label", () => {
+    expect(formatText("ja", richClipboardPayloadText("text/html", 25))).toBe(
+      'クリップボードの "text/html" データ（25 バイト）',
+    );
+    expect(formatText("ja", richClipboardPayloadText(undefined, undefined))).toBe(
+      "現在のクリップボードの内容",
+    );
+  });
+});
+
 describe("decideShareToggle", () => {
   const httpsTab = { id: 7, url: "https://example.com/", title: "Example", incognito: false };
   const base = { permitted: false, allTabsActive: false, incognitoAccessAllowed: true };
@@ -448,5 +492,25 @@ describe("shortcutFeedback", () => {
       badgeText: "ERR",
       message: "Could not copy tab ID 42: denied",
     });
+  });
+
+  it("formats shortcut messages in Japanese without changing badge text", () => {
+    const shared = shortcutFeedback({ kind: "shared", tabId: 7, title: "Example" }, "ja");
+    expect(shared).toMatchObject({ level: "success", badgeText: "ON" });
+    expect(shared.message).toBe('タブ 7 ("Example") をエージェントと共有しました。');
+    expect(shortcutFeedback({ kind: "revoked", tabId: 7 }, "ja").message).toBe(
+      "タブ 7 の共有を解除しました。エージェントはこのタブにアクセスできなくなりました。",
+    );
+    expect(
+      shortcutFeedback(
+        { kind: "blocked", reason: "unsupported_page", url: "chrome://settings/" },
+        "ja",
+      ).message,
+    ).toBe(
+      "chrome: のページは共有できません。共有できるのは http、https、file のページだけです。変更はしていません。",
+    );
+    const copied = shortcutFeedback({ kind: "copied", tabId: 42, title: "Docs" }, "ja");
+    expect(copied).toMatchObject({ level: "warning", badgeText: "ID" });
+    expect(copied.message).toContain("このタブは共有されていないため");
   });
 });

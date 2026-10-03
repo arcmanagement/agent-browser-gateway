@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { manageAnnotationMode } from "../src/annotationOverlay.js";
+import { annotationOverlayStrings } from "../src/i18n.js";
 import { installChromeMock } from "./chromeMock.js";
 
 afterEach(() => {
@@ -23,7 +24,8 @@ describe("annotationOverlay", () => {
     const result = await manageAnnotationMode(42, { action: "list" });
 
     expect(chrome.scripting.executeScript).toHaveBeenCalledWith({
-      args: [{ action: "list", persist: true }],
+      // Without strings from the caller the overlay falls back to English.
+      args: [{ action: "list", persist: true, ui: annotationOverlayStrings("en") }],
       func: expect.any(Function),
       target: { tabId: 42 },
     });
@@ -55,6 +57,33 @@ describe("annotationOverlay", () => {
     expect(params.expression).toContain('"persist":false');
     expect(params.expression).toContain('"saved":[{"uid":"a"}]');
     expect(params.expression).not.toContain('"persist":true');
+  });
+
+  it("passes the display-language string table in both execution paths", async () => {
+    const chrome = installChromeMock();
+    const ui = annotationOverlayStrings("ja");
+    chrome.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: true, enabled: true, count: 0, annotations: [] } },
+    ]);
+    await manageAnnotationMode(42, { action: "start", ui });
+    expect(chrome.scripting.executeScript).toHaveBeenCalledWith(
+      expect.objectContaining({ args: [{ action: "start", persist: true, ui }] }),
+    );
+
+    chrome.scripting.executeScript.mockRejectedValueOnce(
+      new Error('Cannot access contents of url "chrome://newtab/"'),
+    );
+    chrome.debugger.sendCommand.mockResolvedValueOnce({
+      result: { value: { ok: true, enabled: true, count: 0, annotations: [] } },
+    });
+    await manageAnnotationMode(42, { action: "start", ui });
+    const [, , params] = chrome.debugger.sendCommand.mock.calls[0] as unknown as [
+      unknown,
+      string,
+      { expression: string },
+    ];
+    expect(params.expression).toContain('"done":"完了"');
+    expect(params.expression).toContain('"countOther":"注釈 {count} 件"');
   });
 
   it("normalizes unexpected content-script results", async () => {
