@@ -281,6 +281,8 @@ abg record stop                                  # stop and write the webm, retu
 abg record status                                # show the active recording (if any)
 abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
+abg annotate <tab|ref> --restore                 # restore annotations saved before a page reload
+abg annotate <tab|ref> --saved                   # print saved annotations without restoring them
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
 abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
 abg console <tab|ref>                            # console messages
@@ -612,6 +614,9 @@ Annotation mode lets the human mark the current tab the way they would point at 
 - **Area** annotations are auto-classified as `kind: "dom"` when a stable DOM target is available, otherwise `kind: "screenshot"`. **Text** annotations are always `kind: "text"` and keep the selected text as first-class data.
 - Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, top-level `text` plus `textAnchor` metadata for text annotations, and screenshot-region coordinates for visual targets.
 - For explicit additions, use `abg annotate t1 --selector "button.save" --comment "..."` or `abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "..."`.
+- Annotations survive a page reload as a saved snapshot, but they are not redrawn automatically. After a reload, `abg annotate t1` returns a `saved` summary and `nextCommand: "abg annotate t1 --restore"`; the popup shows **Restore N saved annotations**. `abg annotate t1 --saved` prints the saved annotations without touching the page.
+- Restore only draws an annotation when its target can still be identified: a DOM annotation's selector must match exactly one element with the same tag and text, a text annotation's exact text must be found unambiguously, and a region anchored to a scroll container or frame needs that container. Window-anchored regions come back at the same document coordinates with `restoredBy: "coordinates"`. Anything else is listed under `restore.unrestored` with a `reason` and is not drawn. Running restore again only retries the ones that are still missing.
+- The snapshot is stored per tab in Chrome session storage, which page scripts cannot read. It is separate from sharing permission: revoking a tab keeps it, but restoring requires the tab to be shared again, and restoring never shares a tab. Closing the tab, clearing annotations, or restarting the browser deletes it. A snapshot is restored only onto the same origin, path, and query (the URL hash is ignored).
 
 ---
 

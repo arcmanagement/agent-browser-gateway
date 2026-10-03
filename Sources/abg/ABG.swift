@@ -791,12 +791,18 @@ struct Annotate: AsyncParsableCommand {
         共有中タブに拡張機能の overlay を表示し、ユーザーがカーソルで示した対象を DOM 注釈かスクショ領域注釈に自動分類する。
         CLI からは --selector で DOM 注釈、--x/--y/--width/--height で自動分類の領域注釈を追加できる。
         引数なしでは現在の注釈一覧を JSON で返す。注釈には kind(dom/screenshot)、viewport/page 座標、コメント、selector/text/style が含まれる。
+        注釈は拡張機能の session storage に tab ごとに保存され、ページを再読み込みしても --restore で明示的に復元できる (自動復元はしない)。
+        再読み込み後の一覧に saved が出ていれば nextCommand の `abg annotate <tab> --restore` を実行する。
+        復元は selector/text/anchor が一意に特定できた注釈だけを描画し、特定できない注釈は描画せず restore.unrestored に reason 付きで返す。
+        保存データは共有権限とは独立: revoke しても残るが、復元には tab の再共有が必要。tab を閉じるか --clear で削除される。
 
         例:
           abg annotate t1 --start
           abg annotate t1 --selector "button.save" --comment "保存ボタン"
           abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "この領域"
           abg annotate t1
+          abg annotate t1 --restore
+          abg annotate t1 --saved
           abg annotate t1 --stop
           abg annotate t1 --clear
         """
@@ -804,7 +810,9 @@ struct Annotate: AsyncParsableCommand {
     @OptionGroup var target: TabTarget
     @Flag(name: .long, help: "注釈 overlay を開始") var start: Bool = false
     @Flag(name: .long, help: "注釈 overlay のキャプチャを停止 (既存注釈は残す)") var stop: Bool = false
-    @Flag(name: .long, help: "既存注釈を削除") var clear: Bool = false
+    @Flag(name: .long, help: "既存注釈と保存済み注釈を削除") var clear: Bool = false
+    @Flag(name: .long, help: "再読み込み前に保存した注釈を復元 (特定できない注釈は描画せず unrestored で返す)") var restore: Bool = false
+    @Flag(name: .long, help: "保存済み注釈を復元せずに表示") var saved: Bool = false
     @Option(name: .long, help: "DOM 注釈として追加する CSS selector") var selector: String?
     @Option(name: .long, help: "注釈コメント") var comment: String?
     @Option(name: .long, help: "自動分類する領域 X (viewport px)") var x: Double?
@@ -823,11 +831,11 @@ struct Annotate: AsyncParsableCommand {
                 "message": "--x, --y, --width, and --height are all required for a region annotation.",
             ])
         }
-        let selectedActions = [start, stop, clear, selector != nil, hasFullRegion].filter { $0 }.count
+        let selectedActions = [start, stop, clear, restore, saved, selector != nil, hasFullRegion].filter { $0 }.count
         if selectedActions > 1 {
             try failWithJSON([
                 "error": "bad_params",
-                "message": "Pass at most one of --start, --stop, --clear, --selector, or region coordinates.",
+                "message": "Pass at most one of --start, --stop, --clear, --restore, --saved, --selector, or region coordinates.",
             ])
         }
         if comment != nil && selector == nil && !hasFullRegion {
@@ -840,6 +848,8 @@ struct Annotate: AsyncParsableCommand {
             if start { return "start" }
             if stop { return "stop" }
             if clear { return "clear" }
+            if restore { return "restore" }
+            if saved { return "saved" }
             if selector != nil { return "add_selector" }
             if hasFullRegion { return "add_region" }
             return "list"
@@ -858,6 +868,12 @@ struct Annotate: AsyncParsableCommand {
         var result = try client.call(method: "annotate_tab", params: params)
         if let out, action == "add_region" {
             result = try attachRegionScreenshotIfNeeded(client: client, tabId: tabId, result: result, out: out)
+        }
+        // The extension does not know how the caller named the tab; make hints copy-pasteable.
+        let tabLabel = target.tab ?? String(tabId)
+        result = Self.fillTabPlaceholder(result, tab: tabLabel)
+        if action == "restore", let failure = Self.restoreFailure(result, tab: tabLabel) {
+            try failWithJSON(failure)
         }
         if format == "json" {
             printJSON(result)
@@ -879,14 +895,115 @@ struct Annotate: AsyncParsableCommand {
                 let kind = annotation["kind"] ?? "?"
                 let selector = (annotation["selector"] as? String).map { " selector=\($0)" } ?? ""
                 let comment = (annotation["comment"] as? String).map { $0.isEmpty ? "" : " - \($0)" } ?? ""
+                let restoredBy = (annotation["restoredBy"] as? String).map { " restoredBy=\($0)" } ?? ""
                 let rect = annotation["viewportRect"] as? [String: Any] ?? [:]
                 let x = rect["x"] ?? "?"
                 let y = rect["y"] ?? "?"
                 let width = rect["width"] ?? "?"
                 let height = rect["height"] ?? "?"
-                print("[\(number)] \(kind) x=\(x) y=\(y) w=\(width) h=\(height)\(selector)\(comment)")
+                print("[\(number)] \(kind) x=\(x) y=\(y) w=\(width) h=\(height)\(selector)\(restoredBy)\(comment)")
             }
         }
+        for line in Self.restoreAndSavedLines(dict) {
+            print(line)
+        }
+    }
+
+    /// A restore that could not even be attempted is a command failure; a restore that ran but
+    /// could not place some annotations is a normal result listed under `restore.unrestored`.
+    static func fillTabPlaceholder(_ result: Any?, tab: String) -> Any? {
+        guard var dict = result as? [String: Any] else { return result }
+        for key in ["nextCommand", "userMessage"] {
+            if let value = dict[key] as? String {
+                dict[key] = value.replacingOccurrences(of: "<tab>", with: tab)
+            }
+        }
+        return dict
+    }
+
+    static func restoreFailure(_ result: Any?, tab: String) -> [String: Any]? {
+        guard let dict = result as? [String: Any],
+              let restore = dict["restore"] as? [String: Any],
+              let status = restore["status"] as? String
+        else {
+            return nil
+        }
+        switch status {
+        case "no_saved_annotations":
+            return [
+                "error": "no_saved_annotations",
+                "message": "No saved annotations exist for this tab.",
+                "userMessage": "このタブに保存済みの注釈はありません。",
+                "nextCommand": "abg annotate \(tab)",
+            ]
+        case "url_mismatch":
+            var payload: [String: Any] = [
+                "error": "annotation_url_mismatch",
+                "message": "Saved annotations belong to a different URL; nothing was restored.",
+                "userMessage": "保存済みの注釈は別の URL のものなので復元しませんでした。--saved で内容だけ確認できます。",
+                "nextCommand": "abg annotate \(tab) --saved",
+            ]
+            if let savedUrl = restore["savedUrl"] { payload["savedUrl"] = savedUrl }
+            if let currentUrl = restore["currentUrl"] { payload["currentUrl"] = currentUrl }
+            return payload
+        default:
+            return nil
+        }
+    }
+
+    /// Text-mode lines for restore results, saved snapshots, and recovery hints.
+    static func restoreAndSavedLines(_ dict: [String: Any]) -> [String] {
+        var lines: [String] = []
+        let commentSuffix: ([String: Any]) -> String = { row in
+            (row["comment"] as? String).map { $0.isEmpty ? "" : " - \($0)" } ?? ""
+        }
+        if let restore = dict["restore"] as? [String: Any] {
+            let status = restore["status"] as? String ?? "?"
+            let restored = restore["restored"] as? [[String: Any]] ?? []
+            let unrestored = restore["unrestored"] as? [[String: Any]] ?? []
+            let alreadyPresent = restore["alreadyPresent"] as? Int ?? 0
+            lines.append("restore: \(status), restored \(restored.count), unrestored \(unrestored.count), already shown \(alreadyPresent)")
+            if status == "url_mismatch" {
+                lines.append("  saved for: \(restore["savedUrl"] as? String ?? "?")")
+                lines.append("  current:   \(restore["currentUrl"] as? String ?? "?")")
+            }
+            for row in restored {
+                let number = row["displayNumber"] ?? "?"
+                let kind = row["kind"] ?? "?"
+                let by = row["restoredBy"] ?? "?"
+                lines.append("  restored [\(number)] \(kind) by \(by)\(commentSuffix(row))")
+            }
+            for row in unrestored {
+                let number = row["savedDisplayNumber"].map { "[\($0)] " } ?? ""
+                let kind = row["kind"] ?? "?"
+                let reason = row["reason"] ?? "?"
+                let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
+                lines.append("  NOT restored \(number)\(kind) (\(reason))\(selector)\(commentSuffix(row))")
+            }
+        }
+        if let saved = dict["saved"] as? [String: Any] {
+            let count = saved["count"] as? Int ?? 0
+            let total = saved["totalSaved"] as? Int ?? count
+            let url = saved["url"] as? String ?? "?"
+            let urlMatches = saved["urlMatches"] as? Bool ?? false
+            let savedAt = saved["savedAt"] as? String ?? "?"
+            lines.append("saved: \(count) not shown of \(total), saved at \(savedAt), url \(urlMatches ? "matches" : "differs"): \(url)")
+            for (index, row) in (saved["annotations"] as? [[String: Any]] ?? []).enumerated() {
+                let kind = row["kind"] ?? "?"
+                let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
+                let text = (row["text"] as? String).map { " text=\"\($0)\"" } ?? ""
+                lines.append("  saved [\(index + 1)] \(kind)\(selector)\(text)\(commentSuffix(row))")
+            }
+        } else if dict.keys.contains("saved") {
+            lines.append("saved: none")
+        }
+        if let message = dict["userMessage"] as? String {
+            lines.append(message)
+        }
+        if let next = dict["nextCommand"] as? String, dict["saved"] is [String: Any] || dict["restore"] != nil {
+            lines.append("next: \(next)")
+        }
+        return lines
     }
 
     private func attachRegionScreenshotIfNeeded(client: UDSClient, tabId: Int, result: Any?, out: String) throws -> Any? {

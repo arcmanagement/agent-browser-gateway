@@ -49,6 +49,7 @@ These shapes are stable for automation. New optional keys may be added without a
 | `abg get` | Object or scalar result for the requested getter. Getter names and primitive JSON types are part of the command contract. |
 | `abg snapshot` | Object or array containing inspectable element rows with refs, text, roles, and selector/geometry metadata when available. |
 | `abg screenshot` | Object with local output path and capture metadata. Debugger-backed captures pin image pixels to CSS pixels and report `cssViewport`, `imageSize`, and `scale: 1`, so image coordinates convert directly to `click --x/--y` coordinates. `abg screenshot --latest` returns the latest saved screenshot path object or a normalized error. |
+| `abg annotate` | Object `{ ok, enabled, count, annotations, userMessage?, nextCommand? }`. Each annotation has `uid` (stable across reload and restore), `kind` (`dom`, `screenshot`, or `text`), `comment`, `rect`, `viewportRect`, and kind-specific selector/text/anchor metadata; restored annotations add `restoredBy` (`selector`, `text`, `anchor`, or `coordinates`) and `restoredAt`. When the tab has a saved snapshot with annotations the page does not show, the result adds `saved: { count, totalSaved, savedAt, url, title, urlMatches }` and `nextCommand` points at `--restore` (or `--saved` when the URL differs). `--restore` adds `restore: { status, restored, unrestored, alreadyPresent }`, where `status` is `restored`, `partial`, `none_restored`, or `already_present`, and each `unrestored` row carries `uid`, `kind`, `comment`, optional `selector`/`text`/`savedDisplayNumber`, and a snake_case `reason`; unrestored annotations are never drawn. `--saved` returns `saved` with the full saved `annotations` list, or `saved: null`. |
 | `abg wait` | Object `{ ok, mode, ... }` — `{ ok: true, mode, ms | value }` on success, `{ ok: false, error: "timeout", mode, timeoutMs }` on timeout. Combined load+selector waits return `{ load, selector }` with one such object each. |
 | `abg replay` | Dry run returns `{ tabId, steps }`; execution returns `{ ok, tabId, results }` where each result row is `{ index, op, result }` and `result` is that step's command output. See `docs/REPLAY_POLICY.md`. |
 | `abg record start` | Object `{ ok, recordingId, tabId, path, mic, startedAt }` after the user approves. `abg record stop` returns `{ ok, path, bytes, durationMs, mime, mic }`; `abg record status` returns `{ recording, ... }`. See `docs/RECORDING.md`. |
@@ -116,6 +117,10 @@ selector-based click matched more than one element; nothing is clicked, the erro
 or a snapshot ref. `blocked_by_extension_frame` means a third-party extension iframe (such as
 a password manager inline menu) is open in the tab and Chrome refuses debugger commands for the
 whole tab until the user dismisses it; the dispatched action may still have executed.
+`no_saved_annotations` means `abg annotate --restore` found no saved snapshot for the tab.
+`annotation_url_mismatch` means the snapshot was saved for a different origin, path, or query
+than the tab shows now (the hash is ignored); it carries `savedUrl` and `currentUrl`, nothing is
+drawn, and `abg annotate <tab> --saved` still prints the saved annotations.
 
 The stable optional error fields are:
 

@@ -3,6 +3,7 @@ import {
   allTabsAccessNote,
   annotationButtonLabel,
   recentShortcutMessage,
+  restoreAnnotationsLabel,
   sharedTabSummary,
   shortcutHint,
   trustedAutomationNote,
@@ -14,6 +15,7 @@ const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
 const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
 const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
 const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
+const restoreAnnotationsBtn = document.getElementById("restoreAnnotationsBtn") as HTMLButtonElement;
 const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
 const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
 const trustedAutomationToggleEl = document.getElementById(
@@ -69,6 +71,33 @@ async function requestApiPermission(permission: string): Promise<boolean> {
 async function removeApiPermission(permission: string): Promise<void> {
   const permissionName = permission as unknown as chrome.runtime.ManifestPermissions;
   await browser.permissions.remove({ permissions: [permissionName] }).catch(() => false);
+}
+
+type PopupState = Extract<BackgroundToPopup, { type: "state" }>;
+
+// Restoring is explicit: the popup offers it, it never happens on page load.
+function renderRestoreButton(state: PopupState, tabId: number): void {
+  const label = state.permitted ? restoreAnnotationsLabel(state.annotationState) : null;
+  restoreAnnotationsBtn.hidden = label === null;
+  if (label === null) return;
+  restoreAnnotationsBtn.textContent = label;
+  restoreAnnotationsBtn.disabled = false;
+  restoreAnnotationsBtn.onclick = async () => {
+    restoreAnnotationsBtn.disabled = true;
+    const response = await send({ type: "annotation_action", tabId, action: "restore" });
+    await refresh();
+    const message =
+      response.type === "error"
+        ? `error: ${response.message}`
+        : response.type === "ok"
+          ? response.message
+          : undefined;
+    if (message) {
+      const note = document.createElement("div");
+      note.textContent = message;
+      statusEl.append(note);
+    }
+  };
 }
 
 async function refresh(): Promise<void> {
@@ -329,13 +358,16 @@ async function refresh(): Promise<void> {
       window.close();
       await refresh();
     };
-    clearAnnotationsBtn.disabled = !state.permitted || state.annotationState.count === 0;
+    clearAnnotationsBtn.disabled =
+      !state.permitted ||
+      (state.annotationState.count === 0 && state.annotationState.restorableCount === 0);
     clearAnnotationsBtn.onclick = async () => {
       if (!state.permitted) return;
       clearAnnotationsBtn.disabled = true;
       await send({ type: "annotation_action", tabId, action: "clear" });
       await refresh();
     };
+    renderRestoreButton(state, tabId);
   } else if (incognitoBlocked) {
     actionBtn.textContent = "Enable incognito access first";
     actionBtn.className = "secondary";
@@ -347,6 +379,7 @@ async function refresh(): Promise<void> {
     annotationBtn.textContent = "Annotate this tab";
     annotationBtn.className = "secondary";
     clearAnnotationsBtn.disabled = true;
+    restoreAnnotationsBtn.hidden = true;
   } else if (state.permitted) {
     actionBtn.textContent = "Revoke this tab";
     actionBtn.className = "danger";
@@ -373,12 +406,14 @@ async function refresh(): Promise<void> {
       window.close();
       await refresh();
     };
-    clearAnnotationsBtn.disabled = state.annotationState.count === 0;
+    clearAnnotationsBtn.disabled =
+      state.annotationState.count === 0 && state.annotationState.restorableCount === 0;
     clearAnnotationsBtn.onclick = async () => {
       clearAnnotationsBtn.disabled = true;
       await send({ type: "annotation_action", tabId, action: "clear" });
       await refresh();
     };
+    renderRestoreButton(state, tabId);
   } else {
     actionBtn.textContent = "Share this tab with agent";
     actionBtn.className = "primary";
@@ -391,6 +426,7 @@ async function refresh(): Promise<void> {
     annotationBtn.textContent = "Annotate this tab";
     annotationBtn.className = "secondary";
     clearAnnotationsBtn.disabled = true;
+    restoreAnnotationsBtn.hidden = true;
   }
 
   const shortcutMessage = recentShortcutMessage(state.shortcutFeedback, Date.now());

@@ -3,6 +3,7 @@ import {
   allTabsAccessNote,
   annotationButtonLabel,
   recentShortcutMessage,
+  restoreAnnotationsLabel,
   SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS,
   sharedTabSummary,
   shortcutHint,
@@ -68,6 +69,9 @@ describe("popupLogic", () => {
     expect(annotationButtonLabel({ enabled: false, count: 0 })).toBe("Annotate this tab");
     expect(annotationButtonLabel({ enabled: false, count: 2 })).toBe("2 annotations - Resume");
     expect(annotationButtonLabel({ enabled: true, count: 1 })).toBe("1 annotation - Done");
+    expect(restoreAnnotationsLabel({ restorableCount: 0 })).toBeNull();
+    expect(restoreAnnotationsLabel({ restorableCount: 1 })).toBe("Restore 1 saved annotation");
+    expect(restoreAnnotationsLabel({ restorableCount: 3 })).toBe("Restore 3 saved annotations");
     expect(
       sharedTabSummary({
         accessMode: "all_tabs",

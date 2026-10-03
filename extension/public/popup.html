@@ -84,6 +84,12 @@
       .annotation-actions button {
         min-width: 0;
       }
+      .annotation-actions button.restore-annotations {
+        grid-column: 1 / -1;
+      }
+      .annotation-actions button[hidden] {
+        display: none;
+      }
       .annotation-actions button.annotation-on {
         background: #a444ff;
         color: white;
@@ -211,6 +217,9 @@
     <div class="annotation-actions">
       <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>
       <button id="clearAnnotationsBtn" class="secondary" disabled>Clear</button>
+      <button id="restoreAnnotationsBtn" class="secondary restore-annotations" hidden>
+        Restore saved annotations
+      </button>
     </div>
     <div class="shortcut-result" id="shortcutResult" hidden></div>
     <div class="field-note shortcut-hint" id="shortcutHint"></div>

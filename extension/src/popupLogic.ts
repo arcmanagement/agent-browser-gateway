@@ -53,11 +53,22 @@ export function allTabsAccessNote(
   return "For isolated sandbox profiles only. Do not enable this in mixed personal profiles.";
 }
 
-export function annotationButtonLabel(annotationState: PopupState["annotationState"]): string {
+export function annotationButtonLabel(
+  annotationState: Pick<PopupState["annotationState"], "enabled" | "count">,
+): string {
   const suffix = annotationState.count === 1 ? "" : "s";
   if (annotationState.enabled) return `${annotationState.count} annotation${suffix} - Done`;
   if (annotationState.count > 0) return `${annotationState.count} annotation${suffix} - Resume`;
   return "Annotate this tab";
+}
+
+/** Label for the restore affordance, or null when there is nothing saved to restore. */
+export function restoreAnnotationsLabel(
+  annotationState: Pick<PopupState["annotationState"], "restorableCount">,
+): string | null {
+  const count = annotationState.restorableCount;
+  if (count <= 0) return null;
+  return `Restore ${count} saved annotation${count === 1 ? "" : "s"}`;
 }
 
 export function sharedTabSummary(tab: PopupState["sharedTabs"][number]): string {

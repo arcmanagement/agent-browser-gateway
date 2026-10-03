@@ -1,6 +1,14 @@
 // Shared message types between background, popup, and Gateway.
 
-export type AnnotationAction = "start" | "stop" | "clear" | "list" | "add_region" | "add_selector";
+export type AnnotationAction =
+  | "start"
+  | "stop"
+  | "clear"
+  | "list"
+  | "add_region"
+  | "add_selector"
+  | "restore"
+  | "saved";
 export type TabAccessMode = "manual" | "all_tabs";
 
 export type ShortcutFeedbackLevel = "success" | "warning" | "error";
@@ -374,10 +382,15 @@ export type BackgroundToPopup =
         };
       };
       settings: ExtensionSettings;
-      annotationState: { enabled: boolean; count: number };
+      annotationState: {
+        enabled: boolean;
+        count: number;
+        // Saved annotations (from before a reload) that are not shown in the page right now.
+        restorableCount: number;
+      };
       shortcutFeedback?: RecentShortcutFeedback;
     }
-  | { type: "ok" }
+  | { type: "ok"; message?: string }
   | { type: "error"; message: string };
 
 export type ApprovalToBackground =
