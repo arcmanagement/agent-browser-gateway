@@ -208,6 +208,7 @@ export function createChromeMock() {
       getURL: vi.fn(
         (path: string) => `chrome-extension://${extensionId}/${path.replace(/^\//, "")}`,
       ),
+      getManifest: vi.fn(() => ({ optional_permissions: ["bookmarks", "readingList"] })),
       sendMessage: vi.fn(async () => undefined),
       onInstalled: createChromeEvent<[Record<string, unknown>]>(),
       onMessage: createChromeEvent<[unknown, unknown, (response?: unknown) => void]>(),
