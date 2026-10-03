@@ -1471,27 +1471,30 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
           .abg-draft,
           .abg-editor,
           .abg-toast {
-            --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Hiragino Sans",
-              "Yu Gothic UI", "Meiryo UI", sans-serif;
-            --abg-mark: #1a73e8;
-            --abg-mark-fill: rgba(26, 115, 232, 0.14);
-            --abg-mark-fill-hover: rgba(26, 115, 232, 0.22);
-            --abg-mark-ring: rgba(26, 115, 232, 0.35);
-            --abg-chip-bg: rgba(10, 10, 10, 0.86);
+            --abg-font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+              "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI",
+              Meiryo, sans-serif;
+            --abg-mark: #1f6fd6;
+            --abg-mark-fill: rgba(31, 111, 214, 0.12);
+            --abg-mark-fill-hover: rgba(31, 111, 214, 0.2);
+            --abg-mark-ring: rgba(31, 111, 214, 0.32);
+            --abg-mark-glow: rgba(108, 180, 255, 0.55);
+            --abg-chip-bg: rgba(7, 9, 10, 0.88);
+            --abg-signal: #19c46a;
             --abg-surface: #ffffff;
-            --abg-surface-2: #f3f4f2;
-            --abg-text: #0a0a0a;
-            --abg-muted: #5c5f66;
-            --abg-line: #dedfdd;
-            --abg-line-strong: #c4c6c2;
-            --abg-inverse: #0a0a0a;
+            --abg-surface-2: #eef0ed;
+            --abg-text: #0b0f10;
+            --abg-muted: #4a5551;
+            --abg-line: rgba(7, 9, 10, 0.1);
+            --abg-line-strong: rgba(7, 9, 10, 0.18);
+            --abg-inverse: #0b0f10;
             --abg-on-inverse: #ffffff;
             --abg-danger: #d92d20;
             --abg-danger-text: #b42318;
-            --abg-danger-bg: #fdecea;
-            --abg-danger-line: #f4b4ad;
-            --abg-focus: #1a73e8;
-            --abg-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
+            --abg-danger-bg: rgba(217, 45, 32, 0.06);
+            --abg-danger-line: rgba(217, 45, 32, 0.34);
+            --abg-focus: #1f6fd6;
+            --abg-shadow: 0 16px 40px -12px rgba(7, 9, 10, 0.28), 0 2px 6px rgba(7, 9, 10, 0.08);
             box-sizing: border-box;
             color: var(--abg-text);
             font: 400 12px/1.3 var(--abg-font);
@@ -1510,19 +1513,19 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             .abg-editor,
             .abg-toast {
               color-scheme: dark;
-              --abg-surface: #1f1f22;
-              --abg-surface-2: #29292d;
-              --abg-text: #f2f2f3;
-              --abg-muted: #a6a8ae;
-              --abg-line: #333338;
-              --abg-line-strong: #4a4a51;
-              --abg-inverse: #f2f2f3;
-              --abg-on-inverse: #0a0a0a;
-              --abg-danger-text: #ff8b80;
-              --abg-danger-bg: rgba(255, 69, 58, 0.16);
-              --abg-danger-line: rgba(255, 69, 58, 0.45);
-              --abg-focus: #6ea8ff;
-              --abg-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+              --abg-surface: #0d1112;
+              --abg-surface-2: #1d2528;
+              --abg-text: #eef3f1;
+              --abg-muted: #a7b2ae;
+              --abg-line: rgba(255, 255, 255, 0.1);
+              --abg-line-strong: rgba(255, 255, 255, 0.16);
+              --abg-inverse: #eef3f1;
+              --abg-on-inverse: #07090a;
+              --abg-danger-text: #ff7d73;
+              --abg-danger-bg: rgba(255, 90, 78, 0.1);
+              --abg-danger-line: rgba(255, 90, 78, 0.45);
+              --abg-focus: #6cb4ff;
+              --abg-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4);
             }
           }
           .abg-capture,
@@ -1561,8 +1564,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             gap: 8px;
             max-width: calc(100vw - 24px);
             padding: 6px;
-            border: 1px solid var(--abg-line);
-            border-radius: 10px;
+            border: 1px solid var(--abg-line-strong);
+            border-radius: 12px;
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
             pointer-events: auto;
@@ -1581,13 +1584,15 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             height: 8px;
             border-radius: 999px;
             background: var(--abg-mark);
-            box-shadow: 0 0 0 3px var(--abg-mark-ring);
+            box-shadow:
+              0 0 0 3px var(--abg-mark-ring),
+              0 0 10px var(--abg-mark-glow);
           }
           .abg-segmented {
             display: inline-flex;
             padding: 2px;
             border: 1px solid var(--abg-line);
-            border-radius: 8px;
+            border-radius: 9px;
             background: var(--abg-surface-2);
           }
           .abg-toolbar button,
@@ -1596,11 +1601,11 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 28px;
-            padding: 4px 10px;
+            min-height: 30px;
+            padding: 4px 12px;
             border: 1px solid var(--abg-line-strong);
-            border-radius: 6px;
-            background: var(--abg-surface);
+            border-radius: 8px;
+            background: transparent;
             color: var(--abg-text);
             font-weight: 500;
             white-space: nowrap;
@@ -1617,6 +1622,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
           .abg-segmented button {
             min-height: 24px;
             padding: 2px 10px;
+            border-radius: 7px;
             border-color: transparent;
             background: transparent;
             color: var(--abg-muted);
@@ -1725,14 +1731,14 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             padding: 0;
             border: 0;
             border-radius: 2px;
-            background: rgba(26, 115, 232, 0.24);
+            background: rgba(31, 111, 214, 0.22);
             box-shadow: inset 0 -2px 0 var(--abg-mark);
             pointer-events: auto;
             cursor: pointer;
           }
           .abg-text-selection-piece:hover,
           .abg-text-selection-selected .abg-text-selection-piece {
-            background: rgba(26, 115, 232, 0.34);
+            background: rgba(31, 111, 214, 0.32);
           }
           .abg-text-selection-selected .abg-text-selection-piece {
             box-shadow:
@@ -1782,8 +1788,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            border-radius: 6px;
-            padding: 4px 8px;
+            border-radius: 7px;
+            padding: 5px 9px;
             background: var(--abg-chip-bg);
             color: #ffffff;
             font: 500 12px/1.3 var(--abg-font);
@@ -1919,9 +1925,9 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             flex-direction: column;
             gap: 8px;
             margin: 0;
-            padding: 10px;
-            border: 1px solid var(--abg-line);
-            border-radius: 10px;
+            padding: 12px;
+            border: 1px solid var(--abg-line-strong);
+            border-radius: 14px;
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
           }
@@ -1943,10 +1949,10 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             min-height: 34px;
             max-height: 120px;
             margin: 0;
-            padding: 7px 9px;
+            padding: 8px 10px;
             border: 1px solid var(--abg-line-strong);
-            border-radius: 6px;
-            background: var(--abg-surface);
+            border-radius: 9px;
+            background: var(--abg-surface-2);
             color: var(--abg-text);
             font: 400 13px/1.4 var(--abg-font);
             resize: none;
@@ -1995,9 +2001,9 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 12px;
-            border: 1px solid var(--abg-line);
-            border-radius: 10px;
+            padding: 9px 14px;
+            border: 1px solid var(--abg-line-strong);
+            border-radius: 12px;
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
             font-weight: 500;
@@ -2009,7 +2015,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             width: 8px;
             height: 8px;
             border-radius: 999px;
-            background: #34c759;
+            background: var(--abg-signal);
+            box-shadow: 0 0 0 3px rgba(25, 196, 106, 0.18), 0 0 8px rgba(61, 255, 143, 0.45);
           }
           .abg-toast.abg-fading {
             opacity: 0;

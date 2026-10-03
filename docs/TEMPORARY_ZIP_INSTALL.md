@@ -81,7 +81,7 @@ Chrome で以下を行います。
 
 1. Chrome で共有したいタブを開く
 2. `Agent Browser Gateway` 拡張アイコンをクリックする
-3. `Share this tab with agent` をクリックする
+3. `Share this tab with agents`（日本語表示では `このタブをエージェントと共有`）をクリックする
 4. 以下を実行する
 
 ```bash

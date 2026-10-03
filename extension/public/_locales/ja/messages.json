@@ -8,11 +8,11 @@
     "description": "Extension name in the Firefox build."
   },
   "extDescription": {
-    "message": "明示的なローカル許可のもとで、Chrome のタブを AI コーディングエージェントと共有します。",
+    "message": "選んだ Chrome のタブだけを AI コーディングエージェントと共有します。許可するまで何も共有しません。",
     "description": "Extension description shown in chrome://extensions and the Chrome Web Store. Max 132 characters."
   },
   "extDescriptionFirefox": {
-    "message": "明示的なローカル許可のもとで、Firefox のタブを AI コーディングエージェントと共有します。",
+    "message": "選んだ Firefox のタブだけを AI コーディングエージェントと共有します。許可するまで何も共有しません。",
     "description": "Extension description in the Firefox build."
   },
   "commandToggleShare": {

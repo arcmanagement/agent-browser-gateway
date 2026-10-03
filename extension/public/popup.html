@@ -1,438 +1,274 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Agent Browser Gateway</title>
     <link rel="stylesheet" href="ui.css" />
-    <style>
-      body {
-        width: 320px;
-        padding: var(--abg-space-3);
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        gap: var(--abg-space-2);
-        margin-bottom: var(--abg-space-3);
-      }
-      .header img {
-        width: 18px;
-        height: 18px;
-      }
-      .header h1 {
-        flex: 1 1 auto;
-        min-width: 0;
-        margin: 0;
-        overflow: hidden;
-        font-size: var(--abg-text-md);
-        font-weight: 600;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .stack {
-        display: flex;
-        flex-direction: column;
-        gap: var(--abg-space-2);
-      }
-      .tab-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: var(--abg-space-2);
-      }
-      .tab-info {
-        display: -webkit-box;
-        min-width: 0;
-        overflow: hidden;
-        font-size: var(--abg-text-sm);
-        font-weight: 500;
-        line-height: 1.35;
-        overflow-wrap: anywhere;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-      }
-      #actionBtn {
-        width: 100%;
-      }
-      .notice button {
-        min-height: 28px;
-        font-size: var(--abg-text-sm);
-      }
-      .annotation-actions {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: var(--abg-space-2);
-      }
-      .annotation-actions button {
-        min-width: 0;
-        min-height: 28px;
-        font-size: var(--abg-text-sm);
-      }
-      .annotation-actions button.restore-annotations {
-        grid-column: 1 / -1;
-      }
-      .annotation-actions button[hidden] {
-        display: none;
-      }
-      /* Result of the last keyboard shortcut; level classes come from shortcutFeedback. */
-      .shortcut-result {
-        padding: 6px var(--abg-space-2);
-        border: 1px solid var(--abg-neutral-line);
-        border-radius: var(--abg-radius-sm);
-        background: var(--abg-neutral-bg);
-        color: var(--abg-neutral-text);
-        font-size: var(--abg-text-xs);
-        line-height: 1.4;
-        overflow-wrap: anywhere;
-      }
-      .shortcut-result[hidden] {
-        display: none;
-      }
-      .shortcut-result.success {
-        border-color: var(--abg-success-line);
-        background: var(--abg-success-bg);
-        color: var(--abg-success-text);
-      }
-      .shortcut-result.warning {
-        border-color: var(--abg-warning-line);
-        background: var(--abg-warning-bg);
-        color: var(--abg-warning-text);
-      }
-      .shortcut-result.error {
-        border-color: var(--abg-danger-line);
-        background: var(--abg-danger-bg);
-        color: var(--abg-danger-text);
-      }
-      .shortcut-hint {
-        margin-top: var(--abg-space-2);
-      }
-      .shortcut-hint:empty {
-        display: none;
-      }
-      .section {
-        margin-top: var(--abg-space-4);
-      }
-      .section > .label {
-        margin-bottom: var(--abg-space-2);
-      }
-      .shared-list:empty {
-        display: none;
-      }
-      .shared-list ul {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        border: 1px solid var(--abg-line);
-        border-radius: var(--abg-radius);
-        background: var(--abg-surface);
-        list-style: none;
-      }
-      .shared-item {
-        display: flex;
-        align-items: center;
-        gap: var(--abg-space-2);
-        min-height: 30px;
-        padding: 4px var(--abg-space-3);
-        font-size: var(--abg-text-sm);
-      }
-      .shared-item + .shared-item {
-        border-top: 1px solid var(--abg-line);
-      }
-      .shared-item .tab-id {
-        flex: 0 0 auto;
-        color: var(--abg-muted);
-        font: 500 var(--abg-text-xs) / 1 var(--abg-mono);
-      }
-      .shared-item .tab-title {
-        flex: 1 1 auto;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .shared-item .pill {
-        height: 18px;
-        padding: 0 6px;
-        font-size: 10px;
-      }
-      .shared-item .pill::before {
-        display: none;
-      }
-      .settings {
-        overflow: hidden;
-        border: 1px solid var(--abg-line);
-        border-radius: var(--abg-radius);
-        background: var(--abg-surface);
-      }
-      .setting {
-        padding: 10px var(--abg-space-3);
-      }
-      .setting + .setting {
-        border-top: 1px solid var(--abg-line);
-      }
-      .setting-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--abg-space-3);
-        font-size: var(--abg-text-sm);
-        font-weight: 500;
-        line-height: 1.3;
-        cursor: pointer;
-      }
-      .setting-note {
-        margin-top: var(--abg-space-1);
-        padding-right: 44px;
-        color: var(--abg-muted);
-        font-size: var(--abg-text-xs);
-        line-height: 1.4;
-      }
-      .setting-note:empty {
-        display: none;
-      }
-      .setting.warning-active {
-        background: var(--abg-warning-bg);
-      }
-      .setting.warning-active .setting-note {
-        color: var(--abg-warning-text);
-      }
-      details.advanced {
-        margin-top: var(--abg-space-4);
-      }
-      details.advanced summary {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: fit-content;
-        border-radius: 4px;
-        cursor: pointer;
-        list-style: none;
-      }
-      details.advanced summary::-webkit-details-marker {
-        display: none;
-      }
-      details.advanced summary::before {
-        content: "";
-        width: 0;
-        height: 0;
-        border-top: 4px solid transparent;
-        border-bottom: 4px solid transparent;
-        border-left: 5px solid currentColor;
-        transition: transform 120ms ease;
-      }
-      details.advanced[open] summary::before {
-        transform: rotate(90deg);
-      }
-      .profile-row {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: var(--abg-space-3);
-      }
-      .profile-row label {
-        font-size: var(--abg-text-sm);
-        font-weight: 500;
-      }
-      .profile-row input,
-      .profile-row select {
-        width: 100%;
-        min-height: 30px;
-        padding: 5px var(--abg-space-2);
-        border: 1px solid var(--abg-line-strong);
-        border-radius: var(--abg-radius-sm);
-        background: var(--abg-surface);
-        color: var(--abg-text);
-        font: var(--abg-text-sm) / 1.3 var(--abg-font);
-      }
-      .profile-row input::placeholder {
-        color: var(--abg-muted);
-      }
-      .profile-row input:focus-visible,
-      .profile-row select:focus-visible {
-        outline-offset: 0;
-      }
-      .input-with-action {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 6px;
-      }
-      .input-with-action button {
-        min-height: 30px;
-        font-size: var(--abg-text-sm);
-      }
-      .field-note {
-        color: var(--abg-muted);
-        font-size: var(--abg-text-xs);
-        line-height: 1.4;
-      }
-      .status {
-        margin-top: var(--abg-space-3);
-        color: var(--abg-muted);
-        font-size: var(--abg-text-xs);
-        overflow-wrap: anywhere;
-      }
-      .status:empty {
-        display: none;
-      }
-    </style>
+    <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header class="header">
-      <img src="icons/48.png" alt="" />
+    <header class="top" id="top" data-gateway="checking">
+      <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+        <path class="mark-line" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" />
+        <rect x="6.75" y="3" width="2" height="14" rx="1" fill="currentColor" />
+        <rect x="11.25" y="3" width="2" height="14" rx="1" fill="currentColor" />
+        <circle class="mark-dot" cx="10" cy="10" r="1.25" />
+      </svg>
       <h1>Agent Browser Gateway</h1>
       <span class="pill" id="gatewayStatus" role="status" data-i18n="popup.gateway.checking"
         >Checking…</span
       >
     </header>
 
-    <section class="card stack" aria-labelledby="tabInfo">
-      <div class="tab-head">
-        <div class="tab-info" id="tabInfo">…</div>
-        <span class="pill" id="tabStatus" hidden></span>
-      </div>
-      <div class="notice" id="incognitoNotice" hidden>
-        <strong data-i18n="popup.incognito.title">Incognito access is off</strong>
-        <p data-i18n="popup.incognito.body">
-          Chrome blocks ABG in incognito windows until this extension is allowed there.
-        </p>
-        <button id="openExtensionsBtn" class="secondary" data-i18n="popup.incognito.openSettings">
-          Open extension settings
-        </button>
-      </div>
-      <button id="actionBtn">…</button>
-      <div class="annotation-actions">
-        <button id="annotationBtn" class="secondary" disabled data-i18n="popup.annotation.start">
-          Annotate this tab
-        </button>
-        <button id="clearAnnotationsBtn" class="secondary" disabled data-i18n="popup.annotation.clear">
-          Clear
-        </button>
-        <button
-          id="restoreAnnotationsBtn"
-          class="secondary restore-annotations"
-          hidden
-          data-i18n="popup.annotation.restore"
-        >
-          Restore saved annotations
-        </button>
-      </div>
-      <div class="shortcut-result" id="shortcutResult" role="status" hidden></div>
-    </section>
-    <div class="field-note shortcut-hint" id="shortcutHint"></div>
+    <div class="banner" id="gatewayBanner" role="alert" hidden>
+      <strong data-i18n="popup.gateway.offlineTitle">Can't reach the Gateway</strong>
+      <span id="gatewayBannerBody"></span>
+    </div>
 
-    <section class="section shared-list" id="sharedList" aria-live="polite"></section>
+    <section class="hero" id="hero" data-gate="loading" aria-labelledby="tabState">
+      <div class="hero-light" aria-hidden="true"></div>
+      <div class="hero-head">
+        <h2 class="state" id="tabState">&nbsp;</h2>
+        <span class="tab-id" id="tabId"></span>
+      </div>
 
-    <section class="section">
-      <h2 class="label" data-i18n="popup.permissions.heading">Permissions</h2>
-      <div class="settings">
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.requireApproval">Require approval for write operations</span>
-            <input type="checkbox" class="switch" role="switch" id="approvalToggle" />
-          </label>
+      <div class="strip">
+        <span class="ghost ghost-l" aria-hidden="true"><i></i></span>
+        <div class="chip" id="tabChip">
+          <span class="chip-dot" aria-hidden="true"></span>
+          <span class="chip-text">
+            <span class="chip-title" id="tabInfo">…</span>
+            <span class="chip-host" id="tabHost"></span>
+          </span>
         </div>
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.eval">Enable approved JavaScript eval</span>
-            <input type="checkbox" class="switch" role="switch" id="evalToggle" />
-          </label>
-        </div>
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.trustedAutomation">Trusted automation / AutoMode</span>
-            <input type="checkbox" class="switch" role="switch" id="trustedAutomationToggle" />
-          </label>
-          <div class="setting-note" id="trustedAutomationNote"></div>
-        </div>
-        <div class="setting" id="allTabsSetting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.allTabs">Sandbox all-tabs profile mode</span>
-            <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
-          </label>
-          <div class="setting-note" id="allTabsNote"></div>
-        </div>
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.bookmarks">Bookmarks access</span>
-            <input type="checkbox" class="switch" role="switch" id="bookmarksToggle" />
-          </label>
-          <div class="setting-note" id="bookmarksNote"></div>
-        </div>
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.readingList">Reading List access</span>
-            <input type="checkbox" class="switch" role="switch" id="readingListToggle" />
-          </label>
-          <div class="setting-note" id="readingListNote"></div>
-        </div>
-        <div class="setting">
-          <label class="setting-row">
-            <span data-i18n="popup.permissions.personalDataMutations"
-              >Allow bookmark &amp; Reading List changes</span
-            >
-            <input type="checkbox" class="switch" role="switch" id="personalDataMutationsToggle" />
-          </label>
-          <div class="setting-note" id="personalDataMutationsNote"></div>
-        </div>
+        <span class="ghost ghost-r" aria-hidden="true"><i></i></span>
       </div>
-    </section>
 
-    <details class="advanced">
-      <summary class="label" data-i18n="popup.advanced.heading">Advanced</summary>
-      <div class="profile-row">
-        <label for="uiLanguage" data-i18n="popup.advanced.language">Display language</label>
-        <select id="uiLanguage">
-          <option value="auto" data-i18n="popup.advanced.language.auto">
-            Auto (browser language)
-          </option>
-          <!-- Each language is named in itself so it can be found from any display language. -->
-          <option value="en" lang="en">English</option>
-          <option value="ja" lang="ja">日本語</option>
-        </select>
-        <div class="field-note" data-i18n="popup.advanced.language.note">
-          Applies to this popup now. Approval windows, the annotation toolbar, and shortcut
-          messages use it the next time they appear.
-        </div>
+      <div class="gate" aria-hidden="true">
+        <span class="node node-tab">
+          <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="M1.75 6h12.5" /></svg>
+        </span>
+        <span class="wire wire-in"><i class="wire-lit"></i></span>
+        <span class="doors"><i class="door door-l"></i><i class="door door-r"></i></span>
+        <span class="wire wire-out"><i class="wire-lit"></i><i class="pulse"></i></span>
+        <span class="node node-agent">
+          <svg viewBox="0 0 16 16"><path d="M3.5 4.75 6.75 8 3.5 11.25M8.5 11.25h4" /></svg>
+        </span>
       </div>
-      <div class="profile-row">
-        <label for="profileLabel" data-i18n="popup.advanced.profileLabel">
-          Profile label (shown in menubar)
-        </label>
-        <input
-          type="text"
-          id="profileLabel"
-          placeholder="e.g. personal, work, staging"
-          data-i18n-placeholder="popup.advanced.profileLabel.placeholder"
-        />
-      </div>
-      <div class="profile-row">
-        <label for="gatewayWebSocketUrl" data-i18n="popup.advanced.gatewayUrl">
-          Gateway WebSocket endpoint
-        </label>
-        <div class="input-with-action">
-          <input
-            type="text"
-            id="gatewayWebSocketUrl"
-            placeholder="ws://127.0.0.1:8765/ws"
-            autocomplete="off"
-            spellcheck="false"
-          />
+
+      <p class="detail" id="tabDetail"></p>
+      <ul class="flags" id="tabFlags" hidden></ul>
+
+      <button id="actionBtn" class="action" disabled>…</button>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+
+      <div class="annotations" id="annotations" hidden>
+        <h3 class="label" data-i18n="popup.annotation.heading">Annotations</h3>
+        <div class="annotation-actions">
+          <button id="annotationBtn" class="secondary" data-i18n="popup.annotation.start">
+            Annotate this tab
+          </button>
+          <button id="clearAnnotationsBtn" class="secondary" data-i18n="popup.annotation.clear">
+            Clear all
+          </button>
           <button
-            id="applyGatewayUrlBtn"
-            class="secondary"
-            type="button"
-            data-i18n="popup.advanced.gatewayUrl.apply"
+            id="restoreAnnotationsBtn"
+            class="secondary restore-annotations"
+            hidden
+            data-i18n="popup.annotation.restore"
           >
-            Apply
+            Restore saved annotations
           </button>
         </div>
-        <div class="field-note" data-i18n="popup.advanced.gatewayUrl.note">
-          Developer and self-hosted diagnostics only. Applying reconnects immediately.
+      </div>
+
+      <div class="evidence" id="shortcutResult" role="status" hidden></div>
+    </section>
+
+    <div class="keys" id="shortcutKeys"></div>
+
+    <section class="section shared" id="sharedList" aria-live="polite"></section>
+
+    <section class="section" aria-labelledby="permissionsHeading">
+      <h2 class="label section-label" id="permissionsHeading" data-i18n="popup.permissions.heading">
+        Permissions
+      </h2>
+
+      <div class="group">
+        <h3 class="group-label">
+          <span data-i18n="popup.permissions.group.everyday">Everyday</span>
+        </h3>
+        <div class="settings">
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.requireApproval"
+                >Require approval for write operations</span
+              >
+              <input type="checkbox" class="switch" role="switch" id="approvalToggle" />
+            </label>
+            <div class="setting-note" data-i18n="popup.permissions.requireApproval.note">
+              Clicks, typing, navigation, and other changes open an approval window first.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3 class="group-label">
+          <span data-i18n="popup.permissions.group.automation">Automation</span>
+          <span class="risk" data-i18n="popup.permissions.risk.higher">Higher risk</span>
+        </h3>
+        <div class="settings">
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.eval">Allow approved JavaScript eval</span>
+              <input type="checkbox" class="switch warning" role="switch" id="evalToggle" />
+            </label>
+            <div class="setting-note" data-i18n="popup.permissions.eval.note">
+              Off by default. Unless AutoMode is on, each eval shows you the exact script to
+              approve.
+            </div>
+          </div>
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.trustedAutomation"
+                >Trusted automation (AutoMode)</span
+              >
+              <input
+                type="checkbox"
+                class="switch warning"
+                role="switch"
+                id="trustedAutomationToggle"
+              />
+            </label>
+            <div class="setting-note" id="trustedAutomationNote"></div>
+          </div>
+          <div class="setting" id="allTabsSetting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.allTabs"
+                >Share all tabs (sandbox profiles only)</span
+              >
+              <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
+            </label>
+            <div class="setting-note" id="allTabsNote"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3 class="group-label">
+          <span data-i18n="popup.permissions.group.personalData">Personal data</span>
+        </h3>
+        <div class="settings">
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.bookmarks">Bookmarks access</span>
+              <input type="checkbox" class="switch" role="switch" id="bookmarksToggle" />
+            </label>
+            <div class="setting-note" id="bookmarksNote"></div>
+          </div>
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.readingList">Reading List access</span>
+              <input type="checkbox" class="switch" role="switch" id="readingListToggle" />
+            </label>
+            <div class="setting-note" id="readingListNote"></div>
+          </div>
+          <div class="setting">
+            <label class="setting-row">
+              <span data-i18n="popup.permissions.personalDataMutations"
+                >Allow bookmark &amp; Reading List changes</span
+              >
+              <input
+                type="checkbox"
+                class="switch warning"
+                role="switch"
+                id="personalDataMutationsToggle"
+              />
+            </label>
+            <div class="setting-note" data-i18n="popup.permissions.personalDataMutations.note">
+              Agents can request changes. Each one opens an approval window, and deletions are
+              marked as permanent.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <details class="section advanced">
+      <summary>
+        <span class="label" data-i18n="popup.advanced.heading">Advanced</span>
+        <svg class="chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.75 7.75 6 4.5 9.25" /></svg>
+      </summary>
+      <div class="settings fields">
+        <div class="field">
+          <label for="uiLanguage" data-i18n="popup.advanced.language">Display language</label>
+          <select id="uiLanguage">
+            <option value="auto" data-i18n="popup.advanced.language.auto">
+              Auto (browser language)
+            </option>
+            <!-- Each language is named in itself so it can be found from any display language. -->
+            <option value="en" lang="en">English</option>
+            <option value="ja" lang="ja">日本語</option>
+          </select>
+          <div class="field-note" data-i18n="popup.advanced.language.note">
+            This popup switches now. Approval windows, the annotation toolbar, and shortcut
+            messages switch the next time they open.
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label" data-i18n="popup.advanced.shortcuts">Keyboard shortcuts</span>
+          <div class="field-note" id="shortcutHint"></div>
+        </div>
+        <div class="field">
+          <label for="profileLabel" data-i18n="popup.advanced.profileLabel">
+            Profile label (shown in the menu bar)
+          </label>
+          <input
+            type="text"
+            id="profileLabel"
+            placeholder="e.g. personal, work, staging"
+            data-i18n-placeholder="popup.advanced.profileLabel.placeholder"
+          />
+        </div>
+        <div class="field">
+          <label for="gatewayWebSocketUrl" data-i18n="popup.advanced.gatewayUrl">
+            Gateway endpoint (WebSocket)
+          </label>
+          <div class="input-with-action">
+            <input
+              type="text"
+              id="gatewayWebSocketUrl"
+              placeholder="ws://127.0.0.1:8765/ws"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              id="applyGatewayUrlBtn"
+              class="secondary"
+              type="button"
+              data-i18n="popup.advanced.gatewayUrl.apply"
+            >
+              Apply
+            </button>
+          </div>
+          <div class="field-note" data-i18n="popup.advanced.gatewayUrl.note">
+            For development and self-hosting. Applying reconnects right away.
+          </div>
         </div>
       </div>
     </details>
 
-    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <footer class="foot">
+      <svg class="foot-mark" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" />
+        <rect x="6.75" y="3" width="2" height="14" rx="1" />
+        <rect x="11.25" y="3" width="2" height="14" rx="1" />
+      </svg>
+      <span data-i18n="popup.footer.audit"
+        >Every read and operation is written to the local audit log.</span
+      >
+    </footer>
     <script src="popup.js"></script>
   </body>
 </html>

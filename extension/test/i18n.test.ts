@@ -81,9 +81,7 @@ describe("message catalogs", () => {
 
 describe("t", () => {
   it("interpolates named placeholders, including nested messages", () => {
-    expect(t("en", "approval.expires", { seconds: 60 })).toBe(
-      "This request expires in 60 seconds.",
-    );
+    expect(t("en", "approval.expires", { time: "1:00" })).toBe("Auto-deny in 1:00");
     expect(
       t("en", "intent.clickSelector", {
         selector: '"#go"',
@@ -102,7 +100,7 @@ describe("t", () => {
   });
 
   it("leaves a placeholder without a value visible", () => {
-    expect(t("en", "approval.expires")).toBe("This request expires in {seconds} seconds.");
+    expect(t("en", "approval.expires")).toBe("Auto-deny in {time}");
   });
 
   it("chooses English plural forms by count", () => {
@@ -131,7 +129,7 @@ describe("t", () => {
 
   it("formats deferred messages in the reader's language", () => {
     const text = msg("shortcut.copyFailed", { tabId: 3, error: "denied" });
-    expect(formatText("en", text)).toBe("Could not copy tab ID 3: denied");
+    expect(formatText("en", text)).toBe("Couldn't copy tab ID 3: denied");
     expect(formatText("ja", text)).toBe("タブ ID 3 をコピーできませんでした: denied");
   });
 });
@@ -268,7 +266,7 @@ describe("manifest localization", () => {
       expect(messages.extDescription?.message.length).toBeLessThanOrEqual(132);
     }
     expect(enMessages.extDescription?.message).toBe(
-      "Share Chrome tabs with AI coding agents via explicit local permission.",
+      "Share the Chrome tabs you choose with AI coding agents. Nothing is shared until you allow it.",
     );
   });
 });

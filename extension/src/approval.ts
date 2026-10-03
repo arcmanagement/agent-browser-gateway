@@ -1,5 +1,8 @@
 import {
   approvalRemainingMs,
+  fittedWindowHeight,
+  formatCountdown,
+  isDestructiveIntent,
   scriptBlockPresentation,
   shouldFallBackToTabPicker,
 } from "./approvalLogic.js";
@@ -10,7 +13,11 @@ import { errorMessage } from "./popupLogic.js";
 import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } from "./types.js";
 
 const browser = browserAdapter;
-const intentEl = document.getElementById("intent") as HTMLDivElement;
+const intentEl = document.getElementById("intent") as HTMLParagraphElement;
+const methodEl = document.getElementById("method") as HTMLSpanElement;
+const tabEl = document.getElementById("tab") as HTMLDivElement;
+const timerEl = document.getElementById("timer") as HTMLDivElement;
+const spacerEl = document.getElementById("spacer") as HTMLDivElement;
 const tabTitleEl = document.getElementById("tabTitle") as HTMLDivElement;
 const tabUrlEl = document.getElementById("tabUrl") as HTMLDivElement;
 const scriptBlockEl = document.getElementById("scriptBlock") as HTMLPreElement;
@@ -21,6 +28,7 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const approvalId = new URLSearchParams(window.location.search).get("id");
 let submitted = false;
 let timeoutId: number | null = null;
+let countdownId: number | null = null;
 let currentMethod: string | null = null;
 let currentTabId: number | null = null;
 // How the Allow click should mint the capture stream for record_start. The
@@ -48,7 +56,9 @@ async function decide(
   }
   allowBtn.disabled = true;
   denyBtn.disabled = true;
-  statusEl.textContent = t(lang, "approval.submitting");
+  timerEl.classList.remove("running");
+  stopCountdown();
+  setStatus(t(lang, "approval.submitting"));
   try {
     await send({ type: "approval_decision", approvalId, decision, streamId, streamSource });
   } finally {
@@ -100,18 +110,34 @@ async function load(): Promise<void> {
   currentMethod = request.method;
   currentTabId = request.tab.tabId;
   intentEl.textContent = request.intentText ? formatText(lang, request.intentText) : request.intent;
+  document.body.classList.toggle("destructive", isDestructiveIntent(request.intentText?.key));
+  methodEl.textContent = request.method;
   tabTitleEl.textContent = request.tab.title || t(lang, "common.untitled");
   tabUrlEl.textContent = request.tab.url || t(lang, "approval.noUrl");
+  tabEl.hidden = false;
   const scriptBlock = scriptBlockPresentation(request.script);
   scriptBlockEl.textContent = scriptBlock.text;
   scriptBlockEl.hidden = scriptBlock.hidden;
+  spacerEl.hidden = !scriptBlock.hidden;
   allowBtn.disabled = false;
   denyBtn.disabled = false;
+  // Without a script the content has a natural height: size the window to it so a one-line
+  // intent does not leave an empty band above the buttons. The script variant keeps its window
+  // and lets the script block scroll.
+  if (scriptBlock.hidden) {
+    // Measure with the bundled fonts in place so line wrapping matches what the user sees.
+    document.fonts.ready.then(fitWindowToContent, fitWindowToContent);
+  }
 
   const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
-  statusEl.textContent = t(lang, "approval.expires", {
-    seconds: Math.round(request.timeoutMs / 1000),
-  });
+  const showCountdown = () => {
+    const left = approvalRemainingMs(request.createdAt, request.timeoutMs);
+    setStatus(t(lang, "approval.expires", { time: formatCountdown(left) }));
+  };
+  showCountdown();
+  countdownId = setInterval(showCountdown, 1000) as unknown as number;
+  timerEl.style.setProperty("--remaining", `${remainingMs}ms`);
+  timerEl.classList.add("running");
   if (currentMethod === "record_start" && currentTabId !== null) {
     // Probe the mint outside the gesture: in all-tabs mode no tab carries the
     // action-click activeTab grant, so tabCapture cannot target it and the
@@ -120,7 +146,9 @@ async function load(): Promise<void> {
       const message = e instanceof Error ? e.message : String(e);
       if (shouldFallBackToTabPicker(message) && chrome.desktopCapture) {
         captureMode = "desktop";
-        statusEl.textContent = t(lang, "approval.tabPickerNote");
+        // The picker instructions matter more than the countdown; the timer line keeps draining.
+        stopCountdown();
+        setStatus(t(lang, "approval.tabPickerNote"));
       }
     });
   }
@@ -131,13 +159,47 @@ async function load(): Promise<void> {
   }, remainingMs) as unknown as number;
 }
 
+function fitWindowToContent(): void {
+  // The spacer absorbs any extra window height, so the content height is the page height
+  // without it (or the full scroll height when the content overflows).
+  const contentHeight = document.documentElement.scrollHeight - spacerEl.offsetHeight;
+  const height = fittedWindowHeight({
+    outerHeight: window.outerHeight,
+    innerHeight: window.innerHeight,
+    contentHeight,
+    maxOuterHeight: window.screen.availHeight,
+  });
+  if (height === null) return;
+  browser.windows.update(chrome.windows?.WINDOW_ID_CURRENT ?? -2, { height }).catch(() => {
+    // Resizing is cosmetic; the spacer keeps the buttons at the bottom if it fails.
+  });
+}
+
+function stopCountdown(): void {
+  if (countdownId !== null) {
+    clearInterval(countdownId);
+    countdownId = null;
+  }
+}
+
+function setStatus(text: string, isError = false): void {
+  statusEl.textContent = text;
+  statusEl.classList.toggle("is-error", isError);
+}
+
 function showError(message: string): void {
   intentEl.textContent = t(lang, "approval.loadFailed");
+  document.body.classList.remove("destructive");
+  methodEl.textContent = "";
   tabTitleEl.textContent = "";
   tabUrlEl.textContent = "";
+  tabEl.hidden = true;
   scriptBlockEl.textContent = "";
   scriptBlockEl.hidden = true;
-  statusEl.textContent = message;
+  spacerEl.hidden = false;
+  timerEl.classList.remove("running");
+  stopCountdown();
+  setStatus(message, true);
   allowBtn.disabled = true;
   denyBtn.disabled = true;
 }

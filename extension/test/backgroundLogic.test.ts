@@ -437,7 +437,7 @@ describe("shortcutFeedback", () => {
   it("explains every blocked reason without claiming a change", () => {
     const allTabs = shortcutFeedback({ kind: "blocked", reason: "all_tabs_mode" });
     expect(allTabs).toMatchObject({ level: "warning", badgeText: "!" });
-    expect(allTabs.message).toContain("All-tabs sandbox mode is on");
+    expect(allTabs.message).toContain("All-tabs mode is on");
     expect(allTabs.message).toContain("Nothing was changed");
 
     const page = shortcutFeedback({
@@ -445,10 +445,10 @@ describe("shortcutFeedback", () => {
       reason: "unsupported_page",
       url: "chrome://settings/",
     });
-    expect(page.message).toContain("chrome: pages cannot be shared");
+    expect(page.message).toContain("chrome: pages can't be shared");
     expect(page.message).toContain("Nothing was changed");
     expect(shortcutFeedback({ kind: "blocked", reason: "unsupported_page" }).message).toContain(
-      "This page cannot be shared",
+      "This page can't be shared",
     );
 
     expect(
@@ -462,25 +462,25 @@ describe("shortcutFeedback", () => {
   it("reports share and revoke failures", () => {
     expect(
       shortcutFeedback({ kind: "toggle_failed", action: "permit", tabId: 3, error: "boom" }),
-    ).toMatchObject({ level: "error", badgeText: "ERR", message: "Could not share tab 3: boom" });
+    ).toMatchObject({ level: "error", badgeText: "ERR", message: "Couldn't share tab 3: boom" });
     expect(
       shortcutFeedback({ kind: "toggle_failed", action: "revoke", tabId: 3, error: "boom" })
         .message,
-    ).toBe("Could not revoke tab 3: boom");
+    ).toBe("Couldn't revoke tab 3: boom");
   });
 
   it("warns that a copied tab ID does not share the tab", () => {
     const unshared = shortcutFeedback({ kind: "copied", tabId: 42, title: "Docs" });
     expect(unshared).toMatchObject({ level: "warning", badgeText: "ID" });
     expect(unshared.message).toBe(
-      'Copied tab ID 42 for tab 42 ("Docs"). This tab is not shared: agents cannot access it until you share it.',
+      "Copied the ID of tab 42 (\"Docs\"). It isn't shared, so agents can't access it until you share it.",
     );
   });
 
   it("confirms the access mode of a shared copied tab", () => {
     const manual = shortcutFeedback({ kind: "copied", tabId: 42, accessMode: "manual" });
     expect(manual).toMatchObject({ level: "success", badgeText: "ID" });
-    expect(manual.message).toBe("Copied tab ID 42 for tab 42. This tab is shared with agents.");
+    expect(manual.message).toBe("Copied the ID of tab 42. This tab is shared with agents.");
     expect(
       shortcutFeedback({ kind: "copied", tabId: 42, accessMode: "all_tabs" }).message,
     ).toContain("shared with agents through all-tabs mode");
@@ -490,16 +490,16 @@ describe("shortcutFeedback", () => {
     expect(shortcutFeedback({ kind: "copy_failed", tabId: 42, error: "denied" })).toMatchObject({
       level: "error",
       badgeText: "ERR",
-      message: "Could not copy tab ID 42: denied",
+      message: "Couldn't copy tab ID 42: denied",
     });
   });
 
   it("formats shortcut messages in Japanese without changing badge text", () => {
     const shared = shortcutFeedback({ kind: "shared", tabId: 7, title: "Example" }, "ja");
     expect(shared).toMatchObject({ level: "success", badgeText: "ON" });
-    expect(shared.message).toBe('タブ 7 ("Example") をエージェントと共有しました。');
+    expect(shared.message).toBe("タブ 7「Example」をエージェントと共有しました。");
     expect(shortcutFeedback({ kind: "revoked", tabId: 7 }, "ja").message).toBe(
-      "タブ 7 の共有を解除しました。エージェントはこのタブにアクセスできなくなりました。",
+      "タブ 7の共有を解除しました。エージェントはこのタブにアクセスできません。",
     );
     expect(
       shortcutFeedback(
@@ -511,6 +511,6 @@ describe("shortcutFeedback", () => {
     );
     const copied = shortcutFeedback({ kind: "copied", tabId: 42, title: "Docs" }, "ja");
     expect(copied).toMatchObject({ level: "warning", badgeText: "ID" });
-    expect(copied.message).toContain("このタブは共有されていないため");
+    expect(copied.message).toContain("このタブは共有していないため");
   });
 });

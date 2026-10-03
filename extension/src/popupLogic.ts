@@ -1,6 +1,7 @@
 import type { AnnotationRestoreReport } from "./annotationOverlay.js";
 import {
   COPY_TAB_ID_COMMAND,
+  isShareableTabUrl,
   shortcutFeedbackText,
   TOGGLE_SHARE_COMMAND,
 } from "./backgroundLogic.js";
@@ -26,6 +27,19 @@ export function shortcutHint(
         : "popup.shortcut.chromeSettingsPage",
     ),
   });
+}
+
+/** The bound keys for the two shortcuts, labeled for the popup's key legend. */
+export function shortcutKeys(
+  commands: { name?: string; shortcut?: string }[],
+  lang: Language,
+): { keys: string | null; label: string }[] {
+  const keyFor = (name: string) =>
+    commands.find((command) => command.name === name)?.shortcut || null;
+  return [
+    { keys: keyFor(TOGGLE_SHARE_COMMAND), label: t(lang, "popup.shortcut.toggle") },
+    { keys: keyFor(COPY_TAB_ID_COMMAND), label: t(lang, "popup.shortcut.copy") },
+  ];
 }
 
 export function recentShortcutMessage(
@@ -171,23 +185,109 @@ export function gatewayStatusPill(wsConnected: boolean, lang: Language): StatusP
       };
 }
 
-/** Consent state of the active tab, shown next to its title. */
-export function tabAccessStatusPill(
+/**
+ * How the popup's gate shows the active tab. `mode` drives the gate graphic and the primary
+ * action; tone and headline put the state into words, so consent never depends on color or
+ * the graphic alone.
+ *   open        shared by the user (signal)
+ *   closed      not shared (neutral)
+ *   sandbox     shared because all-tabs mode is on (warning)
+ *   blocked     incognito tab while ABG is not allowed in incognito
+ *   unsupported a page that cannot be shared, such as chrome:// pages
+ */
+export type GateMode = "open" | "closed" | "sandbox" | "blocked" | "unsupported";
+export type TabGate = { mode: GateMode; tone: StatusTone; headline: string; detail: string };
+
+export function tabGate(
   state: Pick<PopupState, "permitted" | "allTabsAccess" | "activeTab">,
+  tabUrl: string | undefined,
   lang: Language,
-): StatusPill {
+): TabGate {
+  // Only a known URL can rule sharing out; an unknown one keeps the normal share flow.
+  const unsupported = tabUrl !== undefined && !isShareableTabUrl(tabUrl);
+  const gate = (
+    mode: GateMode,
+    tone: StatusTone,
+    headline: MessageKey,
+    detail: MessageKey,
+  ): TabGate => ({ mode, tone, headline: t(lang, headline), detail: t(lang, detail) });
   if (state.allTabsAccess.active) {
-    return { label: t(lang, "popup.tab.allTabsShared"), tone: "warning" };
+    if (!state.permitted && unsupported) {
+      return gate("unsupported", "neutral", "popup.tab.unsupported", "popup.tab.unsupportedDetail");
+    }
+    return gate("sandbox", "warning", "popup.tab.allTabsShared", "popup.tab.allTabsDetail");
   }
   if (state.activeTab.incognito && !state.activeTab.incognitoAccessAllowed) {
-    return { label: t(lang, "popup.tab.blocked"), tone: "neutral" };
+    return gate("blocked", "neutral", "popup.tab.blocked", "popup.incognito.body");
   }
-  if (state.permitted) return { label: t(lang, "popup.tab.shared"), tone: "success" };
-  return { label: t(lang, "popup.tab.notShared"), tone: "neutral" };
+  if (state.permitted) {
+    return gate("open", "success", "popup.tab.shared", "popup.tab.sharedDetail");
+  }
+  if (unsupported) {
+    return gate("unsupported", "neutral", "popup.tab.unsupported", "popup.tab.unsupportedDetail");
+  }
+  return gate("closed", "neutral", "popup.tab.notShared", "popup.tab.notSharedDetail");
 }
 
-export function sharedTabsHeading(count: number, lang: Language): string {
-  return t(lang, "popup.sharedTabs.heading", { count });
+/**
+ * Settings that let agents act on a shared tab without asking, stated next to the tab so
+ * they are never hidden below the fold. Empty unless the tab is actually shared.
+ */
+export function tabRiskFlags(
+  settings: Pick<
+    ExtensionSettings,
+    "operationsRequireApproval" | "trustedAutomationEnabled" | "evalEnabled"
+  >,
+  mode: GateMode,
+  lang: Language,
+): string[] {
+  if (mode !== "open" && mode !== "sandbox") return [];
+  const flags: string[] = [];
+  if (!settings.operationsRequireApproval) flags.push(t(lang, "popup.tab.flag.noApproval"));
+  if (settings.trustedAutomationEnabled && settings.evalEnabled) {
+    flags.push(t(lang, "popup.tab.flag.autoMode"));
+  }
+  return flags;
+}
+
+/** Shown under the tab title: the host for web pages, the path for local files. */
+export function tabHost(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "file:") return decodeURIComponent(parsed.pathname);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.host;
+    // Browser pages such as chrome://settings/ are clearest as the full URL.
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+export const SHARED_TABS_COLLAPSED_LIMIT = 4;
+
+/**
+ * Rows for the shared-tabs list: the current tab first, then the others in their existing
+ * order. Collapsed, the list shows at most SHARED_TABS_COLLAPSED_LIMIT rows (all-tabs mode can
+ * share dozens) and reports how many are hidden behind "Show more".
+ */
+export function visibleSharedTabs<T extends { tabId: number }>(
+  tabs: readonly T[],
+  currentTabId: number,
+  expanded: boolean,
+): { rows: T[]; hidden: number } {
+  const ordered = [
+    ...tabs.filter((tab) => tab.tabId === currentTabId),
+    ...tabs.filter((tab) => tab.tabId !== currentTabId),
+  ];
+  // Hiding a single row saves no space over the "Show more" row that replaces it.
+  if (expanded || ordered.length <= SHARED_TABS_COLLAPSED_LIMIT + 1) {
+    return { rows: ordered, hidden: 0 };
+  }
+  return {
+    rows: ordered.slice(0, SHARED_TABS_COLLAPSED_LIMIT),
+    hidden: ordered.length - SHARED_TABS_COLLAPSED_LIMIT,
+  };
 }
 
 export function sharedTabAccessLabel(

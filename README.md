@@ -121,7 +121,7 @@ release workflow is completed. For current Windows testing, clone the repository
 `.\windows-build-install.cmd` from the repository root.
 
 After installation, open the tab you want to share, click the ABG extension icon,
-choose **Share this tab with agent**, and verify from a terminal:
+choose **Share this tab with agents**, and verify from a terminal:
 
 ```bash
 abg tabs
@@ -145,7 +145,7 @@ and generate release notes.
 The core security model:
 
 1. By default, the agent sees **nothing**. No tabs are shared.
-2. To share a tab, **you click the extension icon → Share this tab with agent** (or press the
+2. To share a tab, **you click the extension icon → Share this tab with agents** (or press the
    share shortcut below).
 3. The agent can now read / screenshot / operate **only that tab**, via `abg`.
 4. The share is automatically revoked when:
@@ -178,7 +178,7 @@ ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross
 
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools, `raise`, and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
 
-Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Enable approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
+Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Allow approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
 The extension UI is available in English and Japanese. Choose **Display language** under
 **Advanced** in the popup: **Auto** (the default) follows the browser UI language and uses English
@@ -960,7 +960,7 @@ Chrome disables extension access to incognito windows by default; normal tabs do
 ### Share a tab
 
 1. Open the tab you want to share
-2. Click the ABG extension icon → **Share this tab with agent**
+2. Click the ABG extension icon → **Share this tab with agents**
 3. A green `ON` badge appears on the icon; the menubar shield icon fills in
 4. Verify with `abg tabs`
 
