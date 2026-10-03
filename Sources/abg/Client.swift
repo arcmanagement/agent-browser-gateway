@@ -287,7 +287,7 @@ private func gatewayStartCommand() -> String {
         return "\(key)=\(shellQuoted(value))"
     }
     guard !envAssignments.isEmpty else {
-        return "open \"Agent Browser Gateway.app\" && abg status"
+        return "open -a \"Agent Browser Gateway\" && abg status"
     }
     return "\(envAssignments.joined(separator: " ")) swift run Gateway"
 }

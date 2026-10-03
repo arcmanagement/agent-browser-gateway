@@ -2190,7 +2190,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             return ErrorPayload(
                 code: "no_permitted_tabs",
                 message: "No tabs are currently shared with ABG.",
-                userMessage: "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブを共有」を有効にしてください。",
+                userMessage: "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブをエージェントと共有」を有効にしてください。",
                 nextCommand: "abg tabs --compact",
                 tabId: tabId
             )
@@ -2198,7 +2198,7 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
         return ErrorPayload(
             code: "tab_not_permitted",
             message: "tabId \(tabId) is not shared or has expired.",
-            userMessage: "このタブは共有許可されていないか、許可が切れています。Chrome 拡張機能のアイコンから対象タブの「このタブを共有」を有効にし、`abg tabs --compact` で最新の ref/tabId を確認してください。",
+            userMessage: "このタブは共有許可されていないか、許可が切れています。Chrome 拡張機能のアイコンから対象タブの「このタブをエージェントと共有」を有効にし、`abg tabs --compact` で最新の ref/tabId を確認してください。",
             nextCommand: "abg tabs --compact",
             tabId: tabId
         )

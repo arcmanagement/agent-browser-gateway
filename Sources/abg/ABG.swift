@@ -590,7 +590,7 @@ struct Tabs: AsyncParsableCommand {
                 printJSON([
                     "tabs": [],
                     "permittedTabCount": 0,
-                    "userMessage": "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブを共有」を有効にしてください。",
+                    "userMessage": "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブをエージェントと共有」を有効にしてください。",
                     "nextCommand": "abg status",
                 ])
             } else {
@@ -599,7 +599,7 @@ struct Tabs: AsyncParsableCommand {
         case "text":
             if outputTabs.isEmpty {
                 print("No permitted tabs.")
-                print("Open Chrome, click the ABG extension icon on the target tab, and choose \"このタブを共有\".")
+                print("Open Chrome, click the ABG extension icon on the target tab, and choose \"Share this tab with agents\".")
                 print("Then run: abg tabs --compact")
             } else {
                 for tab in outputTabs {
@@ -625,7 +625,7 @@ struct Inspect: AsyncParsableCommand {
         status["permittedTabCount"] = tabs.count
         status["tabs"] = full ? tabs : compactTabs(tabs)
         if tabs.isEmpty {
-            status["userMessage"] = "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブを共有」を有効にしてください。"
+            status["userMessage"] = "共有中のタブがありません。Chrome で対象タブを開き、ABG 拡張機能のアイコンから「このタブをエージェントと共有」を有効にしてください。"
             status["nextCommand"] = "abg tabs --compact"
         }
         printJSON(status)

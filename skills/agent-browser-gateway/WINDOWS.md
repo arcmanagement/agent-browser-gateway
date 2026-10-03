@@ -4,7 +4,7 @@
 ABG exposes only Chrome tabs the user explicitly shared from the extension popup.
 Do not assume unshared tabs are visible.
 
-Exception: on isolated Chrome profiles or sandbox machines, the user can enable `Share all tabs in this profile` in the extension popup. Then `abg tabs --compact` lists shareable tabs with `accessMode` set to `all_tabs`.
+Exception: on isolated Chrome profiles or sandbox machines, the user can enable `Share all tabs (sandbox profiles only)` in the extension popup. Then `abg tabs --compact` lists shareable tabs with `accessMode` set to `all_tabs`.
 
 ## Basic Flow
 
