@@ -51,9 +51,9 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 fi
 
 if [ "$release_exists" = true ]; then
-  gh release edit "$TAG" \
-    --title "$TAG" \
-    --notes-file "$NOTES_PATH"
+  # A maintainer may have created the release with curated notes and signed
+  # assets before CI got here; keep their notes.
+  echo "GitHub Release $TAG already exists; keeping its title and notes." >&2
 else
   create_args=()
   if [ "$GITHUB_RELEASE_DRAFT" = "true" ]; then
