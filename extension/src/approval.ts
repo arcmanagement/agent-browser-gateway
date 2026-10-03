@@ -1,5 +1,6 @@
 import {
   approvalRemainingMs,
+  fittedWindowHeight,
   formatCountdown,
   isDestructiveIntent,
   scriptBlockPresentation,
@@ -120,6 +121,13 @@ async function load(): Promise<void> {
   spacerEl.hidden = !scriptBlock.hidden;
   allowBtn.disabled = false;
   denyBtn.disabled = false;
+  // Without a script the content has a natural height: size the window to it so a one-line
+  // intent does not leave an empty band above the buttons. The script variant keeps its window
+  // and lets the script block scroll.
+  if (scriptBlock.hidden) {
+    // Measure with the bundled fonts in place so line wrapping matches what the user sees.
+    document.fonts.ready.then(fitWindowToContent, fitWindowToContent);
+  }
 
   const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
   const showCountdown = () => {
@@ -149,6 +157,22 @@ async function load(): Promise<void> {
       showError(e instanceof Error ? e.message : String(e));
     });
   }, remainingMs) as unknown as number;
+}
+
+function fitWindowToContent(): void {
+  // The spacer absorbs any extra window height, so the content height is the page height
+  // without it (or the full scroll height when the content overflows).
+  const contentHeight = document.documentElement.scrollHeight - spacerEl.offsetHeight;
+  const height = fittedWindowHeight({
+    outerHeight: window.outerHeight,
+    innerHeight: window.innerHeight,
+    contentHeight,
+    maxOuterHeight: window.screen.availHeight,
+  });
+  if (height === null) return;
+  browser.windows.update(chrome.windows?.WINDOW_ID_CURRENT ?? -2, { height }).catch(() => {
+    // Resizing is cosmetic; the spacer keeps the buttons at the bottom if it fails.
+  });
 }
 
 function stopCountdown(): void {

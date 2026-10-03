@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   approvalRemainingMs,
+  fittedWindowHeight,
   formatCountdown,
   isDestructiveIntent,
   scriptBlockPresentation,
@@ -27,6 +28,19 @@ describe("approvalLogic", () => {
     expect(formatCountdown(9_000)).toBe("0:09");
     expect(formatCountdown(1)).toBe("0:01");
     expect(formatCountdown(-5)).toBe("0:00");
+  });
+
+  it("fits the approval window to its content", () => {
+    const base = { outerHeight: 300, innerHeight: 272, maxOuterHeight: 900 };
+    // A one-line intent shrinks the window, keeping the 28px frame.
+    expect(fittedWindowHeight({ ...base, contentHeight: 210 })).toBe(238);
+    // Three-line content that overflows grows it.
+    expect(fittedWindowHeight({ ...base, contentHeight: 330 })).toBe(358);
+    // Already close enough: no resize.
+    expect(fittedWindowHeight({ ...base, contentHeight: 270 })).toBeNull();
+    // Never taller than the screen, never shorter than the minimum content height.
+    expect(fittedWindowHeight({ ...base, contentHeight: 2000 })).toBe(900);
+    expect(fittedWindowHeight({ ...base, contentHeight: 40 })).toBe(188);
   });
 
   it("marks only permanent deletions as destructive", () => {

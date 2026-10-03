@@ -31,6 +31,24 @@ export function formatCountdown(remainingMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/**
+ * Outer window height that makes the approval content fit exactly, or null when the window is
+ * already within a few pixels. The window frame (outer minus inner height) is kept, the result
+ * never exceeds the screen, and it never shrinks the content area below `minContentHeight`.
+ */
+export function fittedWindowHeight(input: {
+  outerHeight: number;
+  innerHeight: number;
+  contentHeight: number;
+  maxOuterHeight: number;
+  minContentHeight?: number;
+}): number | null {
+  const frame = Math.max(0, input.outerHeight - input.innerHeight);
+  const content = Math.max(input.contentHeight, input.minContentHeight ?? 160);
+  const target = Math.min(Math.ceil(content + frame), Math.floor(input.maxOuterHeight));
+  return Math.abs(target - input.outerHeight) < 4 ? null : target;
+}
+
 const DESTRUCTIVE_INTENT_KEYS: readonly string[] = [
   "intent.personal.bookmarkRemove",
   "intent.personal.readingListRemove",
