@@ -1,0 +1,49 @@
+---
+// Page title for the docs. The docs home (EN and JA) gets a designed header with the gate
+// line and three entry points; every other page keeps a plain, well-set H1.
+const route = Astro.locals.starlightRoute;
+const { entry, lang } = route;
+const slug = entry.id.replace(/\/index$/, "");
+const isHome = slug === "docs" || slug === "ja/docs";
+const ja = lang === "ja";
+const base = ja ? "/ja/docs/" : "/docs/";
+const cards = ja
+  ? [
+      { href: "#クイックスタート", k: "01", t: "クイックスタート", d: "タブを共有して abg read を通すまで" },
+      { href: `${base}cli/`, k: "02", t: "CLI", d: "タブを探す、読む、操作する" },
+      { href: `${base}security/`, k: "03", t: "セキュリティ", d: "許可、承認、監査ログの範囲" },
+    ]
+  : [
+      { href: "#quick-start", k: "01", t: "Quick start", d: "Share a tab and get a first abg read" },
+      { href: `${base}cli/`, k: "02", t: "CLI", d: "Find, read, and operate a shared tab" },
+      { href: `${base}security/`, k: "03", t: "Security", d: "What needs consent, approval, and audit" },
+    ];
+---
+
+{
+  isHome ? (
+    <header class="abg-doc-hero">
+      <p class="abg-doc-hero__eyebrow">
+        <span class="abg-doc-hero__dot" aria-hidden="true" />
+        {ja ? "Agent Browser Gateway ドキュメント" : "Agent Browser Gateway documentation"}
+      </p>
+      <h1 id="_top">{entry.data.title}</h1>
+      <div class="abg-doc-hero__rule" aria-hidden="true">
+        <span />
+        <i />
+        <span />
+      </div>
+      <nav class="abg-doc-hero__cards" aria-label={ja ? "主な入口" : "Start here"}>
+        {cards.map((c) => (
+          <a href={c.href}>
+            <span class="abg-doc-hero__k">{c.k}</span>
+            <span class="abg-doc-hero__t">{c.t}</span>
+            <span class="abg-doc-hero__d">{c.d}</span>
+          </a>
+        ))}
+      </nav>
+    </header>
+  ) : (
+    <h1 id="_top" class="abg-doc-title">{entry.data.title}</h1>
+  )
+}

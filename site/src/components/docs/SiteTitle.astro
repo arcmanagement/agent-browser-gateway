@@ -1,0 +1,13 @@
+---
+// Docs header brand: the gate mark, the product name, and a "Docs" tag.
+import GateMark from "../site/GateMark.astro";
+
+const { siteTitleHref, lang } = Astro.locals.starlightRoute;
+const tag = lang === "ja" ? "ドキュメント" : "Docs";
+---
+
+<a href={siteTitleHref} class="abg-title" aria-label={`Agent Browser Gateway ${tag}`}>
+  <GateMark size={24} />
+  <span class="abg-title__name" translate="no">Agent Browser Gateway</span>
+  <span class="abg-title__tag">{tag}</span>
+</a>
