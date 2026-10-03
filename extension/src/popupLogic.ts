@@ -71,6 +71,35 @@ export function restoreAnnotationsLabel(
   return `Restore ${count} saved annotation${count === 1 ? "" : "s"}`;
 }
 
+export type StatusTone = "success" | "danger" | "warning" | "neutral";
+export type StatusPill = { label: string; tone: StatusTone; description?: string };
+
+export function gatewayStatusPill(wsConnected: boolean): StatusPill {
+  return wsConnected
+    ? { label: "Connected", tone: "success", description: "Gateway connected" }
+    : { label: "Disconnected", tone: "danger", description: "Gateway disconnected" };
+}
+
+/** Consent state of the active tab, shown next to its title. */
+export function tabAccessStatusPill(
+  state: Pick<PopupState, "permitted" | "allTabsAccess" | "activeTab">,
+): StatusPill {
+  if (state.allTabsAccess.active) return { label: "All tabs shared", tone: "warning" };
+  if (state.activeTab.incognito && !state.activeTab.incognitoAccessAllowed) {
+    return { label: "Blocked", tone: "neutral" };
+  }
+  if (state.permitted) return { label: "Shared", tone: "success" };
+  return { label: "Not shared", tone: "neutral" };
+}
+
+export function sharedTabsHeading(count: number): string {
+  return `Shared tabs (${count})`;
+}
+
+export function sharedTabAccessLabel(tab: PopupState["sharedTabs"][number]): string | null {
+  return tab.accessMode === "all_tabs" ? "all-tabs" : null;
+}
+
 export function sharedTabSummary(tab: PopupState["sharedTabs"][number]): string {
   return `${tab.accessMode === "all_tabs" ? "🌐" : "🔓"} [${tab.tabId}] ${tab.title || tab.url}`;
 }
