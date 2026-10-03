@@ -12,61 +12,69 @@ import {
   allTabsAccessNote,
   annotationButtonLabel,
   errorText,
+  type GateMode,
   gatewayStatusPill,
   recentShortcutMessage,
   restoreAnnotationsLabel,
   type StatusPill,
   sharedTabAccessLabel,
   sharedTabSummary,
-  sharedTabsHeading,
   shortcutHint,
-  tabAccessStatusPill,
+  shortcutKeys,
+  tabGate,
+  tabHost,
+  tabRiskFlags,
   trustedAutomationNote,
 } from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
 const browser = browserAdapter;
-const tabInfoEl = document.getElementById("tabInfo") as HTMLDivElement;
-const tabStatusEl = document.getElementById("tabStatus") as HTMLSpanElement;
-const gatewayStatusEl = document.getElementById("gatewayStatus") as HTMLSpanElement;
-const actionBtn = document.getElementById("actionBtn") as HTMLButtonElement;
-const annotationBtn = document.getElementById("annotationBtn") as HTMLButtonElement;
-const clearAnnotationsBtn = document.getElementById("clearAnnotationsBtn") as HTMLButtonElement;
-const restoreAnnotationsBtn = document.getElementById("restoreAnnotationsBtn") as HTMLButtonElement;
-const approvalToggleEl = document.getElementById("approvalToggle") as HTMLInputElement;
-const evalToggleEl = document.getElementById("evalToggle") as HTMLInputElement;
-const trustedAutomationToggleEl = document.getElementById(
-  "trustedAutomationToggle",
-) as HTMLInputElement;
-const trustedAutomationNoteEl = document.getElementById("trustedAutomationNote") as HTMLDivElement;
-const allTabsToggleEl = document.getElementById("allTabsToggle") as HTMLInputElement;
-const allTabsNoteEl = document.getElementById("allTabsNote") as HTMLDivElement;
-const allTabsSettingEl = document.getElementById("allTabsSetting") as HTMLDivElement;
-const bookmarksToggleEl = document.getElementById("bookmarksToggle") as HTMLInputElement;
-const bookmarksNoteEl = document.getElementById("bookmarksNote") as HTMLDivElement;
-const readingListToggleEl = document.getElementById("readingListToggle") as HTMLInputElement;
-const readingListNoteEl = document.getElementById("readingListNote") as HTMLDivElement;
-const personalDataMutationsToggleEl = document.getElementById(
-  "personalDataMutationsToggle",
-) as HTMLInputElement;
-const personalDataMutationsNoteEl = document.getElementById(
-  "personalDataMutationsNote",
-) as HTMLDivElement;
-const profileLabelEl = document.getElementById("profileLabel") as HTMLInputElement;
-const gatewayWebSocketUrlEl = document.getElementById("gatewayWebSocketUrl") as HTMLInputElement;
-const applyGatewayUrlBtn = document.getElementById("applyGatewayUrlBtn") as HTMLButtonElement;
-const statusEl = document.getElementById("status") as HTMLDivElement;
-const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
-const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivElement;
-const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLButtonElement;
-const shortcutResultEl = document.getElementById("shortcutResult") as HTMLDivElement;
-const shortcutHintEl = document.getElementById("shortcutHint") as HTMLDivElement;
-const uiLanguageEl = document.getElementById("uiLanguage") as HTMLSelectElement;
+const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const topEl = byId<HTMLElement>("top");
+const heroEl = byId<HTMLElement>("hero");
+const tabStateEl = byId<HTMLHeadingElement>("tabState");
+const tabIdEl = byId<HTMLSpanElement>("tabId");
+const tabInfoEl = byId<HTMLSpanElement>("tabInfo");
+const tabHostEl = byId<HTMLSpanElement>("tabHost");
+const tabDetailEl = byId<HTMLParagraphElement>("tabDetail");
+const tabFlagsEl = byId<HTMLUListElement>("tabFlags");
+const gatewayStatusEl = byId<HTMLSpanElement>("gatewayStatus");
+const gatewayBannerEl = byId<HTMLDivElement>("gatewayBanner");
+const gatewayBannerBodyEl = byId<HTMLSpanElement>("gatewayBannerBody");
+const actionBtn = byId<HTMLButtonElement>("actionBtn");
+const annotationsEl = byId<HTMLDivElement>("annotations");
+const annotationBtn = byId<HTMLButtonElement>("annotationBtn");
+const clearAnnotationsBtn = byId<HTMLButtonElement>("clearAnnotationsBtn");
+const restoreAnnotationsBtn = byId<HTMLButtonElement>("restoreAnnotationsBtn");
+const approvalToggleEl = byId<HTMLInputElement>("approvalToggle");
+const evalToggleEl = byId<HTMLInputElement>("evalToggle");
+const trustedAutomationToggleEl = byId<HTMLInputElement>("trustedAutomationToggle");
+const trustedAutomationNoteEl = byId<HTMLDivElement>("trustedAutomationNote");
+const allTabsToggleEl = byId<HTMLInputElement>("allTabsToggle");
+const allTabsNoteEl = byId<HTMLDivElement>("allTabsNote");
+const bookmarksToggleEl = byId<HTMLInputElement>("bookmarksToggle");
+const bookmarksNoteEl = byId<HTMLDivElement>("bookmarksNote");
+const readingListToggleEl = byId<HTMLInputElement>("readingListToggle");
+const readingListNoteEl = byId<HTMLDivElement>("readingListNote");
+const personalDataMutationsToggleEl = byId<HTMLInputElement>("personalDataMutationsToggle");
+const profileLabelEl = byId<HTMLInputElement>("profileLabel");
+const gatewayWebSocketUrlEl = byId<HTMLInputElement>("gatewayWebSocketUrl");
+const applyGatewayUrlBtn = byId<HTMLButtonElement>("applyGatewayUrlBtn");
+const statusEl = byId<HTMLDivElement>("status");
+const sharedListEl = byId<HTMLElement>("sharedList");
+const shortcutResultEl = byId<HTMLDivElement>("shortcutResult");
+const shortcutKeysEl = byId<HTMLDivElement>("shortcutKeys");
+const shortcutHintEl = byId<HTMLDivElement>("shortcutHint");
+const uiLanguageEl = byId<HTMLSelectElement>("uiLanguage");
 
 let profileLabelTimer: number | null = null;
 // Display language for this popup. Set from storage before the first render, then from each
 // state refresh; changing the setting re-renders the popup immediately.
 let lang: Language = "en";
+// Gate mode of the last render, so the share -> shared and revoke transitions animate only
+// when the state really changes (never on first paint).
+let lastGate: GateMode | null = null;
+let transitionTimer: number | null = null;
 
 function setLanguage(next: Language): void {
   if (next === lang && document.documentElement.lang === next) return;
@@ -74,8 +82,19 @@ function setLanguage(next: Language): void {
   applyTranslations(document, lang);
 }
 
+// The status line under the primary action. It keeps its message across refreshes and is
+// cleared when the user starts the next action.
+function setStatus(text: string, isError = false): void {
+  statusEl.textContent = text;
+  statusEl.classList.toggle("is-error", isError);
+}
+
+function clearStatus(): void {
+  setStatus("");
+}
+
 function showError(response: { message: string; code?: string }): void {
-  statusEl.textContent = errorText(response, lang);
+  setStatus(errorText(response, lang), true);
 }
 
 function renderPill(el: HTMLElement, pill: StatusPill): void {
@@ -116,6 +135,115 @@ async function removeApiPermission(permission: string): Promise<void> {
 
 type PopupState = Extract<BackgroundToPopup, { type: "state" }>;
 
+/** Switches in the higher-risk groups tint their row while they are on. */
+function syncRiskRows(): void {
+  for (const input of document.querySelectorAll<HTMLInputElement>("input.switch.warning")) {
+    input.closest(".setting")?.classList.toggle("warning-active", input.checked);
+  }
+}
+
+function renderGate(mode: GateMode): void {
+  const previous = lastGate;
+  heroEl.dataset.gate = mode;
+  lastGate = mode;
+  if (previous === null || previous === mode) return;
+  heroEl.classList.remove("just-opened", "just-changed");
+  // Restart the one-shot animations: force a style flush before re-adding the classes.
+  void heroEl.offsetWidth;
+  heroEl.classList.add("just-changed");
+  if (mode === "open" || mode === "sandbox") heroEl.classList.add("just-opened");
+  if (transitionTimer !== null) clearTimeout(transitionTimer);
+  transitionTimer = setTimeout(() => {
+    heroEl.classList.remove("just-opened", "just-changed");
+    transitionTimer = null;
+  }, 1200) as unknown as number;
+}
+
+function renderShortcutKeys(commands: { name?: string; shortcut?: string }[]): void {
+  const items = shortcutKeys(commands, lang).filter((item) => item.keys);
+  shortcutKeysEl.replaceChildren(
+    ...items.map((item) => {
+      const row = document.createElement("span");
+      row.className = "key";
+      const kbd = document.createElement("kbd");
+      kbd.textContent = item.keys;
+      row.append(kbd, item.label);
+      return row;
+    }),
+  );
+}
+
+function renderSharedTabs(state: PopupState, currentTabId: number): void {
+  if (state.sharedTabs.length === 0) {
+    sharedListEl.replaceChildren();
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "section-head";
+  const heading = document.createElement("h2");
+  heading.className = "label";
+  heading.textContent = t(lang, "popup.sharedTabs.heading");
+  const count = document.createElement("span");
+  count.className = "count";
+  count.textContent = String(state.sharedTabs.length);
+  head.append(heading, count);
+
+  const list = document.createElement("ul");
+  list.className = "list";
+  for (const sharedTab of state.sharedTabs) {
+    const item = document.createElement("li");
+    const allTabs = sharedTab.accessMode === "all_tabs";
+    item.className = allTabs ? "list-item all-tabs" : "list-item";
+    item.title = sharedTabSummary(sharedTab);
+    const dot = document.createElement("span");
+    dot.className = "list-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const titleEl = document.createElement("span");
+    titleEl.className = "list-title";
+    titleEl.textContent = sharedTab.title || sharedTab.url;
+    const idEl = document.createElement("span");
+    idEl.className = "list-id";
+    idEl.textContent = String(sharedTab.tabId);
+    item.append(dot, titleEl, idEl);
+
+    const accessLabel = sharedTabAccessLabel(sharedTab, lang);
+    if (accessLabel) {
+      const tag = document.createElement("span");
+      tag.className = "tag warning";
+      tag.textContent = accessLabel;
+      item.append(tag);
+    } else if (sharedTab.tabId === currentTabId) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = t(lang, "popup.sharedTabs.thisTab");
+      item.append(tag);
+    } else {
+      // Revoking another shared tab is always safe: it only removes access.
+      const revoke = document.createElement("button");
+      revoke.type = "button";
+      revoke.className = "danger revoke";
+      revoke.textContent = t(lang, "popup.sharedTabs.revoke");
+      revoke.setAttribute(
+        "aria-label",
+        t(lang, "popup.sharedTabs.revokeLabel", {
+          tabId: sharedTab.tabId,
+          title: sharedTab.title || sharedTab.url,
+        }),
+      );
+      revoke.onclick = async () => {
+        revoke.disabled = true;
+        clearStatus();
+        const response = await send({ type: "revoke", tabId: sharedTab.tabId });
+        if (response.type === "error") showError(response);
+        await refresh();
+      };
+      item.append(revoke);
+    }
+    list.append(item);
+  }
+  sharedListEl.replaceChildren(head, list);
+}
+
 // Restoring is explicit: the popup offers it, it never happens on page load.
 function renderRestoreButton(state: PopupState, tabId: number): void {
   const label = state.permitted ? restoreAnnotationsLabel(state.annotationState, lang) : null;
@@ -125,19 +253,101 @@ function renderRestoreButton(state: PopupState, tabId: number): void {
   restoreAnnotationsBtn.disabled = false;
   restoreAnnotationsBtn.onclick = async () => {
     restoreAnnotationsBtn.disabled = true;
+    clearStatus();
     const response = await send({ type: "annotation_action", tabId, action: "restore" });
     await refresh();
-    const message =
-      response.type === "error"
-        ? errorText(response, lang)
-        : response.type === "ok"
-          ? response.message
-          : undefined;
-    if (message) {
-      const note = document.createElement("div");
-      note.textContent = message;
-      statusEl.append(note);
+    if (response.type === "error") showError(response);
+    else if (response.type === "ok" && response.message) setStatus(response.message);
+  };
+}
+
+function renderAnnotations(state: PopupState, tabId: number): void {
+  annotationsEl.hidden = !state.permitted;
+  if (!state.permitted) return;
+  annotationBtn.disabled = false;
+  annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
+  annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
+  annotationBtn.onclick = async () => {
+    annotationBtn.disabled = true;
+    clearStatus();
+    const response = await send({
+      type: "annotation_action",
+      tabId,
+      action: state.annotationState.enabled ? "stop" : "start",
+    });
+    if (response.type === "error") {
+      showError(response);
+      annotationBtn.disabled = false;
+      return;
     }
+    window.close();
+    await refresh();
+  };
+  clearAnnotationsBtn.disabled =
+    state.annotationState.count === 0 && state.annotationState.restorableCount === 0;
+  clearAnnotationsBtn.onclick = async () => {
+    clearAnnotationsBtn.disabled = true;
+    clearStatus();
+    await send({ type: "annotation_action", tabId, action: "clear" });
+    await refresh();
+  };
+  renderRestoreButton(state, tabId);
+}
+
+function renderAction(state: PopupState, tabId: number, mode: GateMode): void {
+  actionBtn.hidden = false;
+  actionBtn.disabled = false;
+  if (state.allTabsAccess.active) {
+    actionBtn.textContent = t(lang, "popup.action.disableAllTabs");
+    actionBtn.className = "action danger";
+    actionBtn.onclick = async () => {
+      actionBtn.disabled = true;
+      clearStatus();
+      allTabsToggleEl.checked = false;
+      const response = await send({ type: "set_all_tabs_access", value: false });
+      if (response.type === "error") {
+        showError(response);
+        actionBtn.disabled = false;
+        return;
+      }
+      await removeAllTabsPermission();
+      await refresh();
+    };
+    return;
+  }
+  if (mode === "blocked") {
+    actionBtn.textContent = t(lang, "popup.incognito.openSettings");
+    actionBtn.className = "action secondary";
+    actionBtn.onclick = async () => {
+      await openExtensionSettings();
+    };
+    return;
+  }
+  if (mode === "open") {
+    actionBtn.textContent = t(lang, "popup.action.revoke");
+    actionBtn.className = "action danger";
+    actionBtn.onclick = async () => {
+      actionBtn.disabled = true;
+      clearStatus();
+      const response = await send({ type: "revoke", tabId });
+      if (response.type === "error") showError(response);
+      await refresh();
+    };
+    return;
+  }
+  if (mode === "unsupported") {
+    actionBtn.hidden = true;
+    actionBtn.onclick = null;
+    return;
+  }
+  actionBtn.textContent = t(lang, "popup.action.share");
+  actionBtn.className = "action primary";
+  actionBtn.onclick = async () => {
+    actionBtn.disabled = true;
+    clearStatus();
+    const response = await send({ type: "permit", tabId });
+    if (response.type === "error") showError(response);
+    await refresh();
   };
 }
 
@@ -153,10 +363,14 @@ async function refresh(): Promise<void> {
   if (state.type === "state") {
     setLanguage(resolveUiLanguage(state.settings.uiLanguage, browserUiLocale()));
   }
-  tabInfoEl.textContent = tab.title ?? tab.url ?? t(lang, "common.untitled");
+  tabInfoEl.textContent = tab.title || tab.url || t(lang, "common.untitled");
+  tabHostEl.textContent = tabHost(tab.url);
+  tabIdEl.textContent = t(lang, "popup.tab.id", { tabId });
   if (state.type !== "state") {
-    statusEl.textContent =
-      state.type === "error" ? errorText(state, lang) : t(lang, "popup.tab.unknownState");
+    setStatus(
+      state.type === "error" ? errorText(state, lang) : t(lang, "popup.tab.unknownState"),
+      true,
+    );
     return;
   }
 
@@ -198,6 +412,7 @@ async function refresh(): Promise<void> {
   evalToggleEl.onchange = async () => {
     const nextValue = evalToggleEl.checked;
     evalToggleEl.disabled = true;
+    syncRiskRows();
     const response = await send({
       type: "set_eval_enabled",
       value: nextValue,
@@ -207,6 +422,7 @@ async function refresh(): Promise<void> {
       showError(response);
     }
     evalToggleEl.disabled = false;
+    await refresh();
   };
 
   trustedAutomationToggleEl.checked = state.settings.trustedAutomationEnabled;
@@ -215,6 +431,7 @@ async function refresh(): Promise<void> {
   trustedAutomationToggleEl.onchange = async () => {
     const nextValue = trustedAutomationToggleEl.checked;
     trustedAutomationToggleEl.disabled = true;
+    syncRiskRows();
     const response = await send({
       type: "set_trusted_automation_enabled",
       value: nextValue,
@@ -230,7 +447,6 @@ async function refresh(): Promise<void> {
   allTabsToggleEl.checked = state.allTabsAccess.active;
   allTabsToggleEl.disabled = false;
   allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
-  allTabsSettingEl.classList.toggle("warning-active", state.allTabsAccess.active);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
     allTabsToggleEl.disabled = true;
@@ -323,10 +539,10 @@ async function refresh(): Promise<void> {
   };
 
   personalDataMutationsToggleEl.checked = state.settings.personalDataMutationsEnabled;
-  personalDataMutationsNoteEl.textContent = t(lang, "popup.permissions.personalDataMutations.note");
   personalDataMutationsToggleEl.onchange = async () => {
     const nextValue = personalDataMutationsToggleEl.checked;
     personalDataMutationsToggleEl.disabled = true;
+    syncRiskRows();
     const response = await send({ type: "set_personal_data_mutations", value: nextValue });
     if (response.type === "error") {
       personalDataMutationsToggleEl.checked = !nextValue;
@@ -335,6 +551,7 @@ async function refresh(): Promise<void> {
     personalDataMutationsToggleEl.disabled = false;
     await refresh();
   };
+  syncRiskRows();
 
   // Only seed the profile input once per popup open so the user's typing isn't clobbered.
   if (document.activeElement !== profileLabelEl) {
@@ -356,6 +573,7 @@ async function refresh(): Promise<void> {
   }
   const applyGatewayWebSocketUrl = async () => {
     applyGatewayUrlBtn.disabled = true;
+    clearStatus();
     const response = await send({
       type: "set_gateway_websocket_url",
       value: gatewayWebSocketUrlEl.value,
@@ -366,7 +584,7 @@ async function refresh(): Promise<void> {
       return;
     }
     gatewayWebSocketUrlEl.blur();
-    statusEl.textContent = t(lang, "popup.advanced.gatewayUrl.reconnecting");
+    setStatus(t(lang, "popup.advanced.gatewayUrl.reconnecting"));
     await refresh();
   };
   applyGatewayUrlBtn.disabled = false;
@@ -377,160 +595,50 @@ async function refresh(): Promise<void> {
     await applyGatewayWebSocketUrl();
   };
 
-  const incognitoAccessAllowed = state.activeTab.incognitoAccessAllowed;
-  const incognitoBlocked = state.activeTab.incognito && !incognitoAccessAllowed;
-  const allTabsActive = state.allTabsAccess.active;
-  incognitoNoticeEl.hidden = incognitoAccessAllowed;
-  openExtensionsBtn.onclick = async () => {
-    await openExtensionSettings();
-  };
-
-  if (allTabsActive) {
-    actionBtn.textContent = t(lang, "popup.action.disableAllTabs");
-    actionBtn.className = "danger";
-    actionBtn.disabled = false;
-    actionBtn.onclick = async () => {
-      actionBtn.disabled = true;
-      allTabsToggleEl.checked = false;
-      const response = await send({ type: "set_all_tabs_access", value: false });
-      if (response.type === "error") {
-        showError(response);
-        actionBtn.disabled = false;
-        return;
-      }
-      await removeAllTabsPermission();
-      await refresh();
-    };
-    annotationBtn.disabled = !state.permitted;
-    annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
-    annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
-    annotationBtn.onclick = async () => {
-      if (!state.permitted) return;
-      annotationBtn.disabled = true;
-      const response = await send({
-        type: "annotation_action",
-        tabId,
-        action: state.annotationState.enabled ? "stop" : "start",
-      });
-      if (response.type === "error") {
-        showError(response);
-        annotationBtn.disabled = false;
-        return;
-      }
-      window.close();
-      await refresh();
-    };
-    clearAnnotationsBtn.disabled =
-      !state.permitted ||
-      (state.annotationState.count === 0 && state.annotationState.restorableCount === 0);
-    clearAnnotationsBtn.onclick = async () => {
-      if (!state.permitted) return;
-      clearAnnotationsBtn.disabled = true;
-      await send({ type: "annotation_action", tabId, action: "clear" });
-      await refresh();
-    };
-    renderRestoreButton(state, tabId);
-  } else if (incognitoBlocked) {
-    actionBtn.textContent = t(lang, "popup.action.enableIncognito");
-    actionBtn.className = "secondary";
-    actionBtn.disabled = false;
-    actionBtn.onclick = async () => {
-      await openExtensionSettings();
-    };
-    annotationBtn.disabled = true;
-    annotationBtn.textContent = t(lang, "popup.annotation.start");
-    annotationBtn.className = "secondary";
-    clearAnnotationsBtn.disabled = true;
-    restoreAnnotationsBtn.hidden = true;
-  } else if (state.permitted) {
-    actionBtn.textContent = t(lang, "popup.action.revoke");
-    actionBtn.className = "danger";
-    actionBtn.disabled = false;
-    actionBtn.onclick = async () => {
-      await send({ type: "revoke", tabId });
-      await refresh();
-    };
-    annotationBtn.disabled = false;
-    annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
-    annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
-    annotationBtn.onclick = async () => {
-      annotationBtn.disabled = true;
-      const response = await send({
-        type: "annotation_action",
-        tabId,
-        action: state.annotationState.enabled ? "stop" : "start",
-      });
-      if (response.type === "error") {
-        showError(response);
-        annotationBtn.disabled = false;
-        return;
-      }
-      window.close();
-      await refresh();
-    };
-    clearAnnotationsBtn.disabled =
-      state.annotationState.count === 0 && state.annotationState.restorableCount === 0;
-    clearAnnotationsBtn.onclick = async () => {
-      clearAnnotationsBtn.disabled = true;
-      await send({ type: "annotation_action", tabId, action: "clear" });
-      await refresh();
-    };
-    renderRestoreButton(state, tabId);
-  } else {
-    actionBtn.textContent = t(lang, "popup.action.share");
-    actionBtn.className = "primary";
-    actionBtn.disabled = false;
-    actionBtn.onclick = async () => {
-      await send({ type: "permit", tabId });
-      await refresh();
-    };
-    annotationBtn.disabled = true;
-    annotationBtn.textContent = t(lang, "popup.annotation.start");
-    annotationBtn.className = "secondary";
-    clearAnnotationsBtn.disabled = true;
-    restoreAnnotationsBtn.hidden = true;
-  }
+  // The hero: the tab at the gate, in words and in the graphic.
+  const gate = tabGate(state, tab.url, lang);
+  tabStateEl.textContent = gate.headline;
+  tabDetailEl.textContent = gate.detail;
+  const flags = tabRiskFlags(state.settings, gate.mode, lang);
+  tabFlagsEl.replaceChildren(
+    ...flags.map((flag) => {
+      const item = document.createElement("li");
+      item.textContent = flag;
+      return item;
+    }),
+  );
+  tabFlagsEl.hidden = flags.length === 0;
+  renderGate(gate.mode);
+  renderAction(state, tabId, gate.mode);
+  renderAnnotations(state, tabId);
 
   const shortcutMessage = recentShortcutMessage(state.shortcutFeedback, Date.now(), lang);
   shortcutResultEl.hidden = !shortcutMessage;
   shortcutResultEl.textContent = shortcutMessage ?? "";
-  shortcutResultEl.className = `shortcut-result ${state.shortcutFeedback?.level ?? ""}`;
+  shortcutResultEl.className = `evidence ${state.shortcutFeedback?.level ?? ""}`;
   const commands = await browser.commands.getAll().catch(() => []);
+  renderShortcutKeys(commands);
   shortcutHintEl.textContent = shortcutHint(commands, browser.kind, lang);
 
-  renderPill(tabStatusEl, tabAccessStatusPill(state, lang));
-  statusEl.replaceChildren();
   renderPill(gatewayStatusEl, gatewayStatusPill(state.wsConnected, lang));
-
-  if (state.sharedTabs.length > 0) {
-    const heading = document.createElement("h2");
-    heading.className = "label";
-    heading.textContent = sharedTabsHeading(state.sharedTabs.length, lang);
-    const list = document.createElement("ul");
-    for (const sharedTab of state.sharedTabs) {
-      const item = document.createElement("li");
-      item.className = "shared-item";
-      item.title = sharedTabSummary(sharedTab);
-      const idEl = document.createElement("span");
-      idEl.className = "tab-id";
-      idEl.textContent = String(sharedTab.tabId);
-      const titleEl = document.createElement("span");
-      titleEl.className = "tab-title";
-      titleEl.textContent = sharedTab.title || sharedTab.url;
-      item.append(idEl, titleEl);
-      const accessLabel = sharedTabAccessLabel(sharedTab, lang);
-      if (accessLabel) {
-        const modeEl = document.createElement("span");
-        modeEl.className = "pill warning";
-        modeEl.textContent = accessLabel;
-        item.append(modeEl);
-      }
-      list.append(item);
-    }
-    sharedListEl.replaceChildren(heading, list);
-  } else {
-    sharedListEl.replaceChildren();
+  topEl.dataset.gateway = state.wsConnected ? "connected" : "disconnected";
+  gatewayBannerEl.hidden = state.wsConnected;
+  if (!state.wsConnected) {
+    const [before, after = ""] = t(lang, "popup.gateway.offlineBody").split("{url}");
+    const code = document.createElement("code");
+    code.textContent = state.settings.gatewayWebSocketUrl;
+    gatewayBannerBodyEl.replaceChildren(before ?? "", code, after);
   }
+
+  renderSharedTabs(state, tabId);
+}
+
+function markReady(): void {
+  // Enable transitions only after the first state has painted, so opening the popup on a
+  // shared tab shows it shared instead of animating into it.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => document.documentElement.classList.add("ready")),
+  );
 }
 
 readUiLanguage(browser.storage.local)
@@ -542,5 +650,6 @@ readUiLanguage(browser.storage.local)
   .catch(() => {})
   .then(() => refresh())
   .catch((e) => {
-    statusEl.textContent = t(lang, "common.errorPrefix", { message: String(e) });
-  });
+    setStatus(t(lang, "common.errorPrefix", { message: String(e) }), true);
+  })
+  .finally(markReady);

@@ -8,11 +8,11 @@
     "description": "Extension name in the Firefox build."
   },
   "extDescription": {
-    "message": "Share Chrome tabs with AI coding agents via explicit local permission.",
+    "message": "Share the Chrome tabs you choose with AI coding agents. Nothing is shared until you allow it.",
     "description": "Extension description shown in chrome://extensions and the Chrome Web Store. Max 132 characters."
   },
   "extDescriptionFirefox": {
-    "message": "Share Firefox tabs with AI coding agents via explicit local permission.",
+    "message": "Share the Firefox tabs you choose with AI coding agents. Nothing is shared until you allow it.",
     "description": "Extension description in the Firefox build."
   },
   "commandToggleShare": {

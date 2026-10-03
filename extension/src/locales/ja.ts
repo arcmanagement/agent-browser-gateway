@@ -17,103 +17,132 @@ export const ja: MessageCatalog = {
   "popup.gateway.connectedDescription": "Gateway に接続しています",
   "popup.gateway.disconnected": "未接続",
   "popup.gateway.disconnectedDescription": "Gateway に接続していません",
-  "popup.tab.none": "（アクティブなタブがありません）",
-  "popup.tab.unknownState": "状態を取得できませんでした",
-  "popup.tab.allTabsShared": "全タブ共有中",
-  "popup.tab.blocked": "ブロック中",
-  "popup.tab.shared": "共有中",
-  "popup.tab.notShared": "未共有",
-  "popup.incognito.title": "シークレット モードでのアクセスがオフです",
+  "popup.gateway.offlineTitle": "Gateway に接続できません",
+  "popup.gateway.offlineBody": "Gateway アプリを起動してください。接続先は {url} です。",
+  "popup.tab.none": "アクティブなタブがありません",
+  "popup.tab.unknownState":
+    "このタブの状態を取得できませんでした。ポップアップを開き直してください。",
+  "popup.tab.id": "タブ {tabId}",
+  "popup.tab.allTabsShared": "全タブを共有中",
+  "popup.tab.blocked": "シークレットでは無効",
+  "popup.tab.shared": "エージェントと共有中",
+  "popup.tab.notShared": "共有していません",
+  "popup.tab.unsupported": "このページは共有できません",
+  "popup.tab.sharedDetail":
+    "エージェントがこのタブを読み取り、操作できます。共有を解除するか、タブが別のサイトに移ると共有は終わります。",
+  "popup.tab.notSharedDetail":
+    "共有するまで、エージェントはこのタブを見ることも操作することもできません。",
+  "popup.tab.allTabsDetail":
+    "サンドボックスモードがオンです。このプロファイルのタブはすべて共有されています。",
+  "popup.tab.unsupportedDetail": "共有できるのは http、https、file のページだけです。",
+  "popup.tab.flag.noApproval": "書き込み操作は承認なしで実行されます。",
+  "popup.tab.flag.autoMode": "AutoMode: eval は承認なしで実行されます。",
   "popup.incognito.body":
-    "この拡張機能をシークレット モードで許可するまで、Chrome はシークレット ウィンドウで ABG をブロックします。",
+    "このタブを共有するには、拡張機能の設定でシークレット モードでの実行を許可してください。",
   "popup.incognito.openSettings": "拡張機能の設定を開く",
   "popup.action.share": "このタブをエージェントと共有",
   "popup.action.revoke": "このタブの共有を解除",
   "popup.action.disableAllTabs": "全タブ共有をオフにする",
-  "popup.action.enableIncognito": "先にシークレット モードを許可",
+  "popup.annotation.heading": "注釈",
   "popup.annotation.start": "このタブに注釈を付ける",
-  "popup.annotation.done": "注釈 {count} 件 - 完了",
-  "popup.annotation.resume": "注釈 {count} 件 - 再開",
-  "popup.annotation.clear": "クリア",
+  "popup.annotation.done": "注釈を終了（{count} 件）",
+  "popup.annotation.resume": "注釈を再開（{count} 件）",
+  "popup.annotation.clear": "すべて消去",
   "popup.annotation.restore": "保存済みの注釈を復元",
-  "popup.annotation.restoreCount": "保存済みの注釈 {count} 件を復元",
-  "popup.restore.noSaved": "このタブに保存済みの注釈はありません。何も復元していません。",
+  "popup.annotation.restoreCount": "保存済みの注釈を復元（{count} 件）",
+  "popup.restore.noSaved": "このタブに保存済みの注釈はありません。",
   "popup.restore.urlMismatch":
-    "保存済みの注釈は {savedUrl} のものですが、このタブには {currentUrl} が表示されています。何も復元していません。",
+    "保存済みの注釈は {savedUrl} のものですが、このタブは {currentUrl} を表示しています。復元していません。",
   "popup.restore.anotherPage": "別のページ",
   "popup.restore.differentPage": "別のページ",
   "popup.restore.restored": "注釈を {count} 件復元しました。",
   "popup.restore.partial":
-    "{total} 件中 {restored} 件の注釈を復元しました。残りの {unrestored} 件は変更後のページと対応付けられなかったため、表示していません。",
+    "{total} 件中 {restored} 件の注釈を復元しました。{unrestored} 件は変更後のページと対応付けられませんでした。",
   "popup.restore.noneRestored":
-    "保存済みの注釈を変更後のページと対応付けられなかったため（{unrestored} 件を試行）、何も表示していません。",
+    "保存済みの注釈 {unrestored} 件は、どれも変更後のページと対応付けられませんでした。復元していません。",
   "popup.restore.alreadyPresent": "保存済みの注釈はすべてページに表示されています。",
   "popup.shortcut.last": "直前のショートカット: {message}",
   "popup.shortcut.hint":
-    "ショートカット: {toggle} でこのタブを共有／共有解除、{copy} でタブ ID をコピーします。変更は {settingsPage} で行えます。",
+    "{toggle} で現在のタブを共有／共有解除、{copy} でタブ ID をコピーします。ショートカットは {settingsPage} で変更できます。",
+  "popup.shortcut.toggle": "共有／解除",
+  "popup.shortcut.copy": "タブ ID をコピー",
   "popup.shortcut.notSet": "（未設定）",
   "popup.shortcut.chromeSettingsPage": "chrome://extensions/shortcuts",
   "popup.shortcut.firefoxSettingsPage": "about:addons > 拡張機能のショートカットキーを管理",
-  "popup.sharedTabs.heading": "共有中のタブ（{count}）",
+  "popup.sharedTabs.heading": "共有中のタブ",
   "popup.sharedTabs.allTabs": "全タブ",
+  "popup.sharedTabs.thisTab": "このタブ",
+  "popup.sharedTabs.revoke": "解除",
+  "popup.sharedTabs.revokeLabel": "タブ {tabId}（{title}）の共有を解除",
   "popup.permissions.heading": "権限",
-  "popup.permissions.requireApproval": "書き込み操作に承認を求める",
-  "popup.permissions.eval": "承認制の JavaScript eval を有効にする",
-  "popup.permissions.trustedAutomation": "信頼済み自動化 / AutoMode",
+  "popup.permissions.group.everyday": "基本",
+  "popup.permissions.group.automation": "自動化",
+  "popup.permissions.group.personalData": "個人データ",
+  "popup.permissions.risk.higher": "リスク高",
+  "popup.permissions.requireApproval": "書き込み操作の前に承認を求める",
+  "popup.permissions.requireApproval.note":
+    "クリック、入力、ページ移動などの変更の前に、承認ウィンドウが開きます。",
+  "popup.permissions.eval": "承認制の JavaScript eval を許可",
+  "popup.permissions.eval.note":
+    "既定はオフです。AutoMode がオフなら、eval のたびに実行するスクリプトを表示して承認を求めます。",
+  "popup.permissions.trustedAutomation": "信頼済み自動化（AutoMode）",
   "popup.permissions.trustedAutomation.off":
-    "オンにすると、共有中のタブでの eval はローカルの承認ポップアップを省略できます。スクリプトは引き続き監査ログに記録されます。",
+    "共有中のタブでの eval で、承認ウィンドウを省略します。スクリプトは監査ログに記録されます。",
   "popup.permissions.trustedAutomation.active":
-    "AutoMode が有効です。共有中のタブでの eval は承認ポップアップを省略し、引き続き監査ログに記録されます。",
+    "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。",
   "popup.permissions.trustedAutomation.evalDisabled":
-    "AutoMode は有効ですが、eval のスイッチをオンにするまで eval は使えません。",
-  "popup.permissions.allTabs": "全タブ共有モード（サンドボックス専用）",
+    "オンですが、上の eval を許可するまで eval は使えません。",
+  "popup.permissions.allTabs": "全タブ共有（サンドボックス専用）",
   "popup.permissions.allTabs.active":
-    "サンドボックスモードで {count} 個のタブを共有中です。この隔離プロファイルでは、ブラウザ自体を操作する自動化機能が有効です。",
+    "{count} 個のタブを共有中です。この隔離プロファイルでは、ブラウザ操作の自動化機能が有効です。",
   "popup.permissions.allTabs.permissionMissing":
-    "Chrome の権限がありません。オンにし直して、もう一度許可してください。",
+    "Chrome の権限がありません。もう一度オンにして許可してください。",
   "popup.permissions.allTabs.default":
-    "隔離したサンドボックス用プロファイル専用です。普段使いのプロファイルではオンにしないでください。",
-  "popup.permissions.allTabs.notGranted": "全タブ共有の権限が許可されませんでした。",
+    "このプロファイルのタブをすべて共有します。隔離したサンドボックス用プロファイルだけで使い、普段のプロファイルでは使わないでください。",
+  "popup.permissions.allTabs.notGranted":
+    "権限が許可されなかったため、全タブ共有はオフのままです。",
   "popup.permissions.bookmarks": "ブックマークへのアクセス",
   "popup.permissions.bookmarks.note":
-    "ブラウザの個人データ用の個別の権限です。URL はブックマーク用のコマンドでのみ返され、共有タブの状態には含まれません。",
-  "popup.permissions.bookmarks.unsupported":
-    "このブラウザでは bookmarks 拡張機能 API を利用できません。",
-  "popup.permissions.bookmarks.notGranted": "ブックマークの権限が許可されませんでした。",
+    "個別の権限です。ブックマークの URL は、ブックマーク用のコマンドでだけエージェントに渡ります。",
+  "popup.permissions.bookmarks.unsupported": "このブラウザはブックマーク API に対応していません。",
+  "popup.permissions.bookmarks.notGranted":
+    "権限が許可されなかったため、ブックマークへのアクセスはオフのままです。",
   "popup.permissions.readingList": "リーディングリストへのアクセス",
   "popup.permissions.readingList.note":
-    "リーディングリストに保存した項目を扱う、ブラウザの個人データ用の個別の権限です。",
+    "リーディングリストに保存した項目を扱うための、個別の権限です。",
   "popup.permissions.readingList.unsupported":
-    "このブラウザでは chrome.readingList を利用できません。Chrome 120 以降で提供されている API です。",
-  "popup.permissions.readingList.notGranted": "リーディングリストの権限が許可されませんでした。",
+    "このブラウザは chrome.readingList に対応していません（Chrome 120 以降で利用できます）。",
+  "popup.permissions.readingList.notGranted":
+    "権限が許可されなかったため、リーディングリストへのアクセスはオフのままです。",
   "popup.permissions.personalDataMutations": "ブックマークとリーディングリストの変更を許可",
   "popup.permissions.personalDataMutations.note":
-    "エージェントが要求するブックマークとリーディングリストの変更を許可します。変更のたびに承認ウィンドウが開き、削除はより強い確認文で表示されます。",
+    "エージェントが変更を依頼できます。変更のたびに承認ウィンドウが開き、削除は取り消せない操作として表示されます。",
   "popup.advanced.heading": "詳細設定",
   "popup.advanced.language": "表示言語",
   "popup.advanced.language.auto": "自動（ブラウザの言語）",
   "popup.advanced.language.note":
-    "このポップアップにはすぐに反映されます。承認ウィンドウ、注釈ツールバー、ショートカットの通知には、次に表示されたときから反映されます。",
+    "このポップアップはすぐに切り替わります。承認ウィンドウ、注釈ツールバー、ショートカットの通知は、次に開いたときから切り替わります。",
+  "popup.advanced.shortcuts": "キーボードショートカット",
   "popup.advanced.profileLabel": "プロファイル名（メニューバーに表示）",
   "popup.advanced.profileLabel.placeholder": "例: personal、work、staging",
-  "popup.advanced.gatewayUrl": "Gateway の WebSocket エンドポイント",
+  "popup.advanced.gatewayUrl": "Gateway のエンドポイント（WebSocket）",
   "popup.advanced.gatewayUrl.apply": "適用",
-  "popup.advanced.gatewayUrl.note":
-    "開発者向け、セルフホスト環境の診断専用です。適用するとすぐに再接続します。",
+  "popup.advanced.gatewayUrl.note": "開発とセルフホスト用です。適用するとすぐに再接続します。",
   "popup.advanced.gatewayUrl.reconnecting": "Gateway に再接続しています…",
+  "popup.footer.audit": "すべての読み取りと操作は、ローカルの監査ログに記録されます。",
 
   "error.all_tabs_permission_required":
-    "このプロファイルでは、ABG にすべてのサイトへのアクセスが許可されていません。",
+    "このプロファイルでは、ABG にすべてのサイトへのアクセスが許可されていません。全タブ共有をオンにして許可してください。",
   "error.bookmarks_permission_required":
-    "このプロファイルでは、ABG にブックマークへのアクセスが許可されていません。",
+    "このプロファイルでは、ABG にブックマークへのアクセスが許可されていません。「ブックマークへのアクセス」をオンにして許可してください。",
   "error.reading_list_permission_required":
-    "このプロファイルでは、ABG にリーディングリストへのアクセスが許可されていません。",
-  "error.bookmarks_unsupported": "このブラウザでは chrome.bookmarks API を利用できません。",
+    "このプロファイルでは、ABG にリーディングリストへのアクセスが許可されていません。「リーディングリストへのアクセス」をオンにして許可してください。",
+  "error.bookmarks_unsupported": "このブラウザは chrome.bookmarks API に対応していません。",
   "error.reading_list_unsupported":
-    "このブラウザでは chrome.readingList API を利用できません。Chrome 120 以降で提供されている API で、ほかの Chromium 系ブラウザにはない場合があります。",
-  "error.tab_not_shared": "このタブは ABG と共有されていません",
+    "このブラウザは chrome.readingList API に対応していません。Chrome では 120 以降で利用でき、ほかの Chromium 系ブラウザにはない場合があります。",
+  "error.tab_not_shared": "このタブは ABG と共有されていません。先に共有してください。",
   "error.approval_not_found":
-    "承認リクエストが見つかりません。期限切れか、すでに処理された可能性があります。",
+    "承認リクエストが見つかりません。期限が切れたか、すでに応答した可能性があります。",
 
   // ---- Approval window ----
   "approval.windowTitle": "操作の承認",
@@ -123,14 +152,15 @@ export const ja: MessageCatalog = {
   "approval.deny": "拒否",
   "approval.escToDeny": "で拒否",
   "approval.noUrl": "（URL なし）",
-  "approval.submitting": "判断を送信しています…",
-  "approval.expires": "{seconds} 秒以内に応答がないと拒否されます。",
+  "approval.submitting": "応答を送信しています…",
+  "approval.expires": "あと {time} で自動的に拒否します",
   "approval.tabPickerNote":
-    "「許可」を押すと Chrome のタブ選択画面が開きます。録画するタブを選び、音声の共有をオンにしてください。",
-  "approval.tabPickerCancelled": "タブが選択されなかったため、録画は開始していません。",
-  "approval.tabCaptureFailed": "タブのキャプチャを開始できませんでした",
-  "approval.missingRequest": "承認リクエストが指定されていません。",
-  "approval.unavailable": "承認リクエストを取得できませんでした。",
+    "「許可」を押すと Chrome のタブ選択画面が開きます。このタブを選び、音声の共有をオンにすると録画できます。",
+  "approval.tabPickerCancelled": "タブが選ばれなかったため、録画は開始していません。",
+  "approval.tabCaptureFailed": "タブのキャプチャを開始できませんでした。",
+  "approval.missingRequest":
+    "このウィンドウには承認リクエストがありません。閉じてから、もう一度試してください。",
+  "approval.unavailable": "この承認リクエストはもう利用できません。",
   "approval.loadFailed": "承認リクエストを読み込めませんでした。",
 
   // ---- Approval intents ----
@@ -222,16 +252,15 @@ export const ja: MessageCatalog = {
 
   // ---- Keyboard shortcut feedback ----
   "shortcut.tab": "タブ {tabId}",
-  "shortcut.tabWithTitle": 'タブ {tabId} ("{title}")',
-  "shortcut.shared": "{tab} をエージェントと共有しました。",
-  "shortcut.revoked":
-    "{tab} の共有を解除しました。エージェントはこのタブにアクセスできなくなりました。",
+  "shortcut.tabWithTitle": "タブ {tabId}「{title}」",
+  "shortcut.shared": "{tab}をエージェントと共有しました。",
+  "shortcut.revoked": "{tab}の共有を解除しました。エージェントはこのタブにアクセスできません。",
   "shortcut.blocked.noActiveTab":
-    "アクティブなタブが見つかりません。ブラウザのタブにフォーカスしてから、もう一度ショートカットを押してください。",
+    "アクティブなタブがありません。タブをクリックしてから、もう一度ショートカットを押してください。",
   "shortcut.blocked.allTabsMode":
-    "全タブ共有モードがオンのため、タブごとの共有と共有解除は使えません。変更はしていません。タブを個別に管理するには、ポップアップで全タブ共有をオフにしてください。",
+    "全タブ共有がオンのため、タブごとの共有と共有解除はできません。変更はしていません。先にポップアップで全タブ共有をオフにしてください。",
   "shortcut.blocked.incognito":
-    "Agent Browser Gateway はシークレット モードでのアクセスがオフのため、このタブは共有できません。先に拡張機能の設定で「シークレット モードでの実行を許可する」をオンにしてください。",
+    "シークレット モードで ABG が無効なため、このタブは共有できません。先に拡張機能の設定で「シークレット モードでの実行を許可する」をオンにしてください。",
   "shortcut.blocked.unsupportedPage":
     "{subject}は共有できません。共有できるのは http、https、file のページだけです。変更はしていません。",
   "shortcut.blocked.schemePages": "{scheme}: のページ",
@@ -239,11 +268,10 @@ export const ja: MessageCatalog = {
   "shortcut.shareFailed": "タブ {tabId} を共有できませんでした: {error}",
   "shortcut.revokeFailed": "タブ {tabId} の共有を解除できませんでした: {error}",
   "shortcut.copiedNotShared":
-    "{tab} のタブ ID {tabId} をコピーしました。このタブは共有されていないため、共有するまでエージェントはアクセスできません。",
-  "shortcut.copiedShared":
-    "{tab} のタブ ID {tabId} をコピーしました。このタブはエージェントと共有中です。",
+    "{tab}の ID をコピーしました。このタブは共有していないため、共有するまでエージェントはアクセスできません。",
+  "shortcut.copiedShared": "{tab}の ID をコピーしました。このタブはエージェントと共有中です。",
   "shortcut.copiedSharedAllTabs":
-    "{tab} のタブ ID {tabId} をコピーしました。このタブは全タブ共有モードでエージェントと共有中です。",
+    "{tab}の ID をコピーしました。このタブは全タブ共有でエージェントと共有中です。",
   "shortcut.copyFailed": "タブ ID {tabId} をコピーできませんでした: {error}",
 
   // ---- Annotation overlay ----
@@ -251,8 +279,8 @@ export const ja: MessageCatalog = {
   "overlay.modeGroup": "注釈の対象",
   "overlay.modeArea": "範囲",
   "overlay.modeText": "テキスト",
-  "overlay.clear": "クリア",
-  "overlay.clearConfirm": "{count} 件をクリア？",
+  "overlay.clear": "すべて消去",
+  "overlay.clearConfirm": "{count} 件を消去",
   "overlay.clearConfirmTitle": "もう一度クリックすると、このページの注釈をすべて削除します",
   "overlay.done": "完了",
   "overlay.doneTitle": "注釈を終了（Esc）",

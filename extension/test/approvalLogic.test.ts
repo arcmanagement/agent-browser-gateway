@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   approvalRemainingMs,
+  formatCountdown,
+  isDestructiveIntent,
   scriptBlockPresentation,
   shouldFallBackToTabPicker,
 } from "../src/approvalLogic.js";
@@ -17,6 +19,22 @@ describe("approvalLogic", () => {
       hidden: false,
       text: "document.title",
     });
+  });
+
+  it("formats the countdown as m:ss and never shows negative time", () => {
+    expect(formatCountdown(600_000)).toBe("10:00");
+    expect(formatCountdown(59_001)).toBe("1:00");
+    expect(formatCountdown(9_000)).toBe("0:09");
+    expect(formatCountdown(1)).toBe("0:01");
+    expect(formatCountdown(-5)).toBe("0:00");
+  });
+
+  it("marks only permanent deletions as destructive", () => {
+    expect(isDestructiveIntent("intent.personal.bookmarkRemove")).toBe(true);
+    expect(isDestructiveIntent("intent.personal.readingListRemove")).toBe(true);
+    expect(isDestructiveIntent("intent.personal.bookmarkUpdate")).toBe(false);
+    expect(isDestructiveIntent("intent.clickSelector")).toBe(false);
+    expect(isDestructiveIntent(undefined)).toBe(false);
   });
 });
 

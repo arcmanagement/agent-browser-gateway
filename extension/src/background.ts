@@ -2539,8 +2539,8 @@ async function requestOperationApproval(
     const approvalWindow = await browser.windows.create({
       type: "popup",
       url: approvalUrl.href,
-      width: script === undefined ? 380 : 520,
-      height: script === undefined ? 240 : 420,
+      width: script === undefined ? 400 : 540,
+      height: script === undefined ? 300 : 460,
     });
     if (typeof approvalWindow.id === "number") {
       pending.windowId = approvalWindow.id;
