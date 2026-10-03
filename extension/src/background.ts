@@ -14,9 +14,9 @@ import {
   isShareableTabUrl,
   normalizeUploadFiles,
   originForUrl,
-  personalDataMutationIntent,
+  personalDataMutationIntentText,
   raisePermittedBrowserTab,
-  richClipboardPayloadLabel,
+  richClipboardPayloadText,
   type ShortcutOutcome,
   shortcutFeedback,
   TOGGLE_SHARE_COMMAND,
@@ -36,6 +36,20 @@ import {
   resolveStoredGatewayWebSocketUrl,
 } from "./gatewayEndpoint.js";
 import { GatewayWebSocketConnection } from "./gatewayWebSocketConnection.js";
+import {
+  annotationOverlayStrings,
+  browserUiLocale,
+  DEFAULT_UI_LANGUAGE,
+  formatText,
+  isUiLanguageSetting,
+  type Language,
+  type LocalizedText,
+  msg,
+  normalizeUiLanguageSetting,
+  resolveUiLanguage,
+  type UiLanguageSetting,
+} from "./i18n.js";
+import { restoreReportText } from "./popupLogic.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -82,6 +96,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
   personalDataMutationsEnabled: false,
+  uiLanguage: DEFAULT_UI_LANGUAGE,
 };
 const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "click_selector",
@@ -125,7 +140,7 @@ type PermittedTab = {
 type OperationCommand = GatewayCommand & { method: OperationMethod };
 
 type OperationDescriptor = {
-  intent: string;
+  intent: LocalizedText;
   run: () => Promise<unknown>;
 };
 
@@ -325,6 +340,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     "bookmarksAccessEnabled",
     "readingListAccessEnabled",
     "personalDataMutationsEnabled",
+    "uiLanguage",
   ]);
   const operationsRequireApproval =
     typeof stored.operationsRequireApproval === "boolean"
@@ -358,6 +374,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.personalDataMutationsEnabled === "boolean"
       ? stored.personalDataMutationsEnabled
       : DEFAULT_SETTINGS.personalDataMutationsEnabled;
+  const uiLanguage = normalizeUiLanguageSetting(stored.uiLanguage);
   if (
     typeof stored.operationsRequireApproval !== "boolean" ||
     typeof stored.evalEnabled !== "boolean" ||
@@ -367,7 +384,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.allTabsAccessEnabled !== "boolean" ||
     typeof stored.bookmarksAccessEnabled !== "boolean" ||
     typeof stored.readingListAccessEnabled !== "boolean" ||
-    typeof stored.personalDataMutationsEnabled !== "boolean"
+    typeof stored.personalDataMutationsEnabled !== "boolean" ||
+    uiLanguage.shouldPersist
   ) {
     await browser.storage.local.set({
       operationsRequireApproval,
@@ -379,6 +397,7 @@ async function getSettings(): Promise<ExtensionSettings> {
       bookmarksAccessEnabled,
       readingListAccessEnabled,
       personalDataMutationsEnabled,
+      uiLanguage: uiLanguage.value,
     });
   }
   return {
@@ -391,7 +410,24 @@ async function getSettings(): Promise<ExtensionSettings> {
     bookmarksAccessEnabled,
     readingListAccessEnabled,
     personalDataMutationsEnabled,
+    uiLanguage: uiLanguage.value,
   };
+}
+
+/**
+ * The resolved display language for human-facing UI. Read on every use, so a change in the
+ * popup applies to the next approval window, overlay command, or shortcut message.
+ */
+async function currentUiLanguage(): Promise<Language> {
+  const settings = await getSettings();
+  return resolveUiLanguage(settings.uiLanguage, browserUiLocale());
+}
+
+async function setUiLanguage(value: UiLanguageSetting): Promise<ExtensionSettings> {
+  const current = await getSettings();
+  const settings: ExtensionSettings = { ...current, uiLanguage: value };
+  await browser.storage.local.set(settings);
+  return settings;
 }
 
 async function ensureSettingsStored(): Promise<ExtensionSettings> {
@@ -1672,7 +1708,7 @@ async function listReadingList(params: GatewayCommand["params"]): Promise<Record
   };
 }
 
-async function approvePersonalDataMutation(intent: string): Promise<void> {
+async function approvePersonalDataMutation(intent: LocalizedText): Promise<void> {
   const settings = await getSettings();
   if (!settings.personalDataMutationsEnabled) {
     throw new GatewayError(
@@ -1709,7 +1745,7 @@ async function createBookmark(params: GatewayCommand["params"]): Promise<Record<
   const parentId = typeof params?.parentId === "string" ? params.parentId : undefined;
   if (!title && !url) throw new GatewayError("bad_params", "title or url required");
   await approvePersonalDataMutation(
-    personalDataMutationIntent("bookmark_create", { title, url, parentId }),
+    personalDataMutationIntentText("bookmark_create", { title, url, parentId }),
   );
   const node = await api.create({ title, url, parentId });
   return personalDataMutationResult("bookmarks", "create", { bookmark: publicBookmarkNode(node) });
@@ -1727,7 +1763,7 @@ async function updateBookmark(params: GatewayCommand["params"]): Promise<Record<
   const [existing] = await api.get(id);
   if (!existing) throw new GatewayError("not_found", `no bookmark with id ${id}`);
   await approvePersonalDataMutation(
-    personalDataMutationIntent("bookmark_update", { title: existing.title, url, id }),
+    personalDataMutationIntentText("bookmark_update", { title: existing.title, url, id }),
   );
   const node = await api.update(id, { title, url });
   return personalDataMutationResult("bookmarks", "update", { bookmark: publicBookmarkNode(node) });
@@ -1745,7 +1781,7 @@ async function moveBookmark(params: GatewayCommand["params"]): Promise<Record<st
   const [existing] = await api.get(id);
   if (!existing) throw new GatewayError("not_found", `no bookmark with id ${id}`);
   await approvePersonalDataMutation(
-    personalDataMutationIntent("bookmark_move", { title: existing.title, id, parentId }),
+    personalDataMutationIntentText("bookmark_move", { title: existing.title, id, parentId }),
   );
   const node = await api.move(id, { parentId, index });
   return personalDataMutationResult("bookmarks", "move", { bookmark: publicBookmarkNode(node) });
@@ -1767,7 +1803,7 @@ async function removeBookmark(params: GatewayCommand["params"]): Promise<Record<
     );
   }
   await approvePersonalDataMutation(
-    personalDataMutationIntent("bookmark_remove", { title: existing.title, id }),
+    personalDataMutationIntentText("bookmark_remove", { title: existing.title, id }),
   );
   await api.remove(id);
   return personalDataMutationResult("bookmarks", "remove", { removedId: id });
@@ -1780,7 +1816,9 @@ async function addReadingListEntry(
   const title = typeof params?.title === "string" ? params.title : undefined;
   const url = typeof params?.url === "string" ? params.url : undefined;
   if (!title || !url) throw new GatewayError("bad_params", "title and url required");
-  await approvePersonalDataMutation(personalDataMutationIntent("reading_list_add", { title, url }));
+  await approvePersonalDataMutation(
+    personalDataMutationIntentText("reading_list_add", { title, url }),
+  );
   await api.addEntry({ title, url, hasBeenRead: params?.hasBeenRead === true });
   return personalDataMutationResult("readingList", "add", { url });
 }
@@ -1797,7 +1835,7 @@ async function updateReadingListEntry(
     throw new GatewayError("bad_params", "title or hasBeenRead required");
   }
   await approvePersonalDataMutation(
-    personalDataMutationIntent("reading_list_update", { title, url }),
+    personalDataMutationIntentText("reading_list_update", { title, url }),
   );
   await api.updateEntry({ url, title, hasBeenRead });
   return personalDataMutationResult("readingList", "update", { url });
@@ -1809,7 +1847,7 @@ async function removeReadingListEntry(
   const api = await requireReadingListAccess();
   const url = typeof params?.url === "string" ? params.url : undefined;
   if (!url) throw new GatewayError("bad_params", "url required");
-  await approvePersonalDataMutation(personalDataMutationIntent("reading_list_remove", { url }));
+  await approvePersonalDataMutation(personalDataMutationIntentText("reading_list_remove", { url }));
   await api.removeEntry({ url });
   return personalDataMutationResult("readingList", "remove", { url });
 }
@@ -1855,7 +1893,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Click the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.clickSelector", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => clickSelector(tabId, selector, frame),
     };
   }
@@ -1864,7 +1905,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const y = cmd.params?.y;
     if (typeof x !== "number" || typeof y !== "number") throw new Error("x and y required");
     return {
-      intent: `Click at page coordinates (${x}, ${y}).`,
+      intent: msg("intent.clickAt", { x, y }),
       run: () => clickAt(tabId, x, y),
     };
   }
@@ -1872,7 +1913,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const ref = cmd.params?.ref;
     if (typeof ref !== "string" || ref.length === 0) throw new Error("ref required");
     return {
-      intent: `Click snapshot ref ${quoteForIntent(ref)}.`,
+      intent: msg("intent.clickRef", { ref: quoteForIntent(ref) }),
       run: () => clickSnapshotRef(tabId, ref),
     };
   }
@@ -1880,7 +1921,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const id = cmd.params?.id;
     if (typeof id !== "number") throw new Error("id required");
     return {
-      intent: `Click the element with describe id ${id}.`,
+      intent: msg("intent.clickDescribed", { id }),
       run: () => clickDescribedElement(tabId, id, cmd.params ?? {}),
     };
   }
@@ -1888,7 +1929,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Double-click the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.dblclickSelector", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => doubleClickSelector(tabId, selector, frame),
     };
   }
@@ -1896,7 +1940,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Focus the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} without clicking it.`,
+      intent: msg("intent.focusSelector", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => focusElement(tabId, selector, frame),
     };
   }
@@ -1904,7 +1951,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Move the mouse over the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.hoverSelector", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => hoverSelector(tabId, selector, frame),
     };
   }
@@ -1917,7 +1967,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       throw new Error("exactly one of value or label required");
     }
     return {
-      intent: `Select an option in ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.selectOption", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => selectOption(tabId, selector, { value, label }, frame),
     };
   }
@@ -1927,7 +1980,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const checked = cmd.params?.checked;
     if (typeof checked !== "boolean") throw new Error("checked boolean required");
     return {
-      intent: `${checked ? "Check" : "Uncheck"} the input matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} if needed.`,
+      intent: msg(checked ? "intent.check" : "intent.uncheck", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => setChecked(tabId, selector, checked, frame),
     };
   }
@@ -1944,10 +2000,21 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const auditDiffExcerptChars = cmd.params?.auditDiffExcerptChars;
     return {
       intent: dryRun
-        ? `Preview editable replacement for selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`
+        ? msg("intent.fillPreview", {
+            selector: quoteForIntent(selector),
+            frame: frameIntentSuffix(frame),
+          })
         : auditDiff
-          ? `Fill ${new TextEncoder().encode(value).byteLength} bytes into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} and capture a redacted audit diff.`
-          : `Fill ${quoteForIntent(value)} into the editable target matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+          ? msg("intent.fillAuditDiff", {
+              bytes: new TextEncoder().encode(value).byteLength,
+              selector: quoteForIntent(selector),
+              frame: frameIntentSuffix(frame),
+            })
+          : msg("intent.fill", {
+              value: quoteForIntent(value),
+              selector: quoteForIntent(selector),
+              frame: frameIntentSuffix(frame),
+            }),
       run: () =>
         fillField(tabId, selector, value, dryRun, frame, {
           auditDiff,
@@ -1964,7 +2031,11 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     }
     const value = rawValue ?? "";
     return {
-      intent: `Paste ${new TextEncoder().encode(value).byteLength} bytes into the editable element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.paste", {
+        bytes: new TextEncoder().encode(value).byteLength,
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => pasteText(tabId, selector, value, frame),
     };
   }
@@ -1977,10 +2048,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const contentBytes =
       typeof cmd.params?.contentBytes === "number" ? cmd.params.contentBytes : undefined;
     const target = selector
-      ? `the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}`
-      : "the currently focused target";
+      ? msg("intent.targetSelector", {
+          selector: quoteForIntent(selector),
+          frame: frameIntentSuffix(frame),
+        })
+      : msg("intent.targetFocused");
     return {
-      intent: `Paste${richClipboardPayloadLabel(mime, contentBytes)} into ${target}.`,
+      intent: msg("intent.pasteRich", {
+        payload: richClipboardPayloadText(mime, contentBytes),
+        target,
+      }),
       run: () => pasteRichClipboard(tabId, selector, frame),
     };
   }
@@ -1988,7 +2065,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Clear the editable element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.clear", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => clearEditable(tabId, selector, frame),
     };
   }
@@ -1998,7 +2078,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     if (typeof html !== "string" || html.length === 0) throw new Error("html required");
     return {
-      intent: `Replace the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} with provided HTML.`,
+      intent: msg("intent.replaceDom", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => replaceDom(tabId, selector, html, frame),
     };
   }
@@ -2009,10 +2092,14 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const firstFile = files[0] ?? "";
     const fileIntent =
       files.length === 1
-        ? `local file ${quoteForIntent(firstFile)}`
-        : `${files.length} local files (${quoteForIntent(firstFile)}, ...)`;
+        ? msg("intent.localFile", { file: quoteForIntent(firstFile) })
+        : msg("intent.localFiles", { count: files.length, file: quoteForIntent(firstFile) });
     return {
-      intent: `Attach ${fileIntent} to file input ${quoteForIntent(selector)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.uploadFile", {
+        files: fileIntent,
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => uploadFile(tabId, selector, files, frame),
     };
   }
@@ -2020,7 +2107,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const text = cmd.params?.text;
     if (typeof text !== "string") throw new Error("text required");
     return {
-      intent: `Type ${quoteForIntent(text)} into the focused element.`,
+      intent: msg("intent.typeText", { text: quoteForIntent(text) }),
       run: () => typeText(tabId, text),
     };
   }
@@ -2028,7 +2115,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const text = cmd.params?.text;
     if (typeof text !== "string") throw new Error("text required");
     return {
-      intent: `Insert ${new TextEncoder().encode(text).byteLength} bytes into the focused element without key events.`,
+      intent: msg("intent.insertText", { bytes: new TextEncoder().encode(text).byteLength }),
       run: () => keyboardInsertText(tabId, text),
     };
   }
@@ -2047,7 +2134,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const value = rawValue;
     const valueBytes = value === undefined ? 0 : new TextEncoder().encode(value).byteLength;
     return {
-      intent: `Run document.execCommand(${command}) against the focused element with ${valueBytes} value bytes.`,
+      intent: msg("intent.execCommand", { command, bytes: valueBytes }),
       run: () => execCommand(tabId, command, value),
     };
   }
@@ -2060,7 +2147,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       : [];
     const chord = [...modifiers, key].join("+");
     return {
-      intent: `Press ${quoteForIntent(chord)}.`,
+      intent: msg("intent.keyPress", { chord: quoteForIntent(chord) }),
       run: () => keyPress(tabId, key, code, modifiers),
     };
   }
@@ -2072,9 +2159,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       ? cmd.params.modifiers.filter((modifier): modifier is string => typeof modifier === "string")
       : [];
     const chord = [...modifiers, key].join("+");
-    const phase = cmd.method === "key_down" ? "down" : "up";
     return {
-      intent: `Dispatch key ${phase} for ${quoteForIntent(chord)}.`,
+      intent: msg(cmd.method === "key_down" ? "intent.keyDown" : "intent.keyUp", {
+        chord: quoteForIntent(chord),
+      }),
       run: () =>
         keyEdge(tabId, cmd.method === "key_down" ? "keyDown" : "keyUp", key, code, modifiers),
     };
@@ -2083,7 +2171,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const url = cmd.params?.url;
     if (typeof url !== "string" || url.length === 0) throw new Error("url required");
     return {
-      intent: `Navigate this tab to ${quoteForIntent(url)}.`,
+      intent: msg("intent.navigate", { url: quoteForIntent(url) }),
       run: async () => {
         await browser.tabs.update(tabId, { url });
         return { ok: true, note: "navigation may revoke permission if origin changes" };
@@ -2100,13 +2188,16 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       }
       const mobile = cmd.params?.mobile === true;
       return {
-        intent: `Set sandbox viewport to ${width}x${height}${mobile ? " mobile" : ""}.`,
+        intent: msg(mobile ? "intent.sandboxViewportMobile" : "intent.sandboxViewport", {
+          width,
+          height,
+        }),
         run: () => sandboxSetViewport(tabId, cmd.params ?? {}),
       };
     }
     if (action === "viewport-clear") {
       return {
-        intent: "Clear sandbox viewport emulation.",
+        intent: msg("intent.sandboxViewportClear"),
         run: () => sandboxClearViewport(tabId),
       };
     }
@@ -2121,8 +2212,12 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       return {
         intent:
           action === "storage-set"
-            ? `Set ${storageKind} key ${quoteForIntent(key)} to ${new TextEncoder().encode(value).byteLength} bytes in the sandbox profile.`
-            : `Delete ${storageKind} key ${quoteForIntent(key)} from the sandbox profile.`,
+            ? msg("intent.sandboxStorageSet", {
+                kind: storageKind,
+                key: quoteForIntent(key),
+                bytes: new TextEncoder().encode(value).byteLength,
+              })
+            : msg("intent.sandboxStorageDelete", { kind: storageKind, key: quoteForIntent(key) }),
         run: () =>
           sandboxStorage(tabId, storageKind, key, action === "storage-set" ? value : undefined),
       };
@@ -2131,7 +2226,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       const url = cmd.params?.url;
       if (typeof url !== "string" || url.length === 0) throw new Error("url required");
       return {
-        intent: `Create a new sandbox tab for ${quoteForIntent(url)}.`,
+        intent: msg("intent.sandboxTabCreate", { url: quoteForIntent(url) }),
         run: () => sandboxCreateTab(tabId, url),
       };
     }
@@ -2139,7 +2234,7 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       const targetTabId = cmd.params?.targetTabId ?? tabId;
       if (typeof targetTabId !== "number") throw new Error("targetTabId must be a number");
       return {
-        intent: `Close sandbox tab ${targetTabId}.`,
+        intent: msg("intent.sandboxTabClose", { tabId: targetTabId }),
         run: () => sandboxCloseTab(targetTabId),
       };
     }
@@ -2154,7 +2249,11 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const steps =
       typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 12;
     return {
-      intent: `Drag from ${describeDragPoint(from)} to ${describeDragPoint(to)}${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.drag", {
+        from: describeDragPoint(from),
+        to: describeDragPoint(to),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => drag(tabId, from, to, steps),
     };
   }
@@ -2162,7 +2261,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
     return {
-      intent: `Scroll the element matching selector ${quoteForIntent(selector)}${frameIntentSuffix(frame)} into view.`,
+      intent: msg("intent.scrollIntoView", {
+        selector: quoteForIntent(selector),
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => scrollElementIntoView(tabId, selector, frame),
     };
   }
@@ -2180,9 +2282,13 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const promptSuffix =
       promptText === undefined
         ? ""
-        : ` with ${new TextEncoder().encode(promptText).byteLength} prompt bytes`;
+        : msg("intent.dialogPrompt", { bytes: new TextEncoder().encode(promptText).byteLength });
     return {
-      intent: `${action === "accept" ? "Accept" : "Dismiss"} ${dialog.type} dialog${promptSuffix}: ${quoteForIntent(dialog.message)}`,
+      intent: msg(action === "accept" ? "intent.dialogAccept" : "intent.dialogDismiss", {
+        type: dialog.type,
+        prompt: promptSuffix,
+        message: quoteForIntent(dialog.message),
+      }),
       run: () => runDialogAction(tabId, cmd.params ?? {}),
     };
   }
@@ -2198,14 +2304,21 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     typeof cmd.params?.steps === "number" ? Math.max(1, Math.min(100, cmd.params.steps)) : 1;
   if (selector !== undefined) {
     return {
-      intent: `Scroll the element matching selector ${quoteForIntent(selector)} by (Δx=${deltaX}, Δy=${deltaY})${frameIntentSuffix(frame)}.`,
+      intent: msg("intent.scrollElement", {
+        selector: quoteForIntent(selector),
+        dx: deltaX,
+        dy: deltaY,
+        frame: frameIntentSuffix(frame),
+      }),
       run: () => scrollElement(tabId, selector, deltaX, deltaY, steps, frame),
     };
   }
   const where =
-    atX !== undefined && atY !== undefined ? `at (${atX}, ${atY})` : "at viewport center";
+    atX !== undefined && atY !== undefined
+      ? msg("intent.scrollAtPoint", { x: atX, y: atY })
+      : msg("intent.scrollAtCenter");
   return {
-    intent: `Scroll this tab by (Δx=${deltaX}, Δy=${deltaY}) ${where}.`,
+    intent: msg("intent.scrollTab", { dx: deltaX, dy: deltaY, where }),
     run: () => scrollTab(tabId, deltaX, deltaY, atX, atY),
   };
 }
@@ -2355,7 +2468,7 @@ function globMatch(pattern: string, text: string): boolean {
 async function requireOperationApproval(
   method: OperationMethod,
   tabId: number,
-  intent: string,
+  intent: LocalizedText,
 ): Promise<void> {
   const settings = await getSettings();
   if (!settings.operationsRequireApproval) return;
@@ -2369,13 +2482,15 @@ async function requireOperationApproval(
 async function requestOperationApproval(
   method: ApprovalMethod,
   tabId: number,
-  intent: string,
+  intent: LocalizedText,
   script?: string,
 ): Promise<ApprovalResolution> {
   const request: ApprovalRequest = {
     id: crypto.randomUUID(),
     method,
-    intent,
+    // The Gateway, its approval UI, and the audit trail always get the English intent.
+    intent: formatText("en", intent),
+    intentText: intent,
     script,
     tab: await getApprovalTab(tabId),
     createdAt: Date.now(),
@@ -2533,9 +2648,7 @@ async function recordStart(
   }
   const recordingId = params.recordingId ?? crypto.randomUUID();
   const withMic = params.mic === true;
-  const intent = withMic
-    ? "Record this tab to a video file, capturing tab audio and the microphone (physical room)."
-    : "Record this tab to a video file, capturing tab audio.";
+  const intent = msg(withMic ? "intent.recordWithMic" : "intent.record");
 
   const approval = await requestOperationApproval("record_start", tabId, intent);
   if (approval.decision !== "allow") {
@@ -2772,8 +2885,8 @@ function readFrameParam(params: GatewayCommand["params"] | undefined): string | 
   return typeof params?.frame === "string" && params.frame.length > 0 ? params.frame : undefined;
 }
 
-function frameIntentSuffix(frame: string | undefined): string {
-  return frame ? ` inside frame ${quoteForIntent(frame)}` : "";
+function frameIntentSuffix(frame: string | undefined): LocalizedText | "" {
+  return frame ? msg("intent.frameSuffix", { frame: quoteForIntent(frame) }) : "";
 }
 
 function createFrameApiSource(): string {
@@ -3417,7 +3530,11 @@ async function runFindCommand(
   await requireOperationApproval(
     "find" as OperationMethod,
     tabId,
-    `Run find action ${quoteForIntent(action)} on ${quoteForIntent(first.selector)}${frameIntentSuffix(frame)}.`,
+    msg("intent.findAction", {
+      action: quoteForIntent(action),
+      selector: quoteForIntent(first.selector),
+      frame: frameIntentSuffix(frame),
+    }),
   );
 
   if (action === "click")
@@ -5419,10 +5536,10 @@ function readDragPoint(
   throw new Error(`${prefix} selector or coordinates required`);
 }
 
-function describeDragPoint(point: DragPoint): string {
+function describeDragPoint(point: DragPoint): LocalizedText {
   return point.kind === "selector"
-    ? `selector ${quoteForIntent(point.selector)}`
-    : `(${point.x}, ${point.y})`;
+    ? msg("intent.dragPointSelector", { selector: quoteForIntent(point.selector) })
+    : msg("intent.dragPointCoords", { x: point.x, y: point.y });
 }
 
 async function resolvePoint(tabId: number, point: DragPoint): Promise<Point> {
@@ -6705,7 +6822,7 @@ async function runApprovedEval(
     const approval = await requestOperationApproval(
       "eval_script",
       tabId,
-      `Run approved JavaScript eval (${new TextEncoder().encode(script).byteLength} bytes).`,
+      msg("intent.eval", { bytes: new TextEncoder().encode(script).byteLength }),
       script,
     );
     if (approval.decision !== "allow") {
@@ -7111,10 +7228,11 @@ async function toggleShareFromShortcut(tab: BrowserTab | undefined): Promise<voi
     incognitoAccessAllowed,
   });
   if (decision.action === "blocked") {
-    await showShortcutFeedback(
-      decision.tabId,
-      shortcutFeedback({ kind: "blocked", reason: decision.reason, url: tab?.url }),
-    );
+    await showShortcutFeedback(decision.tabId, {
+      kind: "blocked",
+      reason: decision.reason,
+      url: tab?.url,
+    });
     return;
   }
   let outcome: ShortcutOutcome;
@@ -7134,16 +7252,13 @@ async function toggleShareFromShortcut(tab: BrowserTab | undefined): Promise<voi
       error: error instanceof Error ? error.message : String(error),
     };
   }
-  await showShortcutFeedback(decision.tabId, shortcutFeedback(outcome));
+  await showShortcutFeedback(decision.tabId, outcome);
 }
 
 async function copyTabIdFromShortcut(tab: BrowserTab | undefined): Promise<void> {
   const tabId = tab?.id;
   if (typeof tabId !== "number") {
-    await showShortcutFeedback(
-      undefined,
-      shortcutFeedback({ kind: "blocked", reason: "no_active_tab" }),
-    );
+    await showShortcutFeedback(undefined, { kind: "blocked", reason: "no_active_tab" });
     return;
   }
   let outcome: ShortcutOutcome;
@@ -7162,7 +7277,7 @@ async function copyTabIdFromShortcut(tab: BrowserTab | undefined): Promise<void>
       error: error instanceof Error ? error.message : String(error),
     };
   }
-  await showShortcutFeedback(tabId, shortcutFeedback(outcome));
+  await showShortcutFeedback(tabId, outcome);
 }
 
 // Copies from an extension context, never from the page: Firefox's background
@@ -7195,15 +7310,19 @@ async function copyTextToClipboard(text: string): Promise<void> {
   }
 }
 
+// Shortcut feedback is human-facing only, so it uses the display language at the time of the
+// shortcut. The popup re-formats the stored outcome if the language changes afterwards.
 async function showShortcutFeedback(
   tabId: number | undefined,
-  feedback: ShortcutFeedback,
+  outcome: ShortcutOutcome,
 ): Promise<void> {
+  const feedback = shortcutFeedback(outcome, await currentUiLanguage());
   const recent: RecentShortcutFeedback = {
     tabId,
     level: feedback.level,
     message: feedback.message,
     at: Date.now(),
+    outcome,
   };
   await browser.storage.session.set({ lastShortcutFeedback: recent }).catch(() => {});
   if (typeof tabId !== "number") return;
@@ -7282,7 +7401,12 @@ function runAnnotationCommand(tabId: number, command: AnnotationCommand) {
   return runAnnotationModeWithSnapshots(
     {
       store: annotationSnapshots,
-      run: manageAnnotationMode,
+      // The overlay gets its UI strings in the display language with every command.
+      run: async (id, overlayCommand) =>
+        manageAnnotationMode(id, {
+          ...overlayCommand,
+          ui: annotationOverlayStrings(await currentUiLanguage()),
+        }),
       currentPage: async (id) => {
         const tab = await browser.tabs.get(id).catch(() => undefined);
         const permitted = permittedTabs.get(id);
@@ -7366,6 +7490,7 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
     const reply: RuntimeResponse = {
       type: "error",
       message: e instanceof Error ? e.message : String(e),
+      code: e instanceof GatewayError ? e.code : undefined,
     };
     sendResponse(reply);
   });
@@ -7454,6 +7579,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     await setReadingListAccessEnabled(msg.value);
     return { type: "ok" };
   }
+  if (msg.type === "set_ui_language") {
+    await setUiLanguage(msg.value);
+    return { type: "ok" };
+  }
   if (msg.type === "set_personal_data_mutations") {
     const current = await getSettings();
     await browser.storage.local.set({ ...current, personalDataMutationsEnabled: msg.value });
@@ -7461,18 +7590,23 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "annotation_action") {
     if (!permittedTabs.has(msg.tabId)) {
-      return { type: "error", message: "tab is not shared with ABG" };
+      return { type: "error", message: "tab is not shared with ABG", code: "tab_not_shared" };
     }
     await attachDebugger(msg.tabId);
     const result = await runAnnotationCommand(msg.tabId, { action: msg.action });
-    return msg.action === "restore" && result.userMessage
-      ? { type: "ok", message: result.userMessage }
+    // The popup shows the restore result in the display language; result.userMessage stays
+    // English because the same result is returned to agents.
+    return msg.action === "restore" && result.restore
+      ? {
+          type: "ok",
+          message: formatText(await currentUiLanguage(), restoreReportText(result.restore)),
+        }
       : { type: "ok" };
   }
   if (msg.type === "get_approval_request") {
     const pending = pendingApprovals.get(msg.approvalId);
     if (!pending) {
-      return { type: "error", message: "approval request not found" };
+      return { type: "error", message: "approval request not found", code: "approval_not_found" };
     }
     return { type: "approval_request", request: pending.request };
   }
@@ -7481,7 +7615,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     resolutionForDecision(msg.decision, msg.streamId, msg.streamSource),
   );
   if (!resolved) {
-    return { type: "error", message: "approval request not found" };
+    return { type: "error", message: "approval request not found", code: "approval_not_found" };
   }
   return { type: "ok" };
 }
@@ -7520,6 +7654,9 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_reading_list_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_reading_list_access", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_ui_language" && isUiLanguageSetting(rawMsg.value)) {
+    return { type: "set_ui_language", value: rawMsg.value };
   }
   if (
     rawMsg.type === "annotation_action" &&

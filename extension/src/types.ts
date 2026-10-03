@@ -1,5 +1,8 @@
 // Shared message types between background, popup, and Gateway.
 
+import type { ShortcutOutcome } from "./backgroundLogic.js";
+import type { LocalizedText, UiLanguageSetting } from "./i18n.js";
+
 export type AnnotationAction =
   | "start"
   | "stop"
@@ -27,6 +30,8 @@ export type RecentShortcutFeedback = {
   level: ShortcutFeedbackLevel;
   message: string;
   at: number;
+  // Lets the popup re-format the message in the current display language.
+  outcome?: ShortcutOutcome;
 };
 
 export type ExtToGateway =
@@ -315,6 +320,8 @@ export type ExtensionSettings = {
   bookmarksAccessEnabled: boolean;
   readingListAccessEnabled: boolean;
   personalDataMutationsEnabled: boolean;
+  // Display language of the extension UI. "auto" follows the browser UI language.
+  uiLanguage: UiLanguageSetting;
 };
 
 export type ApprovalDecision = "allow" | "deny" | "timeout";
@@ -327,7 +334,10 @@ export type ApprovalMethod =
 export type ApprovalRequest = {
   id: string;
   method: ApprovalMethod;
+  // English intent, as sent to the Gateway and shown in its approval UI.
   intent: string;
+  // The same intent as a message, formatted by the approval window in the display language.
+  intentText?: LocalizedText;
   script?: string;
   tab: {
     tabId: number;
@@ -351,6 +361,7 @@ export type PopupToBackground =
   | { type: "set_bookmarks_access"; value: boolean }
   | { type: "set_reading_list_access"; value: boolean }
   | { type: "set_personal_data_mutations"; value: boolean }
+  | { type: "set_ui_language"; value: UiLanguageSetting }
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
@@ -391,7 +402,9 @@ export type BackgroundToPopup =
       shortcutFeedback?: RecentShortcutFeedback;
     }
   | { type: "ok"; message?: string }
-  | { type: "error"; message: string };
+  // `code` is the Gateway error code when there is one; the popup translates known codes and
+  // shows `message` (English) otherwise.
+  | { type: "error"; message: string; code?: string };
 
 export type ApprovalToBackground =
   | { type: "get_approval_request"; approvalId: string }
@@ -410,7 +423,7 @@ export type ApprovalToBackground =
 export type BackgroundToApproval =
   | { type: "approval_request"; request: ApprovalRequest }
   | { type: "ok" }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 export type ConsoleEntry = {
   ts: number;

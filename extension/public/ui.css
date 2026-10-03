@@ -13,7 +13,9 @@
  */
 :root {
   color-scheme: light dark;
-  --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --abg-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Hiragino Sans", "Yu Gothic UI",
+    "Meiryo UI", sans-serif;
   --abg-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --abg-space-1: 4px;
   --abg-space-2: 8px;

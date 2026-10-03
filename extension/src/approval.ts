@@ -4,6 +4,9 @@ import {
   shouldFallBackToTabPicker,
 } from "./approvalLogic.js";
 import { browserAdapter } from "./browserAdapter.js";
+import { applyTranslations } from "./domI18n.js";
+import { formatText, type Language, readUiLanguage, t } from "./i18n.js";
+import { errorMessage } from "./popupLogic.js";
 import type { ApprovalDecision, ApprovalToBackground, BackgroundToApproval } from "./types.js";
 
 const browser = browserAdapter;
@@ -24,6 +27,9 @@ let currentTabId: number | null = null;
 // load-time probe flips this to "desktop" when tabCapture reports the all-tabs
 // invocation gap, so the picker call happens directly inside the click gesture.
 let captureMode: "tab" | "desktop" = "tab";
+// Display language, read once when the window opens. The intent is formatted from the request's
+// message in this language; the Gateway keeps its English copy of the same intent.
+let lang: Language = "en";
 
 async function send(msg: ApprovalToBackground): Promise<BackgroundToApproval> {
   return (await browser.runtime.sendMessage(msg)) as BackgroundToApproval;
@@ -42,7 +48,7 @@ async function decide(
   }
   allowBtn.disabled = true;
   denyBtn.disabled = true;
-  statusEl.textContent = "Submitting decision...";
+  statusEl.textContent = t(lang, "approval.submitting");
   try {
     await send({ type: "approval_decision", approvalId, decision, streamId, streamSource });
   } finally {
@@ -53,7 +59,7 @@ async function decide(
 function chooseTabViaPicker(): void {
   chrome.desktopCapture.chooseDesktopMedia(["tab", "audio"], (streamId) => {
     if (!streamId) {
-      showError("Tab selection was cancelled; recording did not start.");
+      showError(t(lang, "approval.tabPickerCancelled"));
       return;
     }
     decide("allow", streamId, "desktop").catch((e) =>
@@ -69,30 +75,33 @@ function getTabStreamId(targetTabId: number): Promise<string> {
   return new Promise((resolve, reject) => {
     chrome.tabCapture.getMediaStreamId({ targetTabId }, (streamId) => {
       const err = chrome.runtime.lastError;
-      if (err || !streamId) reject(new Error(err?.message ?? "could not start tab capture"));
-      else resolve(streamId);
+      if (err || !streamId) {
+        reject(new Error(err?.message ?? t(lang, "approval.tabCaptureFailed")));
+      } else resolve(streamId);
     });
   });
 }
 
 async function load(): Promise<void> {
   if (!approvalId) {
-    showError("approval request missing");
+    showError(t(lang, "approval.missingRequest"));
     return;
   }
 
   const response = await send({ type: "get_approval_request", approvalId });
   if (response.type !== "approval_request") {
-    showError(response.type === "error" ? response.message : "approval request unavailable");
+    showError(
+      response.type === "error" ? errorMessage(response, lang) : t(lang, "approval.unavailable"),
+    );
     return;
   }
 
   const { request } = response;
   currentMethod = request.method;
   currentTabId = request.tab.tabId;
-  intentEl.textContent = request.intent;
-  tabTitleEl.textContent = request.tab.title || "(untitled)";
-  tabUrlEl.textContent = request.tab.url || "(no URL)";
+  intentEl.textContent = request.intentText ? formatText(lang, request.intentText) : request.intent;
+  tabTitleEl.textContent = request.tab.title || t(lang, "common.untitled");
+  tabUrlEl.textContent = request.tab.url || t(lang, "approval.noUrl");
   const scriptBlock = scriptBlockPresentation(request.script);
   scriptBlockEl.textContent = scriptBlock.text;
   scriptBlockEl.hidden = scriptBlock.hidden;
@@ -100,7 +109,9 @@ async function load(): Promise<void> {
   denyBtn.disabled = false;
 
   const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
-  statusEl.textContent = "This request expires in 60 seconds.";
+  statusEl.textContent = t(lang, "approval.expires", {
+    seconds: Math.round(request.timeoutMs / 1000),
+  });
   if (currentMethod === "record_start" && currentTabId !== null) {
     // Probe the mint outside the gesture: in all-tabs mode no tab carries the
     // action-click activeTab grant, so tabCapture cannot target it and the
@@ -109,8 +120,7 @@ async function load(): Promise<void> {
       const message = e instanceof Error ? e.message : String(e);
       if (shouldFallBackToTabPicker(message) && chrome.desktopCapture) {
         captureMode = "desktop";
-        statusEl.textContent =
-          "Allow opens Chrome's tab picker: choose the tab and enable audio sharing to record it.";
+        statusEl.textContent = t(lang, "approval.tabPickerNote");
       }
     });
   }
@@ -122,7 +132,7 @@ async function load(): Promise<void> {
 }
 
 function showError(message: string): void {
-  intentEl.textContent = "Unable to load approval request.";
+  intentEl.textContent = t(lang, "approval.loadFailed");
   tabTitleEl.textContent = "";
   tabUrlEl.textContent = "";
   scriptBlockEl.textContent = "";
@@ -178,6 +188,14 @@ document.addEventListener("keydown", (event) => {
   denyBtn.click();
 });
 
-load().catch((e) => {
-  showError(e instanceof Error ? e.message : String(e));
-});
+readUiLanguage(browser.storage.local)
+  .then((resolved) => {
+    lang = resolved;
+    // Static text first: load() then fills the intent, which is also a translated element.
+    applyTranslations(document, lang);
+  })
+  .catch(() => {})
+  .then(() => load())
+  .catch((e) => {
+    showError(e instanceof Error ? e.message : String(e));
+  });

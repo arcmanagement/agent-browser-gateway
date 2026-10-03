@@ -233,7 +233,8 @@
         font-size: var(--abg-text-sm);
         font-weight: 500;
       }
-      .profile-row input {
+      .profile-row input,
+      .profile-row select {
         width: 100%;
         min-height: 30px;
         padding: 5px var(--abg-space-2);
@@ -246,7 +247,8 @@
       .profile-row input::placeholder {
         color: var(--abg-muted);
       }
-      .profile-row input:focus-visible {
+      .profile-row input:focus-visible,
+      .profile-row select:focus-visible {
         outline-offset: 0;
       }
       .input-with-action {
@@ -278,7 +280,9 @@
     <header class="header">
       <img src="icons/48.png" alt="" />
       <h1>Agent Browser Gateway</h1>
-      <span class="pill" id="gatewayStatus" role="status">Checking…</span>
+      <span class="pill" id="gatewayStatus" role="status" data-i18n="popup.gateway.checking"
+        >Checking…</span
+      >
     </header>
 
     <section class="card stack" aria-labelledby="tabInfo">
@@ -287,15 +291,28 @@
         <span class="pill" id="tabStatus" hidden></span>
       </div>
       <div class="notice" id="incognitoNotice" hidden>
-        <strong>Incognito access is off</strong>
-        <p>Chrome blocks ABG in incognito windows until this extension is allowed there.</p>
-        <button id="openExtensionsBtn" class="secondary">Open extension settings</button>
+        <strong data-i18n="popup.incognito.title">Incognito access is off</strong>
+        <p data-i18n="popup.incognito.body">
+          Chrome blocks ABG in incognito windows until this extension is allowed there.
+        </p>
+        <button id="openExtensionsBtn" class="secondary" data-i18n="popup.incognito.openSettings">
+          Open extension settings
+        </button>
       </div>
       <button id="actionBtn">…</button>
       <div class="annotation-actions">
-        <button id="annotationBtn" class="secondary" disabled>Annotate this tab</button>
-        <button id="clearAnnotationsBtn" class="secondary" disabled>Clear</button>
-        <button id="restoreAnnotationsBtn" class="secondary restore-annotations" hidden>
+        <button id="annotationBtn" class="secondary" disabled data-i18n="popup.annotation.start">
+          Annotate this tab
+        </button>
+        <button id="clearAnnotationsBtn" class="secondary" disabled data-i18n="popup.annotation.clear">
+          Clear
+        </button>
+        <button
+          id="restoreAnnotationsBtn"
+          class="secondary restore-annotations"
+          hidden
+          data-i18n="popup.annotation.restore"
+        >
           Restore saved annotations
         </button>
       </div>
@@ -306,51 +323,53 @@
     <section class="section shared-list" id="sharedList" aria-live="polite"></section>
 
     <section class="section">
-      <h2 class="label">Permissions</h2>
+      <h2 class="label" data-i18n="popup.permissions.heading">Permissions</h2>
       <div class="settings">
         <div class="setting">
           <label class="setting-row">
-            <span>Require approval for write operations</span>
+            <span data-i18n="popup.permissions.requireApproval">Require approval for write operations</span>
             <input type="checkbox" class="switch" role="switch" id="approvalToggle" />
           </label>
         </div>
         <div class="setting">
           <label class="setting-row">
-            <span>Enable approved JavaScript eval</span>
+            <span data-i18n="popup.permissions.eval">Enable approved JavaScript eval</span>
             <input type="checkbox" class="switch" role="switch" id="evalToggle" />
           </label>
         </div>
         <div class="setting">
           <label class="setting-row">
-            <span>Trusted automation / AutoMode</span>
+            <span data-i18n="popup.permissions.trustedAutomation">Trusted automation / AutoMode</span>
             <input type="checkbox" class="switch" role="switch" id="trustedAutomationToggle" />
           </label>
           <div class="setting-note" id="trustedAutomationNote"></div>
         </div>
         <div class="setting" id="allTabsSetting">
           <label class="setting-row">
-            <span>Sandbox all-tabs profile mode</span>
+            <span data-i18n="popup.permissions.allTabs">Sandbox all-tabs profile mode</span>
             <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
           </label>
           <div class="setting-note" id="allTabsNote"></div>
         </div>
         <div class="setting">
           <label class="setting-row">
-            <span>Bookmarks access</span>
+            <span data-i18n="popup.permissions.bookmarks">Bookmarks access</span>
             <input type="checkbox" class="switch" role="switch" id="bookmarksToggle" />
           </label>
           <div class="setting-note" id="bookmarksNote"></div>
         </div>
         <div class="setting">
           <label class="setting-row">
-            <span>Reading List access</span>
+            <span data-i18n="popup.permissions.readingList">Reading List access</span>
             <input type="checkbox" class="switch" role="switch" id="readingListToggle" />
           </label>
           <div class="setting-note" id="readingListNote"></div>
         </div>
         <div class="setting">
           <label class="setting-row">
-            <span>Allow bookmark &amp; Reading List changes</span>
+            <span data-i18n="popup.permissions.personalDataMutations"
+              >Allow bookmark &amp; Reading List changes</span
+            >
             <input type="checkbox" class="switch" role="switch" id="personalDataMutationsToggle" />
           </label>
           <div class="setting-note" id="personalDataMutationsNote"></div>
@@ -359,13 +378,37 @@
     </section>
 
     <details class="advanced">
-      <summary class="label">Advanced</summary>
+      <summary class="label" data-i18n="popup.advanced.heading">Advanced</summary>
       <div class="profile-row">
-        <label for="profileLabel">Profile label (shown in menubar)</label>
-        <input type="text" id="profileLabel" placeholder="e.g. personal, work, staging" />
+        <label for="uiLanguage" data-i18n="popup.advanced.language">Display language</label>
+        <select id="uiLanguage">
+          <option value="auto" data-i18n="popup.advanced.language.auto">
+            Auto (browser language)
+          </option>
+          <!-- Each language is named in itself so it can be found from any display language. -->
+          <option value="en" lang="en">English</option>
+          <option value="ja" lang="ja">日本語</option>
+        </select>
+        <div class="field-note" data-i18n="popup.advanced.language.note">
+          Applies to this popup now. Approval windows, the annotation toolbar, and shortcut
+          messages use it the next time they appear.
+        </div>
       </div>
       <div class="profile-row">
-        <label for="gatewayWebSocketUrl">Gateway WebSocket endpoint</label>
+        <label for="profileLabel" data-i18n="popup.advanced.profileLabel">
+          Profile label (shown in menubar)
+        </label>
+        <input
+          type="text"
+          id="profileLabel"
+          placeholder="e.g. personal, work, staging"
+          data-i18n-placeholder="popup.advanced.profileLabel.placeholder"
+        />
+      </div>
+      <div class="profile-row">
+        <label for="gatewayWebSocketUrl" data-i18n="popup.advanced.gatewayUrl">
+          Gateway WebSocket endpoint
+        </label>
         <div class="input-with-action">
           <input
             type="text"
@@ -374,9 +417,16 @@
             autocomplete="off"
             spellcheck="false"
           />
-          <button id="applyGatewayUrlBtn" class="secondary" type="button">Apply</button>
+          <button
+            id="applyGatewayUrlBtn"
+            class="secondary"
+            type="button"
+            data-i18n="popup.advanced.gatewayUrl.apply"
+          >
+            Apply
+          </button>
         </div>
-        <div class="field-note">
+        <div class="field-note" data-i18n="popup.advanced.gatewayUrl.note">
           Developer and self-hosted diagnostics only. Applying reconnects immediately.
         </div>
       </div>

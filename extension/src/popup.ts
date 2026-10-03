@@ -1,7 +1,17 @@
 import { browserAdapter } from "./browserAdapter.js";
+import { applyTranslations } from "./domI18n.js";
+import {
+  browserUiLocale,
+  isUiLanguageSetting,
+  type Language,
+  readUiLanguage,
+  resolveUiLanguage,
+  t,
+} from "./i18n.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  errorText,
   gatewayStatusPill,
   recentShortcutMessage,
   restoreAnnotationsLabel,
@@ -51,8 +61,22 @@ const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivE
 const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLButtonElement;
 const shortcutResultEl = document.getElementById("shortcutResult") as HTMLDivElement;
 const shortcutHintEl = document.getElementById("shortcutHint") as HTMLDivElement;
+const uiLanguageEl = document.getElementById("uiLanguage") as HTMLSelectElement;
 
 let profileLabelTimer: number | null = null;
+// Display language for this popup. Set from storage before the first render, then from each
+// state refresh; changing the setting re-renders the popup immediately.
+let lang: Language = "en";
+
+function setLanguage(next: Language): void {
+  if (next === lang && document.documentElement.lang === next) return;
+  lang = next;
+  applyTranslations(document, lang);
+}
+
+function showError(response: { message: string; code?: string }): void {
+  statusEl.textContent = errorText(response, lang);
+}
 
 function renderPill(el: HTMLElement, pill: StatusPill): void {
   el.textContent = pill.label;
@@ -94,7 +118,7 @@ type PopupState = Extract<BackgroundToPopup, { type: "state" }>;
 
 // Restoring is explicit: the popup offers it, it never happens on page load.
 function renderRestoreButton(state: PopupState, tabId: number): void {
-  const label = state.permitted ? restoreAnnotationsLabel(state.annotationState) : null;
+  const label = state.permitted ? restoreAnnotationsLabel(state.annotationState, lang) : null;
   restoreAnnotationsBtn.hidden = label === null;
   if (label === null) return;
   restoreAnnotationsBtn.textContent = label;
@@ -105,7 +129,7 @@ function renderRestoreButton(state: PopupState, tabId: number): void {
     await refresh();
     const message =
       response.type === "error"
-        ? `error: ${response.message}`
+        ? errorText(response, lang)
         : response.type === "ok"
           ? response.message
           : undefined;
@@ -120,17 +144,38 @@ function renderRestoreButton(state: PopupState, tabId: number): void {
 async function refresh(): Promise<void> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
-    tabInfoEl.textContent = "(no active tab)";
+    tabInfoEl.textContent = t(lang, "popup.tab.none");
     actionBtn.disabled = true;
     return;
   }
   const tabId = tab.id;
-  tabInfoEl.textContent = tab.title ?? tab.url ?? "(untitled)";
   const state = await send({ type: "get_state", tabId });
+  if (state.type === "state") {
+    setLanguage(resolveUiLanguage(state.settings.uiLanguage, browserUiLocale()));
+  }
+  tabInfoEl.textContent = tab.title ?? tab.url ?? t(lang, "common.untitled");
   if (state.type !== "state") {
-    statusEl.textContent = state.type === "error" ? state.message : "unknown state";
+    statusEl.textContent =
+      state.type === "error" ? errorText(state, lang) : t(lang, "popup.tab.unknownState");
     return;
   }
+
+  uiLanguageEl.value = state.settings.uiLanguage;
+  uiLanguageEl.disabled = false;
+  uiLanguageEl.onchange = async () => {
+    const value = uiLanguageEl.value;
+    if (!isUiLanguageSetting(value)) return;
+    uiLanguageEl.disabled = true;
+    const response = await send({ type: "set_ui_language", value });
+    if (response.type === "error") {
+      uiLanguageEl.value = state.settings.uiLanguage;
+      showError(response);
+      uiLanguageEl.disabled = false;
+      return;
+    }
+    // Takes effect in the popup right away; refresh() re-applies the static text too.
+    await refresh();
+  };
 
   approvalToggleEl.checked = state.settings.operationsRequireApproval;
   approvalToggleEl.disabled = false;
@@ -143,7 +188,7 @@ async function refresh(): Promise<void> {
     });
     if (response.type === "error") {
       approvalToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
     }
     approvalToggleEl.disabled = false;
   };
@@ -159,14 +204,14 @@ async function refresh(): Promise<void> {
     });
     if (response.type === "error") {
       evalToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
     }
     evalToggleEl.disabled = false;
   };
 
   trustedAutomationToggleEl.checked = state.settings.trustedAutomationEnabled;
   trustedAutomationToggleEl.disabled = false;
-  trustedAutomationNoteEl.textContent = trustedAutomationNote(state.settings);
+  trustedAutomationNoteEl.textContent = trustedAutomationNote(state.settings, lang);
   trustedAutomationToggleEl.onchange = async () => {
     const nextValue = trustedAutomationToggleEl.checked;
     trustedAutomationToggleEl.disabled = true;
@@ -176,7 +221,7 @@ async function refresh(): Promise<void> {
     });
     if (response.type === "error") {
       trustedAutomationToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
     }
     trustedAutomationToggleEl.disabled = false;
     await refresh();
@@ -184,7 +229,7 @@ async function refresh(): Promise<void> {
 
   allTabsToggleEl.checked = state.allTabsAccess.active;
   allTabsToggleEl.disabled = false;
-  allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess);
+  allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
   allTabsSettingEl.classList.toggle("warning-active", state.allTabsAccess.active);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
@@ -193,7 +238,7 @@ async function refresh(): Promise<void> {
       const granted = await requestAllTabsPermission();
       if (!granted) {
         allTabsToggleEl.checked = false;
-        allTabsNoteEl.textContent = "All-tabs permission was not granted.";
+        allTabsNoteEl.textContent = t(lang, "popup.permissions.allTabs.notGranted");
         allTabsToggleEl.disabled = false;
         return;
       }
@@ -204,7 +249,7 @@ async function refresh(): Promise<void> {
     });
     if (response.type === "error") {
       allTabsToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
       if (nextValue) await removeAllTabsPermission();
       allTabsToggleEl.disabled = false;
       return;
@@ -218,8 +263,8 @@ async function refresh(): Promise<void> {
   bookmarksToggleEl.checked = state.personalDataAccess.bookmarks.active;
   bookmarksToggleEl.disabled = !state.personalDataAccess.bookmarks.supported;
   bookmarksNoteEl.textContent = state.personalDataAccess.bookmarks.supported
-    ? "Separate browser-owned personal data permission. URLs are returned only by bookmark commands and are not shared-tab state."
-    : "This browser target does not expose the bookmarks extension API.";
+    ? t(lang, "popup.permissions.bookmarks.note")
+    : t(lang, "popup.permissions.bookmarks.unsupported");
   bookmarksToggleEl.onchange = async () => {
     const nextValue = bookmarksToggleEl.checked;
     bookmarksToggleEl.disabled = true;
@@ -227,7 +272,7 @@ async function refresh(): Promise<void> {
       const granted = await requestApiPermission("bookmarks");
       if (!granted) {
         bookmarksToggleEl.checked = false;
-        bookmarksNoteEl.textContent = "Bookmarks permission was not granted.";
+        bookmarksNoteEl.textContent = t(lang, "popup.permissions.bookmarks.notGranted");
         bookmarksToggleEl.disabled = false;
         return;
       }
@@ -235,7 +280,7 @@ async function refresh(): Promise<void> {
     const response = await send({ type: "set_bookmarks_access", value: nextValue });
     if (response.type === "error") {
       bookmarksToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
       if (nextValue) await removeApiPermission("bookmarks");
       bookmarksToggleEl.disabled = false;
       return;
@@ -249,8 +294,8 @@ async function refresh(): Promise<void> {
   readingListToggleEl.checked = state.personalDataAccess.readingList.active;
   readingListToggleEl.disabled = !state.personalDataAccess.readingList.supported;
   readingListNoteEl.textContent = state.personalDataAccess.readingList.supported
-    ? "Separate browser-owned personal data permission for saved Reading List entries."
-    : "This browser target does not expose chrome.readingList. Chrome documents it for Chrome 120+.";
+    ? t(lang, "popup.permissions.readingList.note")
+    : t(lang, "popup.permissions.readingList.unsupported");
   readingListToggleEl.onchange = async () => {
     const nextValue = readingListToggleEl.checked;
     readingListToggleEl.disabled = true;
@@ -258,7 +303,7 @@ async function refresh(): Promise<void> {
       const granted = await requestApiPermission("readingList");
       if (!granted) {
         readingListToggleEl.checked = false;
-        readingListNoteEl.textContent = "Reading List permission was not granted.";
+        readingListNoteEl.textContent = t(lang, "popup.permissions.readingList.notGranted");
         readingListToggleEl.disabled = false;
         return;
       }
@@ -266,7 +311,7 @@ async function refresh(): Promise<void> {
     const response = await send({ type: "set_reading_list_access", value: nextValue });
     if (response.type === "error") {
       readingListToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
       if (nextValue) await removeApiPermission("readingList");
       readingListToggleEl.disabled = false;
       return;
@@ -278,15 +323,14 @@ async function refresh(): Promise<void> {
   };
 
   personalDataMutationsToggleEl.checked = state.settings.personalDataMutationsEnabled;
-  personalDataMutationsNoteEl.textContent =
-    "Allows agent-requested bookmark and Reading List changes. Every change still opens a per-operation approval window; deletes use stronger confirmation copy.";
+  personalDataMutationsNoteEl.textContent = t(lang, "popup.permissions.personalDataMutations.note");
   personalDataMutationsToggleEl.onchange = async () => {
     const nextValue = personalDataMutationsToggleEl.checked;
     personalDataMutationsToggleEl.disabled = true;
     const response = await send({ type: "set_personal_data_mutations", value: nextValue });
     if (response.type === "error") {
       personalDataMutationsToggleEl.checked = !nextValue;
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
     }
     personalDataMutationsToggleEl.disabled = false;
     await refresh();
@@ -302,7 +346,7 @@ async function refresh(): Promise<void> {
       profileLabelTimer = null;
       const response = await send({ type: "set_profile_label", value: profileLabelEl.value });
       if (response.type === "error") {
-        statusEl.textContent = `error: ${response.message}`;
+        showError(response);
       }
     }, 350) as unknown as number;
   };
@@ -317,12 +361,12 @@ async function refresh(): Promise<void> {
       value: gatewayWebSocketUrlEl.value,
     });
     if (response.type === "error") {
-      statusEl.textContent = `error: ${response.message}`;
+      showError(response);
       applyGatewayUrlBtn.disabled = false;
       return;
     }
     gatewayWebSocketUrlEl.blur();
-    statusEl.textContent = "Reconnecting to Gateway…";
+    statusEl.textContent = t(lang, "popup.advanced.gatewayUrl.reconnecting");
     await refresh();
   };
   applyGatewayUrlBtn.disabled = false;
@@ -342,7 +386,7 @@ async function refresh(): Promise<void> {
   };
 
   if (allTabsActive) {
-    actionBtn.textContent = "Disable all-tabs access";
+    actionBtn.textContent = t(lang, "popup.action.disableAllTabs");
     actionBtn.className = "danger";
     actionBtn.disabled = false;
     actionBtn.onclick = async () => {
@@ -350,7 +394,7 @@ async function refresh(): Promise<void> {
       allTabsToggleEl.checked = false;
       const response = await send({ type: "set_all_tabs_access", value: false });
       if (response.type === "error") {
-        statusEl.textContent = `error: ${response.message}`;
+        showError(response);
         actionBtn.disabled = false;
         return;
       }
@@ -358,7 +402,7 @@ async function refresh(): Promise<void> {
       await refresh();
     };
     annotationBtn.disabled = !state.permitted;
-    annotationBtn.textContent = annotationButtonLabel(state.annotationState);
+    annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
     annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
     annotationBtn.onclick = async () => {
       if (!state.permitted) return;
@@ -369,7 +413,7 @@ async function refresh(): Promise<void> {
         action: state.annotationState.enabled ? "stop" : "start",
       });
       if (response.type === "error") {
-        statusEl.textContent = `error: ${response.message}`;
+        showError(response);
         annotationBtn.disabled = false;
         return;
       }
@@ -387,19 +431,19 @@ async function refresh(): Promise<void> {
     };
     renderRestoreButton(state, tabId);
   } else if (incognitoBlocked) {
-    actionBtn.textContent = "Enable incognito access first";
+    actionBtn.textContent = t(lang, "popup.action.enableIncognito");
     actionBtn.className = "secondary";
     actionBtn.disabled = false;
     actionBtn.onclick = async () => {
       await openExtensionSettings();
     };
     annotationBtn.disabled = true;
-    annotationBtn.textContent = "Annotate this tab";
+    annotationBtn.textContent = t(lang, "popup.annotation.start");
     annotationBtn.className = "secondary";
     clearAnnotationsBtn.disabled = true;
     restoreAnnotationsBtn.hidden = true;
   } else if (state.permitted) {
-    actionBtn.textContent = "Revoke this tab";
+    actionBtn.textContent = t(lang, "popup.action.revoke");
     actionBtn.className = "danger";
     actionBtn.disabled = false;
     actionBtn.onclick = async () => {
@@ -407,7 +451,7 @@ async function refresh(): Promise<void> {
       await refresh();
     };
     annotationBtn.disabled = false;
-    annotationBtn.textContent = annotationButtonLabel(state.annotationState);
+    annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
     annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
     annotationBtn.onclick = async () => {
       annotationBtn.disabled = true;
@@ -417,7 +461,7 @@ async function refresh(): Promise<void> {
         action: state.annotationState.enabled ? "stop" : "start",
       });
       if (response.type === "error") {
-        statusEl.textContent = `error: ${response.message}`;
+        showError(response);
         annotationBtn.disabled = false;
         return;
       }
@@ -433,7 +477,7 @@ async function refresh(): Promise<void> {
     };
     renderRestoreButton(state, tabId);
   } else {
-    actionBtn.textContent = "Share this tab with agent";
+    actionBtn.textContent = t(lang, "popup.action.share");
     actionBtn.className = "primary";
     actionBtn.disabled = false;
     actionBtn.onclick = async () => {
@@ -441,40 +485,40 @@ async function refresh(): Promise<void> {
       await refresh();
     };
     annotationBtn.disabled = true;
-    annotationBtn.textContent = "Annotate this tab";
+    annotationBtn.textContent = t(lang, "popup.annotation.start");
     annotationBtn.className = "secondary";
     clearAnnotationsBtn.disabled = true;
     restoreAnnotationsBtn.hidden = true;
   }
 
-  const shortcutMessage = recentShortcutMessage(state.shortcutFeedback, Date.now());
+  const shortcutMessage = recentShortcutMessage(state.shortcutFeedback, Date.now(), lang);
   shortcutResultEl.hidden = !shortcutMessage;
   shortcutResultEl.textContent = shortcutMessage ?? "";
   shortcutResultEl.className = `shortcut-result ${state.shortcutFeedback?.level ?? ""}`;
   const commands = await browser.commands.getAll().catch(() => []);
-  shortcutHintEl.textContent = shortcutHint(commands, browser.kind);
+  shortcutHintEl.textContent = shortcutHint(commands, browser.kind, lang);
 
-  renderPill(tabStatusEl, tabAccessStatusPill(state));
+  renderPill(tabStatusEl, tabAccessStatusPill(state, lang));
   statusEl.replaceChildren();
-  renderPill(gatewayStatusEl, gatewayStatusPill(state.wsConnected));
+  renderPill(gatewayStatusEl, gatewayStatusPill(state.wsConnected, lang));
 
   if (state.sharedTabs.length > 0) {
     const heading = document.createElement("h2");
     heading.className = "label";
-    heading.textContent = sharedTabsHeading(state.sharedTabs.length);
+    heading.textContent = sharedTabsHeading(state.sharedTabs.length, lang);
     const list = document.createElement("ul");
-    for (const t of state.sharedTabs) {
+    for (const sharedTab of state.sharedTabs) {
       const item = document.createElement("li");
       item.className = "shared-item";
-      item.title = sharedTabSummary(t);
+      item.title = sharedTabSummary(sharedTab);
       const idEl = document.createElement("span");
       idEl.className = "tab-id";
-      idEl.textContent = String(t.tabId);
+      idEl.textContent = String(sharedTab.tabId);
       const titleEl = document.createElement("span");
       titleEl.className = "tab-title";
-      titleEl.textContent = t.title || t.url;
+      titleEl.textContent = sharedTab.title || sharedTab.url;
       item.append(idEl, titleEl);
-      const accessLabel = sharedTabAccessLabel(t);
+      const accessLabel = sharedTabAccessLabel(sharedTab, lang);
       if (accessLabel) {
         const modeEl = document.createElement("span");
         modeEl.className = "pill warning";
@@ -489,6 +533,14 @@ async function refresh(): Promise<void> {
   }
 }
 
-refresh().catch((e) => {
-  statusEl.textContent = `error: ${e}`;
-});
+readUiLanguage(browser.storage.local)
+  .then((initial) => {
+    // Translate the static text before the first state round trip so it does not flash English.
+    lang = initial;
+    applyTranslations(document, lang);
+  })
+  .catch(() => {})
+  .then(() => refresh())
+  .catch((e) => {
+    statusEl.textContent = t(lang, "common.errorPrefix", { message: String(e) });
+  });
