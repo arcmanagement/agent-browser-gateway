@@ -9,7 +9,7 @@ surface before changing feature code.
 | Namespace | Used for | Porting notes |
 |---|---|---|
 | `runtime` | Extension ID, internal messages, lifecycle listeners, extension URLs | Firefox/Edge/Brave support similar WebExtension APIs; Safari needs URL/message checks. |
-| `storage.local` / `storage.session` | Persistent settings and restart-cleared permitted-tab state | Session storage availability is the main portability check. |
+| `storage.local` / `storage.session` | Persistent settings, restart-cleared permitted-tab state, and per-tab saved annotations for restore after reload | Session storage availability is the main portability check. Saved annotations rely on the default trusted-contexts-only access level, so content scripts and pages cannot read them. |
 | `tabs` | Active-tab discovery, share/revoke lifecycle, navigation, sandbox tab create/close | Tab shape and URL permission behavior differ by browser. |
 | `permissions` / `extension` | Optional all-tabs access and incognito checks | Safari optional host permission behavior needs separate verification. |
 | `action` / `alarms` / `windows` | Badge state, service-worker heartbeat, approval window lifecycle | Mostly WebExtension-compatible, but service-worker lifetime differs. |

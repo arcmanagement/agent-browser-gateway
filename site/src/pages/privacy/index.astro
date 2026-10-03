@@ -141,7 +141,7 @@
                     <td>Screenshots and annotations</td>
                     <td>Full or partial tab screenshots, annotation comments, selected text, coordinates, selectors</td>
                     <td>Help the user and agent refer to visible page regions or selected text</td>
-                    <td>Processed locally; screenshots may be saved to a local path chosen by the CLI command</td>
+                    <td>Processed locally; screenshots may be saved to a local path chosen by the CLI command. Annotations are kept in Chrome session storage, which the page cannot read, so they can be restored after a reload. They are deleted when the tab closes, when annotations are cleared, or when the browser restarts</td>
                   </tr>
                   <tr>
                     <td>Console and network information</td>

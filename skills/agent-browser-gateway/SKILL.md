@@ -86,6 +86,8 @@ abg record stop                         # 録画を停止し、webm の path/byt
 abg record status                       # 現在の録画状態を確認
 abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
+abg annotate <tab|ref> --restore                 # 再読み込み前に保存された注釈を復元
+abg annotate <tab|ref> --saved                   # 保存済み注釈を復元せずに表示
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # DOM 注釈を明示追加
 abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
 abg console <tab|ref>                   # console ログ
@@ -498,6 +500,10 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
   - Area 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。Text 由来の注釈は必ず `kind: "text"` として扱い、選択文字列を純粋なテキストデータとして読む
   - `abg annotate <ref> --start` で overlay を出す。ユーザーは Area でドラッグ範囲作成、Text で複数 DOM をまたぐページ本文の選択範囲作成、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。Text 注釈は四角枠ではなくテキスト選択ハイライトとして表示する。DOM / Text 注釈は selector 追従を壊さないため移動/resize できない
   - popup の `Annotate this tab` は overlay 開始後に閉じる。Done 後も注釈は残るので、確認は `abg annotate <ref>` で行う
+  - ページを再読み込みすると overlay は消えるが、注釈は tab ごとに保存される。`abg annotate <ref>` の結果が `count: 0` で `saved` を含むときは、`nextCommand` の `abg annotate <ref> --restore` を実行してから注釈を読む。自動復元はしない
+  - `--restore` は対象を一意に特定できた注釈だけを描画する。`restore.unrestored` に入った注釈は DOM が変わって位置を特定できなかったもので、ページ上には描画されていない。`comment` と `reason` をユーザーに伝え、推測した位置の注釈として扱わない。`restoredBy: "coordinates"` は座標だけで戻した領域注釈
+  - URL (origin + path + query) が保存時と違うと `annotation_url_mismatch` で失敗し何も描画しない。内容だけ確認したいときは `abg annotate <ref> --saved`
+  - 保存データは共有権限とは別。revoke 後も残るが、復元には tab の再共有が必要で、復元しても共有は増えない。tab を閉じる、`--clear`、ブラウザ再起動で消える
   - DOM 注釈を深掘りするときは `selector` を使って `abg read <ref> --selector "<selector>"`。スクショ注釈の視覚確認が必要なときだけ `viewportRect` を使って `abg screenshot <ref> --x ... --y ... --width ... --height ...` を保存する
 - **canvas ベースのアプリ (Google Sheets, Figma, Google Docs 等) の操作**:
   - まず `abg describe <tab> --grid 10x10` や `abg screenshot <tab>` で座標を把握する
