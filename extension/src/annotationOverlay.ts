@@ -139,11 +139,43 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     lastSelectionSignature: string | null;
     pageSessionId: string;
     persist: boolean;
+    // Optional so a state object created by an older overlay build stays valid.
+    clearArmedUntil?: number;
+    toastTimer?: number | null;
   };
   type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
   const stateWindow = window as WindowWithABGAnnotation;
   const requestedAction = requestedCommand.action;
+  // User-facing overlay strings live here so they can be localized in one place. This
+  // function is serialized into the page, so the table cannot be imported.
+  const ui = {
+    annotating: "Annotating",
+    modeGroup: "Annotation target",
+    modeArea: "Area",
+    modeText: "Text",
+    clear: "Clear",
+    clearConfirm: (count: number) => `Clear ${count}?`,
+    clearConfirmTitle: "Click again to remove every annotation on this page",
+    done: "Done",
+    doneTitle: "Finish annotating (Esc)",
+    count: (count: number) => `${count} annotation${count === 1 ? "" : "s"}`,
+    hintArea: "Drag or click to mark",
+    hintText: "Select text to mark",
+    hintSelected: "Delete to remove",
+    hintFinish: "Esc to finish",
+    annotationLabel: (displayNumber: number) => `Annotation ${displayNumber}`,
+    editorTitle: (displayNumber: number) => `Annotation ${displayNumber}`,
+    editorPlaceholder: "Add a comment for the agent…",
+    editorSave: "Save",
+    editorDelete: "Delete",
+    editorKeysPrimary: "Enter to save · Esc to cancel",
+    editorKeysNewline: "Shift+Enter for a new line",
+    doneToast: (count: number) =>
+      count === 0
+        ? "Annotation mode is off"
+        : `${count} annotation${count === 1 ? "" : "s"} ready for the agent`,
+  };
 
   const stableSelectorAttrs = [
     "data-testid",
@@ -989,15 +1021,83 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     state.editor.hidden = true;
     state.editor.replaceChildren();
   };
-  const isTextEditingTarget = (target: EventTarget | null): boolean => {
+  // Saves whatever is typed in an open editor instead of discarding it, for actions
+  // that leave the editor implicitly (Done, starting another mark, dragging a box).
+  const commitEditor = (state: AnnotationState) => {
+    const form = state.editor.hidden ? null : state.editor.querySelector("form");
+    if (form) form.requestSubmit();
+    else closeEditor(state);
+  };
+  const showToast = (state: AnnotationState, message: string) => {
+    let toast = state.shadow.querySelector<HTMLDivElement>(".abg-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "abg-toast";
+      toast.setAttribute("role", "status");
+      state.shadow.append(toast);
+    }
+    if (state.toastTimer) clearTimeout(state.toastTimer);
+    toast.textContent = message;
+    toast.classList.remove("abg-fading");
+    toast.hidden = false;
+    const shownToast = toast;
+    state.toastTimer = window.setTimeout(() => {
+      shownToast.classList.add("abg-fading");
+      state.toastTimer = window.setTimeout(() => {
+        shownToast.hidden = true;
+        state.toastTimer = null;
+      }, 220);
+    }, 2400);
+  };
+  const hideToast = (state: AnnotationState) => {
+    if (state.toastTimer) clearTimeout(state.toastTimer);
+    state.toastTimer = null;
+    const toast = state.shadow.querySelector<HTMLDivElement>(".abg-toast");
+    if (toast) toast.hidden = true;
+  };
+  const isTextEditingTarget = (event: Event): boolean => {
+    // Events from the overlay's shadow root are retargeted to the host element, so
+    // inspect the original target to recognize typing in the comment editor.
+    const target = event.composedPath()[0] ?? event.target;
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
   };
   const updateToolbar = (state: AnnotationState) => {
     state.toolbar.hidden = !state.enabled;
+    const count = state.annotations.length;
     const countEl = state.toolbar.querySelector("[data-count]");
     if (countEl) {
-      countEl.textContent = `${state.annotations.length} annotation${state.annotations.length === 1 ? "" : "s"}`;
+      const countText = ui.count(count);
+      if (countEl.textContent !== countText) countEl.textContent = countText;
+    }
+    const hintEl = state.toolbar.querySelector<HTMLElement>("[data-hint]");
+    if (hintEl) {
+      const hasSelection =
+        state.selectedId !== null && state.annotations.some((item) => item.id === state.selectedId);
+      const primaryHint = hasSelection
+        ? ui.hintSelected
+        : state.mode === "text"
+          ? ui.hintText
+          : ui.hintArea;
+      if (hintEl.dataset.hint !== primaryHint) {
+        hintEl.dataset.hint = primaryHint;
+        const first = document.createElement("span");
+        const second = document.createElement("span");
+        first.textContent = primaryHint;
+        second.textContent = ui.hintFinish;
+        hintEl.replaceChildren(first, second);
+      }
+    }
+    const clearButton = state.toolbar.querySelector<HTMLButtonElement>(
+      'button[data-action="clear"]',
+    );
+    if (clearButton) {
+      const armed = count > 0 && (state.clearArmedUntil ?? 0) > Date.now();
+      const clearText = armed ? ui.clearConfirm(count) : ui.clear;
+      clearButton.disabled = count === 0;
+      if (clearButton.textContent !== clearText) clearButton.textContent = clearText;
+      clearButton.classList.toggle("abg-danger", armed);
+      clearButton.title = armed ? ui.clearConfirmTitle : "";
     }
     for (const modeButton of state.toolbar.querySelectorAll<HTMLButtonElement>(
       "button[data-mode]",
@@ -1010,18 +1110,46 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
   const editAnnotation = (state: AnnotationState, annotation: Annotation) => {
     closeEditor(state);
     const viewportRect = anchoredToViewportRect(annotation);
+    const displayNumber = state.annotations.indexOf(annotation) + 1;
     const form = document.createElement("form");
-    const input = document.createElement("input");
+    const header = document.createElement("div");
+    const headerBadge = document.createElement("span");
+    const headerTitle = document.createElement("span");
+    const headerKeys = document.createElement("span");
+    const input = document.createElement("textarea");
+    const footer = document.createElement("div");
+    const keys = document.createElement("span");
+    const actions = document.createElement("span");
     const save = document.createElement("button");
     const remove = document.createElement("button");
-    input.type = "text";
-    input.placeholder = "Add a comment...";
+    header.className = "abg-editor-header";
+    headerBadge.className = "abg-annotation-badge";
+    headerBadge.textContent = String(displayNumber);
+    headerTitle.textContent = ui.editorTitle(displayNumber);
+    headerKeys.className = "abg-editor-keys";
+    headerKeys.textContent = ui.editorKeysPrimary;
+    header.append(headerBadge, headerTitle, headerKeys);
+    input.rows = 1;
+    input.placeholder = ui.editorPlaceholder;
     input.value = annotation.comment;
+    input.setAttribute("aria-label", ui.editorTitle(displayNumber));
+    footer.className = "abg-editor-footer";
+    keys.className = "abg-editor-keys";
+    keys.textContent = ui.editorKeysNewline;
+    actions.className = "abg-editor-actions";
     save.type = "submit";
-    save.textContent = "Save";
+    save.className = "abg-primary";
+    save.textContent = ui.editorSave;
     remove.type = "button";
-    remove.textContent = "Delete";
-    form.append(input, save, remove);
+    remove.className = "abg-danger";
+    remove.textContent = ui.editorDelete;
+    actions.append(remove, save);
+    footer.append(keys, actions);
+    form.append(header, input, footer);
+    const autoGrow = () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.min(120, Math.max(34, input.scrollHeight + 2))}px`;
+    };
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       annotation.comment = input.value.trim();
@@ -1029,8 +1157,20 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       renderAnnotations(state);
       reportAnnotationsChanged(state);
     });
+    input.addEventListener("input", autoGrow);
+    input.addEventListener("keydown", (event) => {
+      // Enter saves; Shift+Enter inserts a newline; IME composition is left alone.
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      form.requestSubmit();
+    });
+    // Keep typing in the editor from reaching page keyboard shortcuts.
+    for (const type of ["keydown", "keyup", "keypress"]) {
+      form.addEventListener(type, (event) => event.stopPropagation());
+    }
     remove.addEventListener("click", () => {
       state.annotations = state.annotations.filter((item) => item.id !== annotation.id);
+      if (state.selectedId === annotation.id) state.selectedId = null;
       closeEditor(state);
       renderAnnotations(state);
       reportAnnotationsChanged(state);
@@ -1039,13 +1179,18 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     state.editor.hidden = false;
     const width = Math.min(360, Math.max(240, innerWidth - 24));
     const left = Math.min(Math.max(12, viewportRect.x), innerWidth - width - 12);
-    const top =
-      viewportRect.y + viewportRect.height + 12 < innerHeight - 56
-        ? viewportRect.y + viewportRect.height + 12
-        : Math.max(12, viewportRect.y - 56);
-    state.editor.style.left = `${Math.round(left)}px`;
-    state.editor.style.top = `${Math.round(top)}px`;
     state.editor.style.width = `${Math.round(width)}px`;
+    state.editor.style.left = `${Math.round(left)}px`;
+    autoGrow();
+    const editorHeight = state.editor.getBoundingClientRect().height || 120;
+    // Leave room for the marker's comment chip (below) or number badge (above).
+    const gapBelow = annotation.comment ? 36 : 10;
+    const below = viewportRect.y + viewportRect.height + gapBelow;
+    const top =
+      below + editorHeight < innerHeight - 12
+        ? below
+        : Math.max(12, viewportRect.y - editorHeight - 32);
+    state.editor.style.top = `${Math.round(top)}px`;
     input.focus();
     input.select();
   };
@@ -1071,7 +1216,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       if (annotation.kind === "text") {
         const group = document.createElement("div");
         const textRects = highlightRectsForTextAnnotation(annotation, rect) ?? [];
-        const anchorRect = textRects[textRects.length - 1] ?? rect;
+        const anchorRect = textRects[0] ?? rect;
         const badge = document.createElement("span");
         const comment = document.createElement("span");
         group.className = [
@@ -1087,14 +1232,14 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           piece.className = "abg-text-selection-piece";
           piece.dataset.id = String(annotation.id);
           piece.role = "button";
-          piece.setAttribute("aria-label", `Annotation ${index + 1}`);
+          piece.setAttribute("aria-label", ui.annotationLabel(index + 1));
           setRectStyle(piece, textRect);
           group.append(piece);
         }
         badge.className = "abg-text-selection-badge";
         badge.textContent = String(index + 1);
-        badge.style.left = `${Math.round(anchorRect.x + anchorRect.width - 10)}px`;
-        badge.style.top = `${Math.round(anchorRect.y + anchorRect.height - 10)}px`;
+        badge.style.left = `${Math.round(Math.max(2, anchorRect.x - 4))}px`;
+        badge.style.top = `${Math.round(Math.max(2, anchorRect.y - 26))}px`;
         comment.className = "abg-text-selection-comment";
         comment.textContent = annotation.comment;
         comment.hidden = annotation.comment.length === 0;
@@ -1122,10 +1267,14 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
         "abg-annotation-box",
         annotation.kind === "screenshot" ? "abg-annotation-screenshot" : "abg-annotation-dom",
         isSelected ? "abg-annotation-selected" : "",
+        // Badge sits above the box and the comment below it unless that leaves the viewport.
+        rect.y < 28 ? "abg-badge-inside" : "",
+        rect.y + rect.height > innerHeight - 30 ? "abg-comment-inside" : "",
       ]
         .filter(Boolean)
         .join(" ");
       box.dataset.id = String(annotation.id);
+      box.setAttribute("aria-label", ui.annotationLabel(index + 1));
       setRectStyle(box, rect);
       badge.className = "abg-annotation-badge";
       badge.textContent = String(index + 1);
@@ -1148,7 +1297,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           startRect: rect,
           didMove: false,
         };
-        closeEditor(state);
+        commitEditor(state);
         box.classList.add("abg-annotation-selected");
         event.preventDefault();
         event.stopPropagation();
@@ -1261,8 +1410,12 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     applyInteractionMode(state);
   };
   const setEnabled = (state: AnnotationState, enabled: boolean) => {
+    const wasEnabled = state.enabled;
+    if (!enabled && wasEnabled) commitEditor(state);
     state.enabled = enabled;
     if (!enabled) {
+      if (wasEnabled) showToast(state, ui.doneToast(state.annotations.length));
+      state.clearArmedUntil = 0;
       state.dragStart = null;
       state.activeDraft = null;
       state.selectedId = null;
@@ -1275,6 +1428,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       applyInteractionMode(state);
       return;
     }
+    hideToast(state);
     applyInteractionMode(state);
   };
   const createState = (): AnnotationState => {
@@ -1290,6 +1444,71 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           }
           [hidden] {
             display: none !important;
+          }
+          /*
+           * Design tokens mirror extension/public/ui.css. They are declared on the
+           * top-level overlay nodes (not :host) so page CSS that targets the host
+           * element cannot override them, and every inheritable text property is
+           * reset here so page fonts and colors never leak into the overlay.
+           */
+          .abg-capture,
+          .abg-layer,
+          .abg-toolbar,
+          .abg-draft,
+          .abg-editor,
+          .abg-toast {
+            --abg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+            --abg-mark: #1a73e8;
+            --abg-mark-fill: rgba(26, 115, 232, 0.14);
+            --abg-mark-fill-hover: rgba(26, 115, 232, 0.22);
+            --abg-mark-ring: rgba(26, 115, 232, 0.35);
+            --abg-chip-bg: rgba(10, 10, 10, 0.86);
+            --abg-surface: #ffffff;
+            --abg-surface-2: #f3f4f2;
+            --abg-text: #0a0a0a;
+            --abg-muted: #5c5f66;
+            --abg-line: #dedfdd;
+            --abg-line-strong: #c4c6c2;
+            --abg-inverse: #0a0a0a;
+            --abg-on-inverse: #ffffff;
+            --abg-danger: #d92d20;
+            --abg-danger-text: #b42318;
+            --abg-danger-bg: #fdecea;
+            --abg-danger-line: #f4b4ad;
+            --abg-focus: #1a73e8;
+            --abg-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
+            box-sizing: border-box;
+            color: var(--abg-text);
+            font: 400 12px/1.3 var(--abg-font);
+            font-style: normal;
+            letter-spacing: normal;
+            text-align: left;
+            text-decoration: none;
+            text-shadow: none;
+            text-transform: none;
+            visibility: visible;
+            white-space: normal;
+            word-spacing: normal;
+          }
+          @media (prefers-color-scheme: dark) {
+            .abg-toolbar,
+            .abg-editor,
+            .abg-toast {
+              color-scheme: dark;
+              --abg-surface: #1f1f22;
+              --abg-surface-2: #29292d;
+              --abg-text: #f2f2f3;
+              --abg-muted: #a6a8ae;
+              --abg-line: #333338;
+              --abg-line-strong: #4a4a51;
+              --abg-inverse: #f2f2f3;
+              --abg-on-inverse: #0a0a0a;
+              --abg-danger-text: #ff8b80;
+              --abg-danger-bg: rgba(255, 69, 58, 0.16);
+              --abg-danger-line: rgba(255, 69, 58, 0.45);
+              --abg-focus: #6ea8ff;
+              --abg-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+            }
           }
           .abg-capture,
           .abg-layer {
@@ -1307,6 +1526,16 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
             z-index: 2147483645;
             pointer-events: auto;
           }
+          button {
+            box-sizing: border-box;
+            margin: 0;
+            font: inherit;
+          }
+          button:focus-visible,
+          textarea:focus-visible {
+            outline: 2px solid var(--abg-focus);
+            outline-offset: 2px;
+          }
           .abg-toolbar {
             position: fixed;
             top: 12px;
@@ -1315,63 +1544,136 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 7px 8px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 8px;
-            background: rgba(37, 31, 52, 0.92);
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
-            color: #f7eaff;
-            font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            max-width: calc(100vw - 24px);
+            padding: 6px;
+            border: 1px solid var(--abg-line);
+            border-radius: 10px;
+            background: var(--abg-surface);
+            box-shadow: var(--abg-shadow);
             pointer-events: auto;
             user-select: none;
           }
           .abg-chip {
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            color: #ffd6f9;
-            font-weight: 650;
+            gap: 6px;
+            padding: 0 4px 0 6px;
+            font-weight: 600;
+            white-space: nowrap;
           }
           .abg-dot {
-            width: 7px;
-            height: 7px;
+            width: 8px;
+            height: 8px;
             border-radius: 999px;
-            background: #ff69d7;
-            box-shadow: 0 0 0 3px rgba(255, 105, 215, 0.18);
+            background: var(--abg-mark);
+            box-shadow: 0 0 0 3px var(--abg-mark-ring);
           }
-          .abg-count {
-            color: rgba(255, 255, 255, 0.72);
+          .abg-segmented {
+            display: inline-flex;
+            padding: 2px;
+            border: 1px solid var(--abg-line);
+            border-radius: 8px;
+            background: var(--abg-surface-2);
           }
           .abg-toolbar button,
           .abg-editor button {
             appearance: none;
-            border: 1px solid rgba(255, 255, 255, 0.18);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 28px;
+            padding: 4px 10px;
+            border: 1px solid var(--abg-line-strong);
             border-radius: 6px;
-            padding: 5px 8px;
-            background: rgba(255, 255, 255, 0.11);
-            color: inherit;
-            font: inherit;
+            background: var(--abg-surface);
+            color: var(--abg-text);
+            font-weight: 500;
+            white-space: nowrap;
             cursor: pointer;
           }
-          .abg-toolbar button:hover,
-          .abg-editor button:hover {
-            background: rgba(255, 255, 255, 0.18);
+          .abg-toolbar button:hover:not(:disabled),
+          .abg-editor button:hover:not(:disabled) {
+            background: var(--abg-surface-2);
           }
-          .abg-toolbar button.abg-active {
-            border-color: rgba(255, 255, 255, 0.42);
-            background: rgba(255, 255, 255, 0.24);
-            color: #ffffff;
+          .abg-toolbar button:disabled {
+            cursor: default;
+            opacity: 0.45;
+          }
+          .abg-segmented button {
+            min-height: 24px;
+            padding: 2px 10px;
+            border-color: transparent;
+            background: transparent;
+            color: var(--abg-muted);
+          }
+          .abg-segmented button:hover:not(:disabled) {
+            background: transparent;
+            color: var(--abg-text);
+          }
+          .abg-toolbar .abg-segmented button.abg-active {
+            border-color: var(--abg-line);
+            background: var(--abg-surface);
+            color: var(--abg-text);
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+          }
+          .abg-count {
+            min-width: 0;
+            color: var(--abg-muted);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+          }
+          .abg-hint {
+            display: inline-flex;
+            gap: 6px;
+            padding-left: 8px;
+            border-left: 1px solid var(--abg-line);
+            color: var(--abg-muted);
+            white-space: nowrap;
+          }
+          .abg-hint span + span::before {
+            content: "·";
+            margin-right: 6px;
+          }
+          .abg-toolbar button.abg-danger,
+          .abg-toolbar button.abg-danger:hover:not(:disabled) {
+            border-color: var(--abg-danger-line);
+            background: var(--abg-danger-bg);
+            color: var(--abg-danger-text);
+          }
+          .abg-toolbar button.abg-primary,
+          .abg-editor button.abg-primary {
+            border-color: transparent;
+            background: var(--abg-inverse);
+            color: var(--abg-on-inverse);
+            font-weight: 600;
+          }
+          .abg-toolbar button.abg-primary:hover,
+          .abg-editor button.abg-primary:hover {
+            background: var(--abg-inverse);
+            opacity: 0.86;
+          }
+          @media (max-width: 760px) {
+            .abg-hint {
+              display: none;
+            }
+          }
+          @media (max-width: 520px) {
+            .abg-count {
+              display: none;
+            }
           }
           .abg-draft,
           .abg-annotation-box {
             position: fixed;
             box-sizing: border-box;
-            border: 2px solid #1d9bf0;
-            background: rgba(29, 155, 240, 0.2);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+            border: 2px solid var(--abg-mark);
+            border-radius: 4px;
+            background: var(--abg-mark-fill);
           }
           .abg-draft {
             z-index: 2147483646;
+            border-style: dashed;
             pointer-events: none;
           }
           .abg-annotation-box {
@@ -1389,7 +1691,11 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
             cursor: pointer;
           }
           .abg-annotation-box:hover {
-            background: rgba(29, 155, 240, 0.26);
+            background: var(--abg-mark-fill-hover);
+          }
+          .abg-annotation-box:focus-visible {
+            outline: 2px solid var(--abg-mark);
+            outline-offset: 3px;
           }
           .abg-text-selection-group {
             position: fixed;
@@ -1404,55 +1710,87 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
             padding: 0;
             border: 0;
             border-radius: 2px;
-            background: rgba(88, 166, 255, 0.52);
-            box-shadow: inset 0 -1px 0 rgba(88, 166, 255, 0.68);
-            pointer-events: auto;
-            cursor: pointer;
-          }
-          .abg-text-selection-badge {
-            position: fixed;
-            z-index: 2147483647;
-            width: 22px;
-            min-width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            border: 2px solid #ffffff;
-            background: #1d9bf0;
-            color: #ffffff;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
-            pointer-events: auto;
-            cursor: pointer;
-          }
-          .abg-text-selection-comment {
-            position: fixed;
-            z-index: 2147483647;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            border-radius: 6px;
-            padding: 4px 6px;
-            background: rgba(5, 18, 31, 0.82);
-            color: #ffffff;
-            font: 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: rgba(26, 115, 232, 0.24);
+            box-shadow: inset 0 -2px 0 var(--abg-mark);
             pointer-events: auto;
             cursor: pointer;
           }
           .abg-text-selection-piece:hover,
           .abg-text-selection-selected .abg-text-selection-piece {
-            background: rgba(88, 166, 255, 0.64);
+            background: rgba(26, 115, 232, 0.34);
           }
           .abg-text-selection-selected .abg-text-selection-piece {
             box-shadow:
-              inset 0 0 0 1px rgba(255, 255, 255, 0.62),
-              inset 0 -1px 0 rgba(88, 166, 255, 0.78);
+              0 0 0 2px var(--abg-mark-ring),
+              inset 0 -2px 0 var(--abg-mark);
           }
           .abg-annotation-selected {
-            outline: 1px solid rgba(255, 255, 255, 0.75);
-            outline-offset: 2px;
+            box-shadow:
+              0 0 0 1px #ffffff,
+              0 0 0 4px var(--abg-mark-ring);
+          }
+          .abg-annotation-badge,
+          .abg-text-selection-badge {
+            box-sizing: border-box;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            border: 2px solid #ffffff;
+            border-radius: 999px;
+            background: var(--abg-mark);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font: 700 12px/1 var(--abg-font);
+            font-variant-numeric: tabular-nums;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+          }
+          .abg-annotation-badge {
+            position: absolute;
+            left: -4px;
+            top: -26px;
+          }
+          .abg-badge-inside .abg-annotation-badge {
+            top: 4px;
+            left: 4px;
+          }
+          .abg-text-selection-badge {
+            position: fixed;
+            z-index: 2147483647;
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-annotation-comment,
+          .abg-text-selection-comment {
+            box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: var(--abg-chip-bg);
+            color: #ffffff;
+            font: 500 12px/1.3 var(--abg-font);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+          }
+          .abg-annotation-comment {
+            position: absolute;
+            left: -2px;
+            top: calc(100% + 4px);
+            max-width: max(180px, calc(100% + 4px));
+          }
+          .abg-comment-inside .abg-annotation-comment {
+            top: auto;
+            bottom: 6px;
+            left: 6px;
+            max-width: calc(100% - 12px);
+          }
+          .abg-text-selection-comment {
+            position: fixed;
+            z-index: 2147483647;
+            pointer-events: auto;
+            cursor: pointer;
           }
           .abg-resize-handle {
             position: absolute;
@@ -1463,12 +1801,13 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           .abg-annotation-selected .abg-resize-handle::after {
             content: "";
             position: absolute;
-            width: 8px;
-            height: 8px;
-            border: 2px solid #ffffff;
-            border-radius: 999px;
-            background: #1d9bf0;
-            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--abg-mark);
+            border-radius: 3px;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
           }
           .abg-resize-n,
           .abg-resize-s {
@@ -1524,66 +1863,36 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
             cursor: nwse-resize;
           }
           .abg-resize-n::after {
-            top: 0;
-            left: calc(50% - 6px);
+            top: 1px;
+            left: calc(50% - 5px);
           }
           .abg-resize-s::after {
-            bottom: 0;
-            left: calc(50% - 6px);
+            bottom: 1px;
+            left: calc(50% - 5px);
           }
           .abg-resize-e::after {
-            top: calc(50% - 6px);
-            right: 0;
+            top: calc(50% - 5px);
+            right: 1px;
           }
           .abg-resize-w::after {
-            top: calc(50% - 6px);
-            left: 0;
+            top: calc(50% - 5px);
+            left: 1px;
           }
           .abg-resize-ne::after {
-            top: 2px;
-            right: 2px;
+            top: 3px;
+            right: 3px;
           }
           .abg-resize-se::after {
-            right: 2px;
-            bottom: 2px;
+            right: 3px;
+            bottom: 3px;
           }
           .abg-resize-sw::after {
-            left: 2px;
-            bottom: 2px;
+            left: 3px;
+            bottom: 3px;
           }
           .abg-resize-nw::after {
-            top: 2px;
-            left: 2px;
-          }
-          .abg-annotation-badge {
-            position: absolute;
-            right: -12px;
-            bottom: -12px;
-            min-width: 22px;
-            height: 22px;
-            border-radius: 999px;
-            border: 2px solid #ffffff;
-            background: #1d9bf0;
-            color: #ffffff;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
-          }
-          .abg-annotation-comment {
-            position: absolute;
-            left: 8px;
-            bottom: 8px;
-            max-width: calc(100% - 16px);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            border-radius: 6px;
-            padding: 4px 6px;
-            background: rgba(5, 18, 31, 0.82);
-            color: #ffffff;
-            font: 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            top: 3px;
+            left: 3px;
           }
           .abg-editor {
             position: fixed;
@@ -1592,30 +1901,108 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
           }
           .abg-editor form {
             display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid var(--abg-line);
+            border-radius: 10px;
+            background: var(--abg-surface);
+            box-shadow: var(--abg-shadow);
+          }
+          .abg-editor-header {
+            display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 8px;
-            border-radius: 8px;
-            background: rgba(43, 43, 54, 0.96);
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+            gap: 8px;
+            font-weight: 600;
           }
-          .abg-editor input {
-            min-width: 0;
-            flex: 1;
-            border: 0;
-            border-radius: 6px;
+          .abg-editor-header .abg-annotation-badge {
+            position: static;
+            border-color: transparent;
+            box-shadow: none;
+          }
+          .abg-editor textarea {
+            box-sizing: border-box;
+            display: block;
+            width: 100%;
+            min-height: 34px;
+            max-height: 120px;
+            margin: 0;
             padding: 7px 9px;
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            outline: none;
-            font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            border: 1px solid var(--abg-line-strong);
+            border-radius: 6px;
+            background: var(--abg-surface);
+            color: var(--abg-text);
+            font: 400 13px/1.4 var(--abg-font);
+            resize: none;
+            overflow-y: auto;
           }
-          .abg-editor input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
+          .abg-editor textarea:focus-visible {
+            outline-offset: 0;
+            border-color: var(--abg-focus);
           }
-          .abg-editor button {
-            color: #ffffff;
-            white-space: nowrap;
+          .abg-editor textarea::placeholder {
+            color: var(--abg-muted);
+          }
+          .abg-editor-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+          }
+          .abg-editor-header .abg-editor-keys {
+            margin-left: auto;
+            font-weight: 400;
+          }
+          .abg-editor-keys {
+            min-width: 0;
+            color: var(--abg-muted);
+            font-size: 11px;
+          }
+          .abg-editor-actions {
+            display: inline-flex;
+            flex: 0 0 auto;
+            gap: 6px;
+          }
+          .abg-editor button.abg-danger {
+            border-color: var(--abg-danger-line);
+            background: transparent;
+            color: var(--abg-danger-text);
+          }
+          .abg-editor button.abg-danger:hover {
+            background: var(--abg-danger-bg);
+          }
+          .abg-toast {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 2147483647;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 1px solid var(--abg-line);
+            border-radius: 10px;
+            background: var(--abg-surface);
+            box-shadow: var(--abg-shadow);
+            font-weight: 500;
+            pointer-events: none;
+            transition: opacity 200ms ease;
+          }
+          .abg-toast::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: #34c759;
+          }
+          .abg-toast.abg-fading {
+            opacity: 0;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .abg-toast {
+              transition: none;
+            }
           }
         `;
     const capture = document.createElement("div");
@@ -1635,14 +2022,40 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     capture.style.pointerEvents = "none";
     layer.style.pointerEvents = "none";
     host.style.pointerEvents = "none";
-    toolbar.innerHTML = `
-          <span class="abg-chip"><span class="abg-dot"></span>Annotating</span>
-          <button type="button" data-action="mode-area" data-mode="area" aria-pressed="true">Area</button>
-          <button type="button" data-action="mode-text" data-mode="text" aria-pressed="false">Text</button>
-          <span class="abg-count" data-count>0 annotations</span>
-          <button type="button" data-action="clear">Clear</button>
-          <button type="button" data-action="done">Done</button>
-        `;
+    const toolbarNode = (tag: string, className?: string, text?: string): HTMLElement => {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const toolbarButton = (action: string, text: string, className?: string) => {
+      const button = toolbarNode("button", className, text) as HTMLButtonElement;
+      button.type = "button";
+      button.dataset.action = action;
+      return button;
+    };
+    const chip = toolbarNode("span", "abg-chip");
+    chip.append(toolbarNode("span", "abg-dot"), ui.annotating);
+    const modeGroup = toolbarNode("span", "abg-segmented");
+    modeGroup.setAttribute("role", "group");
+    modeGroup.setAttribute("aria-label", ui.modeGroup);
+    const areaButton = toolbarButton("mode-area", ui.modeArea);
+    areaButton.dataset.mode = "area";
+    areaButton.setAttribute("aria-pressed", "true");
+    const textButton = toolbarButton("mode-text", ui.modeText);
+    textButton.dataset.mode = "text";
+    textButton.setAttribute("aria-pressed", "false");
+    modeGroup.append(areaButton, textButton);
+    const countEl = toolbarNode("span", "abg-count", ui.count(0));
+    countEl.dataset.count = "";
+    countEl.setAttribute("aria-live", "polite");
+    const hintEl = toolbarNode("span", "abg-hint");
+    hintEl.dataset.hint = "";
+    const doneButton = toolbarButton("done", ui.done, "abg-primary");
+    doneButton.title = ui.doneTitle;
+    toolbar.setAttribute("role", "toolbar");
+    toolbar.setAttribute("aria-label", ui.annotating);
+    toolbar.append(chip, modeGroup, countEl, hintEl, toolbarButton("clear", ui.clear), doneButton);
     shadow.append(style, capture, layer, draft, editor, toolbar);
     document.documentElement.append(host);
 
@@ -1670,7 +2083,7 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     };
     capture.addEventListener("mousedown", (event) => {
       if (!state.enabled || event.button !== 0) return;
-      closeEditor(state);
+      commitEditor(state);
       state.dragStart = { x: event.clientX, y: event.clientY };
       state.activeDraft = { x: event.clientX, y: event.clientY, width: 0, height: 0 };
       setRectStyle(draft, state.activeDraft);
@@ -1726,7 +2139,12 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
       if (action === "done") setEnabled(state, false);
       if (action === "mode-area") setMode(state, "area");
       if (action === "mode-text") setMode(state, "text");
-      if (action === "clear") {
+      if (action === "clear" && (state.clearArmedUntil ?? 0) <= Date.now()) {
+        // First click arms the destructive action; the 150ms render tick disarms it.
+        state.clearArmedUntil = Date.now() + 3000;
+        updateToolbar(state);
+      } else if (action === "clear") {
+        state.clearArmedUntil = 0;
         state.annotations = [];
         state.nextId = 1;
         state.selectedId = null;
@@ -1800,11 +2218,19 @@ function runAnnotationCommand(requestedCommand: AnnotationCommand): AnnotationMo
     addEventListener(
       "keydown",
       (event) => {
-        if (event.key === "Escape" && state.enabled) setEnabled(state, false);
+        if (event.key === "Escape" && state.enabled) {
+          // Escape backs out one level: cancel an open comment first, then finish.
+          if (!state.editor.hidden) closeEditor(state);
+          else setEnabled(state, false);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         if (
+          state.enabled &&
           (event.key === "Delete" || event.key === "Backspace") &&
           state.selectedId !== null &&
-          !isTextEditingTarget(event.target)
+          !isTextEditingTarget(event)
         ) {
           state.annotations = state.annotations.filter((item) => item.id !== state.selectedId);
           state.selectedId = null;
