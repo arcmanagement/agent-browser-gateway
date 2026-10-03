@@ -38,8 +38,12 @@ export type BrowserAdapter = {
   readonly kind: BrowserKind;
   readonly supportsDebugger: boolean;
   readonly supportsVisibleTabCapture: boolean;
-  readonly action: Pick<typeof chrome.action, "setBadgeBackgroundColor" | "setBadgeText">;
+  readonly action: Pick<
+    typeof chrome.action,
+    "getTitle" | "setBadgeBackgroundColor" | "setBadgeText" | "setTitle"
+  >;
   readonly alarms: Pick<typeof chrome.alarms, "create" | "onAlarm">;
+  readonly commands: Pick<typeof chrome.commands, "getAll" | "onCommand">;
   readonly debugger: Pick<
     typeof chrome.debugger,
     "attach" | "detach" | "onDetach" | "onEvent" | "sendCommand"
@@ -136,6 +140,13 @@ function unsupportedDebugger(): BrowserAdapter["debugger"] {
   };
 }
 
+function unsupportedCommands(): BrowserAdapter["commands"] {
+  return {
+    getAll: async () => [],
+    onCommand: noopEvent() as BrowserAdapter["commands"]["onCommand"],
+  } as BrowserAdapter["commands"];
+}
+
 function extensionAccessApi(api: RuntimeBrowser): BrowserAdapter["extension"] {
   const extensionApi = api.extension as Partial<BrowserAdapter["extension"]> | undefined;
   return {
@@ -162,6 +173,9 @@ function createBrowserAdapter(kind: BrowserKind, api: RuntimeBrowser): BrowserAd
     },
     get alarms() {
       return api.alarms;
+    },
+    get commands() {
+      return api.commands ?? unsupportedCommands();
     },
     get debugger() {
       return debuggerApi;
@@ -215,6 +229,9 @@ function createLazyBrowserAdapter(kind: BrowserKind): BrowserAdapter {
     },
     get alarms() {
       return runtimeBrowser().alarms;
+    },
+    get commands() {
+      return runtimeBrowser().commands ?? unsupportedCommands();
     },
     get debugger() {
       return runtimeBrowser().debugger ?? unsupportedDebugger();

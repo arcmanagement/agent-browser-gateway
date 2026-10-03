@@ -28,6 +28,18 @@ describe("browserAdapter", () => {
     expect(chrome.windows.update).toHaveBeenCalledWith(1, { focused: true });
     expect(browserAdapter.downloads.onCreated.hasListeners()).toBe(false);
     expect(browserAdapter.windows.onRemoved.hasListeners()).toBe(false);
+    await expect(browserAdapter.commands.getAll()).resolves.toHaveLength(2);
+    expect(browserAdapter.commands.onCommand.hasListeners()).toBe(false);
+  });
+
+  it("falls back to an empty commands API when the browser has none", async () => {
+    const api = installChromeMock();
+    delete (api as Partial<typeof api>).commands;
+
+    const adapter = createTestBrowserAdapter("chrome", api);
+
+    await expect(adapter.commands.getAll()).resolves.toEqual([]);
+    expect(adapter.commands.onCommand.hasListeners()).toBe(false);
   });
 
   it("can expose Firefox browser APIs through the same boundary", async () => {

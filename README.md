@@ -145,12 +145,27 @@ and generate release notes.
 The core security model:
 
 1. By default, the agent sees **nothing**. No tabs are shared.
-2. To share a tab, **you click the extension icon → Share this tab with agent**.
+2. To share a tab, **you click the extension icon → Share this tab with agent** (or press the
+   share shortcut below).
 3. The agent can now read / screenshot / operate **only that tab**, via `abg`.
 4. The share is automatically revoked when:
    - The tab navigates to a different origin
    - You close the tab
-   - You explicitly revoke (via the popup or `abg revoke`)
+   - You explicitly revoke (via the popup, the share shortcut, or `abg revoke`)
+
+Keyboard shortcuts act only on the current tab:
+
+| Default key | Action |
+|---|---|
+| `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the current tab if it is not shared, or revoke it if it is. This uses the same per-tab consent and revoke path as the popup button and never touches other tabs. |
+| `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the current tab's numeric tab ID to the clipboard. This never grants or changes access; if the tab is not shared, ABG says so, and agents cannot use it until you share it. |
+
+The result (which tab, and the new state or the reason nothing changed) appears briefly on the
+extension badge and its tooltip, as a short in-page notice where the page allows extension scripts,
+and in the popup for two minutes. The share shortcut does nothing on `chrome://` and other non-web
+pages, on incognito tabs until "Allow in incognito" is enabled, and while all-tabs sandbox mode is
+on. Rebind or clear either shortcut at `chrome://extensions/shortcuts` (Firefox:
+`about:addons` → Manage Extension Shortcuts); the popup shows the current keys.
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs in this profile**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 

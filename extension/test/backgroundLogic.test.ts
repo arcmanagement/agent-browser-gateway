@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clickSelectorFrameFn,
   createAuditDiff,
+  decideShareToggle,
   describeFileAttachFailure,
   detectBrowserKind,
   isShareableTabUrl,
@@ -11,6 +12,7 @@ import {
   raiseBrowserTab,
   raisePermittedBrowserTab,
   richClipboardPayloadLabel,
+  shortcutFeedback,
 } from "../src/backgroundLogic.js";
 import { installChromeMock } from "./chromeMock.js";
 
@@ -297,5 +299,154 @@ describe("personalDataMutationIntent", () => {
     });
     expect(intent).toContain("PERMANENTLY DELETE");
     expect(intent).toContain("https://example.com/article");
+  });
+});
+
+describe("decideShareToggle", () => {
+  const httpsTab = { id: 7, url: "https://example.com/", title: "Example", incognito: false };
+  const base = { permitted: false, allTabsActive: false, incognitoAccessAllowed: true };
+
+  it("shares an unshared http(s) or file tab", () => {
+    expect(decideShareToggle({ ...base, tab: httpsTab })).toEqual({ action: "permit", tabId: 7 });
+    expect(decideShareToggle({ ...base, tab: { ...httpsTab, url: "file:///tmp/a.html" } })).toEqual(
+      { action: "permit", tabId: 7 },
+    );
+  });
+
+  it("revokes a tab that is already shared", () => {
+    expect(decideShareToggle({ ...base, tab: httpsTab, permitted: true })).toEqual({
+      action: "revoke",
+      tabId: 7,
+    });
+  });
+
+  it("still revokes a shared tab whose current URL is not shareable", () => {
+    expect(
+      decideShareToggle({
+        ...base,
+        tab: { ...httpsTab, url: "chrome://newtab/" },
+        permitted: true,
+      }),
+    ).toEqual({ action: "revoke", tabId: 7 });
+  });
+
+  it("blocks when there is no active tab", () => {
+    expect(decideShareToggle({ ...base, tab: undefined })).toEqual({
+      action: "blocked",
+      reason: "no_active_tab",
+    });
+    expect(decideShareToggle({ ...base, tab: { url: "https://example.com/" } })).toEqual({
+      action: "blocked",
+      reason: "no_active_tab",
+    });
+  });
+
+  it("does not toggle anything while all-tabs sandbox mode is active", () => {
+    expect(decideShareToggle({ ...base, tab: httpsTab, allTabsActive: true })).toEqual({
+      action: "blocked",
+      reason: "all_tabs_mode",
+      tabId: 7,
+    });
+    expect(
+      decideShareToggle({ ...base, tab: httpsTab, permitted: true, allTabsActive: true }),
+    ).toEqual({ action: "blocked", reason: "all_tabs_mode", tabId: 7 });
+  });
+
+  it("blocks incognito tabs until incognito access is allowed", () => {
+    const incognitoTab = { ...httpsTab, incognito: true };
+    expect(
+      decideShareToggle({ ...base, tab: incognitoTab, incognitoAccessAllowed: false }),
+    ).toEqual({ action: "blocked", reason: "incognito_access_disabled", tabId: 7 });
+    expect(decideShareToggle({ ...base, tab: incognitoTab })).toEqual({
+      action: "permit",
+      tabId: 7,
+    });
+  });
+
+  it("refuses browser-internal and unknown pages", () => {
+    for (const url of ["chrome://extensions/", "about:blank", "chrome-extension://x/p.html", ""]) {
+      expect(decideShareToggle({ ...base, tab: { ...httpsTab, url } })).toEqual({
+        action: "blocked",
+        reason: "unsupported_page",
+        tabId: 7,
+      });
+    }
+  });
+});
+
+describe("shortcutFeedback", () => {
+  it("names the tab when sharing and revoking", () => {
+    const shared = shortcutFeedback({ kind: "shared", tabId: 7, title: "Example" });
+    expect(shared).toMatchObject({ level: "success", badgeText: "ON" });
+    expect(shared.message).toBe('Shared tab 7 ("Example") with agents.');
+
+    const revoked = shortcutFeedback({ kind: "revoked", tabId: 7 });
+    expect(revoked).toMatchObject({ level: "success", badgeText: "OFF" });
+    expect(revoked.message).toBe("Revoked tab 7. Agents can no longer access it.");
+  });
+
+  it("truncates long tab titles", () => {
+    const feedback = shortcutFeedback({ kind: "shared", tabId: 1, title: "x".repeat(100) });
+    expect(feedback.message).toContain(`"${"x".repeat(57)}..."`);
+  });
+
+  it("explains every blocked reason without claiming a change", () => {
+    const allTabs = shortcutFeedback({ kind: "blocked", reason: "all_tabs_mode" });
+    expect(allTabs).toMatchObject({ level: "warning", badgeText: "!" });
+    expect(allTabs.message).toContain("All-tabs sandbox mode is on");
+    expect(allTabs.message).toContain("Nothing was changed");
+
+    const page = shortcutFeedback({
+      kind: "blocked",
+      reason: "unsupported_page",
+      url: "chrome://settings/",
+    });
+    expect(page.message).toContain("chrome: pages cannot be shared");
+    expect(page.message).toContain("Nothing was changed");
+    expect(shortcutFeedback({ kind: "blocked", reason: "unsupported_page" }).message).toContain(
+      "This page cannot be shared",
+    );
+
+    expect(
+      shortcutFeedback({ kind: "blocked", reason: "incognito_access_disabled" }).message,
+    ).toContain("Allow in incognito");
+    expect(shortcutFeedback({ kind: "blocked", reason: "no_active_tab" }).message).toContain(
+      "No active tab",
+    );
+  });
+
+  it("reports share and revoke failures", () => {
+    expect(
+      shortcutFeedback({ kind: "toggle_failed", action: "permit", tabId: 3, error: "boom" }),
+    ).toMatchObject({ level: "error", badgeText: "ERR", message: "Could not share tab 3: boom" });
+    expect(
+      shortcutFeedback({ kind: "toggle_failed", action: "revoke", tabId: 3, error: "boom" })
+        .message,
+    ).toBe("Could not revoke tab 3: boom");
+  });
+
+  it("warns that a copied tab ID does not share the tab", () => {
+    const unshared = shortcutFeedback({ kind: "copied", tabId: 42, title: "Docs" });
+    expect(unshared).toMatchObject({ level: "warning", badgeText: "ID" });
+    expect(unshared.message).toBe(
+      'Copied tab ID 42 for tab 42 ("Docs"). This tab is not shared: agents cannot access it until you share it.',
+    );
+  });
+
+  it("confirms the access mode of a shared copied tab", () => {
+    const manual = shortcutFeedback({ kind: "copied", tabId: 42, accessMode: "manual" });
+    expect(manual).toMatchObject({ level: "success", badgeText: "ID" });
+    expect(manual.message).toBe("Copied tab ID 42 for tab 42. This tab is shared with agents.");
+    expect(
+      shortcutFeedback({ kind: "copied", tabId: 42, accessMode: "all_tabs" }).message,
+    ).toContain("shared with agents through all-tabs mode");
+  });
+
+  it("reports copy failures", () => {
+    expect(shortcutFeedback({ kind: "copy_failed", tabId: 42, error: "denied" })).toMatchObject({
+      level: "error",
+      badgeText: "ERR",
+      message: "Could not copy tab ID 42: denied",
+    });
   });
 });

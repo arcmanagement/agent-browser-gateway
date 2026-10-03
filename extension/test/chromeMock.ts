@@ -229,6 +229,14 @@ export function createChromeMock() {
       setBadgeBackgroundColor: vi.fn(async () => undefined),
       setBadgeText: vi.fn(async () => undefined),
       setTitle: vi.fn(async () => undefined),
+      getTitle: vi.fn(async () => "Agent Browser Gateway"),
+    },
+    commands: {
+      getAll: vi.fn(async () => [
+        { name: "toggle-share-current-tab", shortcut: "Alt+Shift+S", description: "" },
+        { name: "copy-current-tab-id", shortcut: "Alt+Shift+C", description: "" },
+      ]),
+      onCommand: createChromeEvent<[string, Record<string, unknown> | undefined]>(),
     },
     alarms: {
       create: vi.fn(),

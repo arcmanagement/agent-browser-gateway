@@ -44,6 +44,12 @@ tab.
 ABG starts with no visible tabs. The user shares a tab from the extension popup, and ABG revokes that
 share when the tab closes, changes origin, or is explicitly revoked.
 
+Two keyboard shortcuts act on the current tab only. `Alt+Shift+S` (`Option+Shift+S` on macOS)
+shares the tab, or revokes it if it is already shared. `Alt+Shift+C` copies the numeric tab ID to
+the clipboard without granting access, and says when the tab is not shared yet. The extension badge,
+its tooltip, and the popup show the result or why nothing changed. Rebind them at
+`chrome://extensions/shortcuts`.
+
 For isolated profiles or sandbox machines, ABG also has an optional all-tabs profile mode. That mode
 uses a separate consent boundary and can be disabled again from the extension popup.
 

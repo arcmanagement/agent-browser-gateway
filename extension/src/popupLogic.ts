@@ -1,4 +1,33 @@
-import type { BackgroundToPopup, ExtensionSettings } from "./types.js";
+import { COPY_TAB_ID_COMMAND, TOGGLE_SHARE_COMMAND } from "./backgroundLogic.js";
+import type { BrowserKind } from "./browserAdapter.js";
+import type { BackgroundToPopup, ExtensionSettings, RecentShortcutFeedback } from "./types.js";
+
+export const SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS = 2 * 60_000;
+
+export function shortcutHint(
+  commands: { name?: string; shortcut?: string }[],
+  browserKind: BrowserKind,
+): string {
+  const keyFor = (name: string) =>
+    commands.find((command) => command.name === name)?.shortcut || "(not set)";
+  const settingsPage =
+    browserKind === "firefox"
+      ? "about:addons > Manage Extension Shortcuts"
+      : "chrome://extensions/shortcuts";
+  return `Shortcuts: ${keyFor(TOGGLE_SHARE_COMMAND)} shares or revokes this tab, ${keyFor(
+    COPY_TAB_ID_COMMAND,
+  )} copies its tab ID. Change them at ${settingsPage}.`;
+}
+
+export function recentShortcutMessage(
+  feedback: RecentShortcutFeedback | undefined,
+  now: number,
+): string | undefined {
+  if (!feedback) return undefined;
+  const age = now - feedback.at;
+  if (age < 0 || age > SHORTCUT_FEEDBACK_POPUP_MAX_AGE_MS) return undefined;
+  return `Last shortcut: ${feedback.message}`;
+}
 
 type PopupState = Extract<BackgroundToPopup, { type: "state" }>;
 

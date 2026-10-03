@@ -12,6 +12,10 @@
 //   5. on stop, emit a final "stopped" event with duration + mime.
 //
 // One recording is active at a time (mirrors the single-session Stream model).
+//
+// The same document also copies short text to the clipboard for the "copy tab
+// ID" keyboard shortcut: service workers have no clipboard access, and copying
+// here avoids injecting anything into the (possibly unshared) page.
 
 interface StartCommand {
   target: "abg-offscreen";
@@ -29,7 +33,13 @@ interface StopCommand {
   recordingId: string;
 }
 
-type OffscreenCommand = StartCommand | StopCommand;
+interface CopyTextCommand {
+  target: "abg-offscreen";
+  cmd: "copy_text";
+  text: string;
+}
+
+type OffscreenCommand = StartCommand | StopCommand | CopyTextCommand;
 
 interface StartResult {
   ok: boolean;
@@ -80,8 +90,31 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       );
     return true;
   }
+  if (msg.cmd === "copy_text") {
+    sendResponse(copyText((msg as CopyTextCommand).text));
+    return undefined;
+  }
   return undefined;
 });
+
+function copyText(text: unknown): StopResult {
+  if (typeof text !== "string") return { ok: false, error: "nothing to copy" };
+  // Offscreen documents cannot take focus, so navigator.clipboard.writeText is
+  // rejected here; execCommand("copy") works with the clipboardWrite permission.
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    return document.execCommand("copy")
+      ? { ok: true }
+      : { ok: false, error: "the browser rejected the clipboard write" };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  } finally {
+    textarea.remove();
+  }
+}
 
 async function startRecording(msg: StartCommand): Promise<StartResult> {
   if (active) {

@@ -2,7 +2,9 @@ import { browserAdapter } from "./browserAdapter.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  recentShortcutMessage,
   sharedTabSummary,
+  shortcutHint,
   trustedAutomationNote,
 } from "./popupLogic.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
@@ -37,6 +39,8 @@ const statusEl = document.getElementById("status") as HTMLDivElement;
 const sharedListEl = document.getElementById("sharedList") as HTMLDivElement;
 const incognitoNoticeEl = document.getElementById("incognitoNotice") as HTMLDivElement;
 const openExtensionsBtn = document.getElementById("openExtensionsBtn") as HTMLButtonElement;
+const shortcutResultEl = document.getElementById("shortcutResult") as HTMLDivElement;
+const shortcutHintEl = document.getElementById("shortcutHint") as HTMLDivElement;
 
 let profileLabelTimer: number | null = null;
 
@@ -388,6 +392,13 @@ async function refresh(): Promise<void> {
     annotationBtn.className = "secondary";
     clearAnnotationsBtn.disabled = true;
   }
+
+  const shortcutMessage = recentShortcutMessage(state.shortcutFeedback, Date.now());
+  shortcutResultEl.hidden = !shortcutMessage;
+  shortcutResultEl.textContent = shortcutMessage ?? "";
+  shortcutResultEl.className = `shortcut-result ${state.shortcutFeedback?.level ?? ""}`;
+  const commands = await browser.commands.getAll().catch(() => []);
+  shortcutHintEl.textContent = shortcutHint(commands, browser.kind);
 
   statusEl.replaceChildren();
   const wsStateEl = document.createElement("span");

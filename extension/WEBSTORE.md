@@ -122,7 +122,7 @@ Provide user-authorized, local browser access so AI coding agents can inspect or
 
 Suggested permission justifications:
 
-- `activeTab`: Access the active tab only after the user explicitly shares it from the extension popup.
+- `activeTab`: Access the active tab only after the user explicitly shares it from the extension popup or its keyboard shortcut.
 - `scripting`: Read selected page content and perform structured operations in the shared tab.
 - `tabs`: Read tab title, URL, and lifecycle events so shared tabs can be listed and revoked.
 - `storage`: Store local settings and session-scoped tab sharing state.
@@ -130,7 +130,7 @@ Suggested permission justifications:
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
 - `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
 - `desktopCapture`: Fallback for recording tabs shared through the opt-in all-tabs sandbox mode, where no per-tab toolbar click exists for `tabCapture`: the Allow click opens Chrome's own tab picker and the user selects the tab to record. Never invoked outside the recording approval flow.
-- `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway.
+- `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway, and copy the current tab ID to the clipboard when the user presses the copy-tab-ID keyboard shortcut.
 - Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
 - Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.
 - Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs in this profile"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.

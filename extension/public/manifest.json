@@ -44,5 +44,21 @@
       "48": "icons/48.png",
       "128": "icons/128.png"
     }
+  },
+  "commands": {
+    "toggle-share-current-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Share or revoke the current tab"
+    },
+    "copy-current-tab-id": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Copy the current tab ID (does not share the tab)"
+    }
   }
 }
