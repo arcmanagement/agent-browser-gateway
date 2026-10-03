@@ -64,6 +64,9 @@ The Chrome extension manifest declares:
 The Firefox build path already patches the manifest in `extension/build.mjs`:
 
 - Removes Chrome-only `key` and `minimum_chrome_version`.
+- Drops the Chrome-only `favicon` permission. Firefox shares a tab's site icon with the Gateway
+  only when the browser already holds it as a raster `data:` URL; otherwise the Gateway shows its
+  letter monogram.
 - Uses `background.scripts: ["background.js"]` with `type: "module"` instead of a service worker.
 - Sets `browser_specific_settings.gecko.id`, strict minimum Firefox version, and no-data-collection
   metadata.

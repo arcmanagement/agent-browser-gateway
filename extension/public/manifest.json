@@ -23,7 +23,8 @@
     "clipboardWrite",
     "tabCapture",
     "desktopCapture",
-    "offscreen"
+    "offscreen",
+    "favicon"
   ],
   "host_permissions": [],
   "optional_permissions": [
