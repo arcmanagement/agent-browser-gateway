@@ -11,8 +11,8 @@ Check which version each channel serves, verify a download, and build a signed r
 
 | Channel | Status |
 | --- | --- |
-| macOS app (GitHub Releases, Homebrew) | Signed and notarized `v0.5.0` |
-| Chrome Web Store | Extension `v0.4.8`, updated August 23, 2026 (`v0.5.0` in review) |
+| macOS app (GitHub Releases, Homebrew) | Signed and notarized `v0.5.1` |
+| Chrome Web Store | Extension `v0.4.8`, updated August 23, 2026 (`v0.5.1` in review) |
 | Windows (WinGet, setup ZIP) | Pending the signed Windows release and WinGet indexing |
 
 The app and extension versions can differ because Chrome Web Store review and signed app
@@ -68,7 +68,7 @@ Install the extension from the
 
 To verify a release, confirm the listing is available, then record its displayed version and update
 date separately from the latest macOS release. The listing currently reports version `0.4.8`,
-updated August 23, 2026. Extension `v0.5.0` is in review.
+updated August 23, 2026. Extension `v0.5.1` is in review.
 
 ### WinGet
 
@@ -76,7 +76,7 @@ updated August 23, 2026. Extension `v0.5.0` is in review.
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-For `v0.5.0`, this package is not indexed yet. The command returns no matching package until the
+For `v0.5.1`, this package is not indexed yet. The command returns no matching package until the
 signed Windows release workflow and WinGet submission complete.
 
 A release is ready for WinGet after the public Windows setup ZIP is on GitHub Releases and the
@@ -95,7 +95,7 @@ lives in `docs/app-store-submission.md`.
 Build Developer ID signed and notarized artifacts on a trusted Mac:
 
 ```bash
-export VERSION=0.5.0
+export VERSION=0.5.1
 make release-dmg VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"

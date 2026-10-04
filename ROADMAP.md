@@ -2,9 +2,17 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
 
-Current repo version: **v0.5.0**.
+Current repo version: **v0.5.1**.
 
 ## Shipped
+
+### v0.5.1 — Favicons, click-to-copy, and the gate icons (2026-10-04)
+- The Gateway menu and window show each shared tab's favicon. The extension reads it from Chrome's own favicon cache (new `favicon` permission, no new install warning), re-encodes it to a small PNG, and sends it with the shared tab; the Gateway keeps it in memory only and never fetches icons from the network.
+- Clicking a shared tab in the Gateway menu copies its tab ID.
+- The Gateway window's Shared Tabs and Plugins sidebar rows are selectable again.
+- The extension and macOS app icons use the gate mark.
+- Release CI now reconciles `SHA256SUMS.txt`, the per-file checksums, and the cask with the assets a release actually serves; v0.4.8 and v0.5.0 checksums were corrected.
+- Chrome Web Store: the 0.5.0 submission was withdrawn and 0.5.1 submitted in its place.
 
 ### v0.5.0 — Shortcuts, annotation restore, Japanese UI, and the gate redesign (2026-10-04)
 - Added extension keyboard shortcuts: Alt/Option+Shift+S shares or revokes the active tab through the existing consent path, and Alt/Option+Shift+C copies the active tab's numeric ID without granting access (#435, #436).

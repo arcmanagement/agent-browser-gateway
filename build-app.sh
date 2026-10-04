@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CONFIG="${CONFIG:-release}"
-VERSION="${VERSION:-0.5.0}"
+VERSION="${VERSION:-0.5.1}"
 BUILD_NUMBER="${BUILD_NUMBER:-$VERSION}"
 APP_VARIANT="${APP_VARIANT:-prod}"
 case "$APP_VARIANT" in
@@ -36,7 +36,8 @@ LEGACY_APP="Gateway.app"
 BIN_DIR=".build/$CONFIG"
 APP_ICON_NAME="AppIcon"
 APP_ICON_FILE="$APP_ICON_NAME.icns"
-ICON_SOURCE_SVG="extension/store-assets/icon-source.svg"
+# macOS icon grid (824px plate on a 1024 canvas); the extension icons use their own sources.
+ICON_SOURCE_SVG="packaging/macos/AppIcon.svg"
 ICON_SOURCE_PNG="extension/public/icons/128.png"
 ICONSET_DIR="$BIN_DIR/$APP_ICON_NAME.iconset"
 
