@@ -125,8 +125,15 @@ async function load(): Promise<void> {
   // intent does not leave an empty band above the buttons. The script variant keeps its window
   // and lets the script block scroll.
   if (scriptBlock.hidden) {
-    // Measure with the bundled fonts in place so line wrapping matches what the user sees.
-    document.fonts.ready.then(fitWindowToContent, fitWindowToContent);
+    // Refit whenever the content changes size. `document.fonts.ready` alone resolved before the
+    // bundled fonts were even requested, so the first fit used fallback metrics and the swap to
+    // Geist later pushed the footer below the window.
+    // The body fills the window, so watch the content blocks themselves, not the spacer.
+    fitWindowToContent();
+    const observer = new ResizeObserver(fitWindowToContent);
+    for (const el of Array.from(document.body.children)) {
+      if (el !== spacerEl && el.tagName !== "SCRIPT") observer.observe(el);
+    }
   }
 
   const remainingMs = approvalRemainingMs(request.createdAt, request.timeoutMs);
@@ -159,10 +166,32 @@ async function load(): Promise<void> {
   }, remainingMs) as unknown as number;
 }
 
+// The body is a flex column that fills the window, and the spacer absorbs extra height. Measure
+// to the bottom of the last block (margins and gaps included), add the body's bottom padding, and
+// take the spacer back out, so the result is the content's own height whether the window is
+// currently too tall or too short.
+function naturalContentHeight(): number {
+  const blocks = Array.from(document.body.children).filter(
+    (el): el is HTMLElement =>
+      el instanceof HTMLElement &&
+      el !== spacerEl &&
+      el.tagName !== "SCRIPT" &&
+      !el.hidden &&
+      getComputedStyle(el).position !== "fixed",
+  );
+  const last = blocks.at(-1);
+  if (!last) return document.documentElement.scrollHeight;
+  const bodyStyle = getComputedStyle(document.body);
+  const bottom =
+    last.getBoundingClientRect().bottom +
+    window.scrollY +
+    (Number.parseFloat(getComputedStyle(last).marginBottom) || 0) +
+    (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+  return bottom - spacerEl.getBoundingClientRect().height;
+}
+
 function fitWindowToContent(): void {
-  // The spacer absorbs any extra window height, so the content height is the page height
-  // without it (or the full scroll height when the content overflows).
-  const contentHeight = document.documentElement.scrollHeight - spacerEl.offsetHeight;
+  const contentHeight = naturalContentHeight();
   const height = fittedWindowHeight({
     outerHeight: window.outerHeight,
     innerHeight: window.innerHeight,
