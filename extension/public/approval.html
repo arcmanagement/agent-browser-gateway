@@ -151,6 +151,11 @@
       .spacer {
         flex: 1 1 auto;
       }
+      /* Only the spacer and the scrollable script block may give up height; squeezing the other
+         blocks clipped the footer and broke the window's content-height measurement. */
+      body > :not(.spacer):not(.script) {
+        flex-shrink: 0;
+      }
       .actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
