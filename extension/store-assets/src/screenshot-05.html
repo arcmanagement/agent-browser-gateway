@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>05 · Local only</title>
+    <link rel="stylesheet" href="store.css" />
+    <style>
+      /* macOS menu bar strip and the Gateway status-item menu, redrawn from
+         Sources/Gateway/MenuBarUI (340 pt wide, system font, 44 pt rows), scaled 1.2x. */
+      .menubar {
+        position: absolute; left: 600px; right: 0; top: 92px; height: 34px;
+        display: flex; align-items: center; justify-content: flex-end; gap: 22px;
+        padding: 0 28px 0 18px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px;
+        font: 500 15px/1 -apple-system, system-ui, sans-serif; color: var(--text-2);
+      }
+      .menubar .status {
+        display: grid; place-items: center; width: 40px; height: 26px; border-radius: 6px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+      .menubar .status svg { width: 20px; height: 20px; }
+      .menubar .status .bar { fill: #f2f2f2; }
+      .menubar .status .arm { stroke: #f2f2f2; }
+      .menubar .status .dot { fill: #f2f2f2; }
+      .menu {
+        position: absolute; left: 846px; top: 134px; width: 340px;
+        transform: scale(1.2); transform-origin: 0 0;
+        padding: 0 0 10px;
+        background: #3b3b3c;
+        border: 0.5px solid rgba(255, 255, 255, 0.18);
+        border-radius: 11px;
+        box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.8), 0 0 0 0.5px rgba(0, 0, 0, 0.6);
+        font-family: -apple-system, system-ui, sans-serif;
+        color: rgba(255, 255, 255, 0.92);
+        -webkit-font-smoothing: antialiased;
+      }
+      .menu h2 { margin: 0; padding: 12px 14px 8px; font-size: 13px; font-weight: 700; letter-spacing: 0; }
+      .switch { display: flex; gap: 4px; padding: 0 10px 8px; font-size: 12px; color: rgba(255, 255, 255, 0.55); }
+      .switch span { padding: 3px 9px; border-radius: 6px; border: 1px solid transparent; }
+      .switch b { font-weight: 600; margin-right: 4px; }
+      .switch .on { color: rgba(255, 255, 255, 0.92); background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.16); }
+      .sep { height: 1px; margin: 0 14px; background: rgba(255, 255, 255, 0.12); }
+      .sect { padding: 8px 14px 2px; font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
+      .row {
+        display: flex; align-items: center; gap: 10px; height: 44px; margin: 0 5px 6px; padding: 0 9px;
+        border-radius: 6px; background: rgba(255, 255, 255, 0.08);
+      }
+      .site { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); }
+      .site svg { width: 16px; height: 16px; }
+      .site i {
+        position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border-radius: 50%;
+        background: #4ade80; box-shadow: 0 0 0 2px #3b3b3c;
+      }
+      .row .t { flex: 1; min-width: 0; }
+      .row .t div { font-size: 13px; white-space: nowrap; }
+      .row .t small { display: block; margin-top: 1px; font-size: 11px; color: rgba(255, 255, 255, 0.5); white-space: nowrap; }
+      .row .t code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; }
+      .revoke {
+        padding: 3px 10px; border-radius: 6px; font-size: 12.5px; font-weight: 500;
+        color: #ff8a80; background: rgba(255, 90, 78, 0.16); border: 1px solid rgba(255, 90, 78, 0.5);
+      }
+      .act { padding: 5px 14px; font-size: 13px; }
+      .act:first-of-type { margin-top: 5px; }
+      .foot { padding: 4px 14px 0; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+
+      .audit { left: 556px; top: 464px; width: 640px; }
+      .audit .term-bar { font-size: 12px; }
+      .audit table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 13px; }
+      .audit th { padding: 8px 0 6px 20px; text-align: left; font-weight: 400; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+      .audit td { padding: 5px 0 5px 20px; color: #c9d4cf; white-space: nowrap; }
+      .audit td:first-child, .audit th:first-child { padding-left: 20px; }
+      .audit td.t { color: var(--text-3); }
+      .audit td.a { color: var(--text); }
+      .audit tr.permit td.a { color: var(--signal); }
+      .audit tr.revoke td.a { color: var(--danger-text); }
+      .glow { left: 1000px; top: 260px; width: 700px; height: 700px; }
+      .chain { position: absolute; left: 556px; top: 150px; width: 250px; }
+      .node {
+        display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px;
+        border: 1px solid var(--line-strong); border-radius: 10px; background: var(--ink-1);
+        font-size: 15px; font-weight: 520; color: var(--text);
+      }
+      .node svg { width: 18px; height: 18px; flex: none; }
+      .node .ic { stroke: var(--text-2); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+      .node.gw { border-color: var(--signal-line); background: linear-gradient(var(--signal-tint), var(--signal-tint)), var(--ink-1); box-shadow: 0 0 28px -8px rgba(61, 255, 143, 0.5); }
+      .link { position: relative; height: 54px; margin-left: 22px; }
+      .link::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--signal); box-shadow: 0 0 10px var(--signal-glow); }
+      .link span { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 12.5px; line-height: 1.35; color: var(--text-3); white-space: nowrap; }
+      .link span b { color: var(--text-2); font-weight: 400; }
+      .facts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }
+      .facts span {
+        display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px;
+        border: 1px solid var(--line-strong); border-radius: 999px;
+        font-family: var(--mono); font-size: 13.5px; color: var(--text-2);
+      }
+      .facts span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 8px var(--signal-glow); }
+    </style>
+  </head>
+  <body>
+    <div class="grid"></div>
+    <div class="glow"></div>
+
+    <div class="copy">
+      <div class="rule"><b>05</b>Local only<span class="line"></span><span class="aperture"><i></i><em></em><i></i></span></div>
+      <h1>Stays on<br /><span class="dim">your machine.</span></h1>
+      <p class="sub">The Gateway listens on loopback only. Every read and operation is written to a local audit log.</p>
+      <div class="facts"><span>127.0.0.1 only</span><span>No telemetry</span><span>No account</span></div>
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.25" /></svg>
+        Agent Browser Gateway
+      </div>
+    </div>
+
+    <div class="chain">
+      <div class="node"><svg viewBox="0 0 16 16"><rect class="ic" x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path class="ic" d="M1.75 6h12.5" /></svg>Chrome extension</div>
+      <div class="link"><span>WebSocket<br /><b>127.0.0.1:8765</b></span></div>
+      <div class="node gw"><svg class="mark" viewBox="0 0 20 20"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.25" /></svg>Gateway app</div>
+      <div class="link"><span>local socket<br /><b>owner-only</b></span></div>
+      <div class="node"><svg viewBox="0 0 16 16"><path class="ic" d="M3.5 4.75 6.75 8 3.5 11.25M8.5 11.25h4" /></svg>abg CLI · your agent</div>
+    </div>
+
+    <div class="menubar">
+      <span class="status">
+        <svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.6" /></svg>
+      </span>
+      <span>Mon 9:41</span>
+    </div>
+
+    <div class="menu">
+      <h2>Agent Browser Gateway</h2>
+      <div class="switch"><span class="on"><b>All</b>1</span><span><b>Chrome · 8f3c</b>1</span></div>
+      <div class="sep"></div>
+      <div class="sect">Shared Tabs</div>
+      <div class="row">
+        <span class="site">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 9.5 6l4 7 2.5-4L22 20Z" fill="#6fbf8f" /></svg>
+          <i></i>
+        </span>
+        <span class="t"><div>Acme Outdoor — Checkout</div><small>shop.example.com · <code>1043</code> · per tab</small></span>
+        <span class="revoke">Revoke</span>
+      </div>
+      <div class="sep"></div>
+      <div class="act">Open Agent Browser Gateway…</div>
+      <div class="act">Quit Gateway</div>
+      <div class="foot">Local only · 127.0.0.1:8765</div>
+    </div>
+
+    <div class="term audit">
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span>~/Library/Logs/AgentBrowserGateway/audit.jsonl<span class="tag">0600 · owner-only</span></div>
+      <table>
+        <thead><tr><th>time</th><th>action</th><th>tab</th><th>agent</th><th>detail</th></tr></thead>
+        <tbody>
+          <tr class="permit"><td class="t">09:41:02</td><td class="a">permit</td><td>1043</td><td>—</td><td>accessMode: manual</td></tr>
+          <tr><td class="t">09:41:06</td><td class="a">read_dom</td><td>1043</td><td>cli</td><td>shop.example.com/checkout</td></tr>
+          <tr><td class="t">09:41:09</td><td class="a">screenshot</td><td>1043</td><td>cli</td><td>shop.example.com/checkout</td></tr>
+          <tr><td class="t">09:41:15</td><td class="a">paste</td><td>1043</td><td>cli</td><td>selector · textBytes: 16</td></tr>
+          <tr><td class="t">09:41:21</td><td class="a">click</td><td>1043</td><td>cli</td><td>shop.example.com/checkout</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
