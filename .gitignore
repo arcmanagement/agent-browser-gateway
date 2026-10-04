@@ -19,6 +19,7 @@ TestResults/
 node_modules/
 extension/dist/
 extension/coverage/
+extension/store-assets/src/shots/
 dist/
 .cws/
 .astro/

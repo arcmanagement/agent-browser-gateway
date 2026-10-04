@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Acme Outdoor — Checkout</title>
+    <!-- A fictional shop page. render.mjs captures it (with and without the real annotation
+         overlay) and reads its <main> through the real markdown plugin for screenshot 03. -->
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("../../../public/fonts/Geist-Variable.woff2") format("woff2");
+        font-weight: 100 900;
+      }
+      :root {
+        color-scheme: light;
+        --bg: #f5f3ef;
+        --panel: #ffffff;
+        --line: #e6e1d9;
+        --text: #1d1b17;
+        --muted: #6f695f;
+        --brand: #2f5d46;
+        --brand-ink: #ffffff;
+        font-family: "Geist", system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+      header {
+        display: flex; align-items: center; justify-content: space-between;
+        height: 60px; padding: 0 40px; background: var(--panel); border-bottom: 1px solid var(--line);
+      }
+      .logo { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 17px; letter-spacing: -0.02em; }
+      .logo svg { width: 22px; height: 22px; }
+      .steps { display: flex; gap: 22px; color: var(--muted); font-size: 13.5px; }
+      .steps b { color: var(--text); font-weight: 550; }
+      main {
+        display: grid; grid-template-columns: 1fr 360px; gap: 28px;
+        max-width: 960px; margin: 0 auto; padding: 34px 40px 0;
+      }
+      h1 { margin: 0 0 20px; font-size: 30px; font-weight: 650; letter-spacing: -0.03em; }
+      h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+      section { padding: 20px 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+      section + section { margin-top: 14px; }
+      .field { display: block; margin-top: 10px; }
+      .field span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+      .field div {
+        height: 38px; padding: 0 12px; display: flex; align-items: center;
+        border: 1px solid var(--line); border-radius: 8px; font-size: 14px;
+      }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      aside section { position: sticky; top: 0; }
+      ul { margin: 0; padding: 0; list-style: none; }
+      li { display: flex; justify-content: space-between; padding: 9px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+      li span:last-child { font-variant-numeric: tabular-nums; }
+      .total { display: flex; justify-content: space-between; margin: 16px 0 46px; padding: 14px 0 4px; font-size: 16px; font-weight: 650; }
+      .total strong { font-weight: inherit; }
+      .note { margin: 14px 0 34px; color: var(--muted); font-size: 13px; text-align: center; }
+      button {
+        width: 100%; height: 44px; border: 0; border-radius: 10px;
+        background: var(--brand); color: var(--brand-ink); font: inherit; font-size: 15px; font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20 9.5 6l4 7 2.5-4L22 20Z" fill="#2f5d46" /></svg>
+        Acme Outdoor
+      </div>
+      <nav class="steps"><span>Cart</span><span>Shipping</span><b>Payment</b></nav>
+    </header>
+    <main>
+      <div>
+        <h1>Checkout</h1>
+        <section id="shipping">
+          <h2>Shipping address</h2>
+          <div class="row">
+            <label class="field"><span>Full name</span><div>Alex Kim</div></label>
+            <label class="field"><span>Email</span><div>alex@example.com</div></label>
+          </div>
+          <label class="field"><span>Address</span><div>100 Example Street, Springfield</div></label>
+        </section>
+        <section>
+          <h2>Payment</h2>
+          <div class="row">
+            <label class="field"><span>Card</span><div>•••• •••• •••• 4242</div></label>
+            <label class="field"><span>Expires</span><div>08 / 29</div></label>
+          </div>
+        </section>
+      </div>
+      <!-- Kept unindented, like minified production markup, so the Markdown transform sees no
+           source indentation. -->
+<aside><section>
+<h2>Order summary</h2>
+<ul><li><span>Trail tent, 2-person</span> <span>$289.00</span></li><li><span>Down sleeping bag</span> <span>$179.00</span></li><li><span>Shipping</span> <span>Free</span></li></ul>
+<p class="total" id="total"><span>Total</span> <strong>$468.00</strong></p>
+<button id="pay">Pay $468.00</button>
+<p class="note" id="returns">Free returns within 30 days.</p>
+</section></aside>
+    </main>
+  </body>
+</html>

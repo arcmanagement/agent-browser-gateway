@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>02 · Every write asks first</title>
+    <link rel="stylesheet" href="store.css" />
+    <style>
+      .browser { left: 556px; top: 92px; width: 690px; height: 760px; }
+      .page { height: 100%; }
+      .page::after { content: ""; position: absolute; inset: 0; background: rgba(7, 9, 10, 0.5); }
+      .approval { left: 640px; top: 214px; width: 520px; }
+      .approval img { width: 520px; }
+      .agent { left: 72px; top: 516px; width: 560px; }
+      .agent pre { font-size: 14px; }
+      .glow { left: 900px; top: 380px; width: 900px; height: 900px; }
+      .wait { left: 560px; top: 541px; }
+      .wire.v { left: 900px; top: 548px; height: 0; }
+      /* The pending request: a dashed path from the agent to the approval window. */
+      .elbow {
+        position: absolute; left: 632px; top: 586px; width: 270px; height: 2px;
+        background: repeating-linear-gradient(90deg, rgba(255, 196, 110, 0.7) 0 7px, transparent 7px 13px);
+      }
+      .elbow::after {
+        content: ""; position: absolute; right: 0; bottom: 0; width: 2px; height: 38px;
+        background: repeating-linear-gradient(0deg, rgba(255, 196, 110, 0.7) 0 7px, transparent 7px 13px);
+      }
+      .agent .tag { color: var(--warning-text); border-color: rgba(255, 181, 71, 0.4); }
+    </style>
+  </head>
+  <body>
+    <div class="grid"></div>
+    <div class="glow"></div>
+
+    <div class="copy">
+      <div class="rule"><b>02</b>Local approval<span class="line"></span><span class="aperture pending"><i></i><em></em><i></i></span></div>
+      <h1>Every click<br /><span class="dim">asks you first.</span></h1>
+      <p class="sub">By default, clicks, typing, and navigation wait for your OK in a local window. Unanswered requests are denied.</p>
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.25" /></svg>
+        Agent Browser Gateway
+      </div>
+    </div>
+
+    <div class="browser">
+      <div class="bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="tab">Inbox</span>
+        <span class="tab lit">Acme Outdoor — Checkout</span>
+        <span class="tab">Q3 planning</span>
+        <span class="tab fade">Bank</span>
+      </div>
+      <div class="toolbar">
+        <span class="nav">‹ ›</span>
+        <span class="url"><b>shop.example.com</b>/checkout</span>
+        <span class="ext on">
+          <svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.25" /></svg>
+        </span>
+      </div>
+      <div class="page"><img src="shots/page-checkout.png" alt="" /></div>
+    </div>
+
+    <div class="elbow"></div>
+    <div class="window approval"><div class="winbar"><span class="dots"><i></i><i></i><i></i></span><span>Approve operation</span></div><img src="shots/approval.png" alt="" /></div>
+
+    <div class="term agent">
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span>agent — zsh<span class="tag">waiting for approval</span></div>
+      <pre><span class="p">$</span> abg click t1 --selector "button#pay"
+<span class="cursor"></span></pre>
+    </div>
+  </body>
+</html>

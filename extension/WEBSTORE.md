@@ -231,7 +231,9 @@ workflow or run manually from GitHub Actions.
 
 - `extension/public/manifest.json` contains the public manifest `"key"` value so
   CI, local builds, and unpacked builds keep the stable extension ID.
-- `extension/store-assets/` contains listing screenshots and promotional images.
+- `extension/store-assets/` contains the listing screenshots
+  (`screenshot-01-1280x800.png` to `screenshot-05-1280x800.png`), the small and marquee
+  promotional tiles, and their HTML sources; its README has the regenerate command.
   These assets are not included in the extension ZIP; update them manually in the
   Developer Dashboard when the listing changes.
 - The submit workflow always uses `STAGED_PUBLISH`, so final publishing remains

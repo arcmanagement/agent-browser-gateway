@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>03 · Clean Markdown</title>
+    <link rel="stylesheet" href="store.css" />
+    <style>
+      .browser { left: 760px; top: 72px; width: 580px; height: 380px; }
+      .browser .page::after { content: ""; position: absolute; inset: 0; background: rgba(7, 9, 10, 0.45); }
+      .page { height: 100%; }
+      .agent { left: 556px; top: 220px; width: 690px; }
+      .local { left: 556px; top: 708px; }
+      .agent pre { font-size: 14px; line-height: 1.62; padding-bottom: 22px; }
+      .agent .out { color: #c9d4cf; }
+      .agent .md-h { color: var(--text); font-weight: 600; }
+      .agent .md-m { color: var(--text-3); }
+      .glow { left: 900px; top: 470px; width: 900px; height: 900px; opacity: 0.8; }
+      .bench { margin-top: 40px; display: grid; gap: 18px; }
+      .bench-row { display: grid; grid-template-columns: 1fr auto; row-gap: 8px; align-items: baseline; }
+      .bench-row .label { font-family: var(--mono); font-size: 14px; color: var(--text-2); }
+      .bench-row .num { font-family: var(--mono); font-size: 16px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+      .bench-row .track { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--ink-3); overflow: hidden; }
+      .bench-row .track i { display: block; height: 100%; border-radius: 4px; background: #5d6966; }
+      .bench-row.abg .label, .bench-row.abg .num { color: var(--signal); }
+      .bench-row.abg .track i { background: var(--signal); box-shadow: 0 0 12px var(--signal-glow); }
+      .foot { margin: 2px 0 0; font-size: 13px; color: var(--text-3); }
+    </style>
+  </head>
+  <body>
+    <div class="grid"></div>
+    <div class="glow"></div>
+
+    <div class="copy">
+      <div class="rule"><b>03</b>Agent-ready reads<span class="line"></span><span class="aperture"><i></i><em></em><i></i></span></div>
+      <h1>Markdown,<br /><span class="dim">not raw HTML.</span></h1>
+      <p class="sub"><code>abg read</code> hands your agent the shared tab as compact Markdown. Structure stays, markup goes.</p>
+      <div class="bench">
+        <div class="bench-row">
+          <span class="label">Full page HTML</span><span class="num">~50,000</span>
+          <span class="track"><i style="width: 100%"></i></span>
+        </div>
+        <div class="bench-row abg">
+          <span class="label">abg read · Markdown</span><span class="num">~5,900</span>
+          <span class="track"><i style="width: 11.8%"></i></span>
+        </div>
+        <p class="foot">Tokens for one article page. README benchmark, approximate.</p>
+      </div>
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 20 20" aria-hidden="true"><path class="arm" d="M1.75 10h4.5M13.75 10h4.5" stroke-width="1.5" stroke-linecap="round" /><rect class="bar" x="6.75" y="3" width="2" height="14" rx="1" /><rect class="bar" x="11.25" y="3" width="2" height="14" rx="1" /><circle class="dot" cx="10" cy="10" r="1.25" /></svg>
+        Agent Browser Gateway
+      </div>
+    </div>
+
+    <div class="browser">
+      <div class="bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="tab lit">Acme Outdoor — Checkout</span>
+      </div>
+      <div class="page"><img src="shots/page-checkout.png" alt="" /></div>
+    </div>
+
+    <div class="term agent">
+      <div class="term-bar"><span class="dots"><i></i><i></i><i></i></span>agent — zsh<span class="tag">t1 · tab 1043</span></div>
+      <pre id="out"></pre>
+    </div>
+    <span class="chip quiet local">converted locally by the Gateway's markdown plugin</span>
+
+    <script>
+      // The Markdown is the real markdown-plugin output for the sample page (render.mjs).
+      const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      const md = (line) => {
+        if (/^#{1,6} /.test(line)) return `<span class="md-h"><span class="md-m">${line.match(/^#+/)[0]}</span>${esc(line.replace(/^#+/, ""))}</span>`;
+        return esc(line)
+          .replace(/^- /, '<span class="md-m">- </span>')
+          .replace(/\*\*(.+?)\*\*/g, '<span class="md-m">**</span><span class="md-h">$1</span><span class="md-m">**</span>');
+      };
+      window.__ready = fetch("shots/read-aside.md")
+        .then((r) => r.text())
+        .then((text) => {
+          document.getElementById("out").innerHTML = [
+            '<span class="p">$</span> abg tabs --format text',
+            '<span class="out">t1  1043  manual  [Acme Outdoor — Checkout]  https://shop.example.com/checkout</span>',
+            '<span class="p">$</span> abg read t1 --selector aside --format markdown',
+            ...text.trim().split("\n").map((l) => `<span class="out">${md(l)}</span>`),
+            '<span class="p">$</span> <span class="cursor"></span>',
+          ].join("\n");
+          return true;
+        });
+    </script>
+  </body>
+</html>
