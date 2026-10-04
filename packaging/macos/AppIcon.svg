@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Agent Browser Gateway">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2124"/>
+      <stop offset="1" stop-color="#07090a"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3dff8f" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#3dff8f" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="12"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- macOS icon grid: 824×824 plate inset 100px on a 1024 canvas. -->
+  <g filter="url(#drop)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#plate)"/>
+  </g>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <!-- Gate mark (20-unit grid, scaled ×26 and centred). -->
+  <g transform="translate(252 252) scale(26)">
+    <rect x="1" y="9.2" width="5.6" height="1.6" rx="0.8" fill="#7f8a86"/>
+    <rect x="13.4" y="9.2" width="5.6" height="1.6" rx="0.8" fill="#7f8a86"/>
+    <rect x="6.6" y="3" width="2.3" height="14" rx="1.15" fill="#eef3f1"/>
+    <rect x="11.1" y="3" width="2.3" height="14" rx="1.15" fill="#eef3f1"/>
+    <circle cx="10" cy="10" r="4.2" fill="url(#glow)"/>
+    <circle cx="10" cy="10" r="1.7" fill="#3dff8f"/>
+  </g>
+</svg>

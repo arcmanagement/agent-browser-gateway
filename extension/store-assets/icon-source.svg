@@ -1,7 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
-  <path d="M64 12L20 28V62C20 89 38 109 64 116C90 109 108 89 108 62V28L64 12Z" stroke="#ffffff" stroke-width="13" stroke-linejoin="round"/>
-  <path d="M64 12L20 28V62C20 89 38 109 64 116C90 109 108 89 108 62V28L64 12Z" stroke="#0a0a0a" stroke-width="7" stroke-linejoin="round"/>
-  <rect x="39" y="58" width="50" height="11" rx="2" fill="#ffffff"/>
-  <rect x="39" y="58" width="50" height="11" rx="2" fill="#0a0a0a"/>
-  <circle cx="46" cy="63.5" r="3" fill="#34c759"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agent Browser Gateway">
+  <rect width="64" height="64" rx="14" fill="#07090a"/>
+  <g transform="translate(6 6) scale(2.6)">
+    <rect x="1" y="9.2" width="5.6" height="1.6" rx="0.8" fill="#7f8a86"/>
+    <rect x="13.4" y="9.2" width="5.6" height="1.6" rx="0.8" fill="#7f8a86"/>
+    <rect x="6.6" y="3" width="2.3" height="14" rx="1.15" fill="#eef3f1"/>
+    <rect x="11.1" y="3" width="2.3" height="14" rx="1.15" fill="#eef3f1"/>
+    <circle cx="10" cy="10" r="1.7" fill="#3dff8f"/>
+  </g>
 </svg>
