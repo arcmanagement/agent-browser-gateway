@@ -47,10 +47,10 @@ final class GatewayAppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let host = NSHostingController(
-            rootView: MenuBarView(coordinator: coordinator) { [weak self] in
+            rootView: MenuBarView(coordinator: coordinator, openWindow: { [weak self] in
                 self?.popover.performClose(nil)
                 self?.showDashboardWindow()
-            }
+            })
         )
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host

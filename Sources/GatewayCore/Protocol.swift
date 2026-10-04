@@ -11,8 +11,16 @@ public struct PermittedTab: Codable, Hashable, Sendable {
     public var permittedAt: Date
     public var expiresAt: Date?
     public var accessMode: String
+    /// Validated PNG site icon from the extension (see `TabFavicon`), shown in the menu
+    /// and window only. Kept in memory: it is not part of `Codable`, the audit log, or
+    /// CLI output.
+    public var favicon: Data?
 
-    public init(extensionId: String, tabId: Int, url: String, title: String, origin: String, permittedAt: Date, expiresAt: Date? = nil, accessMode: String = "manual") {
+    private enum CodingKeys: String, CodingKey {
+        case extensionId, tabId, url, title, origin, permittedAt, expiresAt, accessMode
+    }
+
+    public init(extensionId: String, tabId: Int, url: String, title: String, origin: String, permittedAt: Date, expiresAt: Date? = nil, accessMode: String = "manual", favicon: Data? = nil) {
         self.extensionId = extensionId
         self.tabId = tabId
         self.url = url
@@ -21,6 +29,7 @@ public struct PermittedTab: Codable, Hashable, Sendable {
         self.permittedAt = permittedAt
         self.expiresAt = expiresAt
         self.accessMode = accessMode
+        self.favicon = favicon
     }
 
     public var isExpired: Bool {
@@ -33,9 +42,11 @@ public struct PermittedTab: Codable, Hashable, Sendable {
 
 public enum ExtensionMessage: Codable, Sendable {
     case hello(extensionId: String, version: String, profileLabel: String?, browserKind: String?)
-    case tabPermitted(tabId: Int, url: String, title: String, origin: String, expiresAt: Date?, accessMode: String?)
+    /// `favicon` is an optional `data:image/png;base64,` icon; older extensions omit it.
+    case tabPermitted(tabId: Int, url: String, title: String, origin: String, expiresAt: Date?, accessMode: String?, favicon: String? = nil)
     case tabRevoked(tabId: Int, reason: String)
-    case tabUpdated(tabId: Int, url: String, title: String, origin: String, accessMode: String?)
+    /// A missing `favicon` leaves the current icon unchanged.
+    case tabUpdated(tabId: Int, url: String, title: String, origin: String, accessMode: String?, favicon: String? = nil)
     case tabClosed(tabId: Int)
     case runtimeEvent(tabId: Int, event: AnyCodable)
     case recordChunk(recordingId: String, seq: Int, dataBase64: String)
@@ -45,7 +56,7 @@ public enum ExtensionMessage: Codable, Sendable {
     case approvalResolved(approvalId: String, decision: String, decidedBy: String)
     case response(id: String, result: AnyCodable?, error: ErrorPayload?)
 
-    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, reason, event, id, result, error, recordingId, seq, dataBase64, durationMs, mime, micUsed, chunkCount, approval, approvalId, decision, decidedBy }
+    enum CodingKeys: String, CodingKey { case type, extensionId, version, profileLabel, browserKind, tabId, url, title, origin, expiresAt, accessMode, favicon, reason, event, id, result, error, recordingId, seq, dataBase64, durationMs, mime, micUsed, chunkCount, approval, approvalId, decision, decidedBy }
     enum MsgType: String, Codable { case hello, tabPermitted = "tab_permitted", tabRevoked = "tab_revoked", tabUpdated = "tab_updated", tabClosed = "tab_closed", runtimeEvent = "runtime_event", recordChunk = "record_chunk", recordStopped = "record_stopped", recordFailed = "record_failed", approvalPending = "approval_pending", approvalResolved = "approval_resolved", response }
 
     public init(from decoder: Decoder) throws {
@@ -66,7 +77,8 @@ public enum ExtensionMessage: Codable, Sendable {
                 title: try c.decode(String.self, forKey: .title),
                 origin: try c.decode(String.self, forKey: .origin),
                 expiresAt: try c.decodeIfPresent(Date.self, forKey: .expiresAt),
-                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode)
+                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode),
+                favicon: Self.decodeFavicon(c)
             )
         case .tabRevoked:
             self = .tabRevoked(
@@ -79,7 +91,8 @@ public enum ExtensionMessage: Codable, Sendable {
                 url: try c.decode(String.self, forKey: .url),
                 title: try c.decode(String.self, forKey: .title),
                 origin: try c.decode(String.self, forKey: .origin),
-                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode)
+                accessMode: try c.decodeIfPresent(String.self, forKey: .accessMode),
+                favicon: Self.decodeFavicon(c)
             )
         case .tabClosed:
             self = .tabClosed(tabId: try c.decode(Int.self, forKey: .tabId))
@@ -124,6 +137,11 @@ public enum ExtensionMessage: Codable, Sendable {
         }
     }
 
+    /// The icon is cosmetic: a malformed value is dropped rather than failing the share.
+    private static func decodeFavicon(_ c: KeyedDecodingContainer<CodingKeys>) -> String? {
+        (try? c.decodeIfPresent(String.self, forKey: .favicon)) ?? nil
+    }
+
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         switch self {
@@ -133,7 +151,7 @@ public enum ExtensionMessage: Codable, Sendable {
             try c.encode(version, forKey: .version)
             try c.encodeIfPresent(profileLabel, forKey: .profileLabel)
             try c.encodeIfPresent(browserKind, forKey: .browserKind)
-        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode):
+        case .tabPermitted(let tabId, let url, let title, let origin, let expiresAt, let accessMode, let favicon):
             try c.encode(MsgType.tabPermitted, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(url, forKey: .url)
@@ -141,17 +159,19 @@ public enum ExtensionMessage: Codable, Sendable {
             try c.encode(origin, forKey: .origin)
             try c.encodeIfPresent(expiresAt, forKey: .expiresAt)
             try c.encodeIfPresent(accessMode, forKey: .accessMode)
+            try c.encodeIfPresent(favicon, forKey: .favicon)
         case .tabRevoked(let tabId, let reason):
             try c.encode(MsgType.tabRevoked, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(reason, forKey: .reason)
-        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode):
+        case .tabUpdated(let tabId, let url, let title, let origin, let accessMode, let favicon):
             try c.encode(MsgType.tabUpdated, forKey: .type)
             try c.encode(tabId, forKey: .tabId)
             try c.encode(url, forKey: .url)
             try c.encode(title, forKey: .title)
             try c.encode(origin, forKey: .origin)
             try c.encodeIfPresent(accessMode, forKey: .accessMode)
+            try c.encodeIfPresent(favicon, forKey: .favicon)
         case .tabClosed(let tabId):
             try c.encode(MsgType.tabClosed, forKey: .type)
             try c.encode(tabId, forKey: .tabId)

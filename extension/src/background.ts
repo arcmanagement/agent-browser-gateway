@@ -32,6 +32,12 @@ import {
   browserAdapter,
 } from "./browserAdapter.js";
 import {
+  type FaviconSourceOptions,
+  faviconSourceForTab,
+  rasterizeFaviconPng,
+  resolveFavicon,
+} from "./faviconLogic.js";
+import {
   normalizeAppliedGatewayWebSocketUrl,
   normalizeGatewayWebSocketUrl,
   resolveStoredGatewayWebSocketUrl,
@@ -652,7 +658,9 @@ function sendTabPermitted(tabId: number, tab: PermittedTab): void {
     origin: tab.origin,
     expiresAt: tab.expiresAt ? new Date(tab.expiresAt).toISOString() : undefined,
     accessMode: tab.accessMode,
+    favicon: cachedFavicon(tabId, tab.origin),
   });
+  void refreshTabFavicon(tabId);
 }
 
 function sendTabUpdated(tabId: number, tab: PermittedTab): void {
@@ -663,7 +671,83 @@ function sendTabUpdated(tabId: number, tab: PermittedTab): void {
     title: tab.title,
     origin: tab.origin,
     accessMode: tab.accessMode,
+    favicon: cachedFavicon(tabId, tab.origin),
   });
+  void refreshTabFavicon(tabId);
+}
+
+// ---------- Tab icons for the Gateway menu ----------
+//
+// Icons are read from the browser (Chrome's favicon cache, or a data: URL it already
+// holds), re-encoded to a small PNG, and kept in memory only. They ride on
+// tab_permitted / tab_updated so the Gateway can show them next to each shared tab;
+// the Gateway never fetches icons itself.
+
+type TabFavicon = { sourceKey: string; origin: string; dataUrl: string | null };
+const tabFavicons = new Map<number, TabFavicon>();
+const tabFaviconRefreshes = new Map<number, Promise<void>>();
+const tabFaviconRefreshAgain = new Set<number>();
+
+/** The last icon read for this tab, unless it belongs to another site. */
+function cachedFavicon(tabId: number, origin: string): string | undefined {
+  const cached = tabFavicons.get(tabId);
+  return cached?.origin === origin ? (cached.dataUrl ?? undefined) : undefined;
+}
+
+function faviconSourceOptions(): FaviconSourceOptions {
+  const { permissions } = browser.runtime.getManifest() as { permissions?: string[] };
+  const hasFaviconCache = browser.kind === "chrome" && !!permissions?.includes("favicon");
+  return {
+    browserKind: browser.kind,
+    faviconCacheBaseUrl: hasFaviconCache ? browser.runtime.getURL("/_favicon/") : undefined,
+  };
+}
+
+function refreshTabFavicon(tabId: number): Promise<void> {
+  const pending = tabFaviconRefreshes.get(tabId);
+  if (pending) {
+    // The tab changed while its icon was being read; read it again afterwards.
+    tabFaviconRefreshAgain.add(tabId);
+    return pending;
+  }
+  const refresh = (async () => {
+    const tab = await browser.tabs.get(tabId).catch(() => undefined);
+    if (!tab || !permittedTabs.has(tabId)) return;
+    const source = faviconSourceForTab(tab, faviconSourceOptions());
+    // The cache URL is keyed by page URL, so a changed favIconUrl must also refresh.
+    const sourceKey = `${tab.favIconUrl ?? ""}\n${source?.url ?? ""}`;
+    const previous = tabFavicons.get(tabId);
+    if (previous && previous.sourceKey === sourceKey) return;
+    const dataUrl = await resolveFavicon(source, {
+      fetch: (url, init) => fetch(url, init),
+      rasterize: rasterizeFaviconPng,
+    });
+    // The tab may have been revoked or closed while the icon was read.
+    const entry = permittedTabs.get(tabId);
+    if (!entry) return;
+    tabFavicons.set(tabId, { sourceKey, origin: entry.origin, dataUrl });
+    // The Gateway drops an icon when the origin changes, so resend it for a new origin.
+    if (dataUrl && (dataUrl !== previous?.dataUrl || previous?.origin !== entry.origin)) {
+      sendWS({
+        type: "tab_updated",
+        tabId,
+        url: entry.url,
+        title: entry.title,
+        origin: entry.origin,
+        accessMode: entry.accessMode,
+        favicon: dataUrl,
+      });
+    }
+  })()
+    .catch(() => undefined)
+    .finally(() => {
+      tabFaviconRefreshes.delete(tabId);
+      if (tabFaviconRefreshAgain.delete(tabId) && permittedTabs.has(tabId)) {
+        void refreshTabFavicon(tabId);
+      }
+    });
+  tabFaviconRefreshes.set(tabId, refresh);
+  return refresh;
 }
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
@@ -834,6 +918,7 @@ async function permitTab(tabId: number): Promise<void> {
 async function revokeTab(tabId: number, reason: string): Promise<void> {
   if (!permittedTabs.has(tabId)) return;
   permittedTabs.delete(tabId);
+  tabFavicons.delete(tabId);
   consoleBuffers.delete(tabId);
   networkBuffers.delete(tabId);
   pendingDialogs.delete(tabId);
@@ -914,6 +999,8 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     permittedTabs.set(tabId, old);
     await saveState();
     sendTabUpdated(tabId, old);
+  } else if (changeInfo.favIconUrl !== undefined) {
+    await refreshTabFavicon(tabId);
   }
 });
 
@@ -922,6 +1009,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   await annotationSnapshots.delete(tabId).catch(() => undefined);
   if (permittedTabs.has(tabId)) {
     permittedTabs.delete(tabId);
+    tabFavicons.delete(tabId);
     consoleBuffers.delete(tabId);
     networkBuffers.delete(tabId);
     pendingDialogs.delete(tabId);

@@ -31,6 +31,18 @@ Chrome Web Store item ID:
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
 
+## Unreleased review notes
+
+- New `favicon` permission, used only to show each shared tab's site icon next to it in the
+  local Gateway menu. The extension reads the icon from Chrome's own favicon cache through
+  `chrome-extension://<id>/_favicon/` (no network request), re-encodes it to a 32×32 PNG of at
+  most 8 KB, and sends it over the existing loopback WebSocket with the tab it already shares.
+  Icons are read only for tabs the user has shared and are kept in memory only.
+- No change to the install prompt: with `tabs` already declared, Chrome folds the `favicon`
+  warning ("Read the icons of the websites you visit") into the existing warnings, so
+  `chrome.management.getPermissionWarningsByManifest` returns the same list for 0.5.0 and this
+  manifest, and updating does not disable the extension.
+
 ## 0.5.0 review notes
 
 - No new permissions and no new host access. The release adds two keyboard shortcuts (`commands`):
@@ -144,6 +156,7 @@ Suggested permission justifications:
 - `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
 - `desktopCapture`: Fallback for recording tabs shared through the opt-in all-tabs sandbox mode, where no per-tab toolbar click exists for `tabCapture`: the Allow click opens Chrome's own tab picker and the user selects the tab to record. Never invoked outside the recording approval flow.
 - `offscreen`: Run Chrome's MediaRecorder capture pipeline in a hidden extension document while recording chunks stream to the local gateway, and copy the current tab ID to the clipboard when the user presses the copy-tab-ID keyboard shortcut.
+- `favicon`: Show a shared tab's site icon in the local Gateway menu. The icon is read from Chrome's own favicon cache (never fetched from the network), only for tabs the user has shared, and re-encoded to a small PNG before it is sent to the local gateway.
 - Optional permission `bookmarks`: Requested only when the user enables "Bookmarks access"; allows read-only bookmark inspection and opening an existing bookmark URL through an explicit local command.
 - Optional permission `readingList`: Requested only when the user enables "Reading List access"; allows read-only Reading List inspection on Chrome versions that expose `chrome.readingList`.
 - Optional host permission `<all_urls>`: Requested only when the user enables "Share all tabs (sandbox profiles only)"; allows structured page operations across tabs in an isolated/sandbox profile. It is removed when the mode is disabled.

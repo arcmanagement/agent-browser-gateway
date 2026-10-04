@@ -50,6 +50,8 @@ export type ExtToGateway =
       origin: string;
       expiresAt?: string;
       accessMode?: TabAccessMode;
+      /** 32x32 `data:image/png;base64,` icon read from the browser, at most 8 KB. */
+      favicon?: string;
     }
   | { type: "tab_revoked"; tabId: number; reason: string }
   | {
@@ -59,6 +61,8 @@ export type ExtToGateway =
       title: string;
       origin: string;
       accessMode?: TabAccessMode;
+      /** Same as on tab_permitted; absent means unchanged. */
+      favicon?: string;
     }
   | { type: "tab_closed"; tabId: number }
   | { type: "runtime_event"; tabId: number; event: Record<string, unknown> }

@@ -101,9 +101,14 @@ async function patchManifest(target) {
   if (target === "firefox") {
     delete manifest.key;
     delete manifest.minimum_chrome_version;
-    // Recording relies on the Chrome-only offscreen + tabCapture APIs.
+    // Recording relies on the Chrome-only offscreen + tabCapture APIs, and the
+    // `_favicon` cache endpoint is Chrome-only (Firefox sends data: icons only).
     manifest.permissions = (manifest.permissions ?? []).filter(
-      (perm) => perm !== "offscreen" && perm !== "tabCapture" && perm !== "desktopCapture",
+      (perm) =>
+        perm !== "offscreen" &&
+        perm !== "tabCapture" &&
+        perm !== "desktopCapture" &&
+        perm !== "favicon",
     );
     // Reading List is Chrome-only in ABG's current extension target set.
     await rm("dist/offscreen.html", { force: true });

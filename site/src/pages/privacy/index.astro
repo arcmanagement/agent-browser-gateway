@@ -21,7 +21,7 @@ import "../../styles/legal.css";
             This policy explains how Agent Browser Gateway handles browser data, extension
             permissions, local logs, and user choices.
           </p>
-          <p><strong>Last updated:</strong> May 28, 2026</p>
+          <p><strong>Last updated:</strong> October 4, 2026</p>
         </div>
       </section>
 
@@ -104,6 +104,12 @@ import "../../styles/legal.css";
                     <td>Tab ID, title, URL, origin, access mode, sharing timestamp, optional expiration timestamp</td>
                     <td>Track which tabs have been explicitly shared and revoke access when needed</td>
                     <td>Chrome session storage, gateway memory, and local audit log entries</td>
+                  </tr>
+                  <tr>
+                    <td>Shared tab icon</td>
+                    <td>The site icon of a shared tab, read from Chrome's own favicon cache and re-encoded as a small PNG (at most 8 KB)</td>
+                    <td>Show which site each shared tab belongs to in the local gateway menu and window</td>
+                    <td>Extension memory and gateway memory only; never fetched from the network, written to disk, added to the audit log, or included in CLI output</td>
                   </tr>
                   <tr>
                     <td>Page content</td>
@@ -207,6 +213,13 @@ import "../../styles/legal.css";
                       Run Chrome's MediaRecorder pipeline in a hidden extension document while the
                       Gateway streams recording chunks to a local file, and copy the current tab ID
                       to the clipboard when the user presses the copy-tab-ID shortcut.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><code>favicon</code></td>
+                    <td>
+                      Read a shared tab's site icon from Chrome's own favicon cache, without a network
+                      request, so the local gateway menu can show it next to the tab.
                     </td>
                   </tr>
                   <tr>
