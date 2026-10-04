@@ -206,6 +206,23 @@ If `codesign` reports the Developer ID identity as ambiguous (two certificates w
 the keychain), pass the SHA-1 hash of the certificate used for the previous release as
 `SIGN_IDENTITY`.
 
+## Chrome Web Store Before Tagging
+
+The tag's Chrome Web Store job uploads the package and submits it for review. Check these before
+pushing the tag; each one needs the owner in the Developer Dashboard:
+
+- If the release adds or changes a manifest permission, the owner must add its justification under
+  Privacy practices first. Otherwise the upload succeeds but submission fails with
+  `INVALID_ITEM_METADATA`. Put the justification text in `extension/WEBSTORE.md` and hand it over.
+- If another version is pending review, the job stops on purpose. Either wait for that review or ask
+  the owner to withdraw it, then confirm the withdrawal before tagging.
+- Store screenshots, promo tiles, and the store icon are not part of the package. Regenerate them
+  with `extension/store-assets/render.mjs` when the UI changes and have the owner upload them.
+- Staged publishing means an approved version still needs a manual Publish.
+
+To resubmit after fixing listing metadata, the owner can press Submit for review in the dashboard;
+the uploaded package stays as the draft.
+
 ## Local Install Refresh
 
 When the user asks to update the local running app after a bump:
