@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.5.0.zip
+dist/agent-browser-gateway-extension-0.5.1.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -31,8 +31,10 @@ Chrome Web Store item ID:
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
 
-## Unreleased review notes
+## 0.5.1 review notes
 
+- New extension icon (the gate mark used across ABG); no functional change from the icon.
+- This package replaces the withdrawn 0.5.0 submission and includes all 0.5.0 changes listed below.
 - New `favicon` permission, used only to show each shared tab's site icon next to it in the
   local Gateway menu. The extension reads the icon from Chrome's own favicon cache through
   `chrome-extension://<id>/_favicon/` (no network request), re-encodes it to a 32×32 PNG of at
