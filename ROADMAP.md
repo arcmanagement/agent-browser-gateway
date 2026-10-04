@@ -2,9 +2,14 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
 
-Current repo version: **v0.5.1**.
+Current repo version: **v0.5.2**.
 
 ## Shipped
+
+### v0.5.2 — Approval window fit (2026-10-04)
+- The local approval window sizes to its content after the bundled fonts load, so its countdown and Esc hint are no longer cut off (#461). Found during the manual checks in #460.
+- Release docs: Chrome Web Store steps to finish before tagging (#459).
+- Chrome Web Store: the 0.5.1 submission was withdrawn and 0.5.2 submitted in its place.
 
 ### v0.5.1 — Favicons, click-to-copy, and the gate icons (2026-10-04)
 - The Gateway menu and window show each shared tab's favicon. The extension reads it from Chrome's own favicon cache (new `favicon` permission, no new install warning), re-encodes it to a small PNG, and sends it with the shared tab; the Gateway keeps it in memory only and never fetches icons from the network.
