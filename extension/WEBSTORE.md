@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.5.1.zip
+dist/agent-browser-gateway-extension-0.5.2.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 0.5.2 review notes
+
+- No new permissions. Fixes the local approval window cutting off its footer: it now sizes to its
+  content after the bundled fonts load.
+- This package replaces the withdrawn 0.5.1 submission and includes all 0.5.1 and 0.5.0 changes
+  listed below.
 
 ## 0.5.1 review notes
 

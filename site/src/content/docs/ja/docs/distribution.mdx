@@ -11,8 +11,8 @@ sidebar:
 
 | 配布経路 | 状況 |
 | --- | --- |
-| macOS アプリ: GitHub Releases、Homebrew | 署名と公証を済ませた `v0.5.1` |
-| Chrome ウェブストア | 拡張機能 `v0.4.8`。更新日は2026年8月23日（`v0.5.1` は審査中） |
+| macOS アプリ: GitHub Releases、Homebrew | 署名と公証を済ませた `v0.5.2` |
+| Chrome ウェブストア | 拡張機能 `v0.4.8`。更新日は2026年8月23日（`v0.5.2` は審査中） |
 | Windows: WinGet、セットアップ ZIP | 署名済みの Windows リリースと WinGet への登録待ち |
 
 Chrome ウェブストアの審査と署名済みアプリの公開はそれぞれ別に進むため、アプリと拡張機能のバージョンが食い違うことがあります。
@@ -60,7 +60,7 @@ Homebrew 向けのリリースが整う条件は2つです。対応する GitHub
 
 [Chrome ウェブストアの公開ページ](https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi) から拡張機能を入れます。
 
-リリースの検証では、公開ページが開けることを確かめ、表示されたバージョンと更新日を最新の macOS リリースとは別に記録します。現在の表示はバージョン `0.4.8`、更新日は2026年8月23日です。拡張機能 `v0.5.1` は審査中です。
+リリースの検証では、公開ページが開けることを確かめ、表示されたバージョンと更新日を最新の macOS リリースとは別に記録します。現在の表示はバージョン `0.4.8`、更新日は2026年8月23日です。拡張機能 `v0.5.2` は審査中です。
 
 ### WinGet
 
@@ -68,7 +68,7 @@ Homebrew 向けのリリースが整う条件は2つです。対応する GitHub
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-`v0.5.1` はまだ WinGet に登録されていません。署名済みの Windows リリースのワークフローと WinGet への申請が済むまで、このコマンドは一致するパッケージなしを返します。
+`v0.5.2` はまだ WinGet に登録されていません。署名済みの Windows リリースのワークフローと WinGet への申請が済むまで、このコマンドは一致するパッケージなしを返します。
 
 WinGet 向けのリリースが整うのは、公開用の Windows セットアップ ZIP が GitHub Releases に置かれ、そこから生成した `microsoft/winget-pkgs` の PR がマージされて登録されたあとです。
 
@@ -83,7 +83,7 @@ Mac App Store の経路は、Developer ID と Homebrew のリリース経路と�
 信頼できる Mac 上で、Developer ID の署名と公証を済ませた成果物をビルドします。
 
 ```bash
-export VERSION=0.5.1
+export VERSION=0.5.2
 make release-dmg VERSION="$VERSION" \
   SIGN_IDENTITY="Developer ID Application: ArcManagement Inc (M46W5MVAQP)" \
   NOTARY_PROFILE="abg-notary"
