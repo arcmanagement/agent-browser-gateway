@@ -465,8 +465,32 @@ a local plugin command.
 
 Use `fill` for native `input`, `textarea`, and plain `contenteditable` targets when one explicit
 replacement command is enough. It dispatches `beforeinput`, `input`, and `change` metadata, avoids
-clipboard dependence, and returns the detected editable kind plus replacement lengths. Use
-`replace-editable` when the stronger command name makes a CMS/rich-editor workflow clearer; it uses
+clipboard dependence, and returns the detected editable kind plus replacement lengths.
+Use `fill` directly for native `input` and `textarea` fields: it preserves the current focus, so no
+preceding `click` or `focus` is needed. This avoids opening password manager suggestions triggered
+by field focus. Rich `contenteditable` targets still use focus and selection for replacement.
+Password manager settings stay unchanged; when the user focuses a field, their usual suggestions
+can still appear.
+If a password manager's inline menu opens anyway, Chrome can block debugger access to the whole
+tab (`blocked_by_extension_frame`). Run `abg key <tab-ref> Escape` to recover inside ABG: when the
+debugger rejects Escape, ABG tries a synthetic Escape through `chrome.scripting`, then moves focus
+to the page body if necessary. If 1Password still blocks access, it removes only the current
+page's `com-1password-menu`, `com-1password-notification` and `com-1password-uso` UI hosts (the
+last is the dismissible page-top sign-in suggestion banner). It leaves the extension
+button, authentication modals and all iframe contents alone. It targets only the shared
+tab's top document, leaves password manager
+settings and field values untouched, and verifies debugger access before reporting success. The
+result includes `recovery.strategy`, `recovery.focusChanged` and, when applicable,
+`recovery.dismissedHosts`; a focus change means focused keyboard
+input must be targeted again. Normal key-operation approval and Gateway audit still apply.
+Then check the page state before retrying: the previous action may already have executed. ABG
+does not replay the failed action. This path uses neither Computer Use nor OS input and works for
+any agent using the CLI, its MCP wrapper, or plugin tab actions. If recovery fails, the original
+block remains explicit. ABG can also reconnect the debugger after dismissal. An unclipped screenshot
+can fall back to Chrome's visible-tab capture while debugger access is blocked, so the remaining
+display can be inspected. Focus-free fill alone does not prevent suggestions triggered by other events.
+
+Use `replace-editable` when the stronger command name makes a CMS/rich-editor workflow clearer; it uses
 the same replacement path and can read from `--text-file` or `--stdin`. Add `--diff` when a high-risk
 editor change needs compact before/after evidence. ABG captures selector-scoped text and HTML
 hashes, lengths, and redacted bounded excerpts in the command result and local audit log, but does

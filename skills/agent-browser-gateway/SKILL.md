@@ -474,6 +474,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 
 ## 注意点
 
+- `blocked_by_extension_frame`（1Passwordなどの候補でChromeのdebuggerが拒否された）では、本人へEsc操作を依頼する前に `abg key <ref> Escape` を使う。ABGはEscapeが拒否された時だけ、共有タブのtop documentへ `chrome.scripting` でEscapeを送り、必要ならページ本文へfocusを移し、1Passwordの候補・通知が残る場合は `com-1password-menu`・`com-1password-notification`・`com-1password-uso`（ページ上部のサインイン候補バー）の表示hostだけを閉じ、必要ならdebuggerへ再接続して復帰を確認する。拡張ボタン・認証modalは変更しない。debugger拒否中もclip指定のないスクショはChromeの可視タブ取得へfallbackできる。Computer UseやOSキー操作は不要。1Passwordの設定をOFFにしない。復帰したらDOM/スクショを取り直し、失敗した送信や作成が既に実行済みでないか確認してから続ける。`recovery.focusChanged: true` ならfocus依存のキー入力をそのまま続けず、対象を確認する。通常のkey操作と同じ承認・audit境界を使い、未共有tabや別拡張のiframe内部は操作しない。復帰できない時は成功と扱わない。
 - `abg` の出力は基本 JSON。値を取り出すときは `jq` 等でパースする
 - `abg tabs` の結果が空なら、まずユーザーに共有を依頼する。**勝手にタブを覗こうとしない**
 - `abg tabs --compact` の `ref` は Gateway 起動中の pin 相当で、profile と Chrome tabId の組へ固定される。他のタブが増減しても同じ ref を連続操作に使う。Gateway 再起動、タブ close、共有 revoke、別 origin 遷移後は一覧を取り直す

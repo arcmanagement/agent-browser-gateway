@@ -56,6 +56,12 @@ import {
   resolveUiLanguage,
   type UiLanguageSetting,
 } from "./i18n.js";
+import {
+  canRecoverEscape,
+  type ExtensionFrameRecovery,
+  isExtensionFrameAccessError,
+  recoverExtensionFrame,
+} from "./passwordManagerRecoveryLogic.js";
 import { restoreReportText } from "./popupLogic.js";
 import type {
   AnnotationAction,
@@ -84,7 +90,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "0.5.2";
+const VERSION = "0.5.3";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -621,7 +627,9 @@ async function restoreState(): Promise<void> {
   const obj = stored.permittedTabs as Record<string, PermittedTab> | undefined;
   if (!obj) return;
   for (const [k, v] of Object.entries(obj)) {
-    permittedTabs.set(Number(k), { ...v, accessMode: v.accessMode ?? "manual" });
+    const tabId = Number(k);
+    permittedTabs.set(tabId, { ...v, accessMode: v.accessMode ?? "manual" });
+    await updateBadge(tabId);
   }
 }
 
@@ -966,6 +974,7 @@ browser.tabs.onCreated.addListener(async (tab) => {
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  await bootstrapReady;
   const currentUrl = tab.url ?? changeInfo.url;
   if ((await isAllTabsAccessActive()) && isShareableTabUrl(currentUrl)) {
     await upsertAllTabsEntry({ ...tab, id: tabId, url: currentUrl }, true);
@@ -1002,6 +1011,8 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   } else if (changeInfo.favIconUrl !== undefined) {
     await refreshTabFavicon(tabId);
   }
+  // Chrome clears per-tab action state on navigation, even when the share stays valid.
+  await updateBadge(tabId);
 });
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
@@ -1029,6 +1040,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
+  await bootstrapReady;
   await updateBadge(tabId);
 });
 
@@ -1562,15 +1574,15 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       replyError(cmd.id, e.code, e.message, e.matchCount);
     } else {
       const message = e instanceof Error ? e.message : String(e);
-      if (message.includes("Cannot access a chrome-extension:// URL")) {
+      if (isExtensionFrameAccessError(e)) {
         // A third-party extension iframe (typically a password manager's inline
         // menu) is attached to the page; Chrome refuses debugger access to the
-        // whole tab until it goes away, and ABG cannot dismiss it because the
-        // dismissal itself would need a blocked command.
+        // whole tab until it goes away. Escape can recover through the scripting
+        // API without inspecting another extension's private iframe contents.
         replyError(
           cmd.id,
           "blocked_by_extension_frame",
-          "A third-party extension iframe (for example a password manager inline menu) is open in this tab, and Chrome blocks debugger commands for the whole tab until the user dismisses it (click elsewhere or press Escape). The dispatched action may still have executed. For identity-like forms, filling via eval with native value setters avoids focusing the field and never triggers the menu.",
+          "A third-party extension inline menu blocks debugger access to this tab. Run abg key <tab-ref> Escape: ABG uses scripting, page UI dismissal and debugger reconnect for recovery, without Computer Use or changing password manager settings. Then inspect the page before retrying, because the dispatched action may already have executed. For native input/textarea fields, use fill without a preceding click or focus.",
         );
       } else {
         replyError(cmd.id, "command_failed", message);
@@ -4109,55 +4121,66 @@ async function screenshot(
   if (!browser.supportsDebugger) {
     return screenshotWithVisibleTabCapture(tabId, clip);
   }
-
-  await attachDebugger(tabId);
-  // Full captures previously omitted the clip, so Chrome picked the scale from
-  // the device pixel ratio and consecutive captures of the same viewport could
-  // come back at different sizes. Deriving an explicit CSS-pixel clip with
-  // scale 1 makes image pixels equal CSS pixels on every capture, so
-  // screenshot-derived coordinates feed straight into click --x/--y.
-  const layout = (await browser.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
-    cssVisualViewport?: {
-      clientWidth: number;
-      clientHeight: number;
-      pageX: number;
-      pageY: number;
+  try {
+    await attachDebugger(tabId);
+    // Full captures previously omitted the clip, so Chrome picked the scale from
+    // the device pixel ratio and consecutive captures of the same viewport could
+    // come back at different sizes. Deriving an explicit CSS-pixel clip with
+    // scale 1 makes image pixels equal CSS pixels on every capture, so
+    // screenshot-derived coordinates feed straight into click --x/--y.
+    const layout = (await browser.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
+      cssVisualViewport?: {
+        clientWidth: number;
+        clientHeight: number;
+        pageX: number;
+        pageY: number;
+      };
     };
-  };
-  const viewport = layout.cssVisualViewport;
-  const effectiveClip =
-    clip ??
-    (viewport
-      ? {
-          x: viewport.pageX,
-          y: viewport.pageY,
-          width: viewport.clientWidth,
-          height: viewport.clientHeight,
-        }
-      : undefined);
-  const params: Record<string, unknown> = { format: "png" };
-  if (effectiveClip) {
-    params.clip = { ...effectiveClip, scale: 1 };
-  }
-  const result = (await browser.debugger.sendCommand(
-    { tabId },
-    "Page.captureScreenshot",
-    params,
-  )) as {
-    data: string;
-  };
-  const output: ScreenshotResult = { dataUrl: `data:image/png;base64,${result.data}` };
-  if (viewport) {
-    output.cssViewport = { width: viewport.clientWidth, height: viewport.clientHeight };
-  }
-  if (effectiveClip) {
-    output.imageSize = {
-      width: Math.round(effectiveClip.width),
-      height: Math.round(effectiveClip.height),
+    const viewport = layout.cssVisualViewport;
+    const effectiveClip =
+      clip ??
+      (viewport
+        ? {
+            x: viewport.pageX,
+            y: viewport.pageY,
+            width: viewport.clientWidth,
+            height: viewport.clientHeight,
+          }
+        : undefined);
+    const params: Record<string, unknown> = { format: "png" };
+    if (effectiveClip) {
+      params.clip = { ...effectiveClip, scale: 1 };
+    }
+    const result = (await browser.debugger.sendCommand(
+      { tabId },
+      "Page.captureScreenshot",
+      params,
+    )) as {
+      data: string;
     };
-    output.scale = 1;
+    const output: ScreenshotResult = { dataUrl: `data:image/png;base64,${result.data}` };
+    if (viewport) {
+      output.cssViewport = { width: viewport.clientWidth, height: viewport.clientHeight };
+    }
+    if (effectiveClip) {
+      output.imageSize = {
+        width: Math.round(effectiveClip.width),
+        height: Math.round(effectiveClip.height),
+      };
+      output.scale = 1;
+    }
+    return output;
+  } catch (error) {
+    if (!isExtensionFrameAccessError(error) || clip) throw error;
+    if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
+    const [viewport] = await browser.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      func: () => ({ width: window.innerWidth, height: window.innerHeight }),
+    });
+    if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
+    const capture = await screenshotWithVisibleTabCapture(tabId);
+    return { ...capture, cssViewport: viewport?.result };
   }
-  return output;
 }
 
 async function screenshotWithVisibleTabCapture(
@@ -5842,12 +5865,9 @@ async function fillField(
           el instanceof HTMLTextAreaElement
             ? HTMLTextAreaElement.prototype
             : HTMLInputElement.prototype;
-        el.focus({ preventScroll: true });
-        try {
-          el.setSelectionRange(0, el.value.length);
-        } catch {
-          // Some input types do not expose text selection.
-        }
+        // Native value replacement needs neither focus nor selection. Focusing
+        // can open a password manager's extension iframe and block subsequent
+        // debugger commands for the entire tab.
         el.dispatchEvent(
           new InputEvent("beforeinput", {
             bubbles: true,
@@ -6690,28 +6710,68 @@ async function keyPress(
   key: string,
   code: string | undefined,
   modifiers: string[],
-): Promise<{ ok: true }> {
-  await attachDebugger(tabId);
+): Promise<{ ok: true; recovery?: ExtensionFrameRecovery }> {
   const mods = modifiersToBitmask(modifiers);
   const resolvedCode =
     code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
   const resolvedKey = key === "Space" ? " " : key;
   const base = { key: resolvedKey, code: resolvedCode, modifiers: mods };
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
-    type: "keyDown",
-    ...base,
-  });
-  if (resolvedKey.length === 1) {
+  try {
+    await attachDebugger(tabId);
     await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
-      type: "char",
-      text: resolvedKey,
+      type: "keyDown",
       ...base,
     });
+    if (resolvedKey.length === 1) {
+      await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+        type: "char",
+        text: resolvedKey,
+        ...base,
+      });
+    }
+    await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+      type: "keyUp",
+      ...base,
+    });
+  } catch (error) {
+    if (!canRecoverEscape(key, code, modifiers, error)) throw error;
+    // This is part of the already-approved key_press operation. No arbitrary
+    // script, OS input, permission expansion, or retry of the failed action.
+    try {
+      const recovery = await recoverExtensionFrame(
+        {
+          isPermitted: () => permittedTabs.has(tabId),
+          scripting: browser.scripting,
+          resetDebugger: async () => {
+            // Remove a stale debugger session even if initial domain setup failed
+            // before it was recorded in attachedTabs. Only reconnect this shared tab.
+            try {
+              await browser.debugger.detach({ tabId });
+            } catch {}
+            attachedTabs.delete(tabId);
+            if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
+            await attachDebugger(tabId);
+          },
+          probe: async () => {
+            await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
+              expression: "0",
+              returnByValue: true,
+            });
+          },
+        },
+        tabId,
+      );
+      return { ok: true, recovery };
+    } catch (recoveryError) {
+      if (isExtensionFrameAccessError(recoveryError)) {
+        throw new GatewayError(
+          "blocked_by_extension_frame",
+          recoveryError instanceof Error ? recoveryError.message : String(recoveryError),
+        );
+      }
+      throw recoveryError;
+    }
   }
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
-    type: "keyUp",
-    ...base,
-  });
   return { ok: true };
 }
 
