@@ -43,6 +43,8 @@ abg audit --lines 50
 
 - Tray Gateway: `agent-browser-gateway.exe`
 - WinUI app: `AgentBrowserGateway.Windows.exe`
+- Dashboard: overview, shared tabs with favicons and copy/revoke controls, searchable audit, and settings.
+- Appearance: system/light/dark; language: automatic/English/Japanese. Preferences persist locally.
 - CLI: `abg.exe`
 - Extension WebSocket: `127.0.0.1:8765/ws` by default (`ABG_PORT=8766` for a dev Gateway/profile)
 - CLI transport: Windows named pipe `AgentBrowserGateway.Cli`
@@ -52,5 +54,5 @@ abg audit --lines 50
 
 `record`, `replay`, and dynamic plugin commands are not supported by the Windows MVP yet.
 Install the skills separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
-For Windows v0.5.2, extract the unsigned setup ZIP from GitHub Releases and run
+For Windows v0.5.3, extract the unsigned setup ZIP from GitHub Releases and run
 `AgentBrowserGatewaySetup.exe`. Windows may show a security warning. WinGet remains pending.

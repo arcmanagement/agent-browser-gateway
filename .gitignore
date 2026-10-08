@@ -83,6 +83,8 @@ assets/
 !packaging/msix/Assets/**
 !site/assets/
 !site/assets/**
+!windows/AgentBrowserGateway.Windows/Assets/
+!windows/AgentBrowserGateway.Windows/Assets/**
 
 # Release binaries are published through GitHub Releases, not Git.
 site/public/downloads/

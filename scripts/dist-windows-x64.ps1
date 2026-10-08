@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.5.2",
+    [string]$Version = "0.5.3",
     [string]$Configuration = "Release",
     [switch]$SkipWinUiApp,
     [string]$PagesOutputDir = "",
@@ -166,7 +166,10 @@ function Copy-WinUiGeneratedResources {
         "App.xbf",
         "MainWindow.xbf",
         "SetupWindow.xbf",
-        "StatusWindow.xbf"
+        "StatusWindow.xbf",
+        "GatewayDashboard.xbf",
+        "SharedTabCard.xbf",
+        "GateMark.xbf"
     )
 
     foreach ($file in $requiredFiles) {
@@ -252,11 +255,15 @@ Write-Host "==> sign"
 Invoke-CodeSign -Paths @($Stage, $SetupStage)
 
 Write-Host "==> verify binary versions"
-foreach ($Binary in @(
+$VersionBinaries = @(
     (Join-Path $Stage "abg.exe"),
     (Join-Path $Stage "agent-browser-gateway.exe"),
     (Join-Path $SetupStage "AgentBrowserGatewaySetup.exe")
-)) {
+)
+if (-not $SkipWinUi) {
+    $VersionBinaries += (Join-Path $Stage "AgentBrowserGateway.Windows.exe")
+}
+foreach ($Binary in $VersionBinaries) {
     $FileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($Binary).FileVersion
     if ($FileVersion -ne "$Version.0") {
         throw "Binary version mismatch: $Binary reports $FileVersion, expected $Version.0"

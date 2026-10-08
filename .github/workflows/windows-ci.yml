@@ -33,7 +33,7 @@ on:
       version:
         description: "Windows artifact version"
         required: false
-        default: "0.5.2"
+        default: "0.5.3"
       upload_release:
         description: "Upload signed Windows assets to the GitHub Release"
         required: false
@@ -70,13 +70,13 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "release") {
-            $version = "${{ github.event.release.tag_name }}".TrimStart("v")
+            $version = "${{ github.event.release.tag_name }}" -replace '^(windows-)?v', ''
             $releaseTag = "${{ github.event.release.tag_name }}"
           } else {
-            $version = "${{ inputs.version || '0.5.2' }}".TrimStart("v")
+            $version = "${{ inputs.version || '0.5.3' }}" -replace '^v', ''
             $releaseTag = "${{ inputs.release_tag || '' }}"
             if ([string]::IsNullOrWhiteSpace($releaseTag)) {
-              $releaseTag = "v$version"
+              $releaseTag = "windows-v$version"
             }
           }
           if ([string]::IsNullOrWhiteSpace($version)) {

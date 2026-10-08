@@ -118,16 +118,19 @@ args = ["mcp-server"]
 
 ## Windows
 
+Windows 0.5.3 は、Mac アプリと Chrome 拡張機能に合わせた The Gate デザインです。
+トレイから概要・共有タブ・操作履歴・設定を開けます。タブのコピー／共有解除、履歴の検索、表示モードと言語の切り替えに対応しています。
+
 WinGet でインストールできるようにする予定です。
 
 ```powershell
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-[Windows v0.5.2 のセットアップ ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip)と、同じリリースの `.sha256.txt` をダウンロードします。チェックサムを確認して ZIP を展開し、`AgentBrowserGatewaySetup.exe` を実行してください。
+[Windows v0.5.3 のセットアップ ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip)と、同じリリースの `.sha256.txt` をダウンロードします。チェックサムを確認して ZIP を展開し、`AgentBrowserGatewaySetup.exe` を実行してください。
 
 :::caution[Windows の ZIP は未署名です]
-Windows v0.5.2 の ZIP は未署名のため、Windows のセキュリティ警告が表示される場合があります。WinGet にはまだ ABG が登録されておらず、一致するパッケージなしと返すのは想定どおりです。
+Windows v0.5.3 の ZIP は未署名のため、Windows のセキュリティ警告が表示される場合があります。WinGet にはまだ ABG が登録されておらず、一致するパッケージなしと返すのは想定どおりです。
 :::
 
 ソースからビルドする場合は、Windows 上でリポジトリを clone し、リポジトリのルートで次を実行します。

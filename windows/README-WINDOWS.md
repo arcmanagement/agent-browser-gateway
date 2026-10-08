@@ -2,8 +2,16 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
-Current `v0.5.2` release status: unsigned Windows ZIPs are available from
-[GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/v0.5.2).
+Windows 0.5.3 uses The Gate design shared with the Mac app and Chrome extension. Open the dashboard
+from the tray to see the current sharing state, browser profiles, tab favicons, copy/revoke controls,
+and searchable audit history. Settings persist light/dark/system appearance and automatic/English/Japanese
+language, and control sign-in startup. Setup uses the same design. Backend capabilities remain listed below.
+
+Windows-only tags use `windows-v<version>`; they do not trigger macOS packaging or Chrome Web Store
+submission. Windows CI also accepts these tags. Unsigned ZIP publication requires maintainer approval.
+
+Current `v0.5.3` release status: unsigned Windows ZIPs are available from
+[GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/windows-v0.5.3).
 Verify the accompanying SHA-256 file before installing. Windows may show a security warning.
 WinGet remains pending signed release publication and package indexing.
 
@@ -164,7 +172,7 @@ publishing an unsigned final artifact.
 When a release is published, `Windows CI` always runs build/test/package and uploads both Windows
 ZIPs and their SHA-256 files as workflow artifacts. GitHub Release asset upload is gated on the
 Windows signing secrets being configured, so an unsigned package is not published as an official
-release asset automatically. The maintainer-approved unsigned `v0.5.2` ZIPs are uploaded manually
+release asset automatically. The maintainer-approved unsigned `v0.5.3` ZIPs are uploaded manually
 after Windows CI validation. WinGet manifest generation and submission run only when both signing secrets and
 `WINGET_CREATE_GITHUB_TOKEN` are configured.
 

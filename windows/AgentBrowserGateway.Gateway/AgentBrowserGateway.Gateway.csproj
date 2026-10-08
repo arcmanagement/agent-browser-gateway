@@ -7,8 +7,10 @@
     <RootNamespace>AgentBrowserGateway.Gateway</RootNamespace>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>..\AgentBrowserGateway.Windows\Assets\Abg.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\AgentBrowserGateway.Windows\Assets\Abg.ico" LogicalName="Abg.ico" />
     <ProjectReference Include="..\AgentBrowserGateway.Core\AgentBrowserGateway.Core.csproj" />
   </ItemGroup>
 </Project>
