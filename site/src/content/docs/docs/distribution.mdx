@@ -13,7 +13,7 @@ Check which version each channel serves, verify a download, and build a signed r
 | --- | --- |
 | macOS app (GitHub Releases, Homebrew) | Signed and notarized `v0.5.2` |
 | Chrome Web Store | Extension `v0.4.8`, updated August 23, 2026 (`v0.5.2` in review) |
-| Windows (WinGet, setup ZIP) | Pending the signed Windows release and WinGet indexing |
+| Windows setup ZIP | Unsigned `v0.5.3` on GitHub Releases; WinGet remains pending |
 
 The app and extension versions can differ because Chrome Web Store review and signed app
 publication complete independently.
@@ -76,7 +76,7 @@ updated August 23, 2026. Extension `v0.5.2` is in review.
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-For `v0.5.2`, this package is not indexed yet. The command returns no matching package until the
+For `v0.5.3`, this package is not indexed yet. The command returns no matching package until the
 signed Windows release workflow and WinGet submission complete.
 
 A release is ready for WinGet after the public Windows setup ZIP is on GitHub Releases and the

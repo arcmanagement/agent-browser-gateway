@@ -3,10 +3,21 @@
 Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
 
 Current repo version: **v0.5.2**.
+Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
+
+### Windows v0.5.3 — The Gate dashboard (2026-10-08)
+
+- Native overview, shared tabs, audit, plugins, and settings navigation matches the Mac/CRX visual language.
+- Shared tabs show browser-provided favicons, profile labels, expiry, copy actions, and owner-scoped revoke. All-tabs access is managed in the extension.
+- Light, dark, and system appearance; automatic, English, and Japanese language; persistent preferences; sign-in startup control.
+- Native setup and notification-area branding use The Gate. Dynamic plugins, record/replay, WinGet, and Store publication remain pending.
+- Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
 
 ### v0.5.2 — Approval window fit (2026-10-04)
+
+- Windows distribution follow-up (2026-10-08): publish maintainer-approved unsigned setup/payload ZIPs, align binary/runtime versions with 0.5.2, and validate binary versions before packaging. WinGet remains pending.
 - The local approval window sizes to its content after the bundled fonts load, so its countdown and Esc hint are no longer cut off (#461). Found during the manual checks in #460.
 - Release docs: Chrome Web Store steps to finish before tagging (#459).
 - Chrome Web Store: the 0.5.1 submission was withdrawn and 0.5.2 submitted in its place.

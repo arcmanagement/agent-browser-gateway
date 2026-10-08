@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.4.1",
+    [string]$Version = "0.5.3",
     [string]$InstallDir = "C:\Tools\AgentBrowserGateway",
     [switch]$SkipTests,
     [switch]$NoPathUpdate,
@@ -93,7 +93,7 @@ Write-Host "==> install"
 $InstallArgs = @{ InstallDir = $InstallDir }
 if ($NoPathUpdate) { $InstallArgs["NoPathUpdate"] = $true }
 if ($NoStart) { $InstallArgs["NoStart"] = $true }
-& (Join-Path $ExtractDir "Install-AgentBrowserGateway.ps1") @InstallArgs
+& (Join-Path $ExtractDir "agent-browser-gateway-$Version-windows-x64\Install-AgentBrowserGateway.ps1") @InstallArgs
 Assert-LastExitCode "Install-AgentBrowserGateway.ps1"
 
 Write-Host "==> done"

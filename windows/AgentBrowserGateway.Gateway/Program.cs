@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using AgentBrowserGateway.Core;
 
@@ -104,7 +105,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             ContextMenuStrip = _menu,
-            Icon = SystemIcons.Application,
+            Icon = new Icon(typeof(GatewayTrayApplication).Assembly.GetManifestResourceStream("Abg.ico")!),
             Text = "Agent Browser Gateway",
             Visible = false
         };
@@ -142,6 +143,12 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         var statusApp = Path.Combine(AppContext.BaseDirectory, "AgentBrowserGateway.Windows.exe");
         if (!File.Exists(statusApp))
         {
+            // MSIX keeps the tray Gateway and WinUI app in sibling directories.
+            statusApp = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                "..", "AgentBrowserGateway.Windows", "AgentBrowserGateway.Windows.exe"));
+        }
+        if (!File.Exists(statusApp))
+        {
             _notifyIcon.ShowBalloonTip(
                 3000,
                 "Agent Browser Gateway",
@@ -150,14 +157,37 @@ internal sealed class GatewayTrayApplication : ApplicationContext
             return;
         }
 
+        foreach (var process in Process.GetProcessesByName("AgentBrowserGateway.Windows"))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (!string.Equals(process.MainModule?.FileName, statusApp, StringComparison.OrdinalIgnoreCase)
+                        || process.MainWindowTitle != "Agent Browser Gateway" || process.MainWindowHandle == 0) continue;
+                    if (IsIconic(process.MainWindowHandle)) ShowWindow(process.MainWindowHandle, 9);
+                    SetForegroundWindow(process.MainWindowHandle);
+                    return;
+                }
+                catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            }
+        }
+
         Process.Start(new ProcessStartInfo
         {
             FileName = statusApp,
-            WorkingDirectory = AppContext.BaseDirectory,
+            WorkingDirectory = Path.GetDirectoryName(statusApp)!,
             Arguments = "--status",
             UseShellExecute = true
         });
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(nint window);
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(nint window, int command);
 
     private void ToggleAutostart()
     {

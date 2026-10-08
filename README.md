@@ -104,7 +104,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.5.2` yet. If this command reports no matching package, that is the
+   WinGet is not live for Windows `v0.5.3` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -116,9 +116,12 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, and starts the menubar app. Install the Claude Code and Codex skills
 separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
 
-Windows package-manager install and release ZIPs are pending for `v0.5.2` while the signed Windows
-release workflow is completed. For current Windows testing, clone the repository on Windows and run
-`.\windows-build-install.cmd` from the repository root.
+For Windows, download the `v0.5.3` [setup ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip)
+and its `.sha256.txt` file, extract it, and run `AgentBrowserGatewaySetup.exe`.
+This Windows ZIP is unsigned and may show a Windows security warning. WinGet remains pending.
+Windows 0.5.3 brings The Gate design to the native dashboard and setup: shared tabs with favicons,
+copy and revoke actions, searchable audit history, light/dark/system appearance, and English/Japanese UI.
+Source builds use `.\windows-build-install.cmd` from the repository root.
 
 After installation, open the tab you want to share, click the ABG extension icon,
 choose **Share this tab with agents**, and verify from a terminal:

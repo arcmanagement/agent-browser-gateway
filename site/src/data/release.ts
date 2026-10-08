@@ -2,11 +2,16 @@
 // with `rg "0\.5\.2"` (see the bump-abg workflow). Values must match README.md and GitHub Releases.
 export const release = {
   version: "0.5.2",
+  windowsVersion: "0.5.3",
   dmgUrl:
     "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-macos-arm64.dmg",
   dmgShaUrl:
     "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-macos-arm64.dmg.sha256.txt",
   dmgSha256: "4469b7d9e69b4bfe48329facd269381bf011660d3db1b9d638a2799f4cd35732",
+  windowsSetupUrl:
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip",
+  windowsSetupShaUrl:
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip.sha256.txt",
   releasesUrl: "https://github.com/arcmanagement/agent-browser-gateway/releases",
   chromeStoreUrl:
     "https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi",

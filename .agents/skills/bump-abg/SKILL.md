@@ -38,7 +38,25 @@ docs/HOMEBREW.md
 docs/WINGET.md
 docs/TEMPORARY_ZIP_INSTALL.md
 Casks/agent-browser-gateway.rb
+windows/Directory.Build.props
+windows/AgentBrowserGateway.Windows/app.manifest
+windows/Install-AgentBrowserGateway.ps1
+scripts/dist-windows-x64.ps1
+scripts/build-install-windows-x64.ps1
+.github/workflows/windows-ci.yml
 ```
+
+Windows runtime version is derived from the Core assembly version in `windows/Directory.Build.props`.
+Windows packaging rejects a requested version that differs from that file, checks EXE file versions,
+and Windows CI smoke-tests the packaged Gateway/CLI version before producing release artifacts.
+
+For a Windows-only release, update only the Windows version files and the Windows download
+metadata/guidance. Use `windows-v<version>` after the PR lands on main; leave the Mac and
+extension versions unchanged. This tag does not run the Mac/Chrome release workflow.
+When the owner authorizes unsigned distribution, publish the payload ZIP and setup ZIP
+manually with their verified SHA-256 files. Do not publish unsigned MSIX or submit WinGet.
+The shared checksum reconciliation workflow assumes a `v<version>` release with Mac assets,
+so build and verify a Windows-only `SHA256SUMS.txt` from those two uploaded ZIPs instead.
 
 `Casks/agent-browser-gateway.rb` and the temporary zip checksums must be updated from the actual generated artifacts, not guessed.
 

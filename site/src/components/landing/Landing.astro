@@ -615,9 +615,10 @@ const auditRows = [
         <article class="dl__card reveal">
           <header class="dl__head">
             <h3>{t.download.windows}</h3>
-            <span class="dl__meta dl__meta--pending">{t.download.windowsMeta}</span>
+            <span class="dl__meta">{t.download.windowsMeta}</span>
           </header>
-          <pre class="dl__code dl__code--muted" tabindex="0"><code><span class="install__line"><span class="prompt" aria-hidden="true">&gt;</span>{release.wingetCommand}</span></code></pre>
+          <a class="btn btn--signal dl__btn" href={release.windowsSetupUrl} rel="noopener">Windows ZIP · v{release.windowsVersion}<span aria-hidden="true"> ↓</span></a>
+          <a class="dl__link" href={release.windowsSetupShaUrl} rel="noopener">{t.download.sha}<span aria-hidden="true"> ↗</span></a>
           <p class="dl__note">{t.download.windowsNote}</p>
           <a class="dl__link" href={`${installDocs}#windows`}>{t.download.windowsLink}<span aria-hidden="true"> →</span></a>
         </article>

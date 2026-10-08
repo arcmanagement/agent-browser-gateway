@@ -1,0 +1,16 @@
+<UserControl x:Class="AgentBrowserGateway.Windows.SharedTabCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{ThemeResource GateCard}" BorderBrush="{ThemeResource GateLine}" BorderThickness="1" CornerRadius="12" Padding="16" Margin="0,0,0,12">
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="32" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Grid VerticalAlignment="Top"><FontIcon x:Name="FallbackIcon" Glyph="&#xE774;" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Image x:Name="FaviconImage" Width="32" Height="32" /></Grid>
+            <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Text="{Binding ProfileLabel}" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Url}" FontFamily="Consolas" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True" />
+                <StackPanel Orientation="Horizontal" Spacing="8"><Button x:Name="IdButton" Click="CopyId_Click" Padding="8,4" FontFamily="Consolas" /><Button x:Name="UrlButton" Click="CopyUrl_Click" Padding="8,4" /><TextBlock x:Name="Timing" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Spacing="8"><TextBlock x:Name="ScopeBadge" Foreground="{ThemeResource GateWarning}" FontSize="12" /><Button x:Name="RevokeButton" Click="Revoke_Click" Foreground="{ThemeResource GateDanger}" /></StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

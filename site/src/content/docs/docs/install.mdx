@@ -138,19 +138,25 @@ args = ["mcp-server"]
 
 ## Windows
 
+Windows 0.5.3 includes The Gate dashboard and setup design, matching the Mac app and Chrome extension.
+Open the dashboard from the tray for shared tabs, copy/revoke actions, audit search, and appearance/language settings.
+
 WinGet is the planned install path:
 
 ```powershell
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-:::caution[Not available for v0.5.2 yet]
-WinGet does not index ABG yet, and no Windows release ZIP is published. If `winget` reports no
-matching package, that is expected until the signed Windows release and Microsoft indexing
-complete.
+Download the [Windows v0.5.3 setup ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip)
+and its `.sha256.txt` file from the same release. Verify the checksum, extract the ZIP, and run
+`AgentBrowserGatewaySetup.exe`.
+
+:::caution[Unsigned Windows ZIP]
+The Windows v0.5.3 ZIP is unsigned and may show a Windows security warning.
+WinGet does not index ABG yet; a no-matching-package result is expected.
 :::
 
-To test on Windows now, clone the repository on Windows and run this from the repository root:
+For a source build, clone the repository on Windows and run this from the repository root:
 
 ```powershell
 .\windows-build-install.cmd
