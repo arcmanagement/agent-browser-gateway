@@ -102,7 +102,10 @@ function Copy-WinUiGeneratedResources {
         "App.xbf",
         "MainWindow.xbf",
         "SetupWindow.xbf",
-        "StatusWindow.xbf"
+        "StatusWindow.xbf",
+        "GatewayDashboard.xbf",
+        "SharedTabCard.xbf",
+        "GateMark.xbf"
     )
 
     foreach ($file in $requiredFiles) {

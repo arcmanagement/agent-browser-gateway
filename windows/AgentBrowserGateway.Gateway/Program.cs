@@ -143,6 +143,12 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         var statusApp = Path.Combine(AppContext.BaseDirectory, "AgentBrowserGateway.Windows.exe");
         if (!File.Exists(statusApp))
         {
+            // MSIX keeps the tray Gateway and WinUI app in sibling directories.
+            statusApp = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                "..", "AgentBrowserGateway.Windows", "AgentBrowserGateway.Windows.exe"));
+        }
+        if (!File.Exists(statusApp))
+        {
             _notifyIcon.ShowBalloonTip(
                 3000,
                 "Agent Browser Gateway",
@@ -170,7 +176,7 @@ internal sealed class GatewayTrayApplication : ApplicationContext
         Process.Start(new ProcessStartInfo
         {
             FileName = statusApp,
-            WorkingDirectory = AppContext.BaseDirectory,
+            WorkingDirectory = Path.GetDirectoryName(statusApp)!,
             Arguments = "--status",
             UseShellExecute = true
         });
