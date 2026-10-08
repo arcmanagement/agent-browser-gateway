@@ -51,5 +51,6 @@ abg audit --lines 50
 - `abg eval` is disabled by default in the shared extension settings. It requires `--approve` plus the local approval window unless Trusted automation / AutoMode is enabled in the extension popup. AutoMode applies only to already-shared tabs and is still audited.
 
 `record`, `replay`, and dynamic plugin commands are not supported by the Windows MVP yet.
-`abg install-skill` installs both the main `agent-browser-gateway` skill and the helper
-`abg-plugin-creator` skill for Claude Code and Codex.
+Install the skills separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
+For Windows v0.5.2, extract the unsigned setup ZIP from GitHub Releases and run
+`AgentBrowserGatewaySetup.exe`. Windows may show a security warning. WinGet remains pending.

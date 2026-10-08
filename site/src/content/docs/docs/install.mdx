@@ -144,13 +144,16 @@ WinGet is the planned install path:
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-:::caution[Not available for v0.5.2 yet]
-WinGet does not index ABG yet, and no Windows release ZIP is published. If `winget` reports no
-matching package, that is expected until the signed Windows release and Microsoft indexing
-complete.
+Download the [Windows v0.5.2 setup ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip)
+and its `.sha256.txt` file from the same release. Verify the checksum, extract the ZIP, and run
+`AgentBrowserGatewaySetup.exe`.
+
+:::caution[Unsigned Windows ZIP]
+The Windows v0.5.2 ZIP is unsigned and may show a Windows security warning.
+WinGet does not index ABG yet; a no-matching-package result is expected.
 :::
 
-To test on Windows now, clone the repository on Windows and run this from the repository root:
+For a source build, clone the repository on Windows and run this from the repository root:
 
 ```powershell
 .\windows-build-install.cmd

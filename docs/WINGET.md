@@ -6,8 +6,10 @@ ABG for Windows is submitted to the Microsoft Windows Package Manager Community 
 ArcManagement.AgentBrowserGateway
 ```
 
-Current `v0.4.8` status: ABG is not indexed by WinGet yet, and no Windows release ZIP has been
-published. The release is waiting on the signed Windows release and WinGet submission workflow.
+Current `v0.5.2` status: ABG is not indexed by WinGet yet. Unsigned Windows setup and payload ZIPs
+are available from [GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/v0.5.2).
+Extract the setup ZIP and run `AgentBrowserGatewaySetup.exe`. Windows may show a security warning.
+Signed release publication and WinGet submission remain separate follow-up work.
 
 Once the WinGet PR for a release is merged into `microsoft/winget-pkgs`, users can install ABG with:
 
@@ -59,19 +61,19 @@ release is published.
 Generate manifests without submitting:
 
 ```powershell
-.\scripts\update-winget-manifest.ps1 -Version 0.4.8
+.\scripts\update-winget-manifest.ps1 -Version 0.5.2
 ```
 
 The output path is:
 
 ```text
-dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.8
+dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.5.2
 ```
 
 Validate on Windows when `winget` is available:
 
 ```powershell
-winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.8
+winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.5.2
 ```
 
 Submit or resubmit manually from GitHub Actions with the `WinGet Submission` workflow. Set

@@ -116,9 +116,10 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, and starts the menubar app. Install the Claude Code and Codex skills
 separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
 
-Windows package-manager install and release ZIPs are pending for `v0.5.2` while the signed Windows
-release workflow is completed. For current Windows testing, clone the repository on Windows and run
-`.\windows-build-install.cmd` from the repository root.
+For Windows, download the `v0.5.2` [setup ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip)
+and its `.sha256.txt` file, extract it, and run `AgentBrowserGatewaySetup.exe`.
+This Windows ZIP is unsigned and may show a Windows security warning. WinGet remains pending.
+Source builds use `.\windows-build-install.cmd` from the repository root.
 
 After installation, open the tab you want to share, click the ABG extension icon,
 choose **Share this tab with agents**, and verify from a terminal:

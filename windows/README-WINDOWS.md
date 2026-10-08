@@ -2,8 +2,10 @@
 
 This is the native Windows implementation of ABG. It is separate from the Swift/macOS implementation but keeps the same Chrome extension protocol.
 
-Current `v0.4.5` release status: WinGet install and Windows release ZIPs are pending while the
-signed Windows release workflow and WinGet submission setup are completed.
+Current `v0.5.2` release status: unsigned Windows ZIPs are available from
+[GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/v0.5.2).
+Verify the accompanying SHA-256 file before installing. Windows may show a security warning.
+WinGet remains pending signed release publication and package indexing.
 
 ## Normal GUI install
 
@@ -162,7 +164,8 @@ publishing an unsigned final artifact.
 When a release is published, `Windows CI` always runs build/test/package and uploads both Windows
 ZIPs and their SHA-256 files as workflow artifacts. GitHub Release asset upload is gated on the
 Windows signing secrets being configured, so an unsigned package is not published as an official
-release asset. WinGet manifest generation and submission run only when both signing secrets and
+release asset automatically. The maintainer-approved unsigned `v0.5.2` ZIPs are uploaded manually
+after Windows CI validation. WinGet manifest generation and submission run only when both signing secrets and
 `WINGET_CREATE_GITHUB_TOKEN` are configured.
 
 SmartScreen reputation is attached to the signing certificate and observed download history, not to

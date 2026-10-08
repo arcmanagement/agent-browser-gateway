@@ -7,6 +7,10 @@ export const release = {
   dmgShaUrl:
     "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-macos-arm64.dmg.sha256.txt",
   dmgSha256: "4469b7d9e69b4bfe48329facd269381bf011660d3db1b9d638a2799f4cd35732",
+  windowsSetupUrl:
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip",
+  windowsSetupShaUrl:
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip.sha256.txt",
   releasesUrl: "https://github.com/arcmanagement/agent-browser-gateway/releases",
   chromeStoreUrl:
     "https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi",

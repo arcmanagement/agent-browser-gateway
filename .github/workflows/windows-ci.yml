@@ -33,7 +33,7 @@ on:
       version:
         description: "Windows artifact version"
         required: false
-        default: "0.4.5"
+        default: "0.5.2"
       upload_release:
         description: "Upload signed Windows assets to the GitHub Release"
         required: false
@@ -73,7 +73,7 @@ jobs:
             $version = "${{ github.event.release.tag_name }}".TrimStart("v")
             $releaseTag = "${{ github.event.release.tag_name }}"
           } else {
-            $version = "${{ inputs.version || '0.4.5' }}".TrimStart("v")
+            $version = "${{ inputs.version || '0.5.2' }}".TrimStart("v")
             $releaseTag = "${{ inputs.release_tag || '' }}"
             if ([string]::IsNullOrWhiteSpace($releaseTag)) {
               $releaseTag = "v$version"
@@ -168,6 +168,32 @@ jobs:
             $signArgs["RequireCodeSign"] = $true
           }
           ./scripts/dist-windows-x64.ps1 -Version $env:ABG_VERSION @signArgs
+
+      - name: Smoke test packaged Gateway and CLI
+        shell: pwsh
+        run: |
+          $stage = Join-Path $PWD "dist/agent-browser-gateway-$env:ABG_VERSION-windows-x64"
+          $env:ABG_PROFILE = "release-smoke"
+          $env:ABG_PORT = "18765"
+          $env:ABG_STATE_DIR = Join-Path $env:RUNNER_TEMP "abg-release-smoke"
+          $gateway = Start-Process (Join-Path $stage "agent-browser-gateway.exe") -PassThru
+          try {
+            $status = $null
+            for ($attempt = 0; $attempt -lt 20; $attempt++) {
+              $output = & (Join-Path $stage "abg.exe") status
+              if ($LASTEXITCODE -eq 0) {
+                $status = $output | ConvertFrom-Json
+                break
+              }
+              Start-Sleep -Milliseconds 500
+            }
+            if ($null -eq $status -or $status.version -ne $env:ABG_VERSION) {
+              throw "Packaged Gateway did not report version $env:ABG_VERSION. Status: $output"
+            }
+            Write-Host "Packaged Gateway version: $($status.version)"
+          } finally {
+            Stop-Process -Id $gateway.Id -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Resolve Microsoft Store MSIX version
         id: msix_version

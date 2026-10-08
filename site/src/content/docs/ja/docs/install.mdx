@@ -124,11 +124,13 @@ WinGet でインストールできるようにする予定です。
 winget install --id ArcManagement.AgentBrowserGateway --source winget
 ```
 
-:::caution[v0.5.2 はまだ入れられません]
-WinGet にはまだ ABG が登録されておらず、Windows 版のリリース ZIP も公開していません。`winget` が一致するパッケージなしと返すのは、署名済みの Windows リリースと Microsoft 側の登録が済むまでの想定どおりの結果です。
+[Windows v0.5.2 のセットアップ ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-windows-x64-setup.zip)と、同じリリースの `.sha256.txt` をダウンロードします。チェックサムを確認して ZIP を展開し、`AgentBrowserGatewaySetup.exe` を実行してください。
+
+:::caution[Windows の ZIP は未署名です]
+Windows v0.5.2 の ZIP は未署名のため、Windows のセキュリティ警告が表示される場合があります。WinGet にはまだ ABG が登録されておらず、一致するパッケージなしと返すのは想定どおりです。
 :::
 
-いま Windows で試すには、Windows 上でリポジトリを clone し、リポジトリのルートで次を実行します。
+ソースからビルドする場合は、Windows 上でリポジトリを clone し、リポジトリのルートで次を実行します。
 
 ```powershell
 .\windows-build-install.cmd

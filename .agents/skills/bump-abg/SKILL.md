@@ -38,7 +38,17 @@ docs/HOMEBREW.md
 docs/WINGET.md
 docs/TEMPORARY_ZIP_INSTALL.md
 Casks/agent-browser-gateway.rb
+windows/Directory.Build.props
+windows/AgentBrowserGateway.Windows/app.manifest
+windows/Install-AgentBrowserGateway.ps1
+scripts/dist-windows-x64.ps1
+scripts/build-install-windows-x64.ps1
+.github/workflows/windows-ci.yml
 ```
+
+Windows runtime version is derived from the Core assembly version in `windows/Directory.Build.props`.
+Windows packaging rejects a requested version that differs from that file, checks EXE file versions,
+and Windows CI smoke-tests the packaged Gateway/CLI version before producing release artifacts.
 
 `Casks/agent-browser-gateway.rb` and the temporary zip checksums must be updated from the actual generated artifacts, not guessed.
 

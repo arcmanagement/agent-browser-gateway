@@ -7,6 +7,8 @@ Current repo version: **v0.5.2**.
 ## Shipped
 
 ### v0.5.2 — Approval window fit (2026-10-04)
+
+- Windows distribution follow-up (2026-10-08): publish maintainer-approved unsigned setup/payload ZIPs, align binary/runtime versions with 0.5.2, and validate binary versions before packaging. WinGet remains pending.
 - The local approval window sizes to its content after the bundled fonts load, so its countdown and Esc hint are no longer cut off (#461). Found during the manual checks in #460.
 - Release docs: Chrome Web Store steps to finish before tagging (#459).
 - Chrome Web Store: the 0.5.1 submission was withdrawn and 0.5.2 submitted in its place.
