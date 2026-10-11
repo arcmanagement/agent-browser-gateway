@@ -481,7 +481,7 @@ async function refresh(): Promise<void> {
   };
 
   allTabsToggleEl.checked = state.allTabsAccess.active;
-  allTabsToggleEl.disabled = state.settings.connectionDestination === "cloud";
+  allTabsToggleEl.disabled = state.settings.connectionDestination === "cloud" && !state.cloudCodeConfigured;
   allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;

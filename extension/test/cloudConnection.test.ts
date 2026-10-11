@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeCloudWebSocketUrl } from "../src/gatewayEndpoint.js";
-import type { BackgroundToPopup, PopupToBackground } from "../src/types.js";
+import type { ApprovalToBackground, BackgroundToPopup, PopupToBackground } from "../src/types.js";
 import { type ChromeMock, createChromeEvent, createChromeMock } from "./chromeMock.js";
 
 class Socket extends EventTarget {
@@ -36,7 +36,7 @@ function lastSocket(): Socket {
 }
 let mock: ChromeMock;
 async function message(
-  value: PopupToBackground,
+  value: PopupToBackground | ApprovalToBackground,
   sender?: Record<string, unknown>,
 ): Promise<BackgroundToPopup> {
   return await new Promise((resolve) => {
@@ -82,12 +82,82 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   for (const socket of Socket.instances) socket.close();
+  await vi.advanceTimersByTimeAsync(1);
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("Cloud connection boundary", () => {
+  it("shares only web tabs in Cloud sandbox, rotates origin shares and revokes on disable", async () => {
+    await configure();
+    mock.tabs.tabs.set(2, { id: 2, active: false, currentWindow: true, incognito: false, url: "file:///tmp/private.html", title: "File" });
+    expect(await message({ type: "set_all_tabs_access", value: true })).toEqual({ type: "ok" });
+    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
+    expect(cloud.sent.filter(f => f.type === "tab_permitted")).toMatchObject([{ tabId: 1, accessMode: "all_tabs" }]);
+    const frameCount = cloud.sent.length;
+    await state(); await state();
+    expect(cloud.sent).toHaveLength(frameCount);
+    const newTab = { id: 3, active: false, currentWindow: true, incognito: false, url: "https://new.example.test/", title: "New" };
+    mock.tabs.tabs.set(3, newTab); await mock.tabs.onCreated.dispatch(newTab);
+    expect(cloud.sent.filter(f => f.type === "tab_permitted").at(-1)).toMatchObject({ tabId: 3, accessMode: "all_tabs" });
+    const moved = { ...newTab, url: "https://other.example.test/" };
+    mock.tabs.tabs.set(3, moved); await mock.tabs.onUpdated.dispatch(3, { url: moved.url }, moved);
+    expect(cloud.sent.filter(f => f.type === "tab_permitted").at(-1)).toMatchObject({ tabId: 3, origin: "https://other.example.test" });
+    await message({ type: "set_all_tabs_access", value: false });
+    const current = await state();
+    if (current.type === "state") expect(current.sharedTabs).toEqual([]);
+    expect(cloud.sent.filter(f => f.type === "tab_revoked").map(f => f.tabId)).toEqual([1, 3]);
+  });
+  it("rejects sandbox controls on a manual share and rejects non-web Cloud tab creation", async () => {
+    await configure(); await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
+    cloud.message({ id: "manual-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "https://new.example.test" } });
+    await vi.waitFor(() => expect(cloud.sent.find(f => f.id === "manual-create")).toMatchObject({ error: { code: "sandbox_profile_required" } }));
+    await message({ type: "revoke", tabId: 1 });
+    await message({ type: "set_all_tabs_access", value: true });
+    const sandbox = lastSocket(); sandbox.open(); sandbox.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(sandbox.sent.some(f => f.type === "tab_permitted")).toBe(true));
+    await mock.storage.local.set({ operationsRequireApproval: false });
+    sandbox.message({ id: "file-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "file:///tmp/private.html" } });
+    await vi.waitFor(() => expect(sandbox.sent.find(f => f.id === "file-create")).toMatchObject({ error: { code: "cloud_tab_unsupported" } }));
+  });
+  it("does not execute a pending sandbox operation after sandbox sharing is disabled", async () => {
+    await configure(); await message({ type: "set_all_tabs_access", value: true });
+    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
+    cloud.message({ id: "pending-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "https://new.example.test" } });
+    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "approval_pending")).toBe(true));
+    expect(mock.tabs.create).not.toHaveBeenCalled();
+    const pending = cloud.sent.find(f => f.type === "approval_pending")?.approval as { approvalId: string };
+    await message({ type: "set_all_tabs_access", value: false });
+    expect(await message({ type: "approval_decision", approvalId: pending.approvalId, decision: "allow" },
+      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") })).toEqual({ type: "ok" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.tabs.create).not.toHaveBeenCalled();
+  });
+  it.each([fixtureCode, undefined])("starts Cloud sandbox OFF after worker or browser restart (code=%s)", async (code) => {
+    for (const socket of Socket.instances) socket.close();
+    await vi.advanceTimersByTimeAsync(1);
+    vi.resetModules(); mock = createChromeMock();
+    Object.assign(mock.tabs, { onActivated: createChromeEvent() });
+    mock.tabs.tabs.set(1, { id: 1, active: true, currentWindow: true, incognito: false, url: "https://page.example.test", title: "Fixture" });
+    mock.permissions.contains.mockResolvedValue(true);
+    await mock.storage.local.set({ connectionDestination: "cloud", cloudWebSocketUrl: "wss://gateway.example.test/ws", allTabsAccessEnabled: true });
+    if (code) await mock.storage.session.set({ cloudConnectionCode: code });
+    vi.stubGlobal("chrome", mock);
+    const count = Socket.instances.length;
+    await import("../src/background.js");
+    const current = await state();
+    if (current.type === "state") {
+      expect(current.settings.allTabsAccessEnabled).toBe(false);
+      expect(current.allTabsAccess.active).toBe(false);
+      expect(current.sharedTabs).toEqual([]);
+    }
+    expect(Socket.instances).toHaveLength(count);
+  });
   it("discovers only on the configured host and keeps the code out of the URL", async () => {
     await configure();
     await message({ type: "permit", tabId: 1 });

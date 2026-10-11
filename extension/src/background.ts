@@ -273,7 +273,8 @@ let cloudRouteEndpoint = "";
 let cloudResolution:
   | { epoch: number; controller: AbortController; promise: Promise<void> }
   | undefined;
-const cloudMethods = new Set(["read_dom", "screenshot", "click", "fill", "navigate", "revoke"]);
+let cloudSandboxActive = false;
+const cloudMethods = new Set(["read_dom", "screenshot", "click", "fill", "navigate", "revoke", "sandbox_action"]);
 
 async function announceSharedTabs(): Promise<void> {
   const epoch = connectionEpoch;
@@ -293,6 +294,7 @@ async function announceSharedTabs(): Promise<void> {
 }
 
 async function clearConnectionShares(): Promise<void> {
+  cloudSandboxActive = false;
   const tabs = [...permittedTabs.keys()];
   // Revoke synchronously before asynchronous debugger/session cleanup can yield.
   permittedTabs.clear();
@@ -322,14 +324,14 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
   shouldConnect: () =>
     connectionConfigured &&
     !changingConnection &&
-    (connectionDestination === "local" || (cloudCode.length > 0 && permittedTabs.size > 0)),
+    (connectionDestination === "local" || (cloudCode.length > 0 && (permittedTabs.size > 0 || cloudSandboxActive))),
   autoReconnect: () => connectionDestination === "local",
   onConnectionChange: (connected) => {
     if (connected) {
       wsConnected = connectionDestination === "local";
       return;
     }
-    if (connectionDestination === "cloud" && !changingConnection && permittedTabs.size > 0)
+    if (connectionDestination === "cloud" && !changingConnection && (permittedTabs.size > 0 || cloudSandboxActive))
       cloudConnectionFailed = true;
     cloudRouteEndpoint = "";
     cloudResolution?.controller.abort();
@@ -337,9 +339,10 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     cloudAuthenticationPending = false;
     wsConnected = false;
     connectionEpoch++;
-    if (connectionDestination === "cloud" && !changingConnection && permittedTabs.size > 0) {
+    if (connectionDestination === "cloud" && !changingConnection && (permittedTabs.size > 0 || cloudSandboxActive)) {
       changingConnection = true;
-      void clearConnectionShares().finally(() => {
+      cloudSandboxActive = false;
+      void clearConnectionShares().then(() => browser.storage.local.set({ allTabsAccessEnabled: false })).finally(() => {
         changingConnection = false;
       });
     }
@@ -375,6 +378,10 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
           cloudConnectionFailed = false;
           wsConnected = true;
           void announceSharedTabs();
+          return;
+        }
+        if (wsConnected && payload?.type === "tab_rejected" && Number.isSafeInteger(payload.tabId)) {
+          void revokeTab(payload.tabId, "cloud_tab_limit");
           return;
         }
         if (
@@ -420,7 +427,10 @@ const bootstrapReady = (async () => {
   const settings = await ensureSettingsStored();
   await configureStoredConnection(settings);
   if (connectionDestination === "local") await restoreState();
-  else await clearConnectionShares();
+  else {
+    await clearConnectionShares();
+    await browser.storage.local.set({ allTabsAccessEnabled: false });
+  }
   await reconcileAllTabsAccess();
   ensureWS();
 })();
@@ -696,22 +706,32 @@ async function setConnectionDestination(
 }
 
 async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSettings> {
+  if (changingConnection) throw new GatewayError("connection_changing", "A connection change is already in progress.");
+  const epoch = connectionEpoch;
   const current = await getSettings();
-  if (value && connectionDestination === "cloud")
-    throw new GatewayError("cloud_manual_sharing_required", "Cloud requires manual tab sharing.");
+  if (value && connectionDestination === "cloud" && !cloudCode)
+    throw new GatewayError("cloud_code_required", "Enter a Cloud connection code first.");
   if (value && !(await hasAllUrlsPermission())) {
     throw new GatewayError(
       "all_tabs_permission_required",
       "Chrome has not granted ABG optional access to all sites in this profile.",
     );
   }
+  if (epoch !== connectionEpoch || changingConnection)
+    throw new GatewayError("connection_changing", "Connection changed before Sandbox consent was saved.");
   const settings: ExtensionSettings = { ...current, allTabsAccessEnabled: value };
-  await browser.storage.local.set(settings);
+  await browser.storage.local.set({ allTabsAccessEnabled: value });
+  if (epoch !== connectionEpoch || changingConnection) {
+    await browser.storage.local.set({ allTabsAccessEnabled: false });
+    throw new GatewayError("connection_changing", "Connection changed before Sandbox consent was saved.");
+  }
+  cloudSandboxActive = connectionDestination === "cloud" && value;
   if (value) {
     await syncAllTabsAccess({ emit: true });
   } else {
     await revokeAllTabsEntries("all_tabs_disabled");
   }
+  await ensureWS();
   return settings;
 }
 
@@ -773,7 +793,7 @@ async function hasReadingListPermission(): Promise<boolean> {
 
 async function isAllTabsAccessActive(): Promise<boolean> {
   const settings = await getSettings();
-  return settings.allTabsAccessEnabled && (await hasAllUrlsPermission());
+  return settings.allTabsAccessEnabled && (connectionDestination !== "cloud" || cloudSandboxActive) && (await hasAllUrlsPermission());
 }
 
 async function isBookmarksAccessActive(): Promise<boolean> {
@@ -833,7 +853,7 @@ async function restoreState(): Promise<void> {
 // ---------- WebSocket ----------
 
 async function ensureWS(): Promise<void> {
-  if (connectionDestination === "cloud" && permittedTabs.size === 0) {
+  if (connectionDestination === "cloud" && permittedTabs.size === 0 && !cloudSandboxActive) {
     gatewayWebSocketConnection.disconnect();
     return;
   }
@@ -862,7 +882,7 @@ async function ensureWS(): Promise<void> {
           !connectionConfigured ||
           connectionDestination !== "cloud" ||
           endpoint !== cloudEndpoint ||
-          permittedTabs.size === 0
+          (permittedTabs.size === 0 && !cloudSandboxActive)
         )
           return;
         cloudRouteEndpoint = route;
@@ -1018,14 +1038,17 @@ function refreshTabFavicon(tabId: number): Promise<void> {
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
   const settings = await getSettings();
-  if (connectionDestination === "cloud" || !settings.allTabsAccessEnabled) {
+  if (!settings.allTabsAccessEnabled || (connectionDestination === "cloud" && !cloudCode)) {
+    cloudSandboxActive = false;
     await revokeAllTabsEntries("all_tabs_disabled");
     return;
   }
   if (!(await hasAllUrlsPermission())) {
+    cloudSandboxActive = false;
     await revokeAllTabsEntries("all_tabs_permission_missing");
     return;
   }
+  cloudSandboxActive = connectionDestination === "cloud";
   await syncAllTabsAccess(options);
 }
 
@@ -1038,7 +1061,7 @@ async function syncAllTabsAccess(
   let skippedTabCount = 0;
 
   for (const tab of tabs) {
-    if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) {
+    if (typeof tab.id !== "number" || !isConnectionShareableTabUrl(tab.url)) {
       skippedTabCount += 1;
       continue;
     }
@@ -1071,12 +1094,12 @@ async function allTabsAccessState(): Promise<{
   let shareableTabCount = 0;
   let skippedTabCount = 0;
   for (const tab of tabs) {
-    if (typeof tab.id === "number" && isShareableTabUrl(tab.url)) shareableTabCount += 1;
+    if (typeof tab.id === "number" && isConnectionShareableTabUrl(tab.url)) shareableTabCount += 1;
     else skippedTabCount += 1;
   }
   return {
     permissionGranted,
-    active: settings.allTabsAccessEnabled && permissionGranted,
+    active: settings.allTabsAccessEnabled && permissionGranted && (connectionDestination !== "cloud" || cloudSandboxActive),
     shareableTabCount,
     skippedTabCount,
   };
@@ -1110,7 +1133,7 @@ async function personalDataAccessState(): Promise<{
 }
 
 async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void> {
-  if (typeof tab.id !== "number" || !isShareableTabUrl(tab.url)) return;
+  if (typeof tab.id !== "number" || !isConnectionShareableTabUrl(tab.url)) return;
   const tabId = tab.id;
   const url = tab.url;
   const origin = originForUrl(url);
@@ -1134,14 +1157,15 @@ async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void>
     url,
     title,
     origin,
-    permittedAt: existing?.permittedAt ?? Date.now(),
+    permittedAt: existing?.origin === origin ? existing.permittedAt : Date.now(),
     accessMode: "all_tabs",
   };
   permittedTabs.set(tabId, entry);
 
   if (emit) {
-    if (existing?.accessMode === "all_tabs") sendTabUpdated(tabId, entry);
-    else sendTabPermitted(tabId, entry);
+    if (existing?.accessMode === "all_tabs" && existing.origin === origin) {
+      if (existing.url !== url || existing.title !== title) sendTabUpdated(tabId, entry);
+    } else sendTabPermitted(tabId, entry);
   }
   await updateBadge(tabId);
 }
@@ -1153,6 +1177,10 @@ async function revokeAllTabsEntries(reason: string): Promise<void> {
   for (const tabId of tabIds) {
     await revokeTab(tabId, reason);
   }
+}
+
+function isConnectionShareableTabUrl(value: string | undefined): value is string {
+  return isShareableTabUrl(value) && (connectionDestination !== "cloud" || isCloudShareableUrl(value));
 }
 
 function isCloudShareableUrl(value: string): boolean {
@@ -1221,10 +1249,10 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
   await updateBadge(tabId);
-  if (connectionDestination === "cloud" && permittedTabs.size === 0) {
+  if (connectionDestination === "cloud" && permittedTabs.size === 0 && !cloudSandboxActive) {
     // Let the final revoke response reach the requester before ending the idle socket.
     setTimeout(() => {
-      if (permittedTabs.size === 0) ensureWS();
+      if (permittedTabs.size === 0 && !cloudSandboxActive) ensureWS();
     }, 250);
   }
 }
@@ -1251,7 +1279,7 @@ async function updateBadge(tabId: number): Promise<void> {
 // ---------- Tab lifecycle hooks ----------
 
 browser.tabs.onCreated.addListener(async (tab) => {
-  if ((await isAllTabsAccessActive()) && isShareableTabUrl(tab.url)) {
+  if ((await isAllTabsAccessActive()) && isConnectionShareableTabUrl(tab.url)) {
     await upsertAllTabsEntry(tab, true);
     await saveState();
   }
@@ -1259,7 +1287,7 @@ browser.tabs.onCreated.addListener(async (tab) => {
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const currentUrl = tab.url ?? changeInfo.url;
-  if ((await isAllTabsAccessActive()) && isShareableTabUrl(currentUrl)) {
+  if ((await isAllTabsAccessActive()) && isConnectionShareableTabUrl(currentUrl)) {
     await upsertAllTabsEntry({ ...tab, id: tabId, url: currentUrl }, true);
     await saveState();
     return;
@@ -1320,7 +1348,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
     stopRecordingForTab(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
-    if (connectionDestination === "cloud" && permittedTabs.size === 0)
+    if (connectionDestination === "cloud" && permittedTabs.size === 0 && !cloudSandboxActive)
       gatewayWebSocketConnection.disconnect();
     await detachDebugger(tabId);
   }
@@ -2288,11 +2316,25 @@ async function runApprovedOperation(
   tabId: number,
   epoch = connectionEpoch,
 ): Promise<unknown> {
+  const shared = permittedTabs.get(tabId);
+  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
   const operation = buildOperation(cmd, tabId);
   await requireOperationApproval(cmd.method, tabId, operation.intent);
   if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
     throw new Error("Connection or tab sharing changed before the operation.");
+  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
+  const current = permittedTabs.get(tabId);
+  const actual = await browser.tabs.get(tabId);
+  if (epoch !== connectionEpoch || !shared || !current ||
+      current.origin !== shared.origin || current.permittedAt !== shared.permittedAt ||
+      !actual.url || originForUrl(actual.url) !== shared.origin)
+    throw new GatewayError("tab_permission_changed", "Tab sharing or origin changed before the operation.");
   return operation.run();
+}
+
+async function requireSandboxAccess(tabId: number): Promise<void> {
+  if (!(await isAllTabsAccessActive()) || permittedTabs.get(tabId)?.accessMode !== "all_tabs")
+    throw new GatewayError("sandbox_profile_required", "Sandbox operations require an all-tabs shared tab.");
 }
 
 function buildOperation(cmd: OperationCommand, tabId: number): OperationDescriptor {
@@ -2587,6 +2629,10 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     };
   }
   if (cmd.method === "sandbox_action") {
+    if (connectionDestination === "cloud" &&
+        (cmd.params?.action !== "tab-create" && cmd.params?.action !== "tab-close" ||
+         cmd.params?.targetTabId !== undefined && cmd.params.targetTabId !== tabId))
+      throw new GatewayError("bad_sandbox_action", "Cloud supports creating a web tab or closing the addressed tab only.");
     const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
     if (action === "viewport") {
       const width = cmd.params?.width;
@@ -5692,6 +5738,8 @@ async function sandboxStorage(
 }
 
 async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
+  if (connectionDestination === "cloud" && !isCloudShareableUrl(url))
+    throw new GatewayError("cloud_tab_unsupported", "Cloud tab creation requires an HTTP or HTTPS URL.");
   const source = await browser.tabs.get(tabId);
   const created = await browser.tabs.create({ url, windowId: source.windowId, active: true });
   return { ok: true, action: "tab-create", tabId: created.id, url: created.url ?? url };
