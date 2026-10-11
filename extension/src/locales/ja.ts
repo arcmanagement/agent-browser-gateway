@@ -7,11 +7,40 @@
 import type { MessageCatalog } from "../i18n.js";
 
 export const ja: MessageCatalog = {
+  "error.cloud_service_permission_required":
+    "接続するには、選択したCloudサービスへのアクセスを許可してください。",
   // ---- Shared ----
   "common.untitled": "（無題）",
   "common.errorPrefix": "エラー: {message}",
 
   // ---- Popup ----
+  "popup.connection.destination": "接続先",
+  "error.cloud_url_invalid":
+    "HTTPSまたはWSSのCloud URLを入力してください。認証情報・クエリ・フラグメントは含めず、ルートまたは/wsを指定してください。",
+  "error.cloud_new_url_code_required":
+    "新しいCloud URL用のブラウザー接続コードを入力してください。",
+  "error.cloud_code_invalid": "CloudのURLと有効なブラウザー接続コードを入力してください。",
+  "error.cloud_code_required": "タブを共有する前にCloudの接続コードを設定してください。",
+  "error.cloud_tab_unsupported":
+    "CloudにはHTTPまたはHTTPSのタブを共有できます。URLは8,192文字以内にしてください。",
+  "error.cloud_manual_sharing_required": "Cloudではタブを一つずつ選んで共有してください。",
+  "error.connection_changing": "接続先を切り替えています。完了してからもう一度操作してください。",
+  "popup.connection.local": "Local（このマシン）",
+  "popup.connection.cloud": "Cloud",
+  "popup.connection.url": "CloudのURL",
+  "popup.connection.code": "ブラウザー接続コード",
+  "popup.connection.codeSaved": "このブラウザーセッションでは設定済み",
+  "popup.connection.codeNeeded": "ブラウザー接続コードを入力",
+  "popup.connection.apply": "接続先を適用",
+  "popup.connection.note":
+    "適用すると現在の共有を解除します。選んだ接続先へ、タブを改めて共有してください。",
+  "popup.connection.cloudNote":
+    "タブを共有している間、Cloudに接続します。ブラウザーの再起動後は接続コードを再入力してください。",
+  "popup.connection.applied": "接続先を設定しました。タブを共有すると接続を開始します。",
+  "popup.connection.idle": "共有待ち",
+  "popup.connection.offline":
+    "Cloudを設定してタブを共有してください。接続が終了した場合は改めて共有してください。",
+  "popup.connection.cloudAudit": "読み取りと操作はCloudの監査ログへ記録します。",
   "popup.gateway.checking": "確認中…",
   "popup.gateway.connected": "接続中",
   "popup.gateway.connectedDescription": "Gateway に接続しています",

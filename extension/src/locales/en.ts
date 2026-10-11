@@ -11,11 +11,39 @@
 export type MessageEntry = string | { readonly one: string; readonly other: string };
 
 export const en = {
+  "error.cloud_service_permission_required":
+    "Allow access to the selected Cloud service to connect.",
   // ---- Shared ----
   "common.untitled": "(untitled)",
   "common.errorPrefix": "Error: {message}",
 
   // ---- Popup ----
+  "popup.connection.destination": "Connect to",
+  "error.cloud_url_invalid":
+    "Enter an HTTPS or WSS Cloud URL with no credentials, query, or fragment. Use the root or /ws path.",
+  "error.cloud_new_url_code_required": "Enter the browser connection code for the new Cloud URL.",
+  "error.cloud_code_invalid": "Enter a Cloud URL and a valid browser connection code.",
+  "error.cloud_code_required": "Set the Cloud connection code before sharing a tab.",
+  "error.cloud_tab_unsupported":
+    "Cloud sharing requires an HTTP or HTTPS tab with a URL of at most 8,192 characters.",
+  "error.cloud_manual_sharing_required": "Select and share tabs individually in Cloud mode.",
+  "error.connection_changing": "The connection is changing. Wait for it to finish, then try again.",
+  "popup.connection.local": "Local (this machine)",
+  "popup.connection.cloud": "Cloud",
+  "popup.connection.url": "Cloud URL",
+  "popup.connection.code": "Browser connection code",
+  "popup.connection.codeSaved": "Configured for this browser session",
+  "popup.connection.codeNeeded": "Enter a browser connection code",
+  "popup.connection.apply": "Apply connection",
+  "popup.connection.note":
+    "Applying clears existing shares. Share tabs again with the selected destination.",
+  "popup.connection.cloudNote":
+    "Cloud connects while tabs are shared. Enter the code again after restarting the browser.",
+  "popup.connection.applied": "Connection configured. Share a tab to begin.",
+  "popup.connection.idle": "Ready to share",
+  "popup.connection.offline":
+    "Configure Cloud, then share a tab. If the connection ends, share it again.",
+  "popup.connection.cloudAudit": "Every read and operation is written to the Cloud audit log.",
   "popup.gateway.checking": "Checking…",
   "popup.gateway.connected": "Connected",
   "popup.gateway.connectedDescription": "Connected to the Gateway",

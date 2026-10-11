@@ -31,6 +31,7 @@ import {
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
+import { cloudServiceOrigin, discoverCloudRoute } from "./cloudConnection.js";
 import {
   type FaviconSourceOptions,
   faviconSourceForTab,
@@ -39,6 +40,7 @@ import {
 } from "./faviconLogic.js";
 import {
   normalizeAppliedGatewayWebSocketUrl,
+  normalizeCloudWebSocketUrl,
   normalizeGatewayWebSocketUrl,
   resolveStoredGatewayWebSocketUrl,
 } from "./gatewayEndpoint.js";
@@ -99,6 +101,8 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   trustedAutomationEnabled: false,
   profileLabel: "",
   gatewayWebSocketUrl: DEFAULT_GATEWAY_WEBSOCKET_URL,
+  connectionDestination: "local",
+  cloudWebSocketUrl: "",
   allTabsAccessEnabled: false,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
@@ -256,38 +260,156 @@ const annotationSnapshots = new AnnotationSnapshotStore(browser.storage.session)
 
 let extensionId: string | null = null;
 let wsConnected = false;
+let connectionDestination: "local" | "cloud" = "local";
+let cloudCode = "";
+let cloudEndpoint = "";
+let connectionConfigured = false;
+let cloudConnectionFailed = false;
+let connectionEpoch = 0;
+let changingConnection = false;
+let cloudAuthenticationPending = false;
+let cloudAuthTimer: ReturnType<typeof setTimeout> | undefined;
+let cloudRouteEndpoint = "";
+let cloudResolution:
+  | { epoch: number; controller: AbortController; promise: Promise<void> }
+  | undefined;
+const cloudMethods = new Set(["read_dom", "screenshot", "click", "fill", "navigate", "revoke"]);
+
+async function announceSharedTabs(): Promise<void> {
+  const epoch = connectionEpoch;
+  const { profileLabel } = await getSettings();
+  const browserKind = await detectCurrentBrowserKind();
+  if (epoch !== connectionEpoch || !wsConnected) return;
+  sendWS({
+    type: "hello",
+    extensionId: extensionId ?? "?",
+    version: VERSION,
+    profileLabel: profileLabel || undefined,
+    browserKind,
+  });
+  await reconcileAllTabsAccess({ emit: false });
+  if (epoch !== connectionEpoch || !wsConnected) return;
+  for (const [tabId, permittedTab] of permittedTabs) sendTabPermitted(tabId, permittedTab);
+}
+
+async function clearConnectionShares(): Promise<void> {
+  const tabs = [...permittedTabs.keys()];
+  // Revoke synchronously before asynchronous debugger/session cleanup can yield.
+  permittedTabs.clear();
+  for (const id of [...pendingApprovals.keys()]) {
+    finalizeApproval(id, { decision: "deny", message: "Connection changed." }, true);
+  }
+  streamingTabs.clear();
+  for (const tabId of tabs) {
+    consoleBuffers.delete(tabId);
+    networkBuffers.delete(tabId);
+    snapshotRefCache.delete(tabId);
+    pendingDialogs.delete(tabId);
+    stopRecordingForTab(tabId);
+  }
+  await saveState();
+  await Promise.all(
+    tabs.map(async (tabId) => {
+      await detachDebugger(tabId);
+      await updateBadge(tabId);
+    }),
+  );
+}
+
 const gatewayWebSocketConnection = new GatewayWebSocketConnection({
   endpoint: DEFAULT_GATEWAY_WEBSOCKET_URL,
   createSocket: (endpoint) => new WebSocket(endpoint),
+  shouldConnect: () =>
+    connectionConfigured &&
+    !changingConnection &&
+    (connectionDestination === "local" || (cloudCode.length > 0 && permittedTabs.size > 0)),
+  autoReconnect: () => connectionDestination === "local",
   onConnectionChange: (connected) => {
-    wsConnected = connected;
-  },
-  onOpen: async () => {
-    const { profileLabel } = await getSettings();
-    sendWS({
-      type: "hello",
-      extensionId: extensionId ?? "?",
-      version: VERSION,
-      profileLabel: profileLabel || undefined,
-      browserKind: await detectCurrentBrowserKind(),
-    });
-    await reconcileAllTabsAccess({ emit: false });
-    for (const [tabId, permittedTab] of permittedTabs) {
-      sendTabPermitted(tabId, permittedTab);
+    if (connected) {
+      wsConnected = connectionDestination === "local";
+      return;
     }
+    if (connectionDestination === "cloud" && !changingConnection && permittedTabs.size > 0)
+      cloudConnectionFailed = true;
+    cloudRouteEndpoint = "";
+    cloudResolution?.controller.abort();
+    clearTimeout(cloudAuthTimer);
+    cloudAuthenticationPending = false;
+    wsConnected = false;
+    connectionEpoch++;
+    if (connectionDestination === "cloud" && !changingConnection && permittedTabs.size > 0) {
+      changingConnection = true;
+      void clearConnectionShares().finally(() => {
+        changingConnection = false;
+      });
+    }
+  },
+  onOpen: async (endpoint) => {
+    if (!connectionConfigured) {
+      gatewayWebSocketConnection.disconnect();
+      return;
+    }
+    if (connectionDestination === "cloud") {
+      if (endpoint !== cloudRouteEndpoint || !cloudRouteEndpoint) {
+        gatewayWebSocketConnection.disconnect();
+        return;
+      }
+      cloudAuthenticationPending = true;
+      gatewayWebSocketConnection.send(JSON.stringify({ type: "authenticate", token: cloudCode }));
+      cloudAuthTimer = setTimeout(() => gatewayWebSocketConnection.disconnect(), 10_000);
+      return;
+    }
+    await announceSharedTabs();
   },
   onMessage: (event) => {
     try {
-      const command = JSON.parse(event.data) as GatewayCommand;
-      handleGatewayCommand(command);
-    } catch (error) {
-      console.warn("[ABG] WS message parse error", error);
+      const payload = JSON.parse(event.data);
+      if (connectionDestination === "cloud") {
+        if (cloudAuthenticationPending) {
+          if (payload?.type !== "authenticated") {
+            gatewayWebSocketConnection.disconnect();
+            return;
+          }
+          clearTimeout(cloudAuthTimer);
+          cloudAuthenticationPending = false;
+          cloudConnectionFailed = false;
+          wsConnected = true;
+          void announceSharedTabs();
+          return;
+        }
+        if (
+          !wsConnected ||
+          !payload ||
+          typeof payload.id !== "string" ||
+          !cloudMethods.has(payload.method)
+        )
+          return;
+        if (payload.method === "click") payload.method = "click_selector";
+      }
+      void handleGatewayCommand(payload as GatewayCommand, connectionEpoch);
+    } catch {
+      console.warn("[ABG] Invalid Gateway message");
     }
   },
-  onWarning: (message, error) => {
-    console.warn(message, error);
-  },
+  onWarning: () => console.warn("[ABG] Gateway connection failed"),
 });
+
+async function configureStoredConnection(settings: ExtensionSettings): Promise<void> {
+  connectionConfigured = false;
+  gatewayWebSocketConnection.disconnect();
+  connectionDestination = settings.connectionDestination;
+  cloudEndpoint = settings.cloudWebSocketUrl;
+  const stored = await browser.storage.session.get("cloudConnectionCode");
+  cloudCode =
+    typeof stored.cloudConnectionCode === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(stored.cloudConnectionCode)
+      ? stored.cloudConnectionCode
+      : "";
+  gatewayWebSocketConnection.setEndpoint(
+    connectionDestination === "cloud" ? settings.cloudWebSocketUrl : settings.gatewayWebSocketUrl,
+  );
+  connectionConfigured = true;
+}
 
 // ---------- Bootstrap ----------
 
@@ -296,8 +418,9 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
 const bootstrapReady = (async () => {
   extensionId = await getOrCreateExtensionId();
   const settings = await ensureSettingsStored();
-  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
-  await restoreState();
+  await configureStoredConnection(settings);
+  if (connectionDestination === "local") await restoreState();
+  else await clearConnectionShares();
   await reconcileAllTabsAccess();
   ensureWS();
 })();
@@ -308,18 +431,15 @@ browser.runtime.onInstalled.addListener(async () => {
 });
 
 browser.runtime.onStartup.addListener(async () => {
-  extensionId = await getOrCreateExtensionId();
-  const settings = await ensureSettingsStored();
-  gatewayWebSocketConnection.setEndpoint(settings.gatewayWebSocketUrl);
-  await restoreState();
-  await reconcileAllTabsAccess();
+  await bootstrapReady;
   ensureWS();
 });
 
 // Keep service worker warm
 browser.alarms.create("heartbeat", { periodInMinutes: HEARTBEAT_PERIOD_MIN });
-browser.alarms.onAlarm.addListener((alarm) => {
+browser.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "heartbeat") {
+    await bootstrapReady;
     ensureWS();
   }
 });
@@ -343,6 +463,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     "trustedAutomationEnabled",
     "profileLabel",
     "gatewayWebSocketUrl",
+    "connectionDestination",
+    "cloudWebSocketUrl",
     "allTabsAccessEnabled",
     "bookmarksAccessEnabled",
     "readingListAccessEnabled",
@@ -365,6 +487,12 @@ async function getSettings(): Promise<ExtensionSettings> {
     stored.gatewayWebSocketUrl,
     DEFAULT_SETTINGS.gatewayWebSocketUrl,
   );
+  const destination = stored.connectionDestination === "cloud" ? "cloud" : "local";
+  let cloudWebSocketUrl = "";
+  try {
+    if (typeof stored.cloudWebSocketUrl === "string" && stored.cloudWebSocketUrl)
+      cloudWebSocketUrl = normalizeCloudWebSocketUrl(stored.cloudWebSocketUrl);
+  } catch {}
   const allTabsAccessEnabled =
     typeof stored.allTabsAccessEnabled === "boolean"
       ? stored.allTabsAccessEnabled
@@ -388,6 +516,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.trustedAutomationEnabled !== "boolean" ||
     typeof stored.profileLabel !== "string" ||
     gatewayWebSocketUrl.shouldPersist ||
+    stored.connectionDestination !== destination ||
+    stored.cloudWebSocketUrl !== cloudWebSocketUrl ||
     typeof stored.allTabsAccessEnabled !== "boolean" ||
     typeof stored.bookmarksAccessEnabled !== "boolean" ||
     typeof stored.readingListAccessEnabled !== "boolean" ||
@@ -400,6 +530,8 @@ async function getSettings(): Promise<ExtensionSettings> {
       trustedAutomationEnabled,
       profileLabel,
       gatewayWebSocketUrl: gatewayWebSocketUrl.url,
+      connectionDestination: destination,
+      cloudWebSocketUrl,
       allTabsAccessEnabled,
       bookmarksAccessEnabled,
       readingListAccessEnabled,
@@ -413,6 +545,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     trustedAutomationEnabled,
     profileLabel,
     gatewayWebSocketUrl: gatewayWebSocketUrl.url,
+    connectionDestination: destination,
+    cloudWebSocketUrl,
     allTabsAccessEnabled,
     bookmarksAccessEnabled,
     readingListAccessEnabled,
@@ -481,6 +615,8 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
 }
 
 async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings> {
+  if (changingConnection)
+    throw new GatewayError("connection_changing", "A connection change is already in progress.");
   const normalizedUrl = normalizeAppliedGatewayWebSocketUrl(
     value,
     DEFAULT_SETTINGS.gatewayWebSocketUrl,
@@ -488,12 +624,81 @@ async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings>
   const current = await getSettings();
   const settings: ExtensionSettings = { ...current, gatewayWebSocketUrl: normalizedUrl };
   await browser.storage.local.set(settings);
-  gatewayWebSocketConnection.reconnect(normalizedUrl);
+  if (connectionDestination === "local") {
+    changingConnection = true;
+    connectionConfigured = false;
+    try {
+      gatewayWebSocketConnection.disconnect();
+      await clearConnectionShares();
+      gatewayWebSocketConnection.setEndpoint(normalizedUrl);
+      connectionConfigured = true;
+    } finally {
+      changingConnection = false;
+    }
+    ensureWS();
+  }
   return settings;
+}
+
+async function setConnectionDestination(
+  destination: "local" | "cloud",
+  cloudUrl: string,
+  code?: string,
+): Promise<void> {
+  const current = await getSettings();
+  let url = current.cloudWebSocketUrl;
+  if (destination === "cloud" && cloudUrl.trim()) {
+    try {
+      url = normalizeCloudWebSocketUrl(cloudUrl);
+    } catch {
+      throw new GatewayError("cloud_url_invalid", "Enter a secure Cloud URL.");
+    }
+  }
+  if (destination === "cloud" && url !== current.cloudWebSocketUrl && !code?.trim()) {
+    throw new GatewayError(
+      "cloud_new_url_code_required",
+      "Enter a browser connection code for the new Cloud URL.",
+    );
+  }
+  const nextCode = code?.trim() || cloudCode;
+  if (destination === "cloud" && (!url || !/^[A-Za-z0-9_-]{43}$/.test(nextCode))) {
+    throw new GatewayError(
+      "cloud_code_invalid",
+      "Enter a Cloud URL and a valid browser connection code.",
+    );
+  }
+  if (changingConnection)
+    throw new GatewayError("connection_changing", "A connection change is already in progress.");
+  changingConnection = true;
+  connectionConfigured = false;
+  try {
+    gatewayWebSocketConnection.disconnect();
+    await clearConnectionShares();
+    connectionDestination = destination;
+    cloudCode = destination === "cloud" ? nextCode : "";
+    cloudEndpoint = url;
+    await browser.storage.session.set({ cloudConnectionCode: cloudCode });
+    await browser.storage.local.set({
+      ...current,
+      connectionDestination: destination,
+      cloudWebSocketUrl: url,
+      allTabsAccessEnabled: false,
+    });
+    gatewayWebSocketConnection.setEndpoint(
+      destination === "cloud" ? url : current.gatewayWebSocketUrl,
+    );
+    cloudConnectionFailed = false;
+    connectionConfigured = true;
+  } finally {
+    changingConnection = false;
+  }
+  ensureWS();
 }
 
 async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSettings> {
   const current = await getSettings();
+  if (value && connectionDestination === "cloud")
+    throw new GatewayError("cloud_manual_sharing_required", "Cloud requires manual tab sharing.");
   if (value && !(await hasAllUrlsPermission())) {
     throw new GatewayError(
       "all_tabs_permission_required",
@@ -627,11 +832,72 @@ async function restoreState(): Promise<void> {
 
 // ---------- WebSocket ----------
 
-function ensureWS(): void {
+async function ensureWS(): Promise<void> {
+  if (connectionDestination === "cloud" && permittedTabs.size === 0) {
+    gatewayWebSocketConnection.disconnect();
+    return;
+  }
+  if (!connectionConfigured || changingConnection) return;
+  if (connectionDestination === "cloud" && !cloudRouteEndpoint) {
+    if (cloudResolution?.epoch === connectionEpoch) {
+      await cloudResolution.promise;
+      return;
+    }
+    const epoch = connectionEpoch;
+    const endpoint = cloudEndpoint;
+    const code = cloudCode;
+    if (!code) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    const resolution = { epoch, controller, promise: Promise.resolve() };
+    cloudResolution = resolution;
+    resolution.promise = (async () => {
+      try {
+        if (!(await browser.permissions.contains({ origins: [cloudServiceOrigin(endpoint)] })))
+          throw new Error("Cloud service access is required.");
+        const route = await discoverCloudRoute(endpoint, code, controller.signal);
+        if (
+          epoch !== connectionEpoch ||
+          changingConnection ||
+          !connectionConfigured ||
+          connectionDestination !== "cloud" ||
+          endpoint !== cloudEndpoint ||
+          permittedTabs.size === 0
+        )
+          return;
+        cloudRouteEndpoint = route;
+        gatewayWebSocketConnection.setEndpoint(route);
+        gatewayWebSocketConnection.ensureConnected();
+      } catch {
+        if (epoch === connectionEpoch && connectionDestination === "cloud")
+          gatewayWebSocketConnection.disconnect();
+      } finally {
+        clearTimeout(timer);
+        if (cloudResolution === resolution) cloudResolution = undefined;
+      }
+    })();
+    await resolution.promise;
+    return;
+  }
   gatewayWebSocketConnection.ensureConnected();
 }
 
 function sendWS(msg: ExtToGateway): void {
+  if (!wsConnected) return;
+  if (
+    connectionDestination === "cloud" &&
+    ![
+      "hello",
+      "tab_permitted",
+      "tab_updated",
+      "tab_revoked",
+      "tab_closed",
+      "response",
+      "approval_pending",
+      "approval_resolved",
+    ].includes(msg.type)
+  )
+    return;
   gatewayWebSocketConnection.send(JSON.stringify(msg));
 }
 
@@ -654,7 +920,7 @@ function sendTabPermitted(tabId: number, tab: PermittedTab): void {
     type: "tab_permitted",
     tabId,
     url: tab.url,
-    title: tab.title,
+    title: connectionDestination === "cloud" ? tab.title.slice(0, 2048) : tab.title,
     origin: tab.origin,
     expiresAt: tab.expiresAt ? new Date(tab.expiresAt).toISOString() : undefined,
     accessMode: tab.accessMode,
@@ -668,7 +934,7 @@ function sendTabUpdated(tabId: number, tab: PermittedTab): void {
     type: "tab_updated",
     tabId,
     url: tab.url,
-    title: tab.title,
+    title: connectionDestination === "cloud" ? tab.title.slice(0, 2048) : tab.title,
     origin: tab.origin,
     accessMode: tab.accessMode,
     favicon: cachedFavicon(tabId, tab.origin),
@@ -752,7 +1018,7 @@ function refreshTabFavicon(tabId: number): Promise<void> {
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
   const settings = await getSettings();
-  if (!settings.allTabsAccessEnabled) {
+  if (connectionDestination === "cloud" || !settings.allTabsAccessEnabled) {
     await revokeAllTabsEntries("all_tabs_disabled");
     return;
   }
@@ -889,9 +1155,24 @@ async function revokeAllTabsEntries(reason: string): Promise<void> {
   }
 }
 
+function isCloudShareableUrl(value: string): boolean {
+  try {
+    return value.length <= 8192 && ["https:", "http:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 async function permitTab(tabId: number): Promise<void> {
+  if (changingConnection || !connectionConfigured)
+    throw new GatewayError("connection_changing", "A connection change is in progress.");
+  if (connectionDestination === "cloud" && !cloudCode)
+    throw new GatewayError("cloud_code_required", "Configure the Cloud connection code first.");
+  const epoch = connectionEpoch;
   const tab = await browser.tabs.get(tabId);
   if (!tab.url) throw new Error("tab has no URL");
+  if (connectionDestination === "cloud" && !isCloudShareableUrl(tab.url))
+    throw new GatewayError("cloud_tab_unsupported", "This tab cannot be shared with Cloud.");
   if (tab.incognito && !(await isIncognitoAccessAllowed())) {
     throw new GatewayError(
       "incognito_access_disabled",
@@ -908,9 +1189,14 @@ async function permitTab(tabId: number): Promise<void> {
     permittedAt: Date.now(),
     accessMode: "manual",
   };
+  if (epoch !== connectionEpoch || changingConnection)
+    throw new GatewayError("connection_changing", "Connection changed before sharing.");
   permittedTabs.set(tabId, entry);
   await saveState();
+  if (epoch !== connectionEpoch || changingConnection || !permittedTabs.has(tabId)) return;
   sendTabPermitted(tabId, entry);
+  await ensureWS();
+  if (epoch !== connectionEpoch || changingConnection || !permittedTabs.has(tabId)) return;
   await attachDebugger(tabId);
   await updateBadge(tabId);
 }
@@ -935,6 +1221,12 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
   sendWS({ type: "tab_revoked", tabId, reason });
   await detachDebugger(tabId);
   await updateBadge(tabId);
+  if (connectionDestination === "cloud" && permittedTabs.size === 0) {
+    // Let the final revoke response reach the requester before ending the idle socket.
+    setTimeout(() => {
+      if (permittedTabs.size === 0) ensureWS();
+    }, 250);
+  }
 }
 
 async function updateBadge(tabId: number): Promise<void> {
@@ -976,6 +1268,10 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!permittedTabs.has(tabId)) return;
   const old = permittedTabs.get(tabId);
   if (!old) return;
+  if (connectionDestination === "cloud" && currentUrl && !isCloudShareableUrl(currentUrl)) {
+    await revokeTab(tabId, "cloud_tab_unsupported");
+    return;
+  }
   if (old.accessMode === "all_tabs") {
     await revokeTab(tabId, "all_tabs_not_shareable");
     return;
@@ -1024,6 +1320,8 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
     stopRecordingForTab(tabId);
     await saveState();
     sendWS({ type: "tab_closed", tabId });
+    if (connectionDestination === "cloud" && permittedTabs.size === 0)
+      gatewayWebSocketConnection.disconnect();
     await detachDebugger(tabId);
   }
 });
@@ -1411,7 +1709,18 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 
 // ---------- Gateway -> Extension commands ----------
 
-async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
+async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch): Promise<void> {
+  const reply = (id: string, result: unknown) => {
+    if (epoch === connectionEpoch) sendWS({ type: "response", id, result });
+  };
+  const replyError = (id: string, code: string, message: string, matchCount?: number) => {
+    if (epoch === connectionEpoch)
+      sendWS({
+        type: "response",
+        id,
+        error: matchCount === undefined ? { code, message } : { code, message, matchCount },
+      });
+  };
   const tabId = cmd.params?.tabId;
   try {
     if (cmd.method === "bookmarks_list") {
@@ -1553,7 +1862,7 @@ async function handleGatewayCommand(cmd: GatewayCommand): Promise<void> {
       reply(cmd.id, recordStatus());
     } else if (isOperationCommand(cmd)) {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await runApprovedOperation(cmd, tabId));
+      reply(cmd.id, await runApprovedOperation(cmd, tabId, epoch));
     } else {
       replyError(cmd.id, "unknown_method", String(cmd.method));
     }
@@ -1974,9 +2283,15 @@ function isOperationCommand(cmd: GatewayCommand): cmd is OperationCommand {
   return OPERATION_METHODS.has(cmd.method);
 }
 
-async function runApprovedOperation(cmd: OperationCommand, tabId: number): Promise<unknown> {
+async function runApprovedOperation(
+  cmd: OperationCommand,
+  tabId: number,
+  epoch = connectionEpoch,
+): Promise<unknown> {
   const operation = buildOperation(cmd, tabId);
   await requireOperationApproval(cmd.method, tabId, operation.intent);
+  if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
+    throw new Error("Connection or tab sharing changed before the operation.");
   return operation.run();
 }
 
@@ -2578,6 +2893,7 @@ async function requestOperationApproval(
   intent: LocalizedText,
   script?: string,
 ): Promise<ApprovalResolution> {
+  const epoch = connectionEpoch;
   const request: ApprovalRequest = {
     id: crypto.randomUUID(),
     method,
@@ -2590,6 +2906,7 @@ async function requestOperationApproval(
     timeoutMs: APPROVAL_TIMEOUT_MS,
   };
 
+  if (epoch !== connectionEpoch) throw new Error("Connection changed before approval.");
   let resolveApproval: (resolution: ApprovalResolution) => void = () => {};
   const approvalPromise = new Promise<ApprovalResolution>((resolve) => {
     resolveApproval = resolve;
@@ -2912,18 +3229,6 @@ function stopRecordingForTab(tabId: number): void {
     cmd: "stop",
     recordingId: recordingSession.recordingId,
   }).catch(() => {});
-}
-
-function reply(id: string, result: unknown): void {
-  sendWS({ type: "response", id, result });
-}
-
-function replyError(id: string, code: string, message: string, matchCount?: number): void {
-  sendWS({
-    type: "response",
-    id,
-    error: matchCount === undefined ? { code, message } : { code, message, matchCount },
-  });
 }
 
 type DomReadResult = {
@@ -7578,6 +7883,17 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
       sendResponse(reply);
       return;
     }
+    if (
+      msg.type === "set_connection_destination" &&
+      (sender.id !== browser.runtime.id || sender.url !== browser.runtime.getURL("popup.html"))
+    ) {
+      sendResponse({
+        type: "error",
+        message: "Connection settings can only be changed from the extension popup.",
+      });
+      return;
+    }
+    await bootstrapReady;
     sendResponse(await handleRuntimeMessage(msg));
   })().catch((e) => {
     const reply: RuntimeResponse = {
@@ -7616,6 +7932,8 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       type: "state",
       permitted: permittedTabs.has(msg.tabId),
       wsConnected,
+      cloudCodeConfigured: Boolean(cloudCode),
+      cloudConnectionFailed,
       activeTab: {
         incognito: activeTab?.incognito === true,
         incognitoAccessAllowed,
@@ -7658,6 +7976,10 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   }
   if (msg.type === "set_gateway_websocket_url") {
     await setGatewayWebSocketUrl(msg.value);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_connection_destination") {
+    await setConnectionDestination(msg.destination, msg.cloudUrl, msg.code);
     return { type: "ok" };
   }
   if (msg.type === "set_all_tabs_access") {
@@ -7738,6 +8060,19 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   }
   if (rawMsg.type === "set_gateway_websocket_url" && typeof rawMsg.value === "string") {
     return { type: "set_gateway_websocket_url", value: rawMsg.value };
+  }
+  if (
+    rawMsg.type === "set_connection_destination" &&
+    (rawMsg.destination === "local" || rawMsg.destination === "cloud") &&
+    typeof rawMsg.cloudUrl === "string" &&
+    (rawMsg.code === undefined || typeof rawMsg.code === "string")
+  ) {
+    return {
+      type: "set_connection_destination",
+      destination: rawMsg.destination,
+      cloudUrl: rawMsg.cloudUrl,
+      code: rawMsg.code,
+    };
   }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };

@@ -25,6 +25,34 @@
       <span id="gatewayBannerBody"></span>
     </div>
 
+    <details class="connection-panel" id="connectionPanel">
+      <summary><span data-i18n="popup.connection.destination">Connect to</span><span id="connectionDestinationLabel"></span></summary>
+      <div class="fields">
+      <div class="field">
+        <label for="connectionDestination" data-i18n="popup.connection.destination">Connect to</label>
+        <select id="connectionDestination">
+          <option value="local" data-i18n="popup.connection.local">Local (this machine)</option>
+          <option value="cloud" data-i18n="popup.connection.cloud">Cloud</option>
+        </select>
+      </div>
+      <div id="cloudConnectionFields" hidden>
+        <div class="field">
+          <label for="cloudUrl" data-i18n="popup.connection.url">Cloud URL</label>
+          <input id="cloudUrl" type="url" placeholder="https://gateway.example.test" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="cloudCode" data-i18n="popup.connection.code">Browser connection code</label>
+          <input id="cloudCode" type="password" autocomplete="off" spellcheck="false" />
+          <p class="field-note" data-i18n="popup.connection.cloudNote">Cloud connects while tabs are shared. Enter the code again after restarting the browser.</p>
+        </div>
+      </div>
+      <div class="field">
+        <button id="applyConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.apply">Apply connection</button>
+        <p class="field-note" data-i18n="popup.connection.note">Applying clears existing shares. Share tabs again with the selected destination.</p>
+      </div>
+      </div>
+    </details>
+
     <section class="hero" id="hero" data-gate="loading" aria-labelledby="tabState">
       <div class="hero-light" aria-hidden="true"></div>
       <div class="hero-head">
