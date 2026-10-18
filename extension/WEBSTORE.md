@@ -208,7 +208,7 @@ ArcManagement does not collect analytics, telemetry, or advertising identifiers.
 Suggested reviewer test instructions:
 
 ```text
-No account is required. To test: download the signed macOS gateway package from the latest GitHub Release at https://github.com/arcmanagement/agent-browser-gateway/releases, open "Install Agent Browser Gateway.command", install the extension, open a normal web page, click the ABG toolbar icon, share the current tab, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. To test optional all-tabs mode, use an isolated Chrome profile, open the ABG popup, enable "Share all tabs (sandbox profiles only)", accept Chrome's permission prompt, then confirm `abg tabs --compact` shows `accessMode` as `all_tabs`. For help, contact contact@arcm.co.jp.
+Local mode requires no account. To test it, install the signed macOS Gateway from https://github.com/arcmanagement/agent-browser-gateway/releases/latest and the extension, open a normal web page, share it from the ABG toolbar popup, then run `abg tabs --compact` and `abg read t1 --format markdown` locally. Optional Cloud mode requires an account: choose Cloud in the popup, register a destination through Web login, approve the browser, apply the destination, and share a tab. Authorize the AI client through the Web account flow. For optional all-tabs mode, use an isolated Chrome profile, enable "Share all tabs (sandbox profiles only)", and accept Chrome's permission prompt. Auto-resume requires its separate checkbox. For help, contact contact@arcm.co.jp.
 ```
 
 ## Stable Chrome extension ID
