@@ -58,6 +58,8 @@ manually with their verified SHA-256 files. Do not publish unsigned MSIX or subm
 The shared checksum reconciliation workflow assumes a `v<version>` release with Mac assets,
 so build and verify a Windows-only `SHA256SUMS.txt` from those two uploaded ZIPs instead.
 
+For a Chrome-extension-only release, update `extension/package.json`, `extension/public/manifest.json`, and the background handshake version together. Use `extension-v<version>` after the PR lands on main; keep desktop/Cask/WinGet versions and their hashes unchanged. Build the Chrome Web Store ZIP, verify its root manifest/version and checksums, and attach the ZIP and checksum to the GitHub Release. Create this component release with `--latest=false` so desktop users following `releases/latest` still reach a desktop release. This ZIP is loaded unpacked; Chrome Web Store supplies Store package signing. Do not build or sign desktop apps for this scope. Store upload/review is a separate step subject to the metadata and pending-review checks below.
+
 `Casks/agent-browser-gateway.rb` and the temporary zip checksums must be updated from the actual generated artifacts, not guessed.
 
 ## Freshness Surfaces

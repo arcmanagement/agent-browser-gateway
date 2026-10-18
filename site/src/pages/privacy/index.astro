@@ -21,7 +21,7 @@ import "../../styles/legal.css";
             This policy explains how Agent Browser Gateway handles browser data, extension
             permissions, local logs, and user choices.
           </p>
-          <p><strong>Last updated:</strong> October 4, 2026</p>
+          <p><strong>Last updated:</strong> October 19, 2026</p>
         </div>
       </section>
 
@@ -50,8 +50,7 @@ import "../../styles/legal.css";
               at <code>agent-browser-gateway.com</code>.
             </p>
             <p>
-              ABG is designed as a local bridge between your browser and AI agent tools you choose
-              to run. ABG does not operate a hosted browser service or a cloud account system.
+              ABG connects your browser to AI tools through either a local Gateway or optional Cloud mode. Cloud mode uses an account and registered-browser authorization. The account UI is at <code>app.agent-browser-gateway.com</code>; browser authentication and shared-tab traffic use <code>connect.agent-browser-gateway.com</code> over HTTPS and secure WebSocket. Custom destinations use the gateway you select.
             </p>
           </section>
 
@@ -65,8 +64,7 @@ import "../../styles/legal.css";
                 user, unless the user enables optional all-tabs mode for an isolated profile.
               </li>
               <li>
-                Browser data requested through ABG is handled locally between the extension, the
-                macOS gateway, the CLI, and the agent process you authorize.
+                In local mode, requested browser data stays between the extension, Gateway, CLI, and authorized agent. In Cloud mode, the selected service processes shared-tab metadata, requested content, screenshots, operation inputs/results, and requested files or recording data and relays them to authorized clients.
               </li>
               <li>
                 If you use ABG with an AI agent or another tool that sends data to a third-party
@@ -77,6 +75,7 @@ import "../../styles/legal.css";
 
           <section id="data">
             <h2>3. Data ABG handles</h2>
+            <p>The table below describes local mode. Cloud mode additionally processes account email, registered browser identifiers and credentials, client authorizations, and the requested browser data described above. Separately enabling bookmarks or Reading List access makes requested browser-owned list data available beyond the shared tab. Changing local/Cloud mode, the Cloud endpoint, or its credential resets personal-data access and automation opt-ins and restores operation approval. Password entry happens in the Web account flow; passwords are not stored in the extension or given to AI clients. Saved browser credentials remain in trusted extension storage until removed or the extension is uninstalled. Expiry and server revocation are separate controls.</p>
             <p>
               ABG can handle browser data only for tabs you choose to share or commands you choose
               to run. The table below describes the main categories of data involved.
@@ -241,9 +240,7 @@ import "../../styles/legal.css";
           <section id="sharing">
             <h2>5. Data sharing and third parties</h2>
             <p>
-              ABG does not send browser data to servers operated by ABG. Data moves locally between
-              the Chrome extension, the macOS gateway, the <code>abg</code> CLI, and the local agent
-              process or shell command you authorize.
+              Local mode does not send browser data to an ABG server. Optional Cloud mode sends only the shared data and requested results needed for the selected connection through the chosen service. Using Cloud means trusting that service and the AI clients you authorize; it is not an end-to-end encrypted path hidden from the service.
             </p>
             <p>
               ABG is agent-agnostic. If the agent tool you use sends prompts, screenshots, page

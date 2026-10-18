@@ -141,6 +141,14 @@ export function restoreReportText(
 
 // Gateway error codes that have a human-facing translation.
 const ERROR_MESSAGE_KEYS: Readonly<Record<string, MessageKey>> = {
+  cloud_url_invalid: "error.cloud_url_invalid",
+  cloud_service_permission_required: "error.cloud_service_permission_required",
+  cloud_new_url_code_required: "error.cloud_new_url_code_required",
+  cloud_code_invalid: "error.cloud_code_invalid",
+  cloud_code_required: "error.cloud_code_required",
+  cloud_tab_unsupported: "error.cloud_tab_unsupported",
+  cloud_manual_sharing_required: "error.cloud_manual_sharing_required",
+  connection_changing: "error.connection_changing",
   all_tabs_permission_required: "error.all_tabs_permission_required",
   bookmarks_permission_required: "error.bookmarks_permission_required",
   reading_list_permission_required: "error.reading_list_permission_required",

@@ -28,6 +28,8 @@ const baseSettings: ExtensionSettings = {
   evalEnabled: false,
   operationsRequireApproval: true,
   profileLabel: "",
+  connectionDestination: "local",
+  cloudWebSocketUrl: "",
   gatewayWebSocketUrl: "ws://127.0.0.1:8765/ws",
   trustedAutomationEnabled: false,
   bookmarksAccessEnabled: false,

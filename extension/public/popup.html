@@ -25,6 +25,45 @@
       <span id="gatewayBannerBody"></span>
     </div>
 
+    <details class="connection-panel" id="connectionPanel">
+      <summary><span data-i18n="popup.connection.destination">Connect to</span><span id="connectionDestinationLabel"></span></summary>
+      <div class="fields">
+      <div class="field">
+        <label for="connectionDestination" data-i18n="popup.connection.destination">Connect to</label>
+        <select id="connectionDestination">
+          <option value="local" data-i18n="popup.connection.local">Local (this machine)</option>
+          <option value="cloud" data-i18n="popup.connection.cloud">Cloud</option>
+        </select>
+      </div>
+      <div id="cloudConnectionFields" hidden>
+        <div class="field">
+          <label for="savedCloudConnection" data-i18n="popup.connection.saved">Saved connections</label>
+          <select id="savedCloudConnection"></select>
+        </div>
+        <details id="cloudRegistrationSettings"><summary data-i18n="popup.connection.registrationSettings">Connection name and server (optional)</summary><div class="field">
+          <label for="cloudConnectionName" data-i18n="popup.connection.name">Connection name</label>
+          <input id="cloudConnectionName" maxlength="100" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="cloudUrl" data-i18n="popup.connection.url">Cloud URL</label>
+          <input id="cloudUrl" type="url" placeholder="https://connect.agent-browser-gateway.com" autocomplete="off" spellcheck="false" />
+        </div></details>
+        <button id="cloudLoginBtn" class="secondary" type="button" data-i18n="popup.connection.login">Log in to add</button>
+        <button id="deleteCloudConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.delete" hidden>Remove saved connection</button>
+        <p id="cloudLoginStatus" class="field-note" role="status"></p>
+        <details id="cloudManualConnection"><summary data-i18n="popup.connection.manual">Manual connection (advanced)</summary><div class="field">
+          <label for="cloudCode" data-i18n="popup.connection.code">Browser connection code</label>
+          <input id="cloudCode" type="password" autocomplete="off" spellcheck="false" />
+          <p class="field-note" data-i18n="popup.connection.cloudNote">Manual codes last for this browser session. Use login above to save a connection across restarts.</p>
+        </div></details>
+      </div>
+      <div class="field">
+        <button id="applyConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.apply">Connect</button>
+        <p class="field-note" data-i18n="popup.connection.note">Switching destinations clears existing shares. Share tabs again with the selected destination.</p>
+      </div>
+      </div>
+    </details>
+
     <section class="hero" id="hero" data-gate="loading" aria-labelledby="tabState">
       <div class="hero-light" aria-hidden="true"></div>
       <div class="hero-head">
@@ -151,6 +190,11 @@
               <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
             </label>
             <div class="setting-note" id="allTabsNote"></div>
+            <label class="setting-row" id="cloudSandboxResumeSetting" hidden>
+              <span data-i18n="popup.permissions.allTabs.resume">Resume Sandbox after restart or disconnection</span>
+              <input type="checkbox" class="switch warning" role="switch" id="cloudSandboxResumeToggle" />
+            </label>
+            <div class="setting-note" id="cloudSandboxResumeNote" data-i18n="popup.permissions.allTabs.resumeNote" hidden>Only for this saved Cloud connection. Turning Sandbox off or changing connection cancels automatic resume.</div>
           </div>
         </div>
       </div>

@@ -611,6 +611,8 @@ const auditRows = [
             {t.download.store}<span aria-hidden="true">↗</span>
           </a>
           <p class="dl__note">{t.download.storeMeta}</p>
+          <a class="dl__link" href={release.extensionReleaseUrl} rel="noopener">Cloud extension ZIP · v{release.extensionVersion}<span aria-hidden="true"> ↗</span></a>
+          <p class="dl__note">{lang === "ja" ? "Cloud接続はデスクトップアプリ不要。ZIPを展開してChromeへ読み込み、Webでログインしてブラウザーを許可します。ストアの審査・公開は別途です。" : "Cloud mode needs no desktop app. Extract the ZIP, load it in Chrome, then sign in on the Web and authorize the browser. Store review and publication are separate."}</p>
         </article>
         <article class="dl__card reveal">
           <header class="dl__head">

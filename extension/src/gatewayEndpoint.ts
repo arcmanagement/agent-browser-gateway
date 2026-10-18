@@ -58,3 +58,20 @@ export function resolveStoredGatewayWebSocketUrl(
     return { url: normalizedDefault, shouldPersist: true };
   }
 }
+
+export function normalizeCloudWebSocketUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("Enter a valid Cloud URL.");
+  }
+  if (url.protocol === "https:") url.protocol = "wss:";
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol === "http:" && loopback) url.protocol = "ws:";
+  if (url.protocol !== "wss:" && !(url.protocol === "ws:" && loopback)) {
+    throw new Error("Cloud connections require HTTPS or WSS.");
+  }
+  if (url.pathname === "/") url.pathname = "/ws";
+  return normalizeGatewayWebSocketUrl(url.toString());
+}

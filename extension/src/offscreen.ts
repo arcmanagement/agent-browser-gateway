@@ -37,6 +37,7 @@ interface CopyTextCommand {
   target: "abg-offscreen";
   cmd: "copy_text";
   text: string;
+  html?: string;
 }
 
 type OffscreenCommand = StartCommand | StopCommand | CopyTextCommand;
@@ -91,13 +92,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (msg.cmd === "copy_text") {
-    sendResponse(copyText((msg as CopyTextCommand).text));
+    sendResponse(copyText((msg as CopyTextCommand).text, (msg as CopyTextCommand).html));
     return undefined;
   }
   return undefined;
 });
 
-function copyText(text: unknown): StopResult {
+function copyText(text: unknown, html?: string): StopResult {
   if (typeof text !== "string") return { ok: false, error: "nothing to copy" };
   // Offscreen documents cannot take focus, so navigator.clipboard.writeText is
   // rejected here; execCommand("copy") works with the clipboardWrite permission.
@@ -105,6 +106,13 @@ function copyText(text: unknown): StopResult {
   textarea.value = text;
   document.body.appendChild(textarea);
   textarea.select();
+  const copy = (event: ClipboardEvent) => {
+    if (!event.clipboardData) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", text);
+    if (html !== undefined) event.clipboardData.setData("text/html", html);
+  };
+  document.addEventListener("copy", copy);
   try {
     return document.execCommand("copy")
       ? { ok: true }
@@ -112,6 +120,7 @@ function copyText(text: unknown): StopResult {
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   } finally {
+    document.removeEventListener("copy", copy);
     textarea.remove();
   }
 }

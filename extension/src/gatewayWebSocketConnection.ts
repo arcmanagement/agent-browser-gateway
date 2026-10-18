@@ -14,11 +14,13 @@ export type GatewaySocket = {
 type GatewayWebSocketConnectionOptions = {
   endpoint: string;
   createSocket: (endpoint: string) => GatewaySocket;
-  onOpen: () => void | Promise<void>;
+  onOpen: (endpoint: string) => void | Promise<void>;
   onMessage: (event: MessageEvent) => void;
-  onConnectionChange: (connected: boolean) => void;
+  onConnectionChange: (connected: boolean, closeCode?: number) => void;
   onWarning: (message: string, error: unknown) => void;
   reconnectDelayMs?: number;
+  shouldConnect?: () => boolean;
+  autoReconnect?: () => boolean;
   schedule?: (callback: () => void, delayMs: number) => unknown;
   cancelScheduled?: (timer: unknown) => void;
 };
@@ -43,6 +45,7 @@ export class GatewayWebSocketConnection {
   }
 
   ensureConnected(): void {
+    if (this.options.shouldConnect && !this.options.shouldConnect()) return;
     if (this.socket && (this.socket.readyState === OPEN || this.socket.readyState === CONNECTING)) {
       return;
     }
@@ -57,13 +60,14 @@ export class GatewayWebSocketConnection {
       return;
     }
 
+    const endpoint = this.endpoint;
     socket.addEventListener("open", () => {
       if (this.socket !== socket) {
         socket.close();
         return;
       }
       this.options.onConnectionChange(true);
-      Promise.resolve(this.options.onOpen()).catch((error) => {
+      Promise.resolve(this.options.onOpen(endpoint)).catch((error) => {
         this.options.onWarning("[ABG] WS open handler failed", error);
       });
     });
@@ -71,10 +75,10 @@ export class GatewayWebSocketConnection {
       if (this.socket !== socket) return;
       this.options.onMessage(event as MessageEvent);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
-      this.options.onConnectionChange(false);
+      this.options.onConnectionChange(false, (event as CloseEvent).code);
       this.scheduleReconnect();
     });
     socket.addEventListener("error", () => {
@@ -103,6 +107,14 @@ export class GatewayWebSocketConnection {
     this.ensureConnected();
   }
 
+  disconnect(): void {
+    this.cancelReconnect();
+    const socket = this.socket;
+    this.socket = null;
+    this.options.onConnectionChange(false);
+    socket?.close();
+  }
+
   send(data: string): boolean {
     if (!this.socket || this.socket.readyState !== OPEN) return false;
     this.socket.send(data);
@@ -110,6 +122,7 @@ export class GatewayWebSocketConnection {
   }
 
   private scheduleReconnect(): void {
+    if (this.options.autoReconnect && !this.options.autoReconnect()) return;
     if (this.reconnectTimer !== null) return;
     this.reconnectTimer = this.schedule(() => {
       this.reconnectTimer = null;
