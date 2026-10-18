@@ -24,7 +24,8 @@ export async function discoverCloudRoute(
     redirect: "error",
     signal,
   });
-  if (!response.ok || !response.body) throw new Error("Cloud authentication failed.");
+  if (!response.ok || !response.body)
+    throw Object.assign(new Error("Cloud authentication failed."), { status: response.status });
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;

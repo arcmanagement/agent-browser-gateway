@@ -31,6 +31,12 @@ import {
   type BrowserTab,
   browserAdapter,
 } from "./browserAdapter.js";
+import {
+  appendCloudRecording,
+  beginCloudRecording,
+  finishCloudRecording,
+  readCloudRecording,
+} from "./cloudArtifacts.js";
 import { cloudServiceOrigin, discoverCloudRoute } from "./cloudConnection.js";
 import {
   type FaviconSourceOptions,
@@ -59,6 +65,13 @@ import {
   type UiLanguageSetting,
 } from "./i18n.js";
 import { restoreReportText } from "./popupLogic.js";
+import {
+  beginCloudLogin,
+  changeSavedCloudConnections,
+  pollCloudLogin,
+  protectCloudStorage,
+  savedCloudConnections,
+} from "./savedCloudConnections.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -86,7 +99,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "0.5.2";
+const VERSION = "1.0.0";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -122,6 +135,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "fill",
   "paste",
   "paste_rich",
+  "clipboard_write",
   "clear",
   "replace_dom",
   "upload_file",
@@ -254,6 +268,14 @@ const downloadGuidToTab = new Map<string, number>();
 const snapshotRefCache = new Map<number, Map<string, SnapshotRefTarget>>();
 const attachedTabs = new Set<number>();
 const streamingTabs = new Set<number>();
+const cloudRuntimeEvents = new Map<
+  number,
+  { sequence: number; events: { sequence: number; at: number; event: Record<string, unknown> }[] }
+>();
+let cloudRecordingWrites = Promise.resolve();
+let cloudRecordingOwner:
+  | { id: string; epoch: number; connection: string; tabId: number }
+  | undefined;
 const pendingApprovals = new Map<string, PendingApproval>();
 let recordingSession: RecordingSession | null = null;
 const annotationSnapshots = new AnnotationSnapshotStore(browser.storage.session);
@@ -274,7 +296,165 @@ let cloudResolution:
   | { epoch: number; controller: AbortController; promise: Promise<void> }
   | undefined;
 let cloudSandboxActive = false;
-const cloudMethods = new Set(["read_dom", "screenshot", "click", "fill", "navigate", "revoke", "sandbox_action"]);
+let cloudSandboxResumeEnabled = false;
+let sandboxConsentRevision = 0;
+let cloudResumeTimer: ReturnType<typeof setTimeout> | undefined;
+let cloudResumeDelay = 3000;
+
+function cancelCloudResume(): void {
+  clearTimeout(cloudResumeTimer);
+  cloudResumeTimer = undefined;
+}
+async function disableCloudSandboxResume(): Promise<void> {
+  sandboxConsentRevision++;
+  cloudSandboxResumeEnabled = false;
+  cancelCloudResume();
+  await browser.storage.local.remove("cloudSandboxResume");
+}
+async function cloudCredentialHash(): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(cloudCode));
+  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function activeSavedCloudConnection() {
+  if (connectionDestination !== "cloud" || !cloudCode) return undefined;
+  const { activeCloudConnectionId } = await browser.storage.local.get("activeCloudConnectionId");
+  return (await savedCloudConnections()).find(
+    (c) =>
+      c.id === activeCloudConnectionId &&
+      c.url === cloudEndpoint &&
+      c.code === cloudCode &&
+      (!c.expiresAt || Date.parse(c.expiresAt) > Date.now()),
+  );
+}
+async function restoreCloudSandboxResume(): Promise<boolean> {
+  const revision = sandboxConsentRevision;
+  const selected = await activeSavedCloudConnection();
+  const { cloudSandboxResume: receipt } = await browser.storage.local.get("cloudSandboxResume");
+  const valid = !!(
+    (await getSettings()).allTabsAccessEnabled &&
+    selected &&
+    receipt &&
+    receipt.id === selected.id &&
+    receipt.url === selected.url &&
+    receipt.credentialHash === (await cloudCredentialHash()) &&
+    (await hasAllUrlsPermission())
+  );
+  return valid && revision === sandboxConsentRevision;
+}
+async function setCloudSandboxResume(value: boolean): Promise<void> {
+  if (changingConnection) throw new GatewayError("connection_changing", "Connection is changing.");
+  if (!value) {
+    await disableCloudSandboxResume();
+    return;
+  }
+  const epoch = connectionEpoch;
+  const revision = ++sandboxConsentRevision;
+  const selected = await activeSavedCloudConnection();
+  if (!selected || !(await isAllTabsAccessActive()))
+    throw new GatewayError(
+      "sandbox_resume_unavailable",
+      "Enable Sandbox on a saved Cloud connection first.",
+    );
+  const credentialHash = await cloudCredentialHash();
+  if (changingConnection || epoch !== connectionEpoch || revision !== sandboxConsentRevision)
+    throw new GatewayError("connection_changing", "Connection changed.");
+  await browser.storage.local.set({
+    cloudSandboxResume: { id: selected.id, url: selected.url, credentialHash },
+  });
+  const active = await isAllTabsAccessActive();
+  if (
+    changingConnection ||
+    epoch !== connectionEpoch ||
+    revision !== sandboxConsentRevision ||
+    !active
+  ) {
+    await disableCloudSandboxResume();
+    throw new GatewayError("connection_changing", "Sandbox changed before consent was saved.");
+  }
+  cloudSandboxResumeEnabled = true;
+}
+function scheduleCloudResume(): void {
+  if (!cloudSandboxResumeEnabled || cloudResumeTimer) return;
+  cloudResumeTimer = setTimeout(() => {
+    cloudResumeTimer = undefined;
+    if (cloudSandboxResumeEnabled) void ensureWS();
+  }, cloudResumeDelay);
+  cloudResumeDelay = Math.min(cloudResumeDelay * 2, 30000);
+}
+const cloudMethods = new Set([
+  "read_dom",
+  "screenshot",
+  "click",
+  "fill",
+  "navigate",
+  "revoke",
+  "sandbox_action",
+  "frames",
+  "get_dom",
+  "predicate",
+  "find",
+  "snapshot",
+  "pdf",
+  "console",
+  "table",
+  "describe",
+  "network_log",
+  "har_export",
+  "state_inspect",
+  "framework_inspect",
+  "download_state",
+  "dialog_state",
+  "validate_editable",
+  "wait_for",
+  "click_selector",
+  "click_at",
+  "click_ref",
+  "click_described",
+  "dblclick_selector",
+  "focus_selector",
+  "hover_selector",
+  "select_option",
+  "set_checked",
+  "paste",
+  "paste_rich",
+  "clipboard_write",
+  "clear",
+  "replace_dom",
+  "type_text",
+  "keyboard_insert_text",
+  "key_press",
+  "key_down",
+  "key_up",
+  "exec_command",
+  "scroll",
+  "scroll_into_view",
+  "dialog_action",
+  "drag",
+  "raise_tab",
+  "annotation_mode",
+  "input",
+  "eval_script",
+  "bookmarks_list",
+  "bookmarks_search",
+  "bookmarks_get",
+  "bookmarks_create",
+  "bookmarks_update",
+  "bookmarks_move",
+  "bookmarks_remove",
+  "reading_list_list",
+  "reading_list_search",
+  "reading_list_add",
+  "reading_list_update",
+  "reading_list_remove",
+  "upload_file",
+  "stream_control",
+  "stream_read",
+  "record_start",
+  "record_stop",
+  "record_status",
+  "record_read",
+  "bookmarks_open",
+]);
 
 async function announceSharedTabs(): Promise<void> {
   const epoch = connectionEpoch;
@@ -285,6 +465,7 @@ async function announceSharedTabs(): Promise<void> {
     type: "hello",
     extensionId: extensionId ?? "?",
     version: VERSION,
+    capabilities: ["cloud-browser-v2", "approval-policy-v1"],
     profileLabel: profileLabel || undefined,
     browserKind,
   });
@@ -295,6 +476,7 @@ async function announceSharedTabs(): Promise<void> {
 
 async function clearConnectionShares(): Promise<void> {
   cloudSandboxActive = false;
+  cloudRuntimeEvents.clear();
   const tabs = [...permittedTabs.keys()];
   // Revoke synchronously before asynchronous debugger/session cleanup can yield.
   permittedTabs.clear();
@@ -324,14 +506,21 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
   shouldConnect: () =>
     connectionConfigured &&
     !changingConnection &&
-    (connectionDestination === "local" || (cloudCode.length > 0 && (permittedTabs.size > 0 || cloudSandboxActive))),
+    (connectionDestination === "local" ||
+      (cloudCode.length > 0 && (permittedTabs.size > 0 || cloudSandboxActive))),
   autoReconnect: () => connectionDestination === "local",
-  onConnectionChange: (connected) => {
+  onConnectionChange: (connected, closeCode) => {
     if (connected) {
       wsConnected = connectionDestination === "local";
       return;
     }
-    if (connectionDestination === "cloud" && !changingConnection && (permittedTabs.size > 0 || cloudSandboxActive))
+    // A replacement browser owns this route now; retrying would evict it repeatedly.
+    if (connectionDestination === "cloud" && closeCode === 4001) void disableCloudSandboxResume();
+    if (
+      connectionDestination === "cloud" &&
+      !changingConnection &&
+      (permittedTabs.size > 0 || cloudSandboxActive)
+    )
       cloudConnectionFailed = true;
     cloudRouteEndpoint = "";
     cloudResolution?.controller.abort();
@@ -339,12 +528,31 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     cloudAuthenticationPending = false;
     wsConnected = false;
     connectionEpoch++;
-    if (connectionDestination === "cloud" && !changingConnection && (permittedTabs.size > 0 || cloudSandboxActive)) {
+    if (
+      connectionDestination === "cloud" &&
+      !changingConnection &&
+      (permittedTabs.size > 0 || cloudSandboxActive)
+    ) {
       changingConnection = true;
       cloudSandboxActive = false;
-      void clearConnectionShares().then(() => browser.storage.local.set({ allTabsAccessEnabled: false })).finally(() => {
-        changingConnection = false;
-      });
+      void clearConnectionShares()
+        .then(async () => {
+          if (cloudSandboxResumeEnabled && (await restoreCloudSandboxResume())) {
+            cloudSandboxActive = true;
+            await syncAllTabsAccess({ emit: false });
+          } else {
+            await disableCloudSandboxResume();
+            await browser.storage.local.set({ allTabsAccessEnabled: false });
+          }
+        })
+        .catch(async () => {
+          await disableCloudSandboxResume();
+          await browser.storage.local.set({ allTabsAccessEnabled: false });
+        })
+        .finally(() => {
+          changingConnection = false;
+          scheduleCloudResume();
+        });
     }
   },
   onOpen: async (endpoint) => {
@@ -370,17 +578,24 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
       if (connectionDestination === "cloud") {
         if (cloudAuthenticationPending) {
           if (payload?.type !== "authenticated") {
+            void disableCloudSandboxResume();
             gatewayWebSocketConnection.disconnect();
             return;
           }
           clearTimeout(cloudAuthTimer);
           cloudAuthenticationPending = false;
           cloudConnectionFailed = false;
+          cloudResumeDelay = 3000;
+          cancelCloudResume();
           wsConnected = true;
           void announceSharedTabs();
           return;
         }
-        if (wsConnected && payload?.type === "tab_rejected" && Number.isSafeInteger(payload.tabId)) {
+        if (
+          wsConnected &&
+          payload?.type === "tab_rejected" &&
+          Number.isSafeInteger(payload.tabId)
+        ) {
           void revokeTab(payload.tabId, "cloud_tab_limit");
           return;
         }
@@ -391,7 +606,16 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
           !cloudMethods.has(payload.method)
         )
           return;
-        if (payload.method === "click") payload.method = "click_selector";
+        if (payload.method === "click") {
+          payload.method =
+            payload.params?.ref !== undefined
+              ? "click_ref"
+              : payload.params?.id !== undefined
+                ? "click_described"
+                : payload.params?.x !== undefined
+                  ? "click_at"
+                  : "click_selector";
+        }
       }
       void handleGatewayCommand(payload as GatewayCommand, connectionEpoch);
     } catch {
@@ -406,12 +630,24 @@ async function configureStoredConnection(settings: ExtensionSettings): Promise<v
   gatewayWebSocketConnection.disconnect();
   connectionDestination = settings.connectionDestination;
   cloudEndpoint = settings.cloudWebSocketUrl;
-  const stored = await browser.storage.session.get("cloudConnectionCode");
+  const stored = await browser.storage.session.get([
+    "cloudConnectionCode",
+    "cloudConnectionEndpoint",
+  ]);
   cloudCode =
+    (stored.cloudConnectionEndpoint === undefined ||
+      stored.cloudConnectionEndpoint === cloudEndpoint) &&
     typeof stored.cloudConnectionCode === "string" &&
     /^[A-Za-z0-9_-]{43}$/.test(stored.cloudConnectionCode)
       ? stored.cloudConnectionCode
       : "";
+  const { activeCloudConnectionId } = await browser.storage.local.get("activeCloudConnectionId");
+  if (activeCloudConnectionId && connectionDestination === "cloud") {
+    const selected = (await savedCloudConnections()).find(
+      (c) => c.id === activeCloudConnectionId && c.url === cloudEndpoint,
+    );
+    cloudCode = selected?.code ?? "";
+  }
   gatewayWebSocketConnection.setEndpoint(
     connectionDestination === "cloud" ? settings.cloudWebSocketUrl : settings.gatewayWebSocketUrl,
   );
@@ -423,13 +659,18 @@ async function configureStoredConnection(settings: ExtensionSettings): Promise<v
 // Keyboard shortcuts can wake the service worker; they wait for this so the
 // permitted-tab state is restored before deciding between share and revoke.
 const bootstrapReady = (async () => {
+  await protectCloudStorage();
   extensionId = await getOrCreateExtensionId();
   const settings = await ensureSettingsStored();
   await configureStoredConnection(settings);
   if (connectionDestination === "local") await restoreState();
   else {
     await clearConnectionShares();
-    await browser.storage.local.set({ allTabsAccessEnabled: false });
+    cloudSandboxResumeEnabled = await restoreCloudSandboxResume();
+    if (!cloudSandboxResumeEnabled) {
+      await disableCloudSandboxResume();
+      await browser.storage.local.set({ allTabsAccessEnabled: false });
+    }
   }
   await reconcileAllTabsAccess();
   ensureWS();
@@ -448,6 +689,11 @@ browser.runtime.onStartup.addListener(async () => {
 // Keep service worker warm
 browser.alarms.create("heartbeat", { periodInMinutes: HEARTBEAT_PERIOD_MIN });
 browser.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "cloud-login") {
+    await bootstrapReady;
+    await finishCloudLogin().catch(() => {});
+    return;
+  }
   if (alarm.name === "heartbeat") {
     await bootstrapReady;
     ensureWS();
@@ -617,6 +863,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       type: "hello",
       extensionId,
       version: VERSION,
+      capabilities: ["cloud-browser-v2", "approval-policy-v1"],
       profileLabel: trimmed || undefined,
       browserKind: await detectCurrentBrowserKind(),
     });
@@ -654,45 +901,80 @@ async function setConnectionDestination(
   destination: "local" | "cloud",
   cloudUrl: string,
   code?: string,
+  savedId?: string,
 ): Promise<void> {
-  const current = await getSettings();
-  let url = current.cloudWebSocketUrl;
-  if (destination === "cloud" && cloudUrl.trim()) {
-    try {
-      url = normalizeCloudWebSocketUrl(cloudUrl);
-    } catch {
-      throw new GatewayError("cloud_url_invalid", "Enter a secure Cloud URL.");
-    }
-  }
-  if (destination === "cloud" && url !== current.cloudWebSocketUrl && !code?.trim()) {
-    throw new GatewayError(
-      "cloud_new_url_code_required",
-      "Enter a browser connection code for the new Cloud URL.",
-    );
-  }
-  const nextCode = code?.trim() || cloudCode;
-  if (destination === "cloud" && (!url || !/^[A-Za-z0-9_-]{43}$/.test(nextCode))) {
-    throw new GatewayError(
-      "cloud_code_invalid",
-      "Enter a Cloud URL and a valid browser connection code.",
-    );
-  }
   if (changingConnection)
     throw new GatewayError("connection_changing", "A connection change is already in progress.");
   changingConnection = true;
-  connectionConfigured = false;
   try {
+    const current = await getSettings();
+    const selected = savedId
+      ? (await savedCloudConnections()).find((c) => c.id === savedId)
+      : undefined;
+    if (savedId && !selected)
+      throw new GatewayError("cloud_connection_missing", "Select a saved connection again.");
+    let url = current.cloudWebSocketUrl;
+    if (destination === "cloud" && cloudUrl.trim()) {
+      try {
+        url = normalizeCloudWebSocketUrl(cloudUrl);
+      } catch {
+        throw new GatewayError("cloud_url_invalid", "Enter a secure Cloud URL.");
+      }
+    }
+    if (selected && selected.url !== url)
+      throw new GatewayError(
+        "cloud_new_url_code_required",
+        "Select the saved connection again after editing its URL.",
+      );
+    if (
+      destination === "cloud" &&
+      url !== current.cloudWebSocketUrl &&
+      !code?.trim() &&
+      !selected
+    ) {
+      throw new GatewayError(
+        "cloud_new_url_code_required",
+        "Enter a browser connection code for the new Cloud URL.",
+      );
+    }
+    const nextCode = code?.trim() || selected?.code || cloudCode;
+    if (destination === "cloud" && (!url || !/^[A-Za-z0-9_-]{43}$/.test(nextCode))) {
+      throw new GatewayError(
+        "cloud_code_invalid",
+        "Enter a Cloud URL and a valid browser connection code.",
+      );
+    }
+    const boundaryChanged =
+      destination !== connectionDestination ||
+      (destination === "cloud" && (url !== cloudEndpoint || nextCode !== cloudCode));
+    await disableCloudSandboxResume();
+    connectionConfigured = false;
     gatewayWebSocketConnection.disconnect();
     await clearConnectionShares();
     connectionDestination = destination;
     cloudCode = destination === "cloud" ? nextCode : "";
     cloudEndpoint = url;
-    await browser.storage.session.set({ cloudConnectionCode: cloudCode });
+    await browser.storage.session.set({
+      cloudConnectionCode: cloudCode,
+      cloudConnectionEndpoint: url,
+    });
     await browser.storage.local.set({
       ...current,
+      ...(boundaryChanged
+        ? {
+            operationsRequireApproval: true,
+            evalEnabled: false,
+            trustedAutomationEnabled: false,
+            bookmarksAccessEnabled: false,
+            readingListAccessEnabled: false,
+            personalDataMutationsEnabled: false,
+          }
+        : {}),
       connectionDestination: destination,
       cloudWebSocketUrl: url,
       allTabsAccessEnabled: false,
+      activeCloudConnectionId:
+        destination === "cloud" && selected && !code?.trim() ? selected.id : "",
     });
     gatewayWebSocketConnection.setEndpoint(
       destination === "cloud" ? url : current.gatewayWebSocketUrl,
@@ -705,8 +987,41 @@ async function setConnectionDestination(
   ensureWS();
 }
 
+async function finishCloudLogin(): Promise<void> {
+  await pollCloudLogin(async (connection) => {
+    await setConnectionDestination("cloud", connection.url, undefined, connection.id);
+  });
+}
+
+async function deleteCloudConnection(id: string): Promise<void> {
+  if (changingConnection)
+    throw new GatewayError("connection_changing", "A connection change is already in progress.");
+  changingConnection = true;
+  try {
+    const { activeCloudConnectionId } = await browser.storage.local.get("activeCloudConnectionId");
+    if (activeCloudConnectionId === id) {
+      await disableCloudSandboxResume();
+      connectionConfigured = false;
+      gatewayWebSocketConnection.disconnect();
+      await clearConnectionShares();
+      cloudCode = "";
+      await browser.storage.session.set({ cloudConnectionCode: "" });
+      await browser.storage.local.set({ activeCloudConnectionId: "", allTabsAccessEnabled: false });
+    }
+    await changeSavedCloudConnections((connections) => connections.filter((c) => c.id !== id));
+    if ((await browser.storage.session.get("pendingCloudLogin")).pendingCloudLogin?.id === id) {
+      await browser.storage.session.remove("pendingCloudLogin");
+      await browser.alarms.clear("cloud-login");
+    }
+    connectionConfigured = true;
+  } finally {
+    changingConnection = false;
+  }
+}
+
 async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSettings> {
-  if (changingConnection) throw new GatewayError("connection_changing", "A connection change is already in progress.");
+  if (changingConnection)
+    throw new GatewayError("connection_changing", "A connection change is already in progress.");
   const epoch = connectionEpoch;
   const current = await getSettings();
   if (value && connectionDestination === "cloud" && !cloudCode)
@@ -718,12 +1033,19 @@ async function setAllTabsAccessEnabled(value: boolean): Promise<ExtensionSetting
     );
   }
   if (epoch !== connectionEpoch || changingConnection)
-    throw new GatewayError("connection_changing", "Connection changed before Sandbox consent was saved.");
+    throw new GatewayError(
+      "connection_changing",
+      "Connection changed before Sandbox consent was saved.",
+    );
+  if (!value) await disableCloudSandboxResume();
   const settings: ExtensionSettings = { ...current, allTabsAccessEnabled: value };
   await browser.storage.local.set({ allTabsAccessEnabled: value });
   if (epoch !== connectionEpoch || changingConnection) {
     await browser.storage.local.set({ allTabsAccessEnabled: false });
-    throw new GatewayError("connection_changing", "Connection changed before Sandbox consent was saved.");
+    throw new GatewayError(
+      "connection_changing",
+      "Connection changed before Sandbox consent was saved.",
+    );
   }
   cloudSandboxActive = connectionDestination === "cloud" && value;
   if (value) {
@@ -793,7 +1115,11 @@ async function hasReadingListPermission(): Promise<boolean> {
 
 async function isAllTabsAccessActive(): Promise<boolean> {
   const settings = await getSettings();
-  return settings.allTabsAccessEnabled && (connectionDestination !== "cloud" || cloudSandboxActive) && (await hasAllUrlsPermission());
+  return (
+    settings.allTabsAccessEnabled &&
+    (connectionDestination !== "cloud" || cloudSandboxActive) &&
+    (await hasAllUrlsPermission())
+  );
 }
 
 async function isBookmarksAccessActive(): Promise<boolean> {
@@ -888,9 +1214,17 @@ async function ensureWS(): Promise<void> {
         cloudRouteEndpoint = route;
         gatewayWebSocketConnection.setEndpoint(route);
         gatewayWebSocketConnection.ensureConnected();
-      } catch {
-        if (epoch === connectionEpoch && connectionDestination === "cloud")
+      } catch (error) {
+        if (epoch === connectionEpoch && connectionDestination === "cloud") {
+          if (
+            error &&
+            typeof error === "object" &&
+            "status" in error &&
+            (error.status === 401 || error.status === 403)
+          )
+            await disableCloudSandboxResume();
           gatewayWebSocketConnection.disconnect();
+        }
       } finally {
         clearTimeout(timer);
         if (cloudResolution === resolution) cloudResolution = undefined;
@@ -922,6 +1256,15 @@ function sendWS(msg: ExtToGateway): void {
 }
 
 function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
+  if (connectionDestination === "cloud") {
+    if (!streamingTabs.has(tabId) || !permittedTabs.has(tabId)) return;
+    const state = cloudRuntimeEvents.get(tabId) ?? { sequence: 0, events: [] };
+    if (JSON.stringify(event).length <= 16_384)
+      state.events.push({ sequence: ++state.sequence, at: Date.now(), event });
+    state.events = state.events.slice(-100);
+    cloudRuntimeEvents.set(tabId, state);
+    return;
+  }
   if (!streamingTabs.has(tabId)) return;
   sendWS({
     type: "runtime_event",
@@ -1037,7 +1380,12 @@ function refreshTabFavicon(tabId: number): Promise<void> {
 }
 
 async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise<void> {
+  if (changingConnection) return;
+  const epoch = connectionEpoch;
+  const revision = sandboxConsentRevision;
   const settings = await getSettings();
+  if (epoch !== connectionEpoch || revision !== sandboxConsentRevision || changingConnection)
+    return;
   if (!settings.allTabsAccessEnabled || (connectionDestination === "cloud" && !cloudCode)) {
     cloudSandboxActive = false;
     await revokeAllTabsEntries("all_tabs_disabled");
@@ -1045,9 +1393,15 @@ async function reconcileAllTabsAccess(options: { emit?: boolean } = {}): Promise
   }
   if (!(await hasAllUrlsPermission())) {
     cloudSandboxActive = false;
+    if (cloudSandboxResumeEnabled) {
+      await disableCloudSandboxResume();
+      await browser.storage.local.set({ allTabsAccessEnabled: false });
+    }
     await revokeAllTabsEntries("all_tabs_permission_missing");
     return;
   }
+  if (epoch !== connectionEpoch || revision !== sandboxConsentRevision || changingConnection)
+    return;
   cloudSandboxActive = connectionDestination === "cloud";
   await syncAllTabsAccess(options);
 }
@@ -1056,11 +1410,15 @@ async function syncAllTabsAccess(
   options: { emit?: boolean } = {},
 ): Promise<{ shareableTabCount: number; skippedTabCount: number }> {
   const emit = options.emit ?? true;
+  const epoch = connectionEpoch;
+  const revision = sandboxConsentRevision;
   const tabs = await browser.tabs.query({});
   const shareableTabIds = new Set<number>();
   let skippedTabCount = 0;
 
   for (const tab of tabs) {
+    if (epoch !== connectionEpoch || revision !== sandboxConsentRevision)
+      return { shareableTabCount: 0, skippedTabCount };
     if (typeof tab.id !== "number" || !isConnectionShareableTabUrl(tab.url)) {
       skippedTabCount += 1;
       continue;
@@ -1085,6 +1443,7 @@ async function allTabsAccessState(): Promise<{
   active: boolean;
   shareableTabCount: number;
   skippedTabCount: number;
+  resumeEnabled: boolean;
 }> {
   const [settings, permissionGranted, tabs] = await Promise.all([
     getSettings(),
@@ -1099,7 +1458,11 @@ async function allTabsAccessState(): Promise<{
   }
   return {
     permissionGranted,
-    active: settings.allTabsAccessEnabled && permissionGranted && (connectionDestination !== "cloud" || cloudSandboxActive),
+    resumeEnabled: cloudSandboxResumeEnabled,
+    active:
+      settings.allTabsAccessEnabled &&
+      permissionGranted &&
+      (connectionDestination !== "cloud" || cloudSandboxActive),
     shareableTabCount,
     skippedTabCount,
   };
@@ -1180,7 +1543,9 @@ async function revokeAllTabsEntries(reason: string): Promise<void> {
 }
 
 function isConnectionShareableTabUrl(value: string | undefined): value is string {
-  return isShareableTabUrl(value) && (connectionDestination !== "cloud" || isCloudShareableUrl(value));
+  return (
+    isShareableTabUrl(value) && (connectionDestination !== "cloud" || isCloudShareableUrl(value))
+  );
 }
 
 function isCloudShareableUrl(value: string): boolean {
@@ -1244,6 +1609,7 @@ async function revokeTab(tabId: number, reason: string): Promise<void> {
     if (mappedTabId === tabId) downloadGuidToTab.delete(guid);
   }
   streamingTabs.delete(tabId);
+  cloudRuntimeEvents.delete(tabId);
   stopRecordingForTab(tabId);
   await saveState();
   sendWS({ type: "tab_revoked", tabId, reason });
@@ -1326,6 +1692,16 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   } else if (changeInfo.favIconUrl !== undefined) {
     await refreshTabFavicon(tabId);
   }
+});
+
+browser.permissions.onRemoved.addListener(async ({ origins }) => {
+  if (!origins?.length) return;
+  if (!origins.includes("<all_urls>") && (await hasAllUrlsPermission())) return;
+  // Revocation cancels consent even if host access is granted again before a restart.
+  cloudSandboxActive = false;
+  await disableCloudSandboxResume();
+  await browser.storage.local.set({ allTabsAccessEnabled: false });
+  await revokeAllTabsEntries("all_tabs_permission_missing");
 });
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
@@ -1751,6 +2127,34 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
   };
   const tabId = cmd.params?.tabId;
   try {
+    const sensitiveRead =
+      connectionDestination === "cloud" &&
+      ((cmd.method === "state_inspect" && cmd.params?.includeValues === true) ||
+        (cmd.method === "get_dom" &&
+          (["value", "editable-value"].includes(String(cmd.params?.kind)) ||
+            (cmd.params?.kind === "attr" && String(cmd.params?.name).toLowerCase() === "value"))) ||
+        ["describe", "find", "snapshot", "validate_editable"].includes(cmd.method) ||
+        (cmd.method === "network_log" && cmd.params?.body === true));
+    if (
+      connectionDestination === "cloud" &&
+      (cmd.params?._requireApproval === true || sensitiveRead) &&
+      !isOperationCommand(cmd) &&
+      !["eval_script", "record_start"].includes(cmd.method) &&
+      !(cmd.method === "wait_for" && cmd.params?.predicate !== undefined)
+    ) {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      const approval = await requestOperationApproval(
+        "personal_data_mutation",
+        tabId,
+        msg(sensitiveRead ? "intent.sensitiveRead" : "intent.accountPolicy", {
+          method: cmd.method,
+          detail: String(cmd.params?.selector ?? cmd.params?.kind ?? "response body"),
+        }),
+      );
+      if (approval.decision !== "allow") throw new GatewayError("user_denied", approval.message);
+      if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
+        throw new Error("Connection or tab sharing changed before the operation.");
+    }
     if (cmd.method === "bookmarks_list") {
       reply(cmd.id, await listBookmarks(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_search") {
@@ -1859,6 +2263,15 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      if (connectionDestination === "cloud" && cmd.params?.predicate !== undefined) {
+        await runApprovedEval(tabId, {
+          script: cmd.params.predicate,
+          frame: cmd.params.frame,
+          maxBytes: 16384,
+          approve: true,
+          _requireApproval: cmd.params._requireApproval,
+        });
+      }
       reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
     } else if (cmd.method === "eval_script") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
@@ -1881,12 +2294,38 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
       reply(cmd.id, { ok: true });
+    } else if (cmd.method === "stream_read") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      const after = cmd.params?.after ?? 0;
+      reply(cmd.id, {
+        events: (cloudRuntimeEvents.get(tabId)?.events ?? [])
+          .filter((e) => e.sequence > after)
+          .slice(0, 10),
+        latest: cloudRuntimeEvents.get(tabId)?.sequence ?? 0,
+      });
+    } else if (cmd.method === "record_read") {
+      if (!tabId || !permittedTabs.has(tabId) || connectionDestination !== "cloud")
+        throw new Error("tab not permitted");
+      await cloudRecordingWrites;
+      reply(
+        cmd.id,
+        await readCloudRecording(
+          await cloudRecordingConnection(tabId),
+          tabId,
+          cmd.params?.recordingId ?? "",
+          cmd.params?.part,
+        ),
+      );
     } else if (cmd.method === "record_start") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       reply(cmd.id, await recordStart(tabId, cmd.params ?? {}));
     } else if (cmd.method === "record_stop") {
+      if (connectionDestination === "cloud" && (!tabId || recordingSession?.tabId !== tabId))
+        throw new Error("tab not permitted");
       reply(cmd.id, await recordStop(cmd.params ?? {}));
     } else if (cmd.method === "record_status") {
+      if (connectionDestination === "cloud" && recordingSession && recordingSession.tabId !== tabId)
+        throw new Error("tab not permitted");
       reply(cmd.id, recordStatus());
     } else if (isOperationCommand(cmd)) {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
@@ -1909,6 +2348,17 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
           "blocked_by_extension_frame",
           "A third-party extension iframe (for example a password manager inline menu) is open in this tab, and Chrome blocks debugger commands for the whole tab until the user dismisses it (click elsewhere or press Escape). The dispatched action may still have executed. For identity-like forms, filling via eval with native value setters avoids focusing the field and never triggers the menu.",
         );
+      } else if (
+        connectionDestination === "cloud" &&
+        [
+          "recording_unavailable",
+          "recording_not_ready",
+          "recording_size_limit",
+          "recording_storage_failed",
+          "recording_exists",
+        ].includes(message)
+      ) {
+        replyError(cmd.id, message, message);
       } else {
         replyError(cmd.id, "command_failed", message);
       }
@@ -2100,6 +2550,13 @@ async function openBookmark(params: GatewayCommand["params"]): Promise<Record<st
   const node = (await api.get(id)).find(isBookmarkNode);
   if (!node) throw new GatewayError("bookmark_not_found", `Bookmark not found: ${id}`);
   if (!node.url) throw new GatewayError("bookmark_is_folder", "Cannot open a bookmark folder.");
+  if (connectionDestination === "cloud") {
+    if (!isCloudShareableUrl(node.url))
+      throw new GatewayError("bad_params", "Only HTTP/HTTPS bookmarks can be opened remotely.");
+    await approvePersonalDataMutation(
+      personalDataMutationIntentText("bookmark_update", { title: node.title, url: node.url, id }),
+    );
+  }
   const tab = await browser.tabs.create({ url: node.url, active: true });
   return {
     ok: true,
@@ -2319,22 +2776,40 @@ async function runApprovedOperation(
   const shared = permittedTabs.get(tabId);
   if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
   const operation = buildOperation(cmd, tabId);
-  await requireOperationApproval(cmd.method, tabId, operation.intent);
+  await requireOperationApproval(
+    cmd.method,
+    tabId,
+    operation.intent,
+    connectionDestination === "cloud" &&
+      (cmd.params?._requireApproval === true || cmd.method === "upload_file"),
+  );
   if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
     throw new Error("Connection or tab sharing changed before the operation.");
   if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
   const current = permittedTabs.get(tabId);
   const actual = await browser.tabs.get(tabId);
-  if (epoch !== connectionEpoch || !shared || !current ||
-      current.origin !== shared.origin || current.permittedAt !== shared.permittedAt ||
-      !actual.url || originForUrl(actual.url) !== shared.origin)
-    throw new GatewayError("tab_permission_changed", "Tab sharing or origin changed before the operation.");
+  if (
+    epoch !== connectionEpoch ||
+    !shared ||
+    !current ||
+    current.origin !== shared.origin ||
+    current.permittedAt !== shared.permittedAt ||
+    !actual.url ||
+    originForUrl(actual.url) !== shared.origin
+  )
+    throw new GatewayError(
+      "tab_permission_changed",
+      "Tab sharing or origin changed before the operation.",
+    );
   return operation.run();
 }
 
 async function requireSandboxAccess(tabId: number): Promise<void> {
   if (!(await isAllTabsAccessActive()) || permittedTabs.get(tabId)?.accessMode !== "all_tabs")
-    throw new GatewayError("sandbox_profile_required", "Sandbox operations require an all-tabs shared tab.");
+    throw new GatewayError(
+      "sandbox_profile_required",
+      "Sandbox operations require an all-tabs shared tab.",
+    );
 }
 
 function buildOperation(cmd: OperationCommand, tabId: number): OperationDescriptor {
@@ -2489,6 +2964,28 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
       run: () => pasteText(tabId, selector, value, frame),
     };
   }
+  if (cmd.method === "clipboard_write") {
+    const mime = cmd.params?.mime ?? "text/plain",
+      value = cmd.params?.value;
+    if (!["text/plain", "text/html"].includes(mime) || typeof value !== "string")
+      throw new Error("bad clipboard payload");
+    return {
+      intent: msg("intent.clipboardWrite", {
+        payload: richClipboardPayloadText(mime, new TextEncoder().encode(value).byteLength),
+      }),
+      run: async () => {
+        await ensureOffscreenDocument();
+        const result = (await sendToOffscreen({
+          target: "abg-offscreen",
+          cmd: "copy_text",
+          text: value,
+          ...(mime === "text/html" ? { html: value } : {}),
+        })) as { ok?: boolean };
+        if (!result?.ok) throw new GatewayError("clipboard_write_failed", "Clipboard write failed");
+        return { ok: true, mime, contentBytes: new TextEncoder().encode(value).byteLength };
+      },
+    };
+  }
   if (cmd.method === "paste_rich") {
     const selector = typeof cmd.params?.selector === "string" ? cmd.params.selector : undefined;
     if (cmd.params?.selector !== undefined && (!selector || selector.length === 0)) {
@@ -2541,9 +3038,11 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     const files = normalizeUploadFiles(cmd.params ?? {});
     const firstFile = files[0] ?? "";
     const fileIntent =
-      files.length === 1
-        ? msg("intent.localFile", { file: quoteForIntent(firstFile) })
-        : msg("intent.localFiles", { count: files.length, file: quoteForIntent(firstFile) });
+      connectionDestination === "cloud"
+        ? files.map((file) => JSON.stringify(file)).join("; ")
+        : files.length === 1
+          ? msg("intent.localFile", { file: quoteForIntent(firstFile) })
+          : msg("intent.localFiles", { count: files.length, file: quoteForIntent(firstFile) });
     return {
       intent: msg("intent.uploadFile", {
         files: fileIntent,
@@ -2629,10 +3128,15 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
     };
   }
   if (cmd.method === "sandbox_action") {
-    if (connectionDestination === "cloud" &&
-        (cmd.params?.action !== "tab-create" && cmd.params?.action !== "tab-close" ||
-         cmd.params?.targetTabId !== undefined && cmd.params.targetTabId !== tabId))
-      throw new GatewayError("bad_sandbox_action", "Cloud supports creating a web tab or closing the addressed tab only.");
+    if (
+      connectionDestination === "cloud" &&
+      cmd.params?.targetTabId !== undefined &&
+      cmd.params.targetTabId !== tabId
+    )
+      throw new GatewayError(
+        "bad_sandbox_action",
+        "Cloud sandbox actions must address the same shared tab.",
+      );
     const action = typeof cmd.params?.action === "string" ? cmd.params.action : "";
     if (action === "viewport") {
       const width = cmd.params?.width;
@@ -2923,9 +3427,10 @@ async function requireOperationApproval(
   method: OperationMethod,
   tabId: number,
   intent: LocalizedText,
+  force = false,
 ): Promise<void> {
   const settings = await getSettings();
-  if (!settings.operationsRequireApproval) return;
+  if (!force && !settings.operationsRequireApproval) return;
 
   const resolution = await requestOperationApproval(method, tabId, intent);
   if (resolution.decision !== "allow") {
@@ -3117,6 +3622,11 @@ async function recordStart(
     );
   }
 
+  if (connectionDestination === "cloud") {
+    const connection = await cloudRecordingConnection(tabId);
+    await beginCloudRecording({ id: recordingId, connection, tabId, mime: "video/webm" });
+    cloudRecordingOwner = { id: recordingId, epoch: connectionEpoch, connection, tabId };
+  }
   await ensureOffscreenDocument();
   const start = (await sendToOffscreen({
     target: "abg-offscreen",
@@ -3223,10 +3733,49 @@ async function sendToOffscreen(msg: BackgroundToOffscreen): Promise<unknown> {
   return chrome.runtime.sendMessage(msg);
 }
 
+async function cloudRecordingConnection(tabId: number): Promise<string> {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(
+      `${cloudEndpoint}:${cloudCode}:${permittedTabs.get(tabId)?.permittedAt}`,
+    ),
+  );
+  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function handleOffscreenEvent(rawMsg: Record<string, unknown>): void {
   const type = rawMsg.type;
   const recordingId = typeof rawMsg.recordingId === "string" ? rawMsg.recordingId : "";
   if (!recordingId) return;
+  if (cloudRecordingOwner?.id === recordingId) {
+    const owner = cloudRecordingOwner;
+    if (type === "abg_offscreen_chunk") {
+      const data = typeof rawMsg.dataBase64 === "string" ? rawMsg.dataBase64 : "";
+      cloudRecordingWrites = cloudRecordingWrites
+        .then(() => {
+          if (owner.epoch !== connectionEpoch || !permittedTabs.has(owner.tabId)) return;
+          return appendCloudRecording(recordingId, data);
+        })
+        .catch(() => {
+          stopRecordingForTab(owner.tabId);
+        });
+      return;
+    }
+    if (type === "abg_offscreen_stopped" || type === "abg_offscreen_error") {
+      cloudRecordingWrites = cloudRecordingWrites
+        .then(() =>
+          finishCloudRecording(
+            recordingId,
+            type === "abg_offscreen_error" ? "recording_failed" : undefined,
+          ),
+        )
+        .catch(() => {});
+      void finishRecordingSession(recordingId);
+      cloudRecordingOwner = undefined;
+      return;
+    }
+  }
+  if (connectionDestination === "cloud") return;
   if (type === "abg_offscreen_chunk") {
     sendWS({
       type: "record_chunk",
@@ -3308,6 +3857,9 @@ type FrameDescriptor = {
 type FrameContext = {
   doc: Document;
   win: Window;
+  isCredential(el: Element): boolean;
+  inputValue(el: Element): string | undefined;
+  readHtml(el: Element): string;
   frame?: FrameDescriptor;
   offsetX: number;
   offsetY: number;
@@ -3333,8 +3885,30 @@ function frameIntentSuffix(frame: string | undefined): LocalizedText | "" {
   return frame ? msg("intent.frameSuffix", { frame: quoteForIntent(frame) }) : "";
 }
 
+// Selector results must not become an oracle for React-synchronized input values.
+function assertCloudSelector(selector: string): void {
+  const decoded = selector.replace(
+    /\\([0-9a-f]{1,6})[\t\n\f\r ]?|\\([^\n\r\f])/gi,
+    (_match, hex: string | undefined, literal: string | undefined) =>
+      hex ? String.fromCodePoint(Number.parseInt(hex, 16) || 0xfffd) : (literal ?? ""),
+  );
+  if (
+    selector.includes("/*") ||
+    decoded.includes("/*") ||
+    /\[\s*(?:(?:[\w-]+|\*)?\|)?value(?=[\s~|^$*=\]!])/i.test(decoded)
+  ) {
+    const error = new Error(
+      "Cloud selectors cannot match input value attributes. Use an approved value read.",
+    );
+    Object.assign(error, { code: "credential_value_forbidden" });
+    throw error;
+  }
+}
+
 function createFrameApiSource(): string {
   return `() => {
+    const cloud = ${JSON.stringify(connectionDestination === "cloud")};
+    const checkSelector = ${assertCloudSelector.toString()};
     const fail = (code, message) => {
       const err = new Error(message);
       err.code = code;
@@ -3447,6 +4021,7 @@ function createFrameApiSource(): string {
       return items;
     };
     const deepQueryAll = (root, selector) => {
+      if (cloud) checkSelector(selector);
       const out = [];
       const visit = (node) => {
         if (!node || !node.querySelectorAll) return;
@@ -3474,6 +4049,7 @@ function createFrameApiSource(): string {
         if (/^@f\\d+$/.test(target)) {
           found = frames[Number(target.slice(2)) - 1] || null;
         } else {
+          if (cloud) checkSelector(target);
           const topElement = document.querySelector(target);
           if (topElement) found = frames.find((item) => item.element === topElement) || null;
         }
@@ -3585,7 +4161,22 @@ async function runFrameScript<T, Args>(
     const __abgPageFn = ${pageFn.toString()};
     try {
       const __abgApi = __abgCreateFrameApi();
-      return __abgPageFn(__abgApi.resolve(__abgFrameTarget), __abgArgs);
+      const ctx = __abgApi.resolve(__abgFrameTarget);
+      const cloud = ${JSON.stringify(connectionDestination === "cloud")};
+      ctx.isCredential = el => cloud && ["input","textarea"].includes(el.tagName.toLowerCase()) &&
+        (String(el.type).toLowerCase() === "password" || ["current-password","new-password","one-time-code"].some(token=>String(el.autocomplete || "").toLowerCase().split(/\\s+/).includes(token)));
+      ctx.inputValue = el => ctx.isCredential(el) ? undefined : el.value;
+      ctx.readHtml = el => {
+        if (!cloud) return el.outerHTML;
+        const copy = el.cloneNode(true);
+        for (const input of [copy,...copy.querySelectorAll("input,textarea")]) {
+          if (!["input","textarea"].includes(input.tagName.toLowerCase())) continue;
+          if (!["submit","button","reset"].includes(String(input.type).toLowerCase())) input.removeAttribute("value");
+          if (input.tagName.toLowerCase() === "textarea") input.textContent = "";
+        }
+        return copy.outerHTML;
+      };
+      return __abgPageFn(ctx, __abgArgs);
     } catch (error) {
       const frameError = {
         __abgFrameError: true,
@@ -3644,7 +4235,7 @@ async function readDom(
       frame: ctx.frame,
       found: sel ? true : undefined,
       text,
-      html: (target as Element).outerHTML,
+      html: ctx.readHtml(target as Element),
     } as const;
   });
 }
@@ -3660,98 +4251,109 @@ async function getDomValue(
     ? params.props.filter((prop): prop is string => typeof prop === "string")
     : undefined;
   const frame = readFrameParam(params);
-  return runFrameScript(tabId, frame, { kind, selector, name, props }, (ctx, opts) => {
-    const getter = opts.kind;
-    const sel = opts.selector;
-    const attrName = opts.name;
-    const styleProps = opts.props;
-    const selected = sel ? ctx.queryAll(sel) : [];
-    const first = selected[0] as HTMLElement | undefined;
-    const textOf = (el: Element): string =>
-      ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
-    const boxOf = (el: Element) => {
-      const rect = el.getBoundingClientRect();
-      return {
-        x: Math.round(ctx.offsetX + rect.left),
-        y: Math.round(ctx.offsetY + rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+  return runFrameScript(
+    tabId,
+    frame,
+    { kind, selector, name, props, cloud: connectionDestination === "cloud" },
+    (ctx, opts) => {
+      const getter = opts.kind;
+      const sel = opts.selector;
+      const attrName = opts.name;
+      const styleProps = opts.props;
+      const selected = sel ? ctx.queryAll(sel) : [];
+      const first = selected[0] as HTMLElement | undefined;
+      const textOf = (el: Element): string =>
+        ((el as HTMLElement).innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim();
+      const boxOf = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: Math.round(ctx.offsetX + rect.left),
+          y: Math.round(ctx.offsetY + rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        };
       };
-    };
-    const base = {
-      kind: getter,
-      selector: sel,
-      frame: ctx.frame,
-      url: ctx.win.location.href,
-      title: ctx.doc.title,
-    };
-    if (getter === "title") return { ...base, value: ctx.doc.title };
-    if (getter === "url") return { ...base, value: ctx.win.location.href };
-    if (!sel) return { ...base, found: false, error: "selector_required" };
-    if (getter === "count") return { ...base, value: selected.length };
-    if (!first) return { ...base, found: false };
-    if (getter === "text") return { ...base, found: true, value: textOf(first) };
-    if (getter === "html") return { ...base, found: true, value: first.outerHTML };
-    if (getter === "value") {
-      let value: string | string[] | boolean | null = null;
-      if (first instanceof HTMLInputElement) {
-        value = first.type === "checkbox" || first.type === "radio" ? first.checked : first.value;
-      } else if (first instanceof HTMLTextAreaElement) {
-        value = first.value;
-      } else if (first instanceof HTMLSelectElement) {
-        value = Array.from(first.selectedOptions).map((option) => option.value);
-      }
-      return { ...base, found: true, value };
-    }
-    if (getter === "editable-value") {
-      let editableText = "";
-      let kind = "unsupported";
-      let source = "none";
-      if (first instanceof HTMLInputElement) {
-        editableText = first.value;
-        kind = "input";
-        source = "value";
-      } else if (first instanceof HTMLTextAreaElement) {
-        editableText = first.value;
-        kind = "textarea";
-        source = "value";
-      } else if (first.isContentEditable) {
-        editableText = first.innerText || first.textContent || "";
-        kind = "contenteditable";
-        source = "innerText";
-      } else if (first.getAttribute("role") === "textbox") {
-        editableText = first.innerText || first.textContent || "";
-        kind = "role-textbox";
-        source = "innerText";
-      } else {
-        return { ...base, found: true, editable: false, kind, error: "not_editable" };
-      }
-      const normalizedHtmlText = textOf(first);
-      return {
-        ...base,
-        found: true,
-        editable: true,
-        kind,
-        source,
-        editableText,
-        html: first.outerHTML,
-        differsFromHtmlText: editableText.replace(/\s+/g, " ").trim() !== normalizedHtmlText,
+      const base = {
+        kind: getter,
+        selector: sel,
+        frame: ctx.frame,
+        url: ctx.win.location.href,
+        title: ctx.doc.title,
       };
-    }
-    if (getter === "attr") {
-      if (!attrName) return { ...base, found: true, error: "attr_name_required" };
-      return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
-    }
-    if (getter === "box") return { ...base, found: true, value: boxOf(first) };
-    if (getter === "styles") {
-      const computed = getComputedStyle(first);
-      const keys = styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
-      const values: Record<string, string> = {};
-      for (const key of keys) values[key] = computed.getPropertyValue(key);
-      return { ...base, found: true, value: values };
-    }
-    return { ...base, found: false, error: "unknown_getter" };
-  });
+      if (getter === "title") return { ...base, value: ctx.doc.title };
+      if (getter === "url") return { ...base, value: ctx.win.location.href };
+      if (!sel) return { ...base, found: false, error: "selector_required" };
+      if (getter === "count") return { ...base, value: selected.length };
+      if (!first) return { ...base, found: false };
+      if (
+        ctx.isCredential(first) &&
+        ["value", "editable-value", "attr", "html", "text"].includes(getter)
+      ) {
+        return { ...base, found: true, value: null, error: "credential_value_forbidden" };
+      }
+      if (getter === "text") return { ...base, found: true, value: textOf(first) };
+      if (getter === "html") return { ...base, found: true, value: ctx.readHtml(first) };
+      if (getter === "value") {
+        let value: string | string[] | boolean | null = null;
+        if (first instanceof HTMLInputElement) {
+          value = first.type === "checkbox" || first.type === "radio" ? first.checked : first.value;
+        } else if (first instanceof HTMLTextAreaElement) {
+          value = first.value;
+        } else if (first instanceof HTMLSelectElement) {
+          value = Array.from(first.selectedOptions).map((option) => option.value);
+        }
+        return { ...base, found: true, value };
+      }
+      if (getter === "editable-value") {
+        let editableText = "";
+        let kind = "unsupported";
+        let source = "none";
+        if (first instanceof HTMLInputElement) {
+          editableText = first.value;
+          kind = "input";
+          source = "value";
+        } else if (first instanceof HTMLTextAreaElement) {
+          editableText = first.value;
+          kind = "textarea";
+          source = "value";
+        } else if (first.isContentEditable) {
+          editableText = first.innerText || first.textContent || "";
+          kind = "contenteditable";
+          source = "innerText";
+        } else if (first.getAttribute("role") === "textbox") {
+          editableText = first.innerText || first.textContent || "";
+          kind = "role-textbox";
+          source = "innerText";
+        } else {
+          return { ...base, found: true, editable: false, kind, error: "not_editable" };
+        }
+        const normalizedHtmlText = textOf(first);
+        return {
+          ...base,
+          found: true,
+          editable: true,
+          kind,
+          source,
+          editableText,
+          html: ctx.readHtml(first),
+          differsFromHtmlText: editableText.replace(/\s+/g, " ").trim() !== normalizedHtmlText,
+        };
+      }
+      if (getter === "attr") {
+        if (!attrName) return { ...base, found: true, error: "attr_name_required" };
+        return { ...base, found: true, name: attrName, value: first.getAttribute(attrName) };
+      }
+      if (getter === "box") return { ...base, found: true, value: boxOf(first) };
+      if (getter === "styles") {
+        const computed = getComputedStyle(first);
+        const keys = styleProps && styleProps.length > 0 ? styleProps : Array.from(computed).sort();
+        const values: Record<string, string> = {};
+        for (const key of keys) values[key] = computed.getPropertyValue(key);
+        return { ...base, found: true, value: values };
+      }
+      return { ...base, found: false, error: "unknown_getter" };
+    },
+  );
 }
 
 async function getPredicate(
@@ -3811,26 +4413,36 @@ async function validateEditable(
   const selector = typeof params.selector === "string" ? params.selector : undefined;
   const selection = params.selection === true;
   const rules = typeof params.rules === "string" ? params.rules : "html-attrs,shortcodes";
-  const [res] = await browser.scripting.executeScript({
-    target: { tabId },
-    func: (sel: string | undefined, useSelection: boolean, ruleText: string) => {
+  return runFrameScript(
+    tabId,
+    readFrameParam(params),
+    { selector, selection, rules },
+    (ctx, opts) => {
+      const sel = opts.selector,
+        useSelection = opts.selection,
+        ruleText = opts.rules;
       const readText = (): { found: boolean; source: string; text: string; html?: string } => {
         if (useSelection) {
           return {
             found: true,
             source: "selection",
-            text: String(window.getSelection()?.toString() ?? ""),
+            text: String(ctx.win.getSelection()?.toString() ?? ""),
           };
         }
         if (!sel) return { found: false, source: "selector", text: "" };
-        const el = document.querySelector(sel) as
-          | HTMLElement
-          | HTMLInputElement
-          | HTMLTextAreaElement
-          | null;
+        const el = ctx.query(sel) as HTMLElement | HTMLInputElement | HTMLTextAreaElement | null;
         if (!el) return { found: false, source: "selector", text: "" };
-        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-          return { found: true, source: "value", text: el.value, html: el.outerHTML };
+        if (ctx.isCredential(el))
+          throw Object.assign(new Error("Credential values cannot be read."), {
+            code: "credential_value_forbidden",
+          });
+        if (["input", "textarea"].includes(el.tagName.toLowerCase())) {
+          return {
+            found: true,
+            source: "value",
+            text: ctx.inputValue(el) ?? "",
+            html: ctx.readHtml(el),
+          };
         }
         return {
           found: true,
@@ -3839,7 +4451,7 @@ async function validateEditable(
               ? "editableText"
               : "textContent",
           text: el.innerText || el.textContent || "",
-          html: el.outerHTML,
+          html: ctx.readHtml(el),
         };
       };
       const locationOf = (text: string, offset: number) => {
@@ -3913,9 +4525,7 @@ async function validateEditable(
         issues,
       };
     },
-    args: [selector, selection, rules],
-  });
-  return res?.result ?? { ok: false, found: false, issues: [] };
+  );
 }
 
 type FindMatch = {
@@ -4094,7 +4704,7 @@ async function findSemanticMatches(
             el.getAttribute("alt") ||
             el.getAttribute("title") ||
             input.placeholder ||
-            input.value ||
+            ctx.inputValue(input) ||
             (el as HTMLElement).innerText ||
             el.textContent,
         );
@@ -4154,7 +4764,7 @@ async function findSemanticMatches(
           tag: el.tagName.toLowerCase(),
           role: roleOf(el),
           text: textOf(el),
-          value: (el as HTMLInputElement).value,
+          value: ctx.inputValue(el),
           box: boxOf(el),
         });
       };
@@ -4340,7 +4950,7 @@ async function snapshotTab(
             el.getAttribute("alt") ||
             el.getAttribute("title") ||
             input.placeholder ||
-            input.value ||
+            ctx.inputValue(input) ||
             (el as HTMLElement).innerText ||
             el.textContent,
         );
@@ -4834,7 +5444,7 @@ async function describeElements(
           el.getAttribute("aria-label") ||
             el.getAttribute("title") ||
             (html.innerText ?? "") ||
-            (el as HTMLInputElement).value ||
+            ctx.inputValue(el) ||
             (el as HTMLInputElement).placeholder ||
             "",
         );
@@ -5739,7 +6349,10 @@ async function sandboxStorage(
 
 async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
   if (connectionDestination === "cloud" && !isCloudShareableUrl(url))
-    throw new GatewayError("cloud_tab_unsupported", "Cloud tab creation requires an HTTP or HTTPS URL.");
+    throw new GatewayError(
+      "cloud_tab_unsupported",
+      "Cloud tab creation requires an HTTP or HTTPS URL.",
+    );
   const source = await browser.tabs.get(tabId);
   const created = await browser.tabs.create({ url, windowId: source.windowId, active: true });
   return { ok: true, action: "tab-create", tabId: created.id, url: created.url ?? url };
@@ -7256,10 +7869,13 @@ async function runApprovedEval(
       ? Math.max(1, Math.min(EVAL_HARD_MAX_BYTES, Math.floor(params.maxBytes)))
       : EVAL_DEFAULT_MAX_BYTES;
 
-  const approvalMode = settings.trustedAutomationEnabled ? "trusted-automation" : "per-call";
-  const approvalPopup = settings.trustedAutomationEnabled ? "skipped" : "shown";
-  if (!settings.trustedAutomationEnabled) {
-    if (params.approve !== true) {
+  const trusted =
+    settings.trustedAutomationEnabled &&
+    !(connectionDestination === "cloud" && params._requireApproval === true);
+  const approvalMode = trusted ? "trusted-automation" : "per-call";
+  const approvalPopup = trusted ? "skipped" : "shown";
+  if (!trusted) {
+    if (params.approve !== true && connectionDestination !== "cloud") {
       throw new GatewayError(
         "approval_required",
         "abg eval requires --approve unless Trusted automation / AutoMode is enabled in the ABG extension popup.",
@@ -7932,7 +8548,12 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
       return;
     }
     if (
-      msg.type === "set_connection_destination" &&
+      [
+        "set_connection_destination",
+        "begin_cloud_login",
+        "delete_cloud_connection",
+        "set_cloud_sandbox_resume",
+      ].includes(msg.type) &&
       (sender.id !== browser.runtime.id || sender.url !== browser.runtime.getURL("popup.html"))
     ) {
       sendResponse({
@@ -7956,6 +8577,7 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
 
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
   if (msg.type === "get_state") {
+    void finishCloudLogin().catch(() => {});
     await reconcileAllTabsAccess();
     const [activeTab, incognitoAccessAllowed, allTabsAccess] = await Promise.all([
       browser.tabs.get(msg.tabId).catch(() => undefined),
@@ -7982,6 +8604,13 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       wsConnected,
       cloudCodeConfigured: Boolean(cloudCode),
       cloudConnectionFailed,
+      savedCloudConnections: (await savedCloudConnections()).map(
+        ({ id, name, url, expiresAt }) => ({ id, name, url, expiresAt }),
+      ),
+      activeCloudConnectionId: (await browser.storage.local.get("activeCloudConnectionId"))
+        .activeCloudConnectionId,
+      cloudLoginPending: !!(await browser.storage.session.get("pendingCloudLogin"))
+        .pendingCloudLogin,
       activeTab: {
         incognito: activeTab?.incognito === true,
         incognitoAccessAllowed,
@@ -8027,7 +8656,19 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
     return { type: "ok" };
   }
   if (msg.type === "set_connection_destination") {
-    await setConnectionDestination(msg.destination, msg.cloudUrl, msg.code);
+    await setConnectionDestination(msg.destination, msg.cloudUrl, msg.code, msg.savedId);
+    return { type: "ok" };
+  }
+  if (msg.type === "begin_cloud_login") {
+    await beginCloudLogin(msg.cloudUrl, msg.name, msg.savedId);
+    return { type: "ok" };
+  }
+  if (msg.type === "delete_cloud_connection") {
+    await deleteCloudConnection(msg.id);
+    return { type: "ok" };
+  }
+  if (msg.type === "set_cloud_sandbox_resume") {
+    await setCloudSandboxResume(msg.value);
     return { type: "ok" };
   }
   if (msg.type === "set_all_tabs_access") {
@@ -8113,14 +8754,33 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
     rawMsg.type === "set_connection_destination" &&
     (rawMsg.destination === "local" || rawMsg.destination === "cloud") &&
     typeof rawMsg.cloudUrl === "string" &&
-    (rawMsg.code === undefined || typeof rawMsg.code === "string")
+    (rawMsg.code === undefined || typeof rawMsg.code === "string") &&
+    (rawMsg.savedId === undefined || typeof rawMsg.savedId === "string")
   ) {
     return {
       type: "set_connection_destination",
       destination: rawMsg.destination,
       cloudUrl: rawMsg.cloudUrl,
       code: rawMsg.code,
+      savedId: rawMsg.savedId,
     };
+  }
+  if (
+    rawMsg.type === "begin_cloud_login" &&
+    typeof rawMsg.cloudUrl === "string" &&
+    typeof rawMsg.name === "string" &&
+    (rawMsg.savedId === undefined || typeof rawMsg.savedId === "string")
+  )
+    return {
+      type: "begin_cloud_login",
+      cloudUrl: rawMsg.cloudUrl,
+      name: rawMsg.name,
+      savedId: rawMsg.savedId,
+    };
+  if (rawMsg.type === "delete_cloud_connection" && typeof rawMsg.id === "string")
+    return { type: "delete_cloud_connection", id: rawMsg.id };
+  if (rawMsg.type === "set_cloud_sandbox_resume" && typeof rawMsg.value === "boolean") {
+    return { type: "set_cloud_sandbox_resume", value: rawMsg.value };
   }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };

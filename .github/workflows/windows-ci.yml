@@ -55,6 +55,7 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v') || startsWith(github.event.release.tag_name, 'windows-v')
     runs-on: windows-latest
     env:
       HAS_WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 != '' }}

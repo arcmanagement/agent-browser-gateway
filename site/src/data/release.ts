@@ -3,6 +3,9 @@
 export const release = {
   version: "0.5.2",
   windowsVersion: "0.5.3",
+  extensionVersion: "1.0.0",
+  extensionReleaseUrl:
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.0.0",
   dmgUrl:
     "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-macos-arm64.dmg",
   dmgShaUrl:

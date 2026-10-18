@@ -37,18 +37,29 @@
       </div>
       <div id="cloudConnectionFields" hidden>
         <div class="field">
-          <label for="cloudUrl" data-i18n="popup.connection.url">Cloud URL</label>
-          <input id="cloudUrl" type="url" placeholder="https://gateway.example.test" autocomplete="off" spellcheck="false" />
+          <label for="savedCloudConnection" data-i18n="popup.connection.saved">Saved connections</label>
+          <select id="savedCloudConnection"></select>
+        </div>
+        <details id="cloudRegistrationSettings"><summary data-i18n="popup.connection.registrationSettings">Connection name and server (optional)</summary><div class="field">
+          <label for="cloudConnectionName" data-i18n="popup.connection.name">Connection name</label>
+          <input id="cloudConnectionName" maxlength="100" autocomplete="off" />
         </div>
         <div class="field">
+          <label for="cloudUrl" data-i18n="popup.connection.url">Cloud URL</label>
+          <input id="cloudUrl" type="url" placeholder="https://connect.agent-browser-gateway.com" autocomplete="off" spellcheck="false" />
+        </div></details>
+        <button id="cloudLoginBtn" class="secondary" type="button" data-i18n="popup.connection.login">Log in to add</button>
+        <button id="deleteCloudConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.delete" hidden>Remove saved connection</button>
+        <p id="cloudLoginStatus" class="field-note" role="status"></p>
+        <details id="cloudManualConnection"><summary data-i18n="popup.connection.manual">Manual connection (advanced)</summary><div class="field">
           <label for="cloudCode" data-i18n="popup.connection.code">Browser connection code</label>
           <input id="cloudCode" type="password" autocomplete="off" spellcheck="false" />
-          <p class="field-note" data-i18n="popup.connection.cloudNote">Cloud connects while tabs are shared. Enter the code again after restarting the browser.</p>
-        </div>
+          <p class="field-note" data-i18n="popup.connection.cloudNote">Manual codes last for this browser session. Use login above to save a connection across restarts.</p>
+        </div></details>
       </div>
       <div class="field">
-        <button id="applyConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.apply">Apply connection</button>
-        <p class="field-note" data-i18n="popup.connection.note">Applying clears existing shares. Share tabs again with the selected destination.</p>
+        <button id="applyConnectionBtn" class="secondary" type="button" data-i18n="popup.connection.apply">Connect</button>
+        <p class="field-note" data-i18n="popup.connection.note">Switching destinations clears existing shares. Share tabs again with the selected destination.</p>
       </div>
       </div>
     </details>
@@ -179,6 +190,11 @@
               <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
             </label>
             <div class="setting-note" id="allTabsNote"></div>
+            <label class="setting-row" id="cloudSandboxResumeSetting" hidden>
+              <span data-i18n="popup.permissions.allTabs.resume">Resume Sandbox after restart or disconnection</span>
+              <input type="checkbox" class="switch warning" role="switch" id="cloudSandboxResumeToggle" />
+            </label>
+            <div class="setting-note" id="cloudSandboxResumeNote" data-i18n="popup.permissions.allTabs.resumeNote" hidden>Only for this saved Cloud connection. Turning Sandbox off or changing connection cancels automatic resume.</div>
           </div>
         </div>
       </div>

@@ -16,7 +16,7 @@ type GatewayWebSocketConnectionOptions = {
   createSocket: (endpoint: string) => GatewaySocket;
   onOpen: (endpoint: string) => void | Promise<void>;
   onMessage: (event: MessageEvent) => void;
-  onConnectionChange: (connected: boolean) => void;
+  onConnectionChange: (connected: boolean, closeCode?: number) => void;
   onWarning: (message: string, error: unknown) => void;
   reconnectDelayMs?: number;
   shouldConnect?: () => boolean;
@@ -75,10 +75,10 @@ export class GatewayWebSocketConnection {
       if (this.socket !== socket) return;
       this.options.onMessage(event as MessageEvent);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       if (this.socket !== socket) return;
       this.socket = null;
-      this.options.onConnectionChange(false);
+      this.options.onConnectionChange(false, (event as CloseEvent).code);
       this.scheduleReconnect();
     });
     socket.addEventListener("error", () => {

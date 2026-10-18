@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-0.5.2.zip
+dist/agent-browser-gateway-extension-1.0.0.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,16 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.0.0 review notes
+
+- Optional direct Cloud connection, Web email/password login, registered-browser authorization, saved destinations, and isolated-profile Sandbox auto-resume. Local mode remains available without an account.
+- Cloud mode sends explicitly shared content and requested operation results to the selected service and authorized AI clients. Account UI: `https://app.agent-browser-gateway.com`; browser service: `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`.
+- `downloads`: Observe download events and query status, filenames, and browser-host paths for downloads associated with shared tabs. The extension does not use this API to initiate downloads or transfer downloaded files to clients.
+- `clipboardWrite`: Write explicitly requested plain/rich text through the extension's offscreen document. It does not read clipboard contents.
+- Before Store submission, update these justifications and the data-use disclosure in the Developer Dashboard. If a previous package is pending review, wait for it or have the owner withdraw it. The direct GitHub ZIP release does not mean Store approval or publication.
+- Test Cloud by selecting **Connect to → Cloud**, registering with Web login, applying the saved destination, sharing a tab, and authorizing an AI client. Recording still needs approval; Sandbox auto-resume is off until explicitly enabled.
+- File attachment uses absolute browser-host paths through the debugger API, requires the file-URL grant, and always prompts with those paths. Approving it exposes the chosen files to the target website. It is not client-to-browser byte transfer.
 
 ## 0.5.2 review notes
 
@@ -131,7 +141,7 @@ multi-file upload hardening change. The user-visible changes are:
 Suggested detailed description:
 
 ```text
-Agent Browser Gateway lets you share the Chrome tab you choose with a local AI coding agent.
+Agent Browser Gateway lets you share the Chrome tab you choose with an AI client through a local Gateway or an optional Cloud connection. Cloud mode uses Web login and registered-browser authorization and does not require a desktop app. See the Cloud extension guide for installation and data handling.
 
 It is built for browser-assisted development and support workflows where the human should keep control of the browser session. No tab is visible by default. You explicitly share one tab from the extension popup, and the local abg CLI can then read, screenshot, inspect console or network context, or perform approved operations in that shared tab. For isolated Chrome profiles or sandbox machines, the user can also enable an optional all-tabs mode from the popup; Chrome then prompts for optional access to all sites in that profile.
 
@@ -139,7 +149,7 @@ Core principles:
 - Per-tab consent instead of broad browser access
 - No default host permissions in the extension manifest
 - Optional all-tabs access only after local user opt-in and Chrome's permission prompt
-- Local gateway over loopback transport
+- Local gateway over loopback transport, or an explicitly selected authenticated Cloud gateway
 - Agent-agnostic CLI for Codex, Claude Code, Cursor, Cline, and scripts
 - Token-efficient Markdown reads that reduce noisy HTML before it reaches an agent
 - Local audit log for inspectable operations
@@ -151,7 +161,7 @@ ABG is not an end-to-end test runner and does not try to replace Playwright. Pla
 Suggested single purpose:
 
 ```text
-Provide user-authorized, local browser access so AI coding agents can inspect or operate only the Chrome tab the user explicitly shares, or every shareable tab in an isolated profile after the user enables optional all-tabs mode.
+Provide user-authorized browser access through a local or selected Cloud gateway so AI clients can inspect or operate only shared tabs, or shareable tabs in an isolated profile after explicit all-tabs opt-in.
 ```
 
 Suggested permission justifications:
@@ -160,6 +170,8 @@ Suggested permission justifications:
 - `scripting`: Read selected page content and perform structured operations in the shared tab.
 - `tabs`: Read tab title, URL, and lifecycle events so shared tabs can be listed and revoked.
 - `storage`: Store local settings and session-scoped tab sharing state.
+- `downloads`: Observe shared-tab download events and inspect their status, filenames, and browser-host paths. Does not initiate downloads or read arbitrary files.
+- `clipboardWrite`: Write requested text or rich text; never read the clipboard.
 - `debugger`: Capture screenshots, console messages, network information, file uploads, and input operations for a user-shared tab.
 - `alarms`: Keep the extension service worker connected to the local gateway while Chrome is running.
 - `tabCapture`: Record an already-shared tab to a local WebM file only after the local approval window's Allow click.
@@ -173,13 +185,13 @@ Suggested permission justifications:
 Remote code declaration:
 
 ```text
-No. Agent Browser Gateway does not execute remotely hosted code. Extension code is bundled in the submitted package.
+Extension implementation code is bundled in the submitted package. Cloud tools include an explicitly enabled JavaScript-evaluation surface and user-selected plugins that can request page actions. These capabilities require an accurate Chrome Web Store policy review; do not submit an unconditional remote-code denial for this version without resolving the applicable policy classification.
 ```
 
 Privacy disclosure:
 
 ABG handles website content, browsing activity, and user activity only when needed
-for its user-facing feature: local, user-authorized access to the tab the user
+for its user-facing feature: user-authorized access to the tab the user
 shares. It does not sell data, transfer data for advertising, or use data for
 credit eligibility or unrelated profiling.
 
@@ -191,8 +203,7 @@ Dashboard data-use checkboxes:
 
 These categories are disclosed because the extension can handle the URL/title,
 network context, page content, screenshots, and operations for a user-shared tab.
-ArcManagement does not collect analytics, telemetry, advertising identifiers, or
-browser data on ABG-operated servers.
+ArcManagement does not collect analytics, telemetry, or advertising identifiers. In optional Cloud mode, the selected service processes shared browser data to provide the requested connection; it is not a local-only data path. The privacy policy and Developer Dashboard must disclose this before Store submission.
 
 Suggested reviewer test instructions:
 

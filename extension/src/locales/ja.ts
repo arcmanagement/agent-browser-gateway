@@ -15,6 +15,18 @@ export const ja: MessageCatalog = {
 
   // ---- Popup ----
   "popup.connection.destination": "接続先",
+  "popup.connection.saved": "登録済みの接続先",
+  "popup.connection.add": "接続先を追加…",
+  "popup.connection.name": "接続名",
+  "popup.connection.relogin": "再ログイン",
+  "popup.connection.login": "ログインして追加",
+  "popup.connection.registrationSettings": "接続名・サーバーを変更（任意）",
+  "popup.connection.delete": "接続先の登録を削除",
+  "popup.connection.manual": "手動接続（詳細設定）",
+  "popup.connection.loginPending": "Web画面でログインして許可すると、接続先を保存して接続します。",
+  "popup.connection.savedNote":
+    "接続先はこの拡張に保存されます。選ぶと接続を切り替えます。期限が切れたら、同じ接続先から再ログインしてください。",
+  "popup.connection.expires": "有効期限: {date}。管理画面から期限を更新できます。",
   "error.cloud_url_invalid":
     "HTTPSまたはWSSのCloud URLを入力してください。認証情報・クエリ・フラグメントは含めず、ルートまたは/wsを指定してください。",
   "error.cloud_new_url_code_required":
@@ -31,11 +43,11 @@ export const ja: MessageCatalog = {
   "popup.connection.code": "ブラウザー接続コード",
   "popup.connection.codeSaved": "このブラウザーセッションでは設定済み",
   "popup.connection.codeNeeded": "ブラウザー接続コードを入力",
-  "popup.connection.apply": "接続先を適用",
+  "popup.connection.apply": "接続する",
   "popup.connection.note":
-    "適用すると現在の共有を解除します。選んだ接続先へ、タブを改めて共有してください。",
+    "接続先を切り替えると現在の共有を解除します。タブを改めて共有してください。",
   "popup.connection.cloudNote":
-    "タブを共有している間、Cloudに接続します。ブラウザーの再起動後は接続コードを再入力してください。",
+    "手動コードはブラウザーの終了まで有効です。再起動後も使う接続先は、上のログインから登録してください。",
   "popup.connection.applied": "接続先を設定しました。タブを共有すると接続を開始します。",
   "popup.connection.idle": "共有待ち",
   "popup.connection.offline":
@@ -123,6 +135,9 @@ export const ja: MessageCatalog = {
     "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。",
   "popup.permissions.trustedAutomation.evalDisabled":
     "オンですが、上の eval を許可するまで eval は使えません。",
+  "popup.permissions.allTabs.resume": "再起動・切断後にSandboxを自動復帰",
+  "popup.permissions.allTabs.resumeNote":
+    "この保存済みCloud接続先だけに適用します。SandboxをOFFにするか、接続先を切り替えると自動復帰もOFFになります。",
   "popup.permissions.allTabs": "全タブ共有（サンドボックス専用）",
   "popup.permissions.allTabs.active":
     "{count} 個のタブを共有中です。この隔離プロファイルでは、ブラウザ操作の自動化機能が有効です。",
@@ -195,6 +210,10 @@ export const ja: MessageCatalog = {
   "approval.loadFailed": "承認リクエストを読み込めませんでした。",
 
   // ---- Approval intents ----
+  "intent.clipboardWrite": "ブラウザーのクリップボードに{payload}を書き込みます。",
+  "intent.sensitiveRead":
+    "機密情報を含む可能性がある値の読み取り: {method}（{detail}）。この値を共有する場合のみ許可してください。",
+  "intent.accountPolicy": "アカウントの設定により、この共有タブでの {method} の承認が必要です。",
   "intent.frameSuffix": " (フレーム {frame} 内)",
   "intent.clickSelector": "セレクタ {selector}{frame} に一致する要素をクリックします。",
   "intent.clickAt": "ページ座標 ({x}, {y}) をクリックします。",

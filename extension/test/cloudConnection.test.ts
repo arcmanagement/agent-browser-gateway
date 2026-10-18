@@ -1,3 +1,4 @@
+import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeCloudWebSocketUrl } from "../src/gatewayEndpoint.js";
 import type { ApprovalToBackground, BackgroundToPopup, PopupToBackground } from "../src/types.js";
@@ -7,19 +8,25 @@ class Socket extends EventTarget {
   static instances: Socket[] = [];
   readyState = 0;
   sent: Record<string, unknown>[] = [];
+  listeners: [string, EventListenerOrEventListenerObject][] = [];
+  dispose(): void {
+    for (const [type, listener] of this.listeners) this.removeEventListener(type, listener);
+    this.listeners = [];
+  }
   constructor(readonly url: string) {
     super();
     Socket.instances.push(this);
   }
   addEventListener(type: string, callback: EventListenerOrEventListenerObject): void {
+    this.listeners.push([type, callback]);
     super.addEventListener(type, callback);
   }
   send(data: string): void {
     this.sent.push(JSON.parse(data));
   }
-  close(): void {
+  close(code = 1000): void {
     this.readyState = 3;
-    this.dispatchEvent(new Event("close"));
+    this.dispatchEvent(Object.assign(new Event("close"), { code }));
   }
   open(): void {
     this.readyState = 1;
@@ -81,7 +88,10 @@ beforeEach(async () => {
   await state();
 });
 afterEach(async () => {
-  for (const socket of Socket.instances) socket.close();
+  for (const socket of Socket.instances) {
+    socket.dispose();
+    socket.close();
+  }
   await vi.advanceTimersByTimeAsync(1);
   vi.clearAllTimers();
   vi.useRealTimers();
@@ -89,63 +99,245 @@ afterEach(async () => {
 });
 
 describe("Cloud connection boundary", () => {
+  it("requires fresh personal-data and automation consent when changing destinations", async () => {
+    const optedIn = {
+      operationsRequireApproval: false,
+      evalEnabled: true,
+      trustedAutomationEnabled: true,
+      bookmarksAccessEnabled: true,
+      readingListAccessEnabled: true,
+      personalDataMutationsEnabled: true,
+    };
+    const safeDefaults = {
+      operationsRequireApproval: true,
+      evalEnabled: false,
+      trustedAutomationEnabled: false,
+      bookmarksAccessEnabled: false,
+      readingListAccessEnabled: false,
+      personalDataMutationsEnabled: false,
+    };
+    await mock.storage.local.set(optedIn);
+    expect(await configure()).toEqual({ type: "ok" });
+    expect(await mock.storage.local.get(Object.keys(safeDefaults))).toEqual(safeDefaults);
+    await mock.storage.local.set(optedIn);
+    expect(await configure()).toEqual({ type: "ok" });
+    expect(await mock.storage.local.get(Object.keys(optedIn))).toEqual(optedIn);
+    expect(await configure("https://other.example.test")).toEqual({ type: "ok" });
+    expect(await mock.storage.local.get(Object.keys(safeDefaults))).toEqual(safeDefaults);
+    await mock.storage.local.set(optedIn);
+    expect(
+      await message({ type: "set_connection_destination", destination: "local", cloudUrl: "" }),
+    ).toEqual({ type: "ok" });
+    expect(await mock.storage.local.get(Object.keys(safeDefaults))).toEqual(safeDefaults);
+  });
+
+  it("restores a saved login after browser restart without sharing tabs, and never mixes destinations", async () => {
+    const a = {
+      id: crypto.randomUUID(),
+      name: "A",
+      url: "wss://a.example.test/ws",
+      code: fixtureCode,
+    };
+    const b = {
+      id: crypto.randomUUID(),
+      name: "B",
+      url: "wss://b.example.test/ws",
+      code: "b".repeat(43),
+    };
+    await mock.storage.local.set({ savedCloudConnections: [a, b] });
+    expect(
+      await message({
+        type: "set_connection_destination",
+        destination: "cloud",
+        cloudUrl: a.url,
+        savedId: a.id,
+      }),
+    ).toEqual({ type: "ok" });
+    await mock.storage.session.clear();
+    mock.runtime.onMessage.clear();
+    mock.alarms.onAlarm.clear();
+    vi.resetModules();
+    await import("../src/background.js");
+    const restored = await state();
+    expect(restored).toMatchObject({
+      type: "state",
+      cloudCodeConfigured: true,
+      sharedTabs: [],
+      activeCloudConnectionId: a.id,
+    });
+    expect(JSON.stringify(restored)).not.toContain(fixtureCode);
+    expect(JSON.stringify(restored)).not.toContain(b.code);
+    expect(
+      await message({
+        type: "set_connection_destination",
+        destination: "cloud",
+        cloudUrl: b.url,
+        savedId: a.id,
+      }),
+    ).toMatchObject({ type: "error" });
+    expect(
+      await message({
+        type: "set_connection_destination",
+        destination: "cloud",
+        cloudUrl: b.url,
+        savedId: b.id,
+      }),
+    ).toEqual({ type: "ok" });
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    expect(socket.sent[0]).toEqual({ type: "authenticate", token: b.code });
+    expect(
+      await message(
+        { type: "delete_cloud_connection", id: b.id },
+        { id: mock.runtime.id, url: "https://page.example.test/", tab: { id: 1 } },
+      ),
+    ).toMatchObject({ type: "error" });
+    expect(await message({ type: "delete_cloud_connection", id: b.id })).toEqual({ type: "ok" });
+    expect(await state()).toMatchObject({
+      type: "state",
+      cloudCodeConfigured: false,
+      sharedTabs: [],
+    });
+    expect((await mock.storage.local.get("savedCloudConnections")).savedCloudConnections).toEqual([
+      a,
+    ]);
+  });
   it("shares only web tabs in Cloud sandbox, rotates origin shares and revokes on disable", async () => {
     await configure();
-    mock.tabs.tabs.set(2, { id: 2, active: false, currentWindow: true, incognito: false, url: "file:///tmp/private.html", title: "File" });
+    mock.tabs.tabs.set(2, {
+      id: 2,
+      active: false,
+      currentWindow: true,
+      incognito: false,
+      url: "file:///tmp/private.html",
+      title: "File",
+    });
     expect(await message({ type: "set_all_tabs_access", value: true })).toEqual({ type: "ok" });
-    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
-    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
-    expect(cloud.sent.filter(f => f.type === "tab_permitted")).toMatchObject([{ tabId: 1, accessMode: "all_tabs" }]);
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    expect(cloud.sent.filter((f) => f.type === "tab_permitted")).toMatchObject([
+      { tabId: 1, accessMode: "all_tabs" },
+    ]);
     const frameCount = cloud.sent.length;
-    await state(); await state();
+    await state();
+    await state();
     expect(cloud.sent).toHaveLength(frameCount);
-    const newTab = { id: 3, active: false, currentWindow: true, incognito: false, url: "https://new.example.test/", title: "New" };
-    mock.tabs.tabs.set(3, newTab); await mock.tabs.onCreated.dispatch(newTab);
-    expect(cloud.sent.filter(f => f.type === "tab_permitted").at(-1)).toMatchObject({ tabId: 3, accessMode: "all_tabs" });
+    const newTab = {
+      id: 3,
+      active: false,
+      currentWindow: true,
+      incognito: false,
+      url: "https://new.example.test/",
+      title: "New",
+    };
+    mock.tabs.tabs.set(3, newTab);
+    await mock.tabs.onCreated.dispatch(newTab);
+    expect(cloud.sent.filter((f) => f.type === "tab_permitted").at(-1)).toMatchObject({
+      tabId: 3,
+      accessMode: "all_tabs",
+    });
     const moved = { ...newTab, url: "https://other.example.test/" };
-    mock.tabs.tabs.set(3, moved); await mock.tabs.onUpdated.dispatch(3, { url: moved.url }, moved);
-    expect(cloud.sent.filter(f => f.type === "tab_permitted").at(-1)).toMatchObject({ tabId: 3, origin: "https://other.example.test" });
+    mock.tabs.tabs.set(3, moved);
+    await mock.tabs.onUpdated.dispatch(3, { url: moved.url }, moved);
+    expect(cloud.sent.filter((f) => f.type === "tab_permitted").at(-1)).toMatchObject({
+      tabId: 3,
+      origin: "https://other.example.test",
+    });
     await message({ type: "set_all_tabs_access", value: false });
     const current = await state();
     if (current.type === "state") expect(current.sharedTabs).toEqual([]);
-    expect(cloud.sent.filter(f => f.type === "tab_revoked").map(f => f.tabId)).toEqual([1, 3]);
+    expect(cloud.sent.filter((f) => f.type === "tab_revoked").map((f) => f.tabId)).toEqual([1, 3]);
   });
   it("rejects sandbox controls on a manual share and rejects non-web Cloud tab creation", async () => {
-    await configure(); await message({ type: "permit", tabId: 1 });
-    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
-    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
-    cloud.message({ id: "manual-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "https://new.example.test" } });
-    await vi.waitFor(() => expect(cloud.sent.find(f => f.id === "manual-create")).toMatchObject({ error: { code: "sandbox_profile_required" } }));
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    cloud.message({
+      id: "manual-create",
+      method: "sandbox_action",
+      params: { tabId: 1, action: "tab-create", url: "https://new.example.test" },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "manual-create")).toMatchObject({
+        error: { code: "sandbox_profile_required" },
+      }),
+    );
     await message({ type: "revoke", tabId: 1 });
     await message({ type: "set_all_tabs_access", value: true });
-    const sandbox = lastSocket(); sandbox.open(); sandbox.message({ type: "authenticated" });
-    await vi.waitFor(() => expect(sandbox.sent.some(f => f.type === "tab_permitted")).toBe(true));
+    const sandbox = lastSocket();
+    sandbox.open();
+    sandbox.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(sandbox.sent.some((f) => f.type === "tab_permitted")).toBe(true));
     await mock.storage.local.set({ operationsRequireApproval: false });
-    sandbox.message({ id: "file-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "file:///tmp/private.html" } });
-    await vi.waitFor(() => expect(sandbox.sent.find(f => f.id === "file-create")).toMatchObject({ error: { code: "cloud_tab_unsupported" } }));
+    sandbox.message({
+      id: "file-create",
+      method: "sandbox_action",
+      params: { tabId: 1, action: "tab-create", url: "file:///tmp/private.html" },
+    });
+    await vi.waitFor(() =>
+      expect(sandbox.sent.find((f) => f.id === "file-create")).toMatchObject({
+        error: { code: "cloud_tab_unsupported" },
+      }),
+    );
   });
   it("does not execute a pending sandbox operation after sandbox sharing is disabled", async () => {
-    await configure(); await message({ type: "set_all_tabs_access", value: true });
-    const cloud = lastSocket(); cloud.open(); cloud.message({ type: "authenticated" });
-    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "tab_permitted")).toBe(true));
-    cloud.message({ id: "pending-create", method: "sandbox_action", params: { tabId: 1, action: "tab-create", url: "https://new.example.test" } });
-    await vi.waitFor(() => expect(cloud.sent.some(f => f.type === "approval_pending")).toBe(true));
+    await configure();
+    await message({ type: "set_all_tabs_access", value: true });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    cloud.message({
+      id: "pending-create",
+      method: "sandbox_action",
+      params: { tabId: 1, action: "tab-create", url: "https://new.example.test" },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
     expect(mock.tabs.create).not.toHaveBeenCalled();
-    const pending = cloud.sent.find(f => f.type === "approval_pending")?.approval as { approvalId: string };
+    const pending = cloud.sent.find((f) => f.type === "approval_pending")?.approval as {
+      approvalId: string;
+    };
     await message({ type: "set_all_tabs_access", value: false });
-    expect(await message({ type: "approval_decision", approvalId: pending.approvalId, decision: "allow" },
-      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") })).toEqual({ type: "ok" });
+    expect(
+      await message(
+        { type: "approval_decision", approvalId: pending.approvalId, decision: "allow" },
+        { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+      ),
+    ).toEqual({ type: "ok" });
     await vi.advanceTimersByTimeAsync(1);
     expect(mock.tabs.create).not.toHaveBeenCalled();
   });
-  it.each([fixtureCode, undefined])("starts Cloud sandbox OFF after worker or browser restart (code=%s)", async (code) => {
+  it.each([
+    fixtureCode,
+    undefined,
+  ])("starts Cloud sandbox OFF after worker or browser restart (code=%s)", async (code) => {
     for (const socket of Socket.instances) socket.close();
     await vi.advanceTimersByTimeAsync(1);
-    vi.resetModules(); mock = createChromeMock();
+    vi.resetModules();
+    mock = createChromeMock();
     Object.assign(mock.tabs, { onActivated: createChromeEvent() });
-    mock.tabs.tabs.set(1, { id: 1, active: true, currentWindow: true, incognito: false, url: "https://page.example.test", title: "Fixture" });
+    mock.tabs.tabs.set(1, {
+      id: 1,
+      active: true,
+      currentWindow: true,
+      incognito: false,
+      url: "https://page.example.test",
+      title: "Fixture",
+    });
     mock.permissions.contains.mockResolvedValue(true);
-    await mock.storage.local.set({ connectionDestination: "cloud", cloudWebSocketUrl: "wss://gateway.example.test/ws", allTabsAccessEnabled: true });
+    await mock.storage.local.set({
+      connectionDestination: "cloud",
+      cloudWebSocketUrl: "wss://gateway.example.test/ws",
+      allTabsAccessEnabled: true,
+    });
     if (code) await mock.storage.session.set({ cloudConnectionCode: code });
     vi.stubGlobal("chrome", mock);
     const count = Socket.instances.length;
@@ -157,6 +349,213 @@ describe("Cloud connection boundary", () => {
       expect(current.sharedTabs).toEqual([]);
     }
     expect(Socket.instances).toHaveLength(count);
+  });
+  it.each([
+    ["state_inspect", { kind: "cookies", includeValues: true }],
+    ["get_dom", { kind: "value", selector: "input[type=password]" }],
+    ["get_dom", { kind: "attr", name: "Value", selector: "input" }],
+    ["network_log", { body: true }],
+    ["describe", {}],
+    ["find", { locator: "css", query: "input" }],
+    ["snapshot", {}],
+    ["validate_editable", { selector: "input" }],
+    ["upload_file", { selector: "input[type=file]", files: ["/tmp/synthetic.txt"] }],
+    ["read_dom", { _requireApproval: true }],
+  ])("Cloud %s forces approval even when local operation approval is off", async (method, params) => {
+    await mock.storage.local.set({ operationsRequireApproval: false });
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
+    expect(cloud.sent.find((f) => f.type === "hello")).toMatchObject({
+      capabilities: ["cloud-browser-v2", "approval-policy-v1"],
+    });
+    const before = mock.debugger.sendCommand.mock.calls.length;
+    cloud.message({ id: "sensitive", method, params: { ...params, tabId: 1 } });
+    await vi.waitFor(() =>
+      expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    expect(cloud.sent.some((f) => f.id === "sensitive")).toBe(false);
+    expect(mock.debugger.sendCommand.mock.calls.length).toBe(before);
+    const pending = cloud.sent.find((f) => f.type === "approval_pending")?.approval as {
+      approvalId: string;
+    };
+    await message(
+      { type: "approval_decision", approvalId: pending.approvalId, decision: "deny" },
+      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+    );
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "sensitive")).toMatchObject({
+        error: { code: "user_denied" },
+      }),
+    );
+  });
+  it.each([
+    "password",
+    "one-time-code",
+  ])("Cloud DOM metadata and validation never expose %s control values", async (kind) => {
+    const secret = "synthetic-credential-should-never-leave-page";
+    class Input {
+      tagName = "INPUT";
+      type = kind === "password" ? "password" : "text";
+      autocomplete = kind === "password" ? "current-password" : "section-login one-time-code";
+      id = "credential";
+      value = secret;
+      placeholder = "";
+      innerText = "";
+      textContent = "";
+      nodeType = 1;
+      parentElement = null;
+      getAttribute(name: string) {
+        return name === "id" ? this.id : null;
+      }
+      hasAttribute() {
+        return false;
+      }
+      getBoundingClientRect() {
+        return { left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20 };
+      }
+      querySelectorAll() {
+        return [];
+      }
+    }
+    const input = new Input();
+    const root = {
+      querySelectorAll: (selector: string) =>
+        selector === "*" || selector.includes("input") || selector === "#credential" ? [input] : [],
+      children: [input],
+    };
+    const document = {
+      ...root,
+      body: root,
+      documentElement: root,
+      title: "Synthetic form",
+      querySelector: () => input,
+    };
+    const window = {
+      location: { href: "https://page.example.test", origin: "https://page.example.test" },
+      innerWidth: 1000,
+      innerHeight: 800,
+    };
+    mock.debugger.sendCommand.mockImplementation(async (...call: unknown[]) => {
+      const [, method, params] = call;
+      if (method !== "Runtime.evaluate") return {};
+      const { expression } = params as { expression: string };
+      return {
+        result: {
+          value: new Function(
+            "document",
+            "window",
+            "Node",
+            "Element",
+            "HTMLElement",
+            "HTMLInputElement",
+            "HTMLTextAreaElement",
+            "getComputedStyle",
+            `return ${expression}`,
+          )(document, window, { ELEMENT_NODE: 1 }, Input, Input, Input, class {}, () => ({
+            visibility: "visible",
+            display: "block",
+            opacity: "1",
+          })),
+        },
+      };
+    });
+    await mock.storage.local.set({ operationsRequireApproval: false });
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
+    // Matching runs the actual injected expression against a React-style synced attribute.
+    for (const selector of [
+      'input[value^="synthetic"]',
+      'input[VALUE^="synthetic"]',
+      String.raw`input[\76 alue^="synthetic"]`,
+      String.raw`input[va\lue^="synthetic"]`,
+      "[*|value]",
+      'input[type=password]:not([data-x="/*"])[value^="h"],z[data-y="*/"]',
+      String.raw`input[type=password]:not(.a\/\*)[value^="h"],.b\*\/`,
+    ]) {
+      for (const [method, params] of [
+        ["get_dom", { kind: "count", selector }],
+        ["predicate", { kind: "visible", selector }],
+        ["wait_for", { selector, timeoutMs: 1000 }],
+        ["get_dom", { kind: "count", selector: "input", frame: selector }],
+      ] as const) {
+        const id = `oracle-${cloud.sent.length}`;
+        cloud.message({ id, method, params: { ...params, tabId: 1 } });
+        await vi.waitFor(() =>
+          expect(cloud.sent.find((f) => f.id === id)).toMatchObject({
+            error: { code: "credential_value_forbidden" },
+          }),
+        );
+      }
+    }
+    for (const [method, params] of [
+      ["describe", {}],
+      ["find", { locator: "css", query: "input" }],
+      ["snapshot", {}],
+      ["validate_editable", { selector: "input" }],
+    ] as const) {
+      const id = `privacy-${method}`;
+      const offset = cloud.sent.length;
+      cloud.message({ id, method, params: { ...params, tabId: 1 } });
+      await vi.waitFor(() =>
+        expect(cloud.sent.slice(offset).some((f) => f.type === "approval_pending")).toBe(true),
+      );
+      const pending = cloud.sent.slice(offset).find((f) => f.type === "approval_pending")
+        ?.approval as { approvalId: string };
+      await message(
+        { type: "approval_decision", approvalId: pending.approvalId, decision: "allow" },
+        { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+      );
+      await vi.waitFor(() => expect(cloud.sent.some((f) => f.id === id)).toBe(true));
+      const response = cloud.sent.find((f) => f.id === id)!;
+      expect(JSON.stringify(response)).not.toContain(secret);
+      if (method === "validate_editable")
+        expect(response).toMatchObject({ error: { code: "credential_value_forbidden" } });
+      else expect(response.error).toBeUndefined();
+    }
+  });
+  it("shows every upload path and preserves a recording expiry error", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
+    const longPath = "/Users/fixture/Downloads/" + "./".repeat(100) + ".ssh/id_ed25519";
+    cloud.message({
+      id: "files",
+      method: "upload_file",
+      params: { tabId: 1, selector: "input", files: ["~/Downloads/a.pdf", longPath] },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    const pending = cloud.sent.find((f) => f.type === "approval_pending")?.approval as {
+      approvalId: string;
+    };
+    expect(JSON.stringify(pending)).toContain("~/Downloads/a.pdf");
+    expect(JSON.stringify(pending)).toContain(longPath);
+    await message(
+      { type: "approval_decision", approvalId: pending.approvalId, decision: "deny" },
+      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+    );
+    cloud.message({
+      id: "expired",
+      method: "record_read",
+      params: { tabId: 1, recordingId: "missing" },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "expired")).toMatchObject({
+        error: { code: "recording_unavailable" },
+      }),
+    );
   });
   it("discovers only on the configured host and keeps the code out of the URL", async () => {
     await configure();
@@ -430,6 +829,178 @@ describe("Cloud connection boundary", () => {
     expect(
       (await mock.storage.session.get("cloudConnectionCode")).cloudConnectionCode,
     ).toBeUndefined();
+  });
+});
+
+describe("Saved Cloud Sandbox resume", () => {
+  async function optIn() {
+    const saved = {
+      id: crypto.randomUUID(),
+      name: "Isolated",
+      url: "wss://gateway.example.test/ws",
+      code: fixtureCode,
+    };
+    await mock.storage.local.set({ savedCloudConnections: [saved] });
+    expect(
+      await message({
+        type: "set_connection_destination",
+        destination: "cloud",
+        cloudUrl: saved.url,
+        savedId: saved.id,
+      }),
+    ).toEqual({ type: "ok" });
+    await message({ type: "set_all_tabs_access", value: true });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(socket.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    expect(await message({ type: "set_cloud_sandbox_resume", value: true })).toEqual({
+      type: "ok",
+    });
+    return { saved, socket };
+  }
+  async function restartWorker() {
+    // Simulates process termination: no callbacks from the old worker.
+    for (const socket of Socket.instances) socket.dispose();
+    mock.runtime.onMessage.clear();
+    mock.alarms.onAlarm.clear();
+    mock.permissions.onRemoved.clear();
+    await mock.storage.session.clear();
+    vi.clearAllTimers();
+    vi.resetModules();
+    await import("../src/background.js");
+    return state();
+  }
+  it("restores only explicitly opted-in saved Sandbox and authenticates before announcing", async () => {
+    await optIn();
+    const current = await restartWorker();
+    expect(current).toMatchObject({ allTabsAccess: { active: true, resumeEnabled: true } });
+    const socket = lastSocket();
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    expect(socket.sent).toEqual([{ type: "authenticate", token: fixtureCode }]);
+    socket.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(socket.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+  });
+  it("rediscovers the route and reauthenticates after transient disconnection", async () => {
+    const { socket } = await optIn();
+    const count = Socket.instances.length;
+    socket.close();
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({ allTabsAccess: { resumeEnabled: true, active: true } }),
+    );
+    await vi.advanceTimersByTimeAsync(3001);
+    expect(Socket.instances.length).toBeGreaterThan(count);
+    const next = lastSocket();
+    next.open();
+    expect(next.sent).toEqual([{ type: "authenticate", token: fixtureCode }]);
+    next.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(next.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+  });
+  it("turning Sandbox off cancels pending resume and does not return after restart", async () => {
+    const { socket } = await optIn();
+    socket.close();
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({ allTabsAccess: { active: true } }),
+    );
+    expect(await message({ type: "set_all_tabs_access", value: false })).toEqual({ type: "ok" });
+    expect(await state()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+      sharedTabs: [],
+    });
+    const count = Socket.instances.length;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(Socket.instances).toHaveLength(count);
+    expect(await restartWorker()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+      sharedTabs: [],
+    });
+  });
+  it("permission revocation cancels consent even after regrant and restart", async () => {
+    await optIn();
+    await mock.permissions.remove({ origins: ["<all_urls>"] });
+    await mock.permissions.request({ origins: ["<all_urls>"] });
+    expect((await mock.storage.local.get("cloudSandboxResume")).cloudSandboxResume).toBeUndefined();
+    expect(await restartWorker()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+      sharedTabs: [],
+    });
+  });
+  it("a replacement browser stops resume instead of repeatedly evicting it", async () => {
+    const { socket } = await optIn();
+    socket.close(4001);
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({
+        allTabsAccess: { active: false, resumeEnabled: false },
+        sharedTabs: [],
+      }),
+    );
+    const count = Socket.instances.length;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(Socket.instances).toHaveLength(count);
+    expect(await restartWorker()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+    });
+  });
+  it.each([
+    "credential",
+    "endpoint",
+    "permission",
+    "expiry",
+  ])("does not restore when %s changes", async (kind) => {
+    const { saved } = await optIn();
+    if (kind === "credential")
+      await mock.storage.local.set({ savedCloudConnections: [{ ...saved, code: "b".repeat(43) }] });
+    if (kind === "endpoint")
+      await mock.storage.local.set({ cloudWebSocketUrl: "wss://other.example.test/ws" });
+    if (kind === "permission") mock.permissions.contains.mockResolvedValue(false);
+    if (kind === "expiry")
+      await mock.storage.local.set({
+        savedCloudConnections: [{ ...saved, expiresAt: new Date(Date.now() - 1000).toISOString() }],
+      });
+    expect(await restartWorker()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+      sharedTabs: [],
+    });
+  });
+  it("changing destination cancels resume and does not migrate consent", async () => {
+    await optIn();
+    await configure("https://other.example.test", "b".repeat(43));
+    expect(await state()).toMatchObject({
+      allTabsAccess: { active: false, resumeEnabled: false },
+      sharedTabs: [],
+    });
+    expect((await mock.storage.local.get("cloudSandboxResume")).cloudSandboxResume).toBeUndefined();
+  });
+  it("stops automatic resume on revoked credentials", async () => {
+    const { socket } = await optIn();
+    vi.mocked(fetch).mockResolvedValue(new Response("Denied", { status: 401 }));
+    socket.close();
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({ allTabsAccess: { active: true, resumeEnabled: true } }),
+    );
+    await vi.advanceTimersByTimeAsync(3001);
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({
+        allTabsAccess: { active: false, resumeEnabled: false },
+      }),
+    );
+    const count = vi.mocked(fetch).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(count);
+  });
+  it("rejects website messages and requires saved Sandbox consent", async () => {
+    expect(await message({ type: "set_cloud_sandbox_resume", value: true })).toMatchObject({
+      type: "error",
+    });
+    await optIn();
+    expect(
+      await message(
+        { type: "set_cloud_sandbox_resume", value: false },
+        { id: mock.runtime.id, url: "https://page.example.test", tab: { id: 1 } },
+      ),
+    ).toMatchObject({ type: "error" });
+    expect(await state()).toMatchObject({ allTabsAccess: { resumeEnabled: true } });
   });
 });
 

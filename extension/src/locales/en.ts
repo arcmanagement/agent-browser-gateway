@@ -19,6 +19,19 @@ export const en = {
 
   // ---- Popup ----
   "popup.connection.destination": "Connect to",
+  "popup.connection.saved": "Saved connections",
+  "popup.connection.add": "Add a connection…",
+  "popup.connection.name": "Connection name",
+  "popup.connection.relogin": "Log in again",
+  "popup.connection.login": "Log in to add",
+  "popup.connection.registrationSettings": "Connection name and server (optional)",
+  "popup.connection.delete": "Remove saved connection",
+  "popup.connection.manual": "Manual connection (advanced)",
+  "popup.connection.loginPending":
+    "Complete login and approval on the Web. This extension will save and connect the destination.",
+  "popup.connection.savedNote":
+    "Destinations stay in this extension. Select one to connect. If it expires, log in again from the same saved destination.",
+  "popup.connection.expires": "Connection expires: {date}. Renew it from the dashboard.",
   "error.cloud_url_invalid":
     "Enter an HTTPS or WSS Cloud URL with no credentials, query, or fragment. Use the root or /ws path.",
   "error.cloud_new_url_code_required": "Enter the browser connection code for the new Cloud URL.",
@@ -34,11 +47,11 @@ export const en = {
   "popup.connection.code": "Browser connection code",
   "popup.connection.codeSaved": "Configured for this browser session",
   "popup.connection.codeNeeded": "Enter a browser connection code",
-  "popup.connection.apply": "Apply connection",
+  "popup.connection.apply": "Connect",
   "popup.connection.note":
-    "Applying clears existing shares. Share tabs again with the selected destination.",
+    "Switching destinations clears existing shares. Share tabs again with the selected destination.",
   "popup.connection.cloudNote":
-    "Cloud connects while tabs are shared. Enter the code again after restarting the browser.",
+    "Manual codes last for this browser session. Use login above to save a connection across restarts.",
   "popup.connection.applied": "Connection configured. Share a tab to begin.",
   "popup.connection.idle": "Ready to share",
   "popup.connection.offline":
@@ -128,6 +141,9 @@ export const en = {
     "On: eval on shared tabs runs without an approval window and is still audited.",
   "popup.permissions.trustedAutomation.evalDisabled":
     "On, but eval stays off until you allow it above.",
+  "popup.permissions.allTabs.resume": "Resume Sandbox after restart or disconnection",
+  "popup.permissions.allTabs.resumeNote":
+    "Only for this saved Cloud connection. Turning Sandbox off or changing connection cancels automatic resume.",
   "popup.permissions.allTabs": "Share all tabs (sandbox profiles only)",
   "popup.permissions.allTabs.active": {
     one: "{count} tab shared. Browser automation controls are on for this isolated profile.",
@@ -202,6 +218,10 @@ export const en = {
   "approval.loadFailed": "Couldn't load the approval request.",
 
   // ---- Approval intents (also sent to the Gateway in English) ----
+  "intent.clipboardWrite": "Write {payload} to the browser clipboard.",
+  "intent.sensitiveRead":
+    "Read potentially sensitive values: {method} ({detail}). Approve only if you intend to share these values.",
+  "intent.accountPolicy": "Account policy requires approval for {method} on this shared tab.",
   "intent.frameSuffix": " inside frame {frame}",
   "intent.clickSelector": "Click the element matching selector {selector}{frame}.",
   "intent.clickAt": "Click at page coordinates ({x}, {y}).",

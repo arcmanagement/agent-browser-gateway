@@ -1,8 +1,9 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-19.
 
-Current repo version: **v0.5.2**.
+Chrome extension version: **v1.0.0**, distributed separately as `extension-v1.0.0`.
+macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
 ### Windows v0.5.3 — The Gate dashboard (2026-10-08)
@@ -14,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.0.0 — Cloud connections (2026-10-19)
+
+- Connect directly to Agent Browser Gateway using Web account login, save named destinations, and select them after restarting Chrome without entering connection codes again.
+- Share tabs with authorized AI clients, use Cloud plugins, transfer files, and retrieve recordings and runtime events through the Cloud command surface.
+- Isolated profiles can explicitly opt into Sandbox and connection-scoped auto-resume. Personal profiles retain per-tab sharing; recording and Cloud file uploads retain approval gates.
+- GitHub provides the extension ZIP and checksums. Chrome Web Store review and publication are separate from this release; desktop versions are unchanged.
 
 ### v0.5.2 — Approval window fit (2026-10-04)
 
@@ -513,7 +521,7 @@ Selected first target:
 
 These will not happen, regardless of demand:
 
-- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback; #71 is limited to private Tailnet/LAN pairing controlled by the user.
+- Making a Cloud account mandatory for local mode. Local ABG remains usable with networking blocked except loopback; optional Cloud mode has its own authenticated, registered-browser boundary.
 - Any telemetry / analytics sent to ABG operators. User/team-owned local metrics in self-hosted deployments are separate from official ABG telemetry.
 - Hidden JavaScript execution without explicit user policy. The only general eval path is disabled by default and requires explicit enablement plus either per-call local approval or explicit Trusted automation / AutoMode, with audit.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.

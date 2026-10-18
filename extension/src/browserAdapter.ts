@@ -42,7 +42,7 @@ export type BrowserAdapter = {
     typeof chrome.action,
     "getTitle" | "setBadgeBackgroundColor" | "setBadgeText" | "setTitle"
   >;
-  readonly alarms: Pick<typeof chrome.alarms, "create" | "onAlarm">;
+  readonly alarms: Pick<typeof chrome.alarms, "create" | "clear" | "onAlarm">;
   readonly commands: Pick<typeof chrome.commands, "getAll" | "onCommand">;
   readonly debugger: Pick<
     typeof chrome.debugger,
@@ -66,7 +66,10 @@ export type BrowserAdapter = {
     typeof chrome.extension,
     "isAllowedFileSchemeAccess" | "isAllowedIncognitoAccess"
   >;
-  readonly permissions: Pick<typeof chrome.permissions, "contains" | "remove" | "request">;
+  readonly permissions: Pick<
+    typeof chrome.permissions,
+    "contains" | "remove" | "request" | "onRemoved"
+  >;
   readonly runtime: Pick<
     typeof chrome.runtime,
     "getManifest" | "getURL" | "id" | "onInstalled" | "onMessage" | "onStartup" | "sendMessage"

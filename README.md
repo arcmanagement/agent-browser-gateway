@@ -9,8 +9,8 @@ Patent allowed; registration fee paid: JP 2026-080620
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
 - 📖 **Public source** — Every line of code that touches your browser is auditable
-- 🚫 **Zero telemetry** — No analytics. No phone-home. No cloud dependency
-- 💻 **Local first** — Runs entirely on your machine. No account, no subscription
+- 🚫 **No analytics** — Local mode needs no backend; optional Cloud mode relays the data you share
+- 💻 **Local or Cloud** — Run a desktop Gateway locally, or sign in to Cloud from the extension
 - 🔐 **No vendor lock-in** — Use any AI agent you choose; switch any time
 
 ---
@@ -25,15 +25,13 @@ ABG is built on a single principle:
 
 > **If your AI can see your browser, you should be able to see your AI's code.**
 
-Anthropic's Claude in Chrome, Google's Gemini in Chrome, Microsoft's Copilot — these may be safe today, but as a structural matter their providers cannot offer **zero telemetry, no backend, no cloud dependency**. Their business models depend on data flowing back. ABG's does not.
-
-ABG provides a value its commercial counterparts **structurally cannot**: code-level verifiability of exactly what your AI agent does in your browser.
+ABG makes its browser integration available for code-level inspection. Local mode keeps the Gateway on your machine; optional Cloud mode trades that local transport for access from remote clients, with an explicit account and browser authorization boundary.
 
 ---
 
 ## How it works
 
-ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is the primary interface for AI agents.
+In local mode, ABG is a desktop app + a Chrome extension + a small `abg` CLI. The CLI is the local interface for AI agents. Cloud mode connects the extension directly to the selected service and exposes tools to authorized AI clients without the desktop app.
 
 ```
 ┌──────────────────────────┐
@@ -63,7 +61,7 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 └──────────────────────────────┘
 ```
 
-Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup.
+In local mode, the Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup. The optional Cloud connection described below sends explicitly shared tab data through your selected gateway.
 
 ---
 
@@ -76,8 +74,7 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
-   The public listing currently serves extension `v0.4.4`. The Chrome extension and macOS app can
-   advance independently while store review and signed app publication complete.
+   The Store and direct ZIP have separate publication status; check the listing for its current version. The Chrome extension and macOS app advance independently.
 
 2. Install the local Gateway.
 
@@ -143,6 +140,14 @@ and generate release notes.
 
 ---
 
+## Cloud connection (Chrome extension 1.0.0)
+
+Chrome extension 1.0.0 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.0.0), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+
+Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
+
+AI connections use `https://app.agent-browser-gateway.com/oauth/authorize` to log in and authorize access. Passwords are handled by the Web account flow and are never stored in the extension or passed to AI clients. The official service uses `https://app.agent-browser-gateway.com` for account UI and `https://connect.agent-browser-gateway.com` / `wss://connect.agent-browser-gateway.com` for browser authentication, shared-tab traffic, and results. Custom destinations send those data to the gateway you select. See [Cloud usage](docs/CLOUD_EXTENSION.md) for plugins, artifacts, consent, and the separate Chrome Web Store publication status.
+
 ## Tab access modes
 
 The core security model:
@@ -171,6 +176,8 @@ on. Rebind or clear either shortcut at `chrome://extensions/shortcuts` (Firefox:
 `about:addons` → Manage Extension Shortcuts); the popup shows the current keys.
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs (sandbox profiles only)**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+
+A saved Cloud connection with Sandbox enabled can additionally opt into **Resume Sandbox after restart or disconnect**. The extension reconnects and authenticates before announcing tabs, using consent scoped to that saved connection and credential. Turning Sandbox off, removing site access, switching or deleting the connection, rejected credentials, or another browser replacing the connection cancels auto-resume. Profiles that do not opt in keep the default restart behaviour. HTTP 401/403 responses also cancel resume when caused by a Cloud service authentication configuration fault; the current server protocol cannot distinguish that fault from a rejected browser credential.
 
 Short refs from `abg tabs --compact` are the pin-equivalent for a running Gateway session. A ref is
 bound to the pair of browser profile and Chrome tab ID, so adding/removing other tabs does not
@@ -773,8 +780,9 @@ binaries are barely better. ABG aims for **end-to-end verifiability**:
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
 
-Traffic outside loopback is limited to a paired device connecting to the private listener. Any
-ABG-operated relay or unpaired external connection is a bug. Open an issue or, even better, a PR.
+Local mode works without a Cloud account. Cloud mode is an explicit alternative that sends shared
+tab data and operation results through the selected gateway to authorized AI clients. It does not
+enable telemetry or share unapproved browsers. See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -1036,7 +1044,7 @@ In short:
 
 ## Status
 
-🚧 **v0.5.2 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+**Chrome extension v1.0.0** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 

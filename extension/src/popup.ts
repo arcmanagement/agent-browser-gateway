@@ -68,6 +68,13 @@ const cloudUrlEl = byId<HTMLInputElement>("cloudUrl");
 const cloudCodeEl = byId<HTMLInputElement>("cloudCode");
 const cloudConnectionFieldsEl = byId<HTMLElement>("cloudConnectionFields");
 const applyConnectionBtn = byId<HTMLButtonElement>("applyConnectionBtn");
+const savedCloudConnectionEl = byId<HTMLSelectElement>("savedCloudConnection");
+const cloudRegistrationSettingsEl = byId<HTMLDetailsElement>("cloudRegistrationSettings");
+const cloudConnectionNameEl = byId<HTMLInputElement>("cloudConnectionName");
+const cloudLoginBtn = byId<HTMLButtonElement>("cloudLoginBtn");
+const deleteCloudConnectionBtn = byId<HTMLButtonElement>("deleteCloudConnectionBtn");
+const cloudLoginStatusEl = byId<HTMLElement>("cloudLoginStatus");
+const cloudManualConnectionEl = byId<HTMLDetailsElement>("cloudManualConnection");
 let connectionFormDirty = false;
 let applyingConnection = false;
 let connectionPanelInitialized = false;
@@ -480,8 +487,21 @@ async function refresh(): Promise<void> {
     await refresh();
   };
 
+  const resumeSetting = byId<HTMLElement>("cloudSandboxResumeSetting");
+  const resumeNote = byId<HTMLElement>("cloudSandboxResumeNote");
+  const resumeToggle = byId<HTMLInputElement>("cloudSandboxResumeToggle");
+  resumeSetting.hidden = resumeNote.hidden = state.settings.connectionDestination !== "cloud";
+  resumeToggle.checked = state.allTabsAccess.resumeEnabled === true;
+  resumeToggle.disabled = !state.activeCloudConnectionId || !state.allTabsAccess.active;
+  resumeToggle.onchange = async () => {
+    resumeToggle.disabled = true;
+    const response = await send({ type: "set_cloud_sandbox_resume", value: resumeToggle.checked });
+    if (response.type === "error") showError(response);
+    await refresh();
+  };
   allTabsToggleEl.checked = state.allTabsAccess.active;
-  allTabsToggleEl.disabled = state.settings.connectionDestination === "cloud" && !state.cloudCodeConfigured;
+  allTabsToggleEl.disabled =
+    state.settings.connectionDestination === "cloud" && !state.cloudCodeConfigured;
   allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
   allTabsToggleEl.onchange = async () => {
     const nextValue = allTabsToggleEl.checked;
@@ -617,31 +637,137 @@ async function refresh(): Promise<void> {
   );
   if (!connectionFormDirty && !applyingConnection) {
     connectionDestinationEl.value = state.settings.connectionDestination;
-    cloudUrlEl.value = state.settings.cloudWebSocketUrl;
+    cloudUrlEl.value =
+      state.settings.cloudWebSocketUrl || "https://connect.agent-browser-gateway.com";
+    savedCloudConnectionEl.value = state.activeCloudConnectionId ?? "";
+  }
+  if (!applyingConnection) {
+    const selected = connectionFormDirty
+      ? savedCloudConnectionEl.value
+      : (state.activeCloudConnectionId ?? "");
+    savedCloudConnectionEl.replaceChildren();
+    const fresh = document.createElement("option");
+    fresh.value = "";
+    fresh.textContent = t(lang, "popup.connection.add");
+    savedCloudConnectionEl.append(fresh);
+    for (const item of state.savedCloudConnections ?? []) {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.name;
+      savedCloudConnectionEl.append(option);
+    }
+    savedCloudConnectionEl.value = selected;
   }
   const updateConnectionFields = () => {
     cloudConnectionFieldsEl.hidden = connectionDestinationEl.value !== "cloud";
+    const selected = (state.savedCloudConnections ?? []).find(
+      (c) => c.id === savedCloudConnectionEl.value,
+    );
+    cloudLoginBtn.hidden = false;
+    cloudLoginBtn.textContent = t(
+      lang,
+      selected ? "popup.connection.relogin" : "popup.connection.login",
+    );
+    deleteCloudConnectionBtn.hidden = !selected;
+    cloudRegistrationSettingsEl.hidden = !!selected;
+    cloudManualConnectionEl.hidden = !!selected;
+    cloudUrlEl.readOnly = !!selected;
+    cloudConnectionNameEl.readOnly = !!selected;
+    if (selected) {
+      cloudUrlEl.value = selected.url;
+      cloudConnectionNameEl.value = selected.name;
+    } else if (!cloudConnectionNameEl.value.trim()) {
+      cloudConnectionNameEl.value = state.settings.profileLabel || "Agent Browser Gateway";
+    }
+    cloudLoginStatusEl.textContent = state.cloudLoginPending
+      ? t(lang, "popup.connection.loginPending")
+      : t(lang, "popup.connection.savedNote");
+    applyConnectionBtn.hidden =
+      connectionDestinationEl.value === "cloud" && !selected && !cloudCodeEl.value.trim();
+  };
+  savedCloudConnectionEl.onchange = async () => {
+    connectionFormDirty = true;
+    cloudCodeEl.value = "";
+    cloudConnectionNameEl.value = "";
+    if (!savedCloudConnectionEl.value)
+      cloudUrlEl.value = "https://connect.agent-browser-gateway.com";
+    updateConnectionFields();
+    if (savedCloudConnectionEl.value) await applySelectedConnection();
   };
   connectionDestinationEl.onchange = () => {
     connectionFormDirty = true;
     updateConnectionFields();
   };
-  cloudUrlEl.oninput = cloudCodeEl.oninput = () => {
-    connectionFormDirty = true;
-  };
+  cloudUrlEl.oninput =
+    cloudCodeEl.oninput =
+    cloudConnectionNameEl.oninput =
+      () => {
+        connectionFormDirty = true;
+        updateConnectionFields();
+      };
   cloudCodeEl.placeholder = t(
     lang,
     state.cloudCodeConfigured ? "popup.connection.codeSaved" : "popup.connection.codeNeeded",
   );
   updateConnectionFields();
   applyConnectionBtn.disabled = applyingConnection;
-  applyConnectionBtn.onclick = async () => {
+  cloudLoginBtn.disabled = applyingConnection || !!state.cloudLoginPending;
+  deleteCloudConnectionBtn.disabled = applyingConnection;
+  cloudLoginBtn.onclick = async () => {
+    const cloudUrl = cloudUrlEl.value;
+    const name = cloudConnectionNameEl.value;
+    const savedId = savedCloudConnectionEl.value || undefined;
+    applyingConnection = true;
+    clearStatus();
+    cloudLoginBtn.disabled = true;
+    try {
+      if (!(await browser.permissions.request({ origins: [cloudServiceOrigin(cloudUrl)] }))) {
+        showError({
+          code: "cloud_service_permission_required",
+          message: "Cloud service access is required.",
+        });
+        return;
+      }
+      const response = await send({ type: "begin_cloud_login", cloudUrl, name, savedId });
+      if (response.type === "error") showError(response);
+      else setStatus(t(lang, "popup.connection.loginPending"));
+    } catch {
+      showError({ code: "cloud_url_invalid", message: "Could not start Cloud login." });
+    } finally {
+      applyingConnection = false;
+      await refresh();
+    }
+  };
+  deleteCloudConnectionBtn.onclick = async () => {
+    const id = savedCloudConnectionEl.value;
+    applyingConnection = true;
+    clearStatus();
+    deleteCloudConnectionBtn.disabled = true;
+    try {
+      const response = await send({ type: "delete_cloud_connection", id });
+      if (response.type === "error") showError(response);
+      else {
+        connectionFormDirty = false;
+        cloudCodeEl.value = "";
+        cloudConnectionNameEl.value = "";
+      }
+    } finally {
+      applyingConnection = false;
+      await refresh();
+    }
+  };
+  const applySelectedConnection = async () => {
+    if (applyingConnection) return;
+    const destination = connectionDestinationEl.value === "cloud" ? "cloud" : "local";
+    const cloudUrl = cloudUrlEl.value;
+    const code = cloudCodeEl.value || undefined;
+    const savedId = destination === "cloud" ? savedCloudConnectionEl.value || undefined : undefined;
     applyingConnection = true;
     applyConnectionBtn.disabled = true;
     clearStatus();
     try {
-      if (connectionDestinationEl.value === "cloud") {
-        const endpoint = cloudUrlEl.value.trim() || state.settings.cloudWebSocketUrl;
+      if (destination === "cloud") {
+        const endpoint = cloudUrl.trim() || state.settings.cloudWebSocketUrl;
         let origin: string;
         try {
           origin = cloudServiceOrigin(endpoint);
@@ -660,9 +786,10 @@ async function refresh(): Promise<void> {
       }
       const response = await send({
         type: "set_connection_destination",
-        destination: connectionDestinationEl.value === "cloud" ? "cloud" : "local",
-        cloudUrl: cloudUrlEl.value,
-        code: cloudCodeEl.value || undefined,
+        destination,
+        cloudUrl,
+        code,
+        savedId,
       });
       if (response.type === "error") {
         showError(response);
@@ -672,12 +799,15 @@ async function refresh(): Promise<void> {
       connectionFormDirty = false;
       connectionPanelEl.open = false;
       setStatus(t(lang, "popup.connection.applied"));
+    } catch {
+      showError({ message: t(lang, "popup.connection.offline") });
     } finally {
       applyingConnection = false;
       applyConnectionBtn.disabled = false;
       await refresh();
     }
   };
+  applyConnectionBtn.onclick = applySelectedConnection;
 
   if (document.activeElement !== gatewayWebSocketUrlEl) {
     gatewayWebSocketUrlEl.value = state.settings.gatewayWebSocketUrl;

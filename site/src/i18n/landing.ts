@@ -104,8 +104,8 @@ const en = {
     ],
   },
   local: {
-    title: "A small local bridge.|No cloud in between.",
-    lead: "Three pieces on your machine: a Chrome extension, a menu bar Gateway, and the abg CLI. The Gateway binds only to 127.0.0.1 and accepts WebSocket connections only from browser-extension origins, so ordinary web pages cannot reach it.",
+    title: "A small local bridge.|An optional Cloud connection.",
+    lead: "Local mode uses a Chrome extension, a menu bar Gateway, and the abg CLI. The desktop Gateway binds only to 127.0.0.1 and accepts WebSocket connections only from browser-extension origins. Cloud mode instead connects the extension to your selected service and authorized AI clients.",
     nodes: {
       chrome: { t: "Chrome extension", d: "Shares the tabs you choose" },
       gateway: { t: "Gateway app", d: "Permissions · audit log" },
@@ -178,7 +178,7 @@ const en = {
   },
   download: {
     title: "Install in a minute.|Verify before you trust it.",
-    lead: "The current public build is v0.5.2. Install the macOS app with Homebrew or the signed DMG; both point at the same release payload. Then add the Chrome extension.",
+    lead: "Chrome extension v1.0.0 supports Cloud login without a desktop app. For local mode, install macOS v0.5.2 with Homebrew or the signed DMG, then add the extension.",
     steps: ["Install the Gateway and CLI", "Add the Chrome extension", "Share a tab and run abg tabs"],
     brewTitle: "Homebrew",
     brewNote: "Tap the repository, trust the cask when Homebrew asks for tap trust, then install.",
@@ -188,7 +188,7 @@ const en = {
     sha: "SHA-256",
     shaNote: "Verify the checksum before opening the DMG.",
     store: "Chrome Web Store",
-    storeMeta: "Listing serves v0.4.8 while v0.5.2 is in review. Shortcuts, annotation restore, and the Japanese UI need the v0.5.2 extension.",
+    storeMeta: "Chrome Web Store review and publication are separate from the v1.0.0 GitHub ZIP release. Check the Store listing's version before installing.",
     windows: "Windows",
     windowsMeta: "v0.5.3 · Windows 10/11 x64 · The Gate UI",
     windowsNote: "Extract the ZIP and run AgentBrowserGatewaySetup.exe. This ZIP is unsigned and may show a Windows security warning. WinGet remains pending.",
@@ -316,8 +316,8 @@ const ja: LandingCopy = {
     ],
   },
   local: {
-    title: "小さなローカルの橋。|間にクラウドはありません。",
-    lead: "構成は、手元の Mac にある Chrome 拡張機能、メニューバーの Gateway、abg CLI の三つだけです。Gateway は 127.0.0.1 にのみ待ち受け、ブラウザー拡張機能のオリジンからの WebSocket 接続だけを受け付けます。通常のWebページからは接続できません。",
+    title: "小さなローカルの橋。|Cloud接続も選べます。",
+    lead: "ローカル接続はChrome拡張、メニューバーのGateway、abg CLIで構成します。デスクトップGatewayは127.0.0.1でのみ待ち受け、ブラウザー拡張のオリジンから接続を受け付けます。Cloud接続では、拡張が選択したサービスを通じて許可済みのAIクライアントへ接続します。",
     nodes: {
       chrome: { t: "Chrome 拡張機能", d: "選んだタブを共有" },
       gateway: { t: "Gateway アプリ", d: "権限管理・監査ログ" },
@@ -390,7 +390,7 @@ const ja: LandingCopy = {
   },
   download: {
     title: "数分で導入。|信頼する前に検証を。",
-    lead: "現在の公開版は v0.5.2 です。macOS アプリは Homebrew または署名済み DMG でインストールできます。どちらも同じリリースを指しています。そのあと Chrome 拡張機能を追加してください。",
+    lead: "Chrome拡張 v1.0.0 はデスクトップアプリなしでCloudへログインできます。ローカル接続ではmacOS v0.5.2をHomebrewまたは署名済みDMGで入れ、拡張を追加してください。",
     steps: ["Gateway と CLI をインストール", "Chrome 拡張機能を追加", "タブを共有して abg tabs を実行"],
     brewTitle: "Homebrew",
     brewNote: "リポジトリを tap し、Homebrew に求められたら cask を trust してからインストールします。",
@@ -400,7 +400,7 @@ const ja: LandingCopy = {
     sha: "SHA-256",
     shaNote: "DMG を開く前にチェックサムを確認してください。",
     store: "Chrome ウェブストア",
-    storeMeta: "ストアは v0.5.2 の審査中で、いまは v0.4.8 を配信しています。ショートカット、注釈の復元、日本語表示は v0.5.2 の拡張機能で使えます。",
+    storeMeta: "Chromeウェブストアの審査・公開と、GitHubでのv1.0.0 ZIP配布は別です。ストアから入れる場合は掲載バージョンを確認してください。",
     windows: "Windows",
     windowsMeta: "v0.5.3 · Windows 10/11 x64 · The Gate UI",
     windowsNote: "ZIP を展開し、AgentBrowserGatewaySetup.exe を実行してください。この ZIP は未署名のため、Windows のセキュリティ警告が出る場合があります。WinGet は登録待ちです。",
