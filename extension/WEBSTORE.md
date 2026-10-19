@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.0.0.zip
+dist/agent-browser-gateway-extension-1.1.0.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.1.0 review notes
+
+- No new Chrome permissions. In a saved Cloud Sandbox with automatic resume and Trusted automation enabled, and write approval off, input-value reads and ordinary native file attachments skip repeated approval. No extra switch or upload-folder setup is required. Manual shares, Cloud account-forced approval, and protected paths still prompt. Password and sign-in-code reads remain blocked. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
+- File paths are on the connected browser host; no client-to-browser byte transfer is added. Recording remains approval-gated.
+- Update the data-use disclosure for this automation behavior before submitting. Review and final staged publication remain separate.
 
 ## 1.0.0 review notes
 

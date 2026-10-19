@@ -138,7 +138,7 @@ export const en = {
   "popup.permissions.trustedAutomation.off":
     "Lets eval on shared tabs skip the approval window. Scripts are still audited.",
   "popup.permissions.trustedAutomation.active":
-    "On: eval on shared tabs runs without an approval window and is still audited.",
+    "On: eval on shared tabs runs without an approval window and is still audited. In a saved, resumable Cloud Sandbox with write approval off, input reads and ordinary file attachments also skip approval. Cloud account policies still apply.",
   "popup.permissions.trustedAutomation.evalDisabled":
     "On, but eval stays off until you allow it above.",
   "popup.permissions.allTabs.resume": "Resume Sandbox after restart or disconnection",

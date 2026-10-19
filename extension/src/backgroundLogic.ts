@@ -131,6 +131,33 @@ export function normalizeUploadFiles(params: { files?: unknown; file?: unknown }
   return files;
 }
 
+// AutoMode accepts ordinary absolute POSIX file paths. Hidden data, browser
+// profiles and ambiguous/traversing paths retain per-operation approval.
+export function automationUploadFilesAllowed(files: string[]): boolean {
+  return (
+    files.length > 0 &&
+    files.every((path) => {
+      if (
+        !path.startsWith("/") ||
+        /[\\~]/.test(path) ||
+        Array.from(path).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+      )
+        return false;
+      return path
+        .slice(1)
+        .split("/")
+        .every(
+          (part) =>
+            !!part &&
+            !part.startsWith(".") &&
+            !/^(?:profile(?:[- ].*)?|default|user data|cookies|login data|local state|preferences|secure preferences)$/i.test(
+              part,
+            ),
+        );
+    })
+  );
+}
+
 export type FileAttachFailure = {
   code: "file_access_required" | "file_attach_failed";
   message: string;

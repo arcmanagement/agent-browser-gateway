@@ -3,9 +3,9 @@
 export const release = {
   version: "0.5.2",
   windowsVersion: "0.5.3",
-  extensionVersion: "1.0.0",
+  extensionVersion: "1.1.0",
   extensionReleaseUrl:
-    "https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.0.0",
+    "https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.0",
   dmgUrl:
     "https://github.com/arcmanagement/agent-browser-gateway/releases/download/v0.5.2/agent-browser-gateway-0.5.2-macos-arm64.dmg",
   dmgShaUrl:
@@ -18,7 +18,7 @@ export const release = {
   releasesUrl: "https://github.com/arcmanagement/agent-browser-gateway/releases",
   chromeStoreUrl:
     "https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi",
-  chromeStoreVersion: "0.4.8",
+  chromeStoreVersion: "1.0.0",
   repoUrl: "https://github.com/arcmanagement/agent-browser-gateway",
   licenseUrl: "https://github.com/arcmanagement/agent-browser-gateway/blob/main/LICENSE",
   commercialUrl: "https://github.com/arcmanagement/agent-browser-gateway/blob/main/COMMERCIAL.md",

@@ -140,9 +140,9 @@ and generate release notes.
 
 ---
 
-## Cloud connection (Chrome extension 1.0.0)
+## Cloud connection (Chrome extension 1.1.0)
 
-Chrome extension 1.0.0 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.0.0), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+Chrome extension 1.1.0 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.0), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
 
 Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
 
@@ -189,6 +189,8 @@ ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools, `raise`, and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Allow approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
+
+In a saved Cloud Sandbox with automatic resume and Trusted automation enabled, and write approval disabled, DOM input-value reads and native file attachments follow the existing automation choice. No extra switch or upload-directory setup is required. Manual shares and other sensitive reads keep their approval gates; account policies and password/sign-in-code protections still apply. Automatic attachment accepts ordinary absolute POSIX paths; hidden/profile/traversal paths still prompt. Use an isolated browser host with only the files intended for automation; symlink targets are not resolved by the extension. Turn off Trusted automation or Sandbox to restore per-operation approval.
 
 The extension UI is available in English and Japanese. Choose **Display language** under
 **Advanced** in the popup: **Auto** (the default) follows the browser UI language and uses English
@@ -1044,7 +1046,7 @@ In short:
 
 ## Status
 
-**Chrome extension v1.0.0** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
+**Chrome extension v1.1.0** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 
