@@ -5,6 +5,7 @@ import { scriptBlockPresentation } from "./approvalLogic.js";
 import {
   type AuditDiffPayload,
   type AuditDiffValue,
+  automationUploadFilesAllowed,
   COPY_TAB_ID_COMMAND,
   clickSelectorFrameFn,
   createAuditDiff,
@@ -99,7 +100,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -372,6 +373,25 @@ async function setCloudSandboxResume(value: boolean): Promise<void> {
     throw new GatewayError("connection_changing", "Sandbox changed before consent was saved.");
   }
   cloudSandboxResumeEnabled = true;
+}
+// Reuse the owner's existing saved Sandbox + AutoMode choice; no second
+// consent receipt or upload-folder setup is needed for the same connection.
+async function cloudSandboxAutomationAllowed(tabId: number | undefined): Promise<boolean> {
+  const epoch = connectionEpoch;
+  const revision = sandboxConsentRevision;
+  if (tabId === undefined || !cloudSandboxResumeEnabled || !(await restoreCloudSandboxResume()))
+    return false;
+  const settings = await getSettings();
+  return (
+    epoch === connectionEpoch &&
+    revision === sandboxConsentRevision &&
+    !changingConnection &&
+    connectionDestination === "cloud" &&
+    cloudSandboxActive &&
+    settings.trustedAutomationEnabled &&
+    !settings.operationsRequireApproval &&
+    permittedTabs.get(tabId)?.accessMode === "all_tabs"
+  );
 }
 function scheduleCloudResume(): void {
   if (!cloudSandboxResumeEnabled || cloudResumeTimer) return;
@@ -2137,7 +2157,9 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
         (cmd.method === "network_log" && cmd.params?.body === true));
     if (
       connectionDestination === "cloud" &&
-      (cmd.params?._requireApproval === true || sensitiveRead) &&
+      (cmd.params?._requireApproval === true ||
+        (sensitiveRead &&
+          !(cmd.method === "get_dom" && (await cloudSandboxAutomationAllowed(tabId))))) &&
       !isOperationCommand(cmd) &&
       !["eval_script", "record_start"].includes(cmd.method) &&
       !(cmd.method === "wait_for" && cmd.params?.predicate !== undefined)
@@ -2781,7 +2803,10 @@ async function runApprovedOperation(
     tabId,
     operation.intent,
     connectionDestination === "cloud" &&
-      (cmd.params?._requireApproval === true || cmd.method === "upload_file"),
+      (cmd.params?._requireApproval === true ||
+        (cmd.method === "upload_file" &&
+          (!(await cloudSandboxAutomationAllowed(tabId)) ||
+            !automationUploadFilesAllowed(normalizeUploadFiles(cmd.params ?? {}))))),
   );
   if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
     throw new Error("Connection or tab sharing changed before the operation.");

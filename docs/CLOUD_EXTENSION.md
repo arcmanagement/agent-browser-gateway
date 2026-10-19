@@ -1,10 +1,10 @@
-# Chrome extension 1.0.0
+# Chrome extension 1.1.0
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.0.0.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.0.0).
+1. Download `agent-browser-gateway-extension-1.1.0.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.0).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.0.0.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.1.0.
 
 ## Sharing and operations
 
@@ -20,9 +20,11 @@ Personal and mixed-use profiles use per-tab sharing. A manual share ends on clos
 
 AI clients use Cloud tools such as `tabs_list`, `tab_read`, and the plugin command surface. A browser ID and current generation identify the browser session; rediscover tabs after reconnecting. Cloud plugin registration and execution use the selected service, rather than the desktop `~/.abg/plugins` directory. Install only trusted plugins, and authorize only the browsers and operations the client needs.
 
-File attachment accepts absolute paths on the connected browser's host, not paths on the AI client's machine. It always requires the browser's approval showing the paths and Chrome's **Allow access to file URLs** grant. An approved attachment can expose any readable file at those paths to the target website; approve only files you intend to share. The extension does not implement client-to-browser byte transfer. Download inspection returns shared-tab download status and browser-host paths, rather than transferring the downloaded file to the client. Recording always needs the browser's approval and capture permission; recording chunks are kept in extension IndexedDB for bounded retrieval. Runtime events are buffered for retrieval.
+File attachment accepts absolute paths on the connected browser's host, not paths on the AI client's machine. Chrome's **Allow access to file URLs** grant is required. By default, the browser prompts with the paths; the saved Sandbox automation setting described below can skip that prompt. An approved attachment can expose any readable file at those paths to the target website; approve only files you intend to share. The extension does not implement client-to-browser byte transfer. Download inspection returns shared-tab download status and browser-host paths, rather than transferring the downloaded file to the client. Recording always needs the browser's approval and capture permission; recording chunks are kept in extension IndexedDB for bounded retrieval. Runtime events are buffered for retrieval.
 
-Changing between local and Cloud, changing the Cloud endpoint, or replacing its credential resets bookmark/Reading List access, personal-data mutations, JavaScript eval, and Trusted automation, and restores operation approval. Re-enable only the options intended for the new destination. Reapplying the same endpoint and credential preserves those choices. Bookmark and Reading List permissions cover browser-owned lists beyond the shared tab; if enabled for Cloud, requested list data passes through that service. Trusted automation can skip ordinary operation and eval prompts on shared tabs, but cannot skip recording or file-attachment approval.
+Changing between local and Cloud, changing the Cloud endpoint, or replacing its credential resets bookmark/Reading List access, personal-data mutations, JavaScript eval, and Trusted automation, and restores operation approval. Re-enable only the options intended for the new destination. Reapplying the same endpoint and credential preserves those choices. Bookmark and Reading List permissions cover browser-owned lists beyond the shared tab; if enabled for Cloud, requested list data passes through that service. Trusted automation can skip ordinary operation and eval prompts on shared tabs. Recording always retains approval.
+
+In a saved Cloud Sandbox with automatic resume and Trusted automation enabled, and write approval off, input-value reads and ordinary native file attachments skip repeated approval. No extra switch or upload-folder setup is required. Manual shares, Cloud account-forced approval, and protected paths still prompt. Password and sign-in-code reads remain blocked. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
 
 ## Data and endpoints
 
@@ -32,4 +34,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.0.0. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.0.0` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.1.0. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.1.0` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.

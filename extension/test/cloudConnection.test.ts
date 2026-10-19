@@ -871,6 +871,152 @@ describe("Saved Cloud Sandbox resume", () => {
     await import("../src/background.js");
     return state();
   }
+  async function allowInputs() {
+    const current = await optIn();
+    await message({ type: "set_operations_require_approval", value: false });
+    await message({ type: "set_trusted_automation_enabled", value: true });
+    return current;
+  }
+  it.each([
+    "value",
+    "editable-value",
+    "attr",
+  ])("reads %s without repeated prompts after explicit Sandbox consent", async (kind) => {
+    const { socket } = await allowInputs();
+    mock.debugger.sendCommand.mockResolvedValue({
+      result: { value: { found: true, value: "synthetic draft" } },
+    });
+    socket.message({
+      id: "input",
+      method: "get_dom",
+      params: { tabId: 1, kind, name: "value", selector: "textarea" },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.find((f) => f.id === "input")).toMatchObject({
+        result: { found: true, value: "synthetic draft" },
+      }),
+    );
+    expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(false);
+  });
+  it("uploads through native file input without repeated prompts after explicit Sandbox consent", async () => {
+    const { socket } = await allowInputs();
+    Object.assign(mock.extension, { isAllowedFileSchemeAccess: vi.fn(async () => true) });
+    mock.debugger.sendCommand.mockImplementation(async (...call: unknown[]) => {
+      switch (call[1]) {
+        case "DOM.getDocument":
+          return { root: { nodeId: 1 } };
+        case "DOM.querySelector":
+          return { nodeId: 2 };
+        case "DOM.describeNode":
+          return {
+            node: {
+              nodeName: "INPUT",
+              attributes: ["type", "file", "multiple", ""],
+              backendNodeId: 3,
+            },
+          };
+        default:
+          return {};
+      }
+    });
+    mock.scripting.executeScript.mockResolvedValue([{ result: { files: 2 } }]);
+    socket.message({
+      id: "upload",
+      method: "upload_file",
+      params: {
+        tabId: 1,
+        selector: "input[type=file]",
+        files: ["/tmp/staging/one.png", "/tmp/staging/two.png"],
+      },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.find((f) => f.id === "upload")).toMatchObject({
+        result: { ok: true, files: 2 },
+      }),
+    );
+    expect(mock.debugger.sendCommand).toHaveBeenCalledWith({ tabId: 1 }, "DOM.setFileInputFiles", {
+      backendNodeId: 3,
+      files: ["/tmp/staging/one.png", "/tmp/staging/two.png"],
+    });
+    expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(false);
+  });
+  it.each([
+    "/tmp/staging/../secret.png",
+    "/tmp/staging/.ssh/id_ed25519",
+    "/tmp/staging/profile-mediaid/Default/Cookies",
+  ])("still prompts for paths with protected or ambiguous names: %s", async (path) => {
+    const { socket } = await allowInputs();
+    socket.message({
+      id: "outside",
+      method: "upload_file",
+      params: { tabId: 1, selector: "input[type=file]", files: [path] },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    expect(mock.debugger.sendCommand).not.toHaveBeenCalledWith(
+      { tabId: 1 },
+      "DOM.setFileInputFiles",
+      expect.anything(),
+    );
+  });
+  it.each([
+    "get_dom",
+    "upload_file",
+    "state_inspect",
+  ])("retains account policy and other sensitive-data gates for %s", async (method) => {
+    const { socket } = await allowInputs();
+    socket.message({
+      id: "policy",
+      method,
+      params: {
+        tabId: 1,
+        selector: "textarea",
+        kind: method === "state_inspect" ? "cookies" : "value",
+        includeValues: true,
+        files: ["/tmp/one.png"],
+        ...(method === "state_inspect" ? {} : { _requireApproval: true }),
+      },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    expect(socket.sent.some((f) => f.id === "policy")).toBe(false);
+  });
+  it.each([
+    "sandbox",
+    "resume",
+    "trust",
+    "approval",
+    "permission",
+    "credential",
+  ])("does not automate after %s consent changes", async (change) => {
+    const { saved } = await allowInputs();
+    if (change === "sandbox") await message({ type: "set_all_tabs_access", value: false });
+    if (change === "resume") await message({ type: "set_cloud_sandbox_resume", value: false });
+    if (change === "trust") await message({ type: "set_trusted_automation_enabled", value: false });
+    if (change === "approval")
+      await message({ type: "set_operations_require_approval", value: true });
+    if (change === "permission") mock.permissions.contains.mockResolvedValue(false);
+    if (change === "credential")
+      await mock.storage.local.set({ savedCloudConnections: [{ ...saved, code: "b".repeat(43) }] });
+    if (change === "sandbox") {
+      expect(await state()).toMatchObject({ allTabsAccess: { active: false }, sharedTabs: [] });
+      return;
+    }
+    const socket = lastSocket();
+    socket.message({
+      id: "after-revoke",
+      method: "get_dom",
+      params: { tabId: 1, kind: "value", selector: "textarea" },
+    });
+    await vi.waitFor(() =>
+      expect(
+        socket.sent.some((f) => f.type === "approval_pending" || f.id === "after-revoke"),
+      ).toBe(true),
+    );
+    expect(socket.sent.find((f) => f.id === "after-revoke")?.result).toBeUndefined();
+  });
   it("restores only explicitly opted-in saved Sandbox and authenticates before announcing", async () => {
     await optIn();
     const current = await restartWorker();

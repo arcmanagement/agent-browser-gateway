@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-19.
 
-Chrome extension version: **v1.0.0**, distributed separately as `extension-v1.0.0`.
+Chrome extension version: **v1.1.0**, distributed separately as `extension-v1.1.0`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.1.0 — Sandbox automation approvals (2026-10-19)
+
+- Saved Cloud Sandboxes with automatic resume, Trusted automation on, and write approval off can read input values and attach ordinary browser-host files without repeated approval prompts.
+- Uses the existing controls, with no additional switch or upload-directory setup. Manual shares, account-forced approval, protected file paths, and recording retain their approval gates.
+- Password and sign-in-code reads remain blocked. Run trusted automation only on an isolated host containing files intended for those clients.
+- Extension-only release; desktop versions and Chrome permission grants are unchanged.
 
 ### Chrome extension v1.0.0 — Cloud connections (2026-10-19)
 
