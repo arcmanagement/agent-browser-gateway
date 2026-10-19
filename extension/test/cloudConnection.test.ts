@@ -351,7 +351,35 @@ describe("Cloud connection boundary", () => {
     expect(Socket.instances).toHaveLength(count);
   });
   it.each([
-    ["state_inspect", { kind: "cookies", includeValues: true }],
+    ["state_inspect", { kind: "cookie", includeValues: true }],
+    ["get_dom", { kind: "value", selector: "textarea" }],
+    ["get_dom", { kind: "editable-value", selector: "textarea" }],
+    ["get_dom", { kind: "attr", name: "Value", selector: "input" }],
+    ["network_log", { body: true }],
+    ["describe", {}],
+    ["find", { locator: "css", query: "input" }],
+    ["snapshot", {}],
+    ["validate_editable", { selector: "textarea" }],
+  ])("Cloud %s skips read approval when operation approval is off", async (method, params) => {
+    await configure();
+    await message({ type: "set_operations_require_approval", value: false });
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
+    mock.debugger.sendCommand.mockResolvedValue({
+      result: { value: { found: true, elements: [], matches: [] } },
+      cookies: [],
+    });
+    cloud.message({ id: "read-no-approval", method, params: { ...params, tabId: 1 } });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.id === "read-no-approval")).toBe(true));
+    expect(cloud.sent.find((f) => f.id === "read-no-approval")?.error).toBeUndefined();
+    expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(false);
+    expect(mock.windows.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["state_inspect", { kind: "cookie", includeValues: true }],
     ["get_dom", { kind: "value", selector: "input[type=password]" }],
     ["get_dom", { kind: "attr", name: "Value", selector: "input" }],
     ["network_log", { body: true }],
@@ -361,8 +389,7 @@ describe("Cloud connection boundary", () => {
     ["validate_editable", { selector: "input" }],
     ["upload_file", { selector: "input[type=file]", files: ["/tmp/synthetic.txt"] }],
     ["read_dom", { _requireApproval: true }],
-  ])("Cloud %s forces approval even when local operation approval is off", async (method, params) => {
-    await mock.storage.local.set({ operationsRequireApproval: false });
+  ])("Cloud %s requests approval when operation approval is on", async (method, params) => {
     await configure();
     await message({ type: "permit", tabId: 1 });
     const cloud = lastSocket();
@@ -463,8 +490,8 @@ describe("Cloud connection boundary", () => {
         },
       };
     });
-    await mock.storage.local.set({ operationsRequireApproval: false });
     await configure();
+    await message({ type: "set_operations_require_approval", value: false });
     await message({ type: "permit", tabId: 1 });
     const cloud = lastSocket();
     cloud.open();
@@ -502,18 +529,9 @@ describe("Cloud connection boundary", () => {
       ["validate_editable", { selector: "input" }],
     ] as const) {
       const id = `privacy-${method}`;
-      const offset = cloud.sent.length;
       cloud.message({ id, method, params: { ...params, tabId: 1 } });
-      await vi.waitFor(() =>
-        expect(cloud.sent.slice(offset).some((f) => f.type === "approval_pending")).toBe(true),
-      );
-      const pending = cloud.sent.slice(offset).find((f) => f.type === "approval_pending")
-        ?.approval as { approvalId: string };
-      await message(
-        { type: "approval_decision", approvalId: pending.approvalId, decision: "allow" },
-        { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
-      );
       await vi.waitFor(() => expect(cloud.sent.some((f) => f.id === id)).toBe(true));
+      expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(false);
       const response = cloud.sent.find((f) => f.id === id)!;
       expect(JSON.stringify(response)).not.toContain(secret);
       if (method === "validate_editable")
@@ -964,7 +982,13 @@ describe("Saved Cloud Sandbox resume", () => {
     "get_dom",
     "upload_file",
     "state_inspect",
-  ])("retains account policy and other sensitive-data gates for %s", async (method) => {
+    "snapshot",
+    "describe",
+    "find",
+    "validate_editable",
+    "network_log",
+    "read_dom",
+  ])("retains explicit account policy approval for %s", async (method) => {
     const { socket } = await allowInputs();
     socket.message({
       id: "policy",
@@ -972,10 +996,11 @@ describe("Saved Cloud Sandbox resume", () => {
       params: {
         tabId: 1,
         selector: "textarea",
-        kind: method === "state_inspect" ? "cookies" : "value",
+        kind: method === "state_inspect" ? "cookie" : "value",
         includeValues: true,
+        body: true,
         files: ["/tmp/one.png"],
-        ...(method === "state_inspect" ? {} : { _requireApproval: true }),
+        _requireApproval: true,
       },
     });
     await vi.waitFor(() =>

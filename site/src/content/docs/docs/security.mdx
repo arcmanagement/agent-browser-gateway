@@ -62,7 +62,7 @@ and query byte lengths, but not full saved URLs.
   It runs only while a pairing offer or active grant exists. See
   [Architecture](../architecture/#network-boundaries).
 
-Extension 1.1.0 also supports explicitly selected Cloud mode. Shared content and requested results pass through the selected service to authorized AI clients. Web login registers the browser; per-tab sharing remains the default. Cloud policy may require approval, and recording always prompts. Only isolated profiles should opt into Sandbox auto-resume. This mode uses the service's authorization and audit rather than the desktop audit file. It does not add telemetry or silently enable JavaScript. See the [Cloud guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md).
+Extension 1.1.1 also supports explicitly selected Cloud mode. Shared content and requested results pass through the selected service to authorized AI clients. Web login registers the browser; per-tab sharing remains the default. Cloud policy may require approval, and recording always prompts. Only isolated profiles should opt into Sandbox auto-resume. This mode uses the service's authorization and audit rather than the desktop audit file. It does not add telemetry or silently enable JavaScript. See the [Cloud guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md).
 
 ## What ABG defends against
 
@@ -94,4 +94,4 @@ Do not open a public GitHub issue for security vulnerabilities. See
 [SECURITY.md](https://github.com/arcmanagement/agent-browser-gateway/blob/main/SECURITY.md) for the
 current reporting status and threat model.
 
-In a saved Cloud Sandbox with automatic resume and Trusted automation enabled, and write approval off, input-value reads and ordinary native file attachments skip repeated approval. No extra switch or upload-folder setup is required. Manual shares, Cloud account-forced approval, and protected paths still prompt. Password and sign-in-code reads remain blocked. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
+When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Ordinary native file attachments skip approval only in a saved Cloud Sandbox with automatic resume and Trusted automation enabled and operation approval off. Other attachments, protected paths, and recording retain their approval gates. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.

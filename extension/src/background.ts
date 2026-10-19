@@ -100,7 +100,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.1.0";
+const VERSION = "1.1.1";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -2158,8 +2158,7 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
     if (
       connectionDestination === "cloud" &&
       (cmd.params?._requireApproval === true ||
-        (sensitiveRead &&
-          !(cmd.method === "get_dom" && (await cloudSandboxAutomationAllowed(tabId))))) &&
+        (sensitiveRead && (await getSettings()).operationsRequireApproval)) &&
       !isOperationCommand(cmd) &&
       !["eval_script", "record_start"].includes(cmd.method) &&
       !(cmd.method === "wait_for" && cmd.params?.predicate !== undefined)
