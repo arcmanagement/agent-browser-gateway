@@ -540,7 +540,9 @@ describe("personalDataApiSupported", () => {
 
 describe("AutoMode native upload paths", () => {
   it("accepts normal absolute upload paths without folder setup", () => {
-    expect(automationUploadFilesAllowed(["/tmp/one.png", "/home/fixture/uploads/two.png"])).toBe(true);
+    expect(automationUploadFilesAllowed(["/tmp/one.png", "/home/fixture/uploads/two.png"])).toBe(
+      true,
+    );
   });
   it.each([
     "/tmp/../secret",
