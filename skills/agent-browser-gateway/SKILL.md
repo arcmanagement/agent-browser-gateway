@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 1.1.0
+version: 1.1.1
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -8,13 +8,13 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 ## Cloud接続
 
-Chrome拡張1.1.0のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+Chrome拡張1.1.1のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
 
 Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
 
 接続先は拡張に保存できる。パスワードをAIへ渡したり、CLIで入力したりする必要はない。隔離プロファイルだけがSandboxと自動復帰を本人操作で有効にできる。Cloudへ送られる内容、upload・録画の承認、配布方法は [Cloud extension guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md) を参照。以下のCLI手順はローカルGateway用。
 
-保存済みCloud Sandboxで自動復帰と信頼済み自動化がON、書き込み承認がOFFなら、入力値の読み取りと通常のファイル添付に毎回のAllowは不要。別スイッチやフォルダー指定を本人へ求めない。本人が自動化に使うファイルだけを置いた隔離ホストを使う。Cloud側の強制承認、手動共有、保護対象のパス、録画の承認は残る。パスワード・認証コードの読み取り禁止は変わらない。
+操作の承認がOFFなら、Cloudのsnapshot、describe、find、入力値、編集検証、stateの値、network本文の読み取りに毎回のAllowは不要。手動共有とSandboxのどちらにも適用され、AutoModeや自動復帰は不要。Cloud側の強制承認とパスワード・認証コードの読み取り禁止は残る。通常のファイル添付の承認省略には、保存済みCloud Sandboxの自動復帰と信頼済み自動化がON、操作の承認がOFFという条件が引き続き必要。本人が自動化に使うファイルだけを置いた隔離ホストを使う。別スイッチやフォルダー指定を本人へ求めない。保護対象のパスと録画の承認は残る。
 
 Windows では `abg.exe` を使う。パス、profile、制限の差分は [WINDOWS.md](WINDOWS.md) を参照。
 

@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.1.0.zip
+dist/agent-browser-gateway-extension-1.1.1.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,11 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.1.1 review notes
+
+- No new Chrome permissions. Cloud reads that may contain sensitive values now follow the operation approval toggle. With it off, snapshots, descriptions, find results, editable validation, input values, state values, and network response bodies skip approval on shared tabs, including manual shares.
+- Cloud account-forced approval and password/sign-in-code protections remain in effect. File attachments, recording, browser-owned personal-data writes, and eval retain their existing approval rules.
 
 ## 1.1.0 review notes
 

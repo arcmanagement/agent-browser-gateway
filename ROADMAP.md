@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-19.
 
-Chrome extension version: **v1.1.0**, distributed separately as `extension-v1.1.0`.
+Chrome extension version: **v1.1.1**, distributed separately as `extension-v1.1.1`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.1.1 — Read approval setting (2026-10-19)
+
+- Cloud reads including snapshots, descriptions, find results, editable validation, input values, state values, and network response bodies follow the operation approval toggle on all shared tabs.
+- With approval off, these reads run without a popup; AutoMode, Sandbox, and automatic resume are not required. Account-forced approval and credential-value protections remain in effect.
+- File attachments, recording, personal-data writes, and eval keep their existing approval rules. No Chrome permissions are added; desktop versions are unchanged.
 
 ### Chrome extension v1.1.0 — Sandbox automation approvals (2026-10-19)
 
