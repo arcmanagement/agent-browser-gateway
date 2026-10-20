@@ -132,7 +132,7 @@ export const ja: MessageCatalog = {
   "popup.permissions.trustedAutomation.off":
     "共有中のタブでの eval で、承認ウィンドウを省略します。スクリプトは監査ログに記録されます。",
   "popup.permissions.trustedAutomation.active":
-    "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。自動復帰を有効にしたCloud Sandboxでは、書き込み承認がオフなら入力値の読み取り・通常のファイル添付も承認を省略します。Cloud側の承認ルールは優先されます。",
+    "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。Cloudの入力値の読み取りとファイル添付は、すべての共有タブで操作の承認設定に従います。Cloud側の承認ルールは優先されます。",
   "popup.permissions.trustedAutomation.evalDisabled":
     "オンですが、上の eval を許可するまで eval は使えません。",
   "popup.permissions.allTabs.resume": "再起動・切断後にSandboxを自動復帰",

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  automationUploadFilesAllowed,
   clickSelectorFrameFn,
   createAuditDiff,
   decideShareToggle,
@@ -535,25 +534,5 @@ describe("personalDataApiSupported", () => {
 
   it("is supported whenever the API namespace is present", () => {
     expect(personalDataApiSupported(true, "readingList", {})).toBe(true);
-  });
-});
-
-describe("AutoMode native upload paths", () => {
-  it("accepts normal absolute upload paths without folder setup", () => {
-    expect(automationUploadFilesAllowed(["/tmp/one.png", "/home/fixture/uploads/two.png"])).toBe(
-      true,
-    );
-  });
-  it.each([
-    "/tmp/../secret",
-    "/home/fixture/.ssh/key",
-    "/home/fixture/profile-default/Default/Cookies",
-    "/tmp//one",
-    "relative/image.png",
-    "/",
-    "/tmp/a\\b",
-    "/tmp/a\nfile",
-  ])("keeps approval for %s", (path) => {
-    expect(automationUploadFilesAllowed([path])).toBe(false);
   });
 });
