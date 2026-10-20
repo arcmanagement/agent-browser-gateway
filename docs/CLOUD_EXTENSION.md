@@ -1,10 +1,10 @@
-# Chrome extension 1.1.3
+# Chrome extension 1.2.0
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.1.3.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.3).
+1. Download `agent-browser-gateway-extension-1.2.0.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.0).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.1.3.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.0.
 
 ## Sharing and operations
 
@@ -20,11 +20,13 @@ Personal and mixed-use profiles use per-tab sharing. A manual share ends on clos
 
 AI clients use Cloud tools such as `tabs_list`, `tab_read`, and the plugin command surface. A browser ID and current generation identify the browser session; rediscover tabs after reconnecting. Cloud plugin registration and execution use the selected service, rather than the desktop `~/.abg/plugins` directory. Install only trusted plugins, and authorize only the browsers and operations the client needs.
 
-File attachment accepts absolute paths on the connected browser's host, not paths on the AI client's machine. Chrome's **Allow access to file URLs** grant is required. With operation approval on, the browser prompts with the paths. With it off, attachments skip that prompt on both manual shares and Sandbox. An approved attachment can expose any readable file at those paths to the target website; approve only files you intend to share. The extension does not implement client-to-browser byte transfer. Download inspection returns shared-tab download status and browser-host paths, rather than transferring the downloaded file to the client. Recording always needs the browser's approval and capture permission; recording chunks are kept in extension IndexedDB for bounded retrieval. Runtime events are buffered for retrieval.
+Client file attachment uses ABG end to end. With an updated Cloud service and an extension advertising `file-transfer-v1`, send `tab_upload_chunk` with one UUID `transferId`, file `name`, `mime`, `totalBytes`, byte `offset`, and base64 `data` (at most 36 KiB decoded per call). Send consecutive chunks until `complete` is true, then call `tab_attach_files` with the same target, the file input `selector`, and `transferIds`. The extension assembles files in memory and attaches them without SSH, SCP, browser-host files, JavaScript eval, or Chrome's file-URL grant. Operation approval OFF means no transfer or attachment prompt; ON applies the existing attachment approval. Account-forced approval still applies. Attachments support one top-document file input and require `multiple` for more than one file. Transfers are limited to 16 MiB per file, 32 MiB total and 20 files; they expire after ten minutes and are discarded on revoke, reconnect, worker restart, or attachment dispatch. After a timeout, inspect the site before starting another transfer.
+
+The existing `upload_file` path mode continues to accept absolute paths on the connected browser's host. Only this path mode requires **Allow access to file URLs**; it cannot read the AI client's filesystem. Download inspection returns shared-tab download status and browser-host paths, rather than transferring the downloaded file to the client. Recording always needs the browser's approval and capture permission; recording chunks are kept in extension IndexedDB for bounded retrieval. Runtime events are buffered for retrieval.
 
 Changing between local and Cloud, changing the Cloud endpoint, or replacing its credential resets bookmark/Reading List access, personal-data mutations, JavaScript eval, and Trusted automation, and restores operation approval. Re-enable only the options intended for the new destination. Reapplying the same endpoint and credential preserves those choices. Bookmark and Reading List permissions cover browser-owned lists beyond the shared tab; if enabled for Cloud, requested list data passes through that service. Trusted automation can skip ordinary operation and eval prompts on shared tabs. Recording always retains approval.
 
-When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Native file attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for all file paths, without requiring AutoMode or automatic resume. Chrome's file-URL permission is still required. Recording retains its separate approval gate.
+When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. File attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for both transferred bytes and browser-host file paths, without requiring AutoMode or automatic resume. Only browser-host path uploads require Chrome's file-URL permission. Recording retains its separate approval gate.
 
 ## Connection diagnostics
 
@@ -52,4 +54,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.1.3. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.1.3` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.2.0. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.0` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.

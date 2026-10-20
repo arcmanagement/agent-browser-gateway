@@ -162,6 +162,11 @@ export type GatewayCommand = {
     // as a legacy single-path alias.
     files?: string[];
     file?: string;
+    transferId?: string;
+    transferIds?: string[];
+    totalBytes?: number;
+    offset?: number;
+    data?: string;
     // scroll (mouseWheel)
     deltaX?: number;
     deltaY?: number;
@@ -219,6 +224,7 @@ export type GatewayCommand = {
 };
 
 export type GatewayMethod =
+  | "upload_chunk"
   | "frames"
   | "read_dom"
   | "get_dom"
@@ -276,6 +282,7 @@ export type GatewayMethod =
   | "clear"
   | "replace_dom"
   | "upload_file"
+  | "attach_uploaded_files"
   | "type_text"
   | "key_press"
   | "key_down"
@@ -309,6 +316,7 @@ export type OperationMethod = Extract<
   | "clear"
   | "replace_dom"
   | "upload_file"
+  | "attach_uploaded_files"
   | "type_text"
   | "key_press"
   | "key_down"
