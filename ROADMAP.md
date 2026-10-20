@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-19.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-20.
 
-Chrome extension version: **v1.1.1**, distributed separately as `extension-v1.1.1`.
+Chrome extension version: **v1.1.2**, distributed separately as `extension-v1.1.2`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.1.2 — Connection diagnostics (2026-10-20)
+
+- Keep a browser-local connection timeline across disconnects and worker restarts: discovery, authentication, socket close codes, intentional disconnects and time since the last frame.
+- Inspect and export the latest 200 events within seven days from **Advanced → Connection history**. Credentials, endpoints, page data and arbitrary error text are excluded.
+- Preserve the original attempt and destination for delayed close events. No additional Chrome permissions; desktop versions are unchanged.
 
 ### Chrome extension v1.1.1 — Read approval setting (2026-10-19)
 

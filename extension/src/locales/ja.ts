@@ -163,6 +163,15 @@ export const ja: MessageCatalog = {
   "popup.permissions.personalDataMutations": "ブックマークとリーディングリストの変更を許可",
   "popup.permissions.personalDataMutations.note":
     "エージェントが変更を依頼できます。変更のたびに承認ウィンドウが開き、削除は取り消せない操作として表示されます。",
+  "popup.diagnostics.heading": "接続履歴",
+  "popup.diagnostics.note":
+    "このブラウザに直近7日間・最大200件を保存します。認証情報やページの内容は含みません。",
+  "popup.diagnostics.refresh": "更新",
+  "popup.diagnostics.save": "JSONを保存",
+  "popup.diagnostics.empty": "接続履歴はまだありません。",
+  "popup.diagnostics.incomplete":
+    "保存できなかったイベントがあり、履歴が一部欠けている可能性があります。",
+  "popup.diagnostics.unavailable": "接続履歴を読み込めませんでした。更新を試してください。",
   "popup.advanced.heading": "詳細設定",
   "popup.advanced.language": "表示言語",
   "popup.advanced.language.auto": "自動（ブラウザの言語）",

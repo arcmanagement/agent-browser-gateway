@@ -1036,3 +1036,15 @@ html:not(.ready) .top * {
   border-top: 1px solid var(--line);
 }
 .connection-panel [hidden] { display: none; }
+
+/* Diagnostic exports contain only the bounded connection history. */
+.diagnostic-actions { display: flex; gap: 8px; margin: 10px 0; }
+.connection-diagnostics {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.5 ui-monospace, monospace;
+  color: var(--text-2);
+  user-select: text;
+}

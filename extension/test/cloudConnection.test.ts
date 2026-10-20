@@ -62,6 +62,100 @@ const configure = (
   code: string | undefined = fixtureCode,
 ) => message({ type: "set_connection_destination", destination: "cloud", cloudUrl, code });
 
+describe("connection diagnostic integration", () => {
+  async function diagnostics() {
+    const response = await message({ type: "get_connection_diagnostics" });
+    if (response.type !== "connection_diagnostics") throw new Error("Missing diagnostics");
+    return response.events;
+  }
+  it("traces discovery, authentication and remote close without credentials or pages", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    socket.close(4001);
+    const events = await diagnostics();
+    expect(events.map((e) => e.event)).toEqual(
+      expect.arrayContaining([
+        "worker_started",
+        "discovery_started",
+        "discovery_succeeded",
+        "socket_connecting",
+        "socket_open",
+        "authentication_started",
+        "authenticated",
+        "socket_closed",
+        "shares_cleared",
+      ]),
+    );
+    expect(events.find((e) => e.event === "socket_closed" && e.closeCode === 4001)).toMatchObject({
+      phase: "ready",
+      destination: "cloud",
+      sharedTabCount: 1,
+      active: true,
+    });
+    for (const secret of [
+      fixtureCode,
+      fixtureRoute,
+      "gateway.example.test",
+      "page.example.test",
+      '"Fixture"',
+    ])
+      expect(JSON.stringify(events)).not.toContain(secret);
+  });
+  it("identifies authentication timeout as a requested disconnect", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    lastSocket().open();
+    await vi.advanceTimersByTimeAsync(10_001);
+    const events = await diagnostics();
+    expect(events.find((e) => e.event === "authentication_timeout")).toMatchObject({
+      phase: "authenticating",
+    });
+    expect(events.find((e) => e.reason === "authentication_timeout")).toMatchObject({
+      event: "disconnect_requested",
+    });
+  });
+  it("records discovery HTTP failures before a socket can open", async () => {
+    await configure();
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("Denied secret", { status: 401 }));
+    await message({ type: "permit", tabId: 1 });
+    expect((await diagnostics()).find((e) => e.event === "discovery_failed")).toMatchObject({
+      httpStatus: 401,
+      active: true,
+      aborted: false,
+    });
+  });
+  it("keeps diagnostic history private to the extension popup", async () => {
+    expect(
+      await message(
+        { type: "get_connection_diagnostics" },
+        { id: mock.runtime.id, url: "https://page.example.test", tab: { id: 1 } },
+      ),
+    ).toMatchObject({ type: "error" });
+  });
+  it("attributes a delayed close to its original destination after switching to local", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const old = lastSocket();
+    old.open();
+    old.message({ type: "authenticated" });
+    vi.spyOn(old, "close").mockImplementation(() => {
+      old.readyState = 3;
+    });
+    await message({
+      type: "set_connection_destination",
+      destination: "local",
+      cloudUrl: "https://gateway.example.test",
+    });
+    old.dispatchEvent(Object.assign(new Event("close"), { code: 1006, wasClean: false }));
+    expect(
+      (await diagnostics()).find((e) => e.event === "socket_closed" && e.closeCode === 1006),
+    ).toMatchObject({ destination: "cloud", phase: "ready", active: false });
+  });
+});
+
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.resetModules();

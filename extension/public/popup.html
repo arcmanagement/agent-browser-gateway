@@ -300,6 +300,18 @@
             For development and self-hosting. Applying reconnects right away.
           </div>
         </div>
+        <div class="field">
+          <details id="connectionDiagnosticsPanel">
+            <summary class="field-label" data-i18n="popup.diagnostics.heading">Connection history</summary>
+            <p class="field-note" data-i18n="popup.diagnostics.note">Keeps up to 200 events for 7 days on this browser. No credentials or page content.</p>
+            <div class="diagnostic-actions">
+              <button id="refreshDiagnosticsBtn" class="secondary" type="button" data-i18n="popup.diagnostics.refresh">Refresh</button>
+              <button id="saveDiagnosticsBtn" class="secondary" type="button" data-i18n="popup.diagnostics.save">Save JSON</button>
+            </div>
+            <p id="connectionDiagnosticsStatus" class="field-note" role="status"></p>
+            <pre id="connectionDiagnosticsLog" class="connection-diagnostics" tabindex="0" aria-label="Connection history" data-i18n-aria-label="popup.diagnostics.heading"></pre>
+          </details>
+        </div>
       </div>
     </details>
 
