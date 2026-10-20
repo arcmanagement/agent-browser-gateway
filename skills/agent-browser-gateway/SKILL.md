@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 1.1.1
+version: 1.1.2
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -8,7 +8,7 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 ## Cloud接続
 
-Chrome拡張1.1.1のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+Chrome拡張1.1.2のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
 
 Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
 
@@ -23,6 +23,8 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 例外として、隔離した Chrome プロファイル / sandbox マシンでは、拡張 popup の `Share all tabs (sandbox profiles only)` をユーザーが明示的に ON にできる。この場合のみ Chrome の optional `<all_urls>` 権限を要求し、`abg tabs` に `accessMode: "all_tabs"` のタブが並ぶ。普段使いプロファイルでは per-tab 明示許可を前提にする。
 
 ## 基本フロー
+
+Cloud切断の調査では、拡張1.1.2の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認

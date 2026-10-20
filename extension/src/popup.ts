@@ -86,6 +86,12 @@ const shortcutKeysEl = byId<HTMLDivElement>("shortcutKeys");
 const shortcutHintEl = byId<HTMLDivElement>("shortcutHint");
 const uiLanguageEl = byId<HTMLSelectElement>("uiLanguage");
 
+const diagnosticsPanel = byId<HTMLDetailsElement>("connectionDiagnosticsPanel");
+const diagnosticsStatus = byId<HTMLElement>("connectionDiagnosticsStatus");
+const diagnosticsLog = byId<HTMLElement>("connectionDiagnosticsLog");
+const refreshDiagnosticsBtn = byId<HTMLButtonElement>("refreshDiagnosticsBtn");
+const saveDiagnosticsBtn = byId<HTMLButtonElement>("saveDiagnosticsBtn");
+
 let profileLabelTimer: number | null = null;
 // Display language for this popup. Set from storage before the first render, then from each
 // state refresh; changing the setting re-renders the popup immediately.
@@ -914,3 +920,50 @@ readUiLanguage(browser.storage.local)
     setStatus(t(lang, "common.errorPrefix", { message: String(e) }), true);
   })
   .finally(markReady);
+
+async function readConnectionDiagnostics() {
+  diagnosticsStatus.textContent = "";
+  try {
+    const response = await send({ type: "get_connection_diagnostics" });
+    if (response.type !== "connection_diagnostics") throw new Error("Unavailable");
+    diagnosticsLog.textContent = response.events.length
+      ? response.events
+          .slice()
+          .reverse()
+          .map(
+            (event) =>
+              `${new Date(event.at).toISOString()} ${event.event}\n${JSON.stringify(event)}`,
+          )
+          .join("\n\n")
+      : t(lang, "popup.diagnostics.empty");
+    if (response.storageFailed)
+      diagnosticsStatus.textContent = t(lang, "popup.diagnostics.incomplete");
+    return response;
+  } catch {
+    diagnosticsLog.textContent = "";
+    diagnosticsStatus.textContent = t(lang, "popup.diagnostics.unavailable");
+    return undefined;
+  }
+}
+diagnosticsPanel.addEventListener("toggle", () => {
+  if (diagnosticsPanel.open) void readConnectionDiagnostics();
+});
+refreshDiagnosticsBtn.addEventListener("click", () => void readConnectionDiagnostics());
+saveDiagnosticsBtn.addEventListener("click", async () => {
+  const response = await readConnectionDiagnostics();
+  if (!response) return;
+  const report = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    storageFailed: response.storageFailed,
+    events: response.events,
+  };
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `abg-connection-history-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});

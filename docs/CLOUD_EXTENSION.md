@@ -1,10 +1,10 @@
-# Chrome extension 1.1.1
+# Chrome extension 1.1.2
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.1.1.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.1).
+1. Download `agent-browser-gateway-extension-1.1.2.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.2).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.1.1.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.1.2.
 
 ## Sharing and operations
 
@@ -26,6 +26,24 @@ Changing between local and Cloud, changing the Cloud endpoint, or replacing its 
 
 When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Ordinary native file attachments skip approval only in a saved Cloud Sandbox with automatic resume and Trusted automation enabled and operation approval off. Other attachments, protected paths, and recording retain their approval gates. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
 
+## Connection diagnostics
+
+Open **Advanced → Connection history** in the extension popup (**詳細設定 → 接続履歴** in Japanese). Choose **Refresh** after a disconnect and **Save JSON** to export the timeline. Connection diagnostics are available starting with version 1.1.2.
+
+The history shows the latest 200 events within seven days, persists in this browser across extension worker/browser restarts, and is not uploaded automatically. It records discovery results and HTTP status, authentication timeout/rejection, WebSocket errors and close codes, intentional disconnects, network online/offline signals, and worker starts. Close events include the connection attempt, elapsed time and time since the last sent/received frame. Each worker run has a new `runId`; attempts are numbered within that run. Exported timestamps are UTC milliseconds (`at`); the popup also shows ISO UTC timestamps.
+
+| Evidence | What it means |
+|---|---|
+| `disconnect_requested` | The extension initiated the close; `reason` identifies configuration changes, no remaining shared tabs, or authentication failure. |
+| `socket_closed`, code `4001`, `connection_replaced` | Another browser connection replaced this one on the selected Cloud route. |
+| Code `4003` with a recognized `serverReason` | The service required authentication or rejected a message/credential. |
+| `discovery_failed` | `failure` distinguishes missing site access, HTTP error, timeout, cancellation, and network/response failure; `httpStatus` is included when available. |
+| `socket_error` followed by code `1006` / `wasClean: false` | No normal close handshake was received. This alone cannot distinguish a network interruption from a service failure; correlate the UTC time with service logs. |
+| A new `worker_started` after a ready connection, without a close event | The worker restarted without recording a close. Browser shutdown, worker termination and extension reload/update remain possible; `browser_started` provides additional context when Chrome delivers it. |
+| `active: false` on a close | A late event from an already replaced/closed socket. Its original `attempt` still identifies it; it does not disconnect the current socket. |
+
+History excludes credentials, endpoints, page URLs/titles/content, message payloads and exception text. Only three fixed service close reasons are recognized (`connection_replaced`, `authentication_required`, `invalid_message_or_credential`); other close text is omitted. Online/offline is the browser's network signal and does not prove Internet reachability. Abrupt process termination can prevent the last event from being saved. A storage failure is reported in the popup and export (`storageFailed`); the history may then be incomplete. Recording diagnostics does not enable automatic reconnection or restore sharing consent.
+
 ## Data and endpoints
 
 The official account UI uses `https://app.agent-browser-gateway.com`. Browser login and route discovery use `https://connect.agent-browser-gateway.com`, and authenticated browser traffic uses `wss://connect.agent-browser-gateway.com`. A custom destination uses the selected gateway's corresponding HTTPS and WebSocket endpoints. The service receives shared-tab metadata, requested page content, screenshots, operation inputs/results, and requested file or recording data, and relays them to authorized clients. Cloud processing is not limited to the browser's machine.
@@ -34,4 +52,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.1.1. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.1.1` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.1.2. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.1.2` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.

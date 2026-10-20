@@ -40,6 +40,11 @@ import {
 } from "./cloudArtifacts.js";
 import { cloudServiceOrigin, discoverCloudRoute } from "./cloudConnection.js";
 import {
+  ConnectionDiagnostics,
+  DIAGNOSTIC_LIMIT,
+  type DiagnosticContext,
+} from "./connectionDiagnostics.js";
+import {
   type FaviconSourceOptions,
   faviconSourceForTab,
   rasterizeFaviconPng,
@@ -100,7 +105,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.1.1";
+const VERSION = "1.1.2";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -302,6 +307,29 @@ let sandboxConsentRevision = 0;
 let cloudResumeTimer: ReturnType<typeof setTimeout> | undefined;
 let cloudResumeDelay = 3000;
 
+let diagnosticPhase: DiagnosticContext["phase"] = "idle";
+const socketDiagnosticContexts = new Map<number, DiagnosticContext>();
+function diagnosticContext(): DiagnosticContext & { debuggerCount: number } {
+  return {
+    destination: connectionDestination,
+    phase: diagnosticPhase,
+    sharedTabCount: permittedTabs.size,
+    debuggerCount: attachedTabs.size,
+    online: typeof navigator === "undefined" ? undefined : navigator.onLine,
+  };
+}
+const connectionDiagnostics = new ConnectionDiagnostics({
+  storage: browser.storage.local,
+  version: VERSION,
+  runId: crypto.randomUUID(),
+  context: diagnosticContext,
+});
+// These events describe the browser's network signal, not a guarantee of Internet access.
+if (typeof self !== "undefined" && typeof self.addEventListener === "function") {
+  self.addEventListener("online", () => connectionDiagnostics.record("network_online"));
+  self.addEventListener("offline", () => connectionDiagnostics.record("network_offline"));
+}
+
 function cancelCloudResume(): void {
   clearTimeout(cloudResumeTimer);
   cloudResumeTimer = undefined;
@@ -395,6 +423,7 @@ async function cloudSandboxAutomationAllowed(tabId: number | undefined): Promise
 }
 function scheduleCloudResume(): void {
   if (!cloudSandboxResumeEnabled || cloudResumeTimer) return;
+  connectionDiagnostics.record("reconnect_scheduled");
   cloudResumeTimer = setTimeout(() => {
     cloudResumeTimer = undefined;
     if (cloudSandboxResumeEnabled) void ensureWS();
@@ -495,6 +524,7 @@ async function announceSharedTabs(): Promise<void> {
 }
 
 async function clearConnectionShares(): Promise<void> {
+  if (permittedTabs.size) connectionDiagnostics.record("shares_cleared");
   cloudSandboxActive = false;
   cloudRuntimeEvents.clear();
   const tabs = [...permittedTabs.keys()];
@@ -529,9 +559,29 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     (connectionDestination === "local" ||
       (cloudCode.length > 0 && (permittedTabs.size > 0 || cloudSandboxActive))),
   autoReconnect: () => connectionDestination === "local",
+  onDiagnostic: (event, details) => {
+    if (event === "socket_connecting") diagnosticPhase = "connecting";
+    // A delayed close must retain the destination/phase of the socket it belongs to.
+    const attempt = details?.attempt;
+    const context =
+      (details?.active === false && attempt !== undefined
+        ? socketDiagnosticContexts.get(attempt)
+        : undefined) ?? diagnosticContext();
+    if (attempt !== undefined) {
+      if (event === "socket_closed" || event === "socket_construct_failed")
+        socketDiagnosticContexts.delete(attempt);
+      else socketDiagnosticContexts.set(attempt, context);
+      if (socketDiagnosticContexts.size > DIAGNOSTIC_LIMIT) {
+        const oldest = socketDiagnosticContexts.keys().next().value;
+        if (oldest !== undefined) socketDiagnosticContexts.delete(oldest);
+      }
+    }
+    connectionDiagnostics.record(event, details, context);
+  },
   onConnectionChange: (connected, closeCode) => {
     if (connected) {
       wsConnected = connectionDestination === "local";
+      if (wsConnected) diagnosticPhase = "ready";
       return;
     }
     // A replacement browser owns this route now; retrying would evict it repeatedly.
@@ -547,6 +597,7 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     clearTimeout(cloudAuthTimer);
     cloudAuthenticationPending = false;
     wsConnected = false;
+    diagnosticPhase = "idle";
     connectionEpoch++;
     if (
       connectionDestination === "cloud" &&
@@ -577,17 +628,22 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
   },
   onOpen: async (endpoint) => {
     if (!connectionConfigured) {
-      gatewayWebSocketConnection.disconnect();
+      gatewayWebSocketConnection.disconnect("not_configured");
       return;
     }
     if (connectionDestination === "cloud") {
       if (endpoint !== cloudRouteEndpoint || !cloudRouteEndpoint) {
-        gatewayWebSocketConnection.disconnect();
+        gatewayWebSocketConnection.disconnect("unexpected_route");
         return;
       }
       cloudAuthenticationPending = true;
+      diagnosticPhase = "authenticating";
+      connectionDiagnostics.record("authentication_started");
       gatewayWebSocketConnection.send(JSON.stringify({ type: "authenticate", token: cloudCode }));
-      cloudAuthTimer = setTimeout(() => gatewayWebSocketConnection.disconnect(), 10_000);
+      cloudAuthTimer = setTimeout(() => {
+        connectionDiagnostics.record("authentication_timeout");
+        gatewayWebSocketConnection.disconnect("authentication_timeout");
+      }, 10_000);
       return;
     }
     await announceSharedTabs();
@@ -598,8 +654,9 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
       if (connectionDestination === "cloud") {
         if (cloudAuthenticationPending) {
           if (payload?.type !== "authenticated") {
+            connectionDiagnostics.record("authentication_rejected");
             void disableCloudSandboxResume();
-            gatewayWebSocketConnection.disconnect();
+            gatewayWebSocketConnection.disconnect("authentication_rejected");
             return;
           }
           clearTimeout(cloudAuthTimer);
@@ -608,6 +665,8 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
           cloudResumeDelay = 3000;
           cancelCloudResume();
           wsConnected = true;
+          diagnosticPhase = "ready";
+          connectionDiagnostics.record("authenticated");
           void announceSharedTabs();
           return;
         }
@@ -683,6 +742,7 @@ const bootstrapReady = (async () => {
   extensionId = await getOrCreateExtensionId();
   const settings = await ensureSettingsStored();
   await configureStoredConnection(settings);
+  connectionDiagnostics.record("worker_started");
   if (connectionDestination === "local") await restoreState();
   else {
     await clearConnectionShares();
@@ -703,6 +763,7 @@ browser.runtime.onInstalled.addListener(async () => {
 
 browser.runtime.onStartup.addListener(async () => {
   await bootstrapReady;
+  connectionDiagnostics.record("browser_started");
   ensureWS();
 });
 
@@ -1200,7 +1261,7 @@ async function restoreState(): Promise<void> {
 
 async function ensureWS(): Promise<void> {
   if (connectionDestination === "cloud" && permittedTabs.size === 0 && !cloudSandboxActive) {
-    gatewayWebSocketConnection.disconnect();
+    gatewayWebSocketConnection.disconnect("no_shared_tabs");
     return;
   }
   if (!connectionConfigured || changingConnection) return;
@@ -1214,13 +1275,23 @@ async function ensureWS(): Promise<void> {
     const code = cloudCode;
     if (!code) return;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
+    const discoveryStartedAt = Date.now();
+    diagnosticPhase = "discovering";
+    connectionDiagnostics.record("discovery_started");
+    let discoveryTimedOut = false;
+    let permissionMissing = false;
+    const timer = setTimeout(() => {
+      discoveryTimedOut = true;
+      controller.abort();
+    }, 60_000);
     const resolution = { epoch, controller, promise: Promise.resolve() };
     cloudResolution = resolution;
     resolution.promise = (async () => {
       try {
-        if (!(await browser.permissions.contains({ origins: [cloudServiceOrigin(endpoint)] })))
+        if (!(await browser.permissions.contains({ origins: [cloudServiceOrigin(endpoint)] }))) {
+          permissionMissing = true;
           throw new Error("Cloud service access is required.");
+        }
         const route = await discoverCloudRoute(endpoint, code, controller.signal);
         if (
           epoch !== connectionEpoch ||
@@ -1231,10 +1302,35 @@ async function ensureWS(): Promise<void> {
           (permittedTabs.size === 0 && !cloudSandboxActive)
         )
           return;
+        connectionDiagnostics.record("discovery_succeeded", {
+          durationMs: Date.now() - discoveryStartedAt,
+        });
         cloudRouteEndpoint = route;
         gatewayWebSocketConnection.setEndpoint(route);
         gatewayWebSocketConnection.ensureConnected();
       } catch (error) {
+        const httpStatus =
+          error &&
+          typeof error === "object" &&
+          "status" in error &&
+          typeof error.status === "number"
+            ? error.status
+            : undefined;
+        connectionDiagnostics.record("discovery_failed", {
+          active: epoch === connectionEpoch,
+          durationMs: Date.now() - discoveryStartedAt,
+          aborted: controller.signal.aborted,
+          httpStatus,
+          failure: permissionMissing
+            ? "permission_missing"
+            : discoveryTimedOut
+              ? "timeout"
+              : controller.signal.aborted
+                ? "aborted"
+                : httpStatus !== undefined
+                  ? "http_error"
+                  : "network_or_response",
+        });
         if (epoch === connectionEpoch && connectionDestination === "cloud") {
           if (
             error &&
@@ -1243,9 +1339,11 @@ async function ensureWS(): Promise<void> {
             (error.status === 401 || error.status === 403)
           )
             await disableCloudSandboxResume();
-          gatewayWebSocketConnection.disconnect();
+          gatewayWebSocketConnection.disconnect("discovery_failed");
         }
       } finally {
+        if (epoch === connectionEpoch && diagnosticPhase === "discovering")
+          diagnosticPhase = "idle";
         clearTimeout(timer);
         if (cloudResolution === resolution) cloudResolution = undefined;
       }
@@ -1745,7 +1843,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
     await saveState();
     sendWS({ type: "tab_closed", tabId });
     if (connectionDestination === "cloud" && permittedTabs.size === 0 && !cloudSandboxActive)
-      gatewayWebSocketConnection.disconnect();
+      gatewayWebSocketConnection.disconnect("no_shared_tabs");
     await detachDebugger(tabId);
   }
 });
@@ -1990,7 +2088,12 @@ browser.debugger.onEvent.addListener((source, method, params) => {
   }
 });
 
-browser.debugger.onDetach.addListener((source) => {
+browser.debugger.onDetach.addListener((source, reason) => {
+  if (source.tabId && attachedTabs.has(source.tabId))
+    connectionDiagnostics.record("debugger_detached", {
+      detachReason:
+        reason === "target_closed" || reason === "canceled_by_user" ? reason : undefined,
+    });
   if (source.tabId) attachedTabs.delete(source.tabId);
 });
 
@@ -8573,6 +8676,7 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
     }
     if (
       [
+        "get_connection_diagnostics",
         "set_connection_destination",
         "begin_cloud_login",
         "delete_cloud_connection",
@@ -8582,7 +8686,7 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
     ) {
       sendResponse({
         type: "error",
-        message: "Connection settings can only be changed from the extension popup.",
+        message: "Connection settings and diagnostics are only available from the extension popup.",
       });
       return;
     }
@@ -8600,6 +8704,9 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
 });
 
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
+  if (msg.type === "get_connection_diagnostics") {
+    return { type: "connection_diagnostics", ...(await connectionDiagnostics.read()) };
+  }
   if (msg.type === "get_state") {
     void finishCloudLogin().catch(() => {});
     await reconcileAllTabsAccess();
@@ -8750,6 +8857,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
 
 function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   if (!isRecord(rawMsg) || typeof rawMsg.type !== "string") return null;
+  if (rawMsg.type === "get_connection_diagnostics") return { type: "get_connection_diagnostics" };
   if (rawMsg.type === "get_state" && typeof rawMsg.tabId === "number") {
     return { type: "get_state", tabId: rawMsg.tabId };
   }

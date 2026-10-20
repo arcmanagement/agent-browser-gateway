@@ -29,6 +29,92 @@ class MockGatewaySocket implements GatewaySocket {
 }
 
 describe("GatewayWebSocketConnection", () => {
+  it("retains a late close after error without changing the replacement connection", () => {
+    const sockets: MockGatewaySocket[] = [];
+    const onDiagnostic = vi.fn();
+    const onConnectionChange = vi.fn();
+    const connection = new GatewayWebSocketConnection({
+      endpoint: "wss://private.example/secret",
+      createSocket: () => {
+        const socket = new MockGatewaySocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onOpen: vi.fn(),
+      onMessage: vi.fn(),
+      onWarning: vi.fn(),
+      onConnectionChange,
+      onDiagnostic,
+      autoReconnect: () => false,
+    });
+    connection.ensureConnected();
+    sockets[0]?.emit("open", new Event("open"));
+    connection.send("secret payload");
+    sockets[0]?.emit("message", new MessageEvent("message", { data: "secret response" }));
+    sockets[0]?.emit("error", new Event("error"));
+    connection.ensureConnected();
+    sockets[1]?.emit("open", new Event("open"));
+    onConnectionChange.mockClear();
+    sockets[0]?.emit(
+      "close",
+      Object.assign(new Event("close"), { code: 1006, wasClean: false, reason: "secret reason" }),
+    );
+    expect(onConnectionChange).not.toHaveBeenCalled();
+    expect(onDiagnostic).toHaveBeenLastCalledWith(
+      "socket_closed",
+      expect.objectContaining({
+        attempt: 1,
+        active: false,
+        closeCode: 1006,
+        wasClean: false,
+        lastSentAgoMs: expect.any(Number),
+        lastReceivedAgoMs: expect.any(Number),
+      }),
+    );
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain("secret");
+    sockets[1]?.emit(
+      "close",
+      Object.assign(new Event("close"), {
+        code: 4001,
+        wasClean: true,
+        reason: "connection_replaced",
+      }),
+    );
+    expect(onDiagnostic).toHaveBeenLastCalledWith(
+      "socket_closed",
+      expect.objectContaining({ attempt: 2, active: true, serverReason: "connection_replaced" }),
+    );
+  });
+
+  it("records intentional disconnects once and isolates diagnostic failures", () => {
+    const socket = new MockGatewaySocket();
+    const onDiagnostic = vi.fn();
+    const onConnectionChange = vi.fn();
+    const connection = new GatewayWebSocketConnection({
+      endpoint: "ws://127.0.0.1:8765/ws",
+      createSocket: () => socket,
+      onOpen: vi.fn(),
+      onMessage: vi.fn(),
+      onWarning: vi.fn(),
+      onConnectionChange,
+      onDiagnostic,
+    });
+    connection.ensureConnected();
+    onDiagnostic.mockImplementationOnce(() => {
+      throw new Error("Storage failure");
+    });
+    expect(() => socket.emit("open", new Event("open"))).not.toThrow();
+    expect(onConnectionChange).toHaveBeenLastCalledWith(true);
+    connection.disconnect("no_shared_tabs");
+    expect(onDiagnostic).toHaveBeenLastCalledWith(
+      "disconnect_requested",
+      expect.objectContaining({ reason: "no_shared_tabs" }),
+    );
+    const count = onDiagnostic.mock.calls.length;
+    connection.disconnect("no_shared_tabs");
+    expect(onDiagnostic).toHaveBeenCalledTimes(count);
+  });
+
   it("closes the current socket and connects to an applied endpoint immediately", () => {
     const sockets: MockGatewaySocket[] = [];
     const endpoints: string[] = [];

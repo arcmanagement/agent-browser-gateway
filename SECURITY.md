@@ -8,7 +8,7 @@ Report vulnerabilities privately to `contact@arcm.co.jp`. Do not include account
 
 ## Supported versions
 
-The Chrome extension is 1.1.1; desktop packages retain separate versions. Only the latest released version of each component receives security fixes. Unreleased commits on `main` may contain known issues.
+The Chrome extension is 1.1.2; desktop packages retain separate versions. Only the latest released version of each component receives security fixes. Unreleased commits on `main` may contain known issues.
 
 | Version | Supported |
 |---|---|
@@ -20,7 +20,9 @@ The Chrome extension is 1.1.1; desktop packages retain separate versions. Only t
 
 ### Optional Cloud mode
 
-Extension 1.1.1 can connect to the service selected in the popup without a desktop Gateway. The official account UI is `https://app.agent-browser-gateway.com`; browser login, route discovery, and shared-tab traffic use `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`. Account login authorizes browser registration and client access. The service handles shared-tab metadata, requested content, screenshots, operation inputs/results, and transferred artifacts. This mode is not local-only, and local audit-file guarantees below apply to the desktop path. See [Cloud usage](docs/CLOUD_EXTENSION.md).
+The extension's connection diagnostic history stays in trusted local extension storage and is not uploaded automatically. It retains up to 200 events within seven days and excludes credentials, endpoints, page data and arbitrary error text. The owner can inspect and export it from **Advanced → Connection history**.
+
+Extension 1.1.2 can connect to the service selected in the popup without a desktop Gateway. The official account UI is `https://app.agent-browser-gateway.com`; browser login, route discovery, and shared-tab traffic use `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`. Account login authorizes browser registration and client access. The service handles shared-tab metadata, requested content, screenshots, operation inputs/results, and transferred artifacts. This mode is not local-only, and local audit-file guarantees below apply to the desktop path. See [Cloud usage](docs/CLOUD_EXTENSION.md).
 
 The extension stores a browser credential in trusted extension storage, never the account password. Only registered browsers and authorized clients may participate. Per-tab consent remains the default. Sandbox and auto-resume require separate explicit opt-in in an isolated profile; resume is scoped to the saved destination and credential and authenticates before tabs are announced. Revocation and invalid credentials stop access. Cloud policy can require approval even when the browser's local write-approval toggle is off. Recording retains its browser approval gate. When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Ordinary native file attachments skip approval only in a saved Cloud Sandbox with automatic resume and Trusted automation enabled and operation approval off. Other attachments, protected paths, and recording retain their approval gates. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
 

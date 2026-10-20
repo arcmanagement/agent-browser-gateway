@@ -169,6 +169,14 @@ export const en = {
   "popup.permissions.personalDataMutations": "Allow bookmark & Reading List changes",
   "popup.permissions.personalDataMutations.note":
     "Agents can request changes. Each one opens an approval window, and deletions are marked as permanent.",
+  "popup.diagnostics.heading": "Connection history",
+  "popup.diagnostics.note":
+    "Keeps up to 200 events for 7 days on this browser. No credentials or page content.",
+  "popup.diagnostics.refresh": "Refresh",
+  "popup.diagnostics.save": "Save JSON",
+  "popup.diagnostics.empty": "No connection events recorded yet.",
+  "popup.diagnostics.incomplete": "Some events could not be saved. This history may be incomplete.",
+  "popup.diagnostics.unavailable": "Could not read connection history. Try refreshing.",
   "popup.advanced.heading": "Advanced",
   "popup.advanced.language": "Display language",
   "popup.advanced.language.auto": "Auto (browser language)",
