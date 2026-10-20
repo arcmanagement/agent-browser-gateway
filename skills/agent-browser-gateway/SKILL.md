@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 1.1.3
+version: 1.2.0
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -8,13 +8,15 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 ## Cloud接続
 
-Chrome拡張1.1.3のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+Chrome拡張1.2.0のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
 
 Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
 
 接続先は拡張に保存できる。パスワードをAIへ渡したり、CLIで入力したりする必要はない。隔離プロファイルだけがSandboxと自動復帰を本人操作で有効にできる。Cloudへ送られる内容、upload・録画の承認、配布方法は [Cloud extension guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md) を参照。以下のCLI手順はローカルGateway用。
 
-操作の承認がOFFなら、Cloudのsnapshot、describe、find、入力値、編集検証、stateの値、network本文の読み取りに毎回のAllowは不要。手動共有とSandboxのどちらにも適用され、AutoModeや自動復帰は不要。Cloud側の強制承認とパスワード・認証コードの読み取り禁止は残る。ファイル添付も同じ操作の承認設定に従い、OFFなら全ファイルパスで承認画面を出さない。Sandbox、信頼済み自動化、自動復帰を条件にしない。ChromeのファイルURLアクセス許可と録画の個別承認は引き続き必要。
+操作の承認がOFFなら、Cloudのsnapshot、describe、find、入力値、編集検証、stateの値、network本文の読み取りに毎回のAllowは不要。手動共有とSandboxのどちらにも適用され、AutoModeや自動復帰は不要。Cloud側の強制承認とパスワード・認証コードの読み取り禁止は残る。ファイル添付も同じ操作の承認設定に従い、OFFなら全ファイルパスで承認画面を出さない。Sandbox、信頼済み自動化、自動復帰を条件にしない。ブラウザー上のpathを使う従来の添付だけがChromeのファイルURLアクセス許可を必要とする。録画の個別承認は引き続き必要。
+
+Cloudでローカル画像を添付する時は、`tab_upload_chunk`でbase64を転送し、`tab_attach_files`で対象のfile inputへ添付する。拡張の`file-transfer-v1`対応が必要。転送と添付はABGだけで完結し、SSH・SCPやGCE上のfile配置、file URL権限は不要。1file16MiB、合計32MiB、20fileまで、chunkは36KiB以下。現在のtool schemaに従う。操作の承認OFFなら追加承認は不要。ローカルpathを接続先が読めないだけでABGで送れないと断定しない。
 
 Windows では `abg.exe` を使う。パス、profile、制限の差分は [WINDOWS.md](WINDOWS.md) を参照。
 
@@ -24,7 +26,7 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 
 ## 基本フロー
 
-Cloud切断の調査では、拡張1.1.3の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
+Cloud切断の調査では、拡張1.2.0の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認

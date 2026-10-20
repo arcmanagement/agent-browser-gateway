@@ -216,6 +216,61 @@ afterEach(async () => {
 });
 
 describe("Cloud connection boundary", () => {
+  it("transfers and attaches client bytes with no approval window or file-URL grant when operation approval is off", async () => {
+    const fileSchemeGrant = vi.fn(async () => false);
+    Object.assign(mock.extension, { isAllowedFileSchemeAccess: fileSchemeGrant });
+    await configure();
+    await message({ type: "set_operations_require_approval", value: false });
+    await message({ type: "permit", tabId: 1 });
+    const cloud = lastSocket();
+    cloud.open();
+    cloud.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
+    const transferId = "00000000-0000-4000-8000-000000000001";
+    cloud.message({
+      id: "chunk",
+      method: "upload_chunk",
+      params: {
+        tabId: 1,
+        transferId,
+        name: "image.png",
+        mime: "image/png",
+        totalBytes: 3,
+        offset: 0,
+        data: btoa("abc"),
+      },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "chunk")?.result).toMatchObject({ complete: true }),
+    );
+    mock.scripting.executeScript.mockResolvedValue([{ result: { ok: true, files: 1 } }]);
+    cloud.message({
+      id: "attach",
+      method: "attach_uploaded_files",
+      params: { tabId: 1, selector: "input[type=file]", transferIds: [transferId] },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "attach")?.result).toEqual({ ok: true, files: 1 }),
+    );
+    expect(cloud.sent.some((f) => f.type === "approval_pending")).toBe(false);
+    expect(mock.windows.create).not.toHaveBeenCalled();
+    expect(fileSchemeGrant).not.toHaveBeenCalled();
+    expect(mock.scripting.executeScript).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        args: ["input[type=file]", [{ name: "image.png", mime: "image/png", data: btoa("abc") }]],
+      }),
+    );
+    cloud.message({
+      id: "repeat",
+      method: "attach_uploaded_files",
+      params: { tabId: 1, selector: "input[type=file]", transferIds: [transferId] },
+    });
+    await vi.waitFor(() =>
+      expect(cloud.sent.find((f) => f.id === "repeat")?.error).toMatchObject({
+        code: "upload_not_found",
+      }),
+    );
+  });
   it.each([
     ["manual", "/tmp/calendar-comparison-after.png"],
     ["manual", "/Users/fixture/.cache/screenshots/after.png"],
@@ -546,7 +601,7 @@ describe("Cloud connection boundary", () => {
     cloud.message({ type: "authenticated" });
     await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
     expect(cloud.sent.find((f) => f.type === "hello")).toMatchObject({
-      capabilities: ["cloud-browser-v2", "approval-policy-v1"],
+      capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
     });
     const before = mock.debugger.sendCommand.mock.calls.length;
     cloud.message({ id: "sensitive", method, params: { ...params, tabId: 1 } });

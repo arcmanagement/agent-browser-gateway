@@ -50,6 +50,12 @@ import {
   resolveFavicon,
 } from "./faviconLogic.js";
 import {
+  attachUploadedFiles,
+  FileTransferError,
+  FileTransfers,
+  type UploadChunk,
+} from "./fileTransfer.js";
+import {
   normalizeAppliedGatewayWebSocketUrl,
   normalizeCloudWebSocketUrl,
   normalizeGatewayWebSocketUrl,
@@ -104,7 +110,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.1.3";
+const VERSION = "1.2.0";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -144,6 +150,7 @@ const OPERATION_METHODS: ReadonlySet<GatewayCommand["method"]> = new Set([
   "clear",
   "replace_dom",
   "upload_file",
+  "attach_uploaded_files",
   "type_text",
   "key_press",
   "key_down",
@@ -263,6 +270,7 @@ class GatewayError extends Error {
 }
 
 const permittedTabs = new Map<number, PermittedTab>();
+const fileTransfers = new FileTransfers();
 const consoleBuffers = new Map<number, ConsoleEntry[]>();
 const networkBuffers = new Map<number, NetworkEntry[]>();
 const activeNetworkRequests = new Map<number, Set<string>>();
@@ -411,6 +419,8 @@ function scheduleCloudResume(): void {
   cloudResumeDelay = Math.min(cloudResumeDelay * 2, 30000);
 }
 const cloudMethods = new Set([
+  "upload_chunk",
+  "attach_uploaded_files",
   "read_dom",
   "screenshot",
   "click",
@@ -494,7 +504,7 @@ async function announceSharedTabs(): Promise<void> {
     type: "hello",
     extensionId: extensionId ?? "?",
     version: VERSION,
-    capabilities: ["cloud-browser-v2", "approval-policy-v1"],
+    capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
     profileLabel: profileLabel || undefined,
     browserKind,
   });
@@ -504,6 +514,7 @@ async function announceSharedTabs(): Promise<void> {
 }
 
 async function clearConnectionShares(): Promise<void> {
+  fileTransfers.clear();
   if (permittedTabs.size) connectionDiagnostics.record("shares_cleared");
   cloudSandboxActive = false;
   cloudRuntimeEvents.clear();
@@ -924,7 +935,7 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       type: "hello",
       extensionId,
       version: VERSION,
-      capabilities: ["cloud-browser-v2", "approval-policy-v1"],
+      capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
       profileLabel: trimmed || undefined,
       browserKind: await detectCurrentBrowserKind(),
     });
@@ -1693,6 +1704,7 @@ async function permitTab(tabId: number): Promise<void> {
 }
 
 async function revokeTab(tabId: number, reason: string): Promise<void> {
+  fileTransfers.clear(tabId);
   if (!permittedTabs.has(tabId)) return;
   permittedTabs.delete(tabId);
   tabFavicons.delete(tabId);
@@ -1803,6 +1815,7 @@ browser.permissions.onRemoved.addListener(async ({ origins }) => {
 });
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
+  fileTransfers.clear(tabId);
   // Saved annotations outlive a revoke but not the tab itself.
   await annotationSnapshots.delete(tabId).catch(() => undefined);
   if (permittedTabs.has(tabId)) {
@@ -2259,7 +2272,10 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
         throw new Error("Connection or tab sharing changed before the operation.");
     }
-    if (cmd.method === "bookmarks_list") {
+    if (cmd.method === "upload_chunk") {
+      if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
+      reply(cmd.id, fileTransfers.append(uploadScope(tabId), tabId, cmd.params as UploadChunk));
+    } else if (cmd.method === "bookmarks_list") {
       reply(cmd.id, await listBookmarks(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_search") {
       reply(cmd.id, await searchBookmarks(cmd.params ?? {}));
@@ -2438,8 +2454,8 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       replyError(cmd.id, "unknown_method", String(cmd.method));
     }
   } catch (e) {
-    if (e instanceof GatewayError) {
-      replyError(cmd.id, e.code, e.message, e.matchCount);
+    if (e instanceof GatewayError || e instanceof FileTransferError) {
+      replyError(cmd.id, e.code, e.message, e instanceof GatewayError ? e.matchCount : undefined);
     } else {
       const message = e instanceof Error ? e.message : String(e);
       if (message.includes("Cannot access a chrome-extension:// URL")) {
@@ -2868,6 +2884,12 @@ async function searchReadingList(
   };
 }
 
+function uploadScope(tabId: number): string {
+  const share = permittedTabs.get(tabId);
+  if (!share) throw new Error("tab not permitted");
+  return JSON.stringify([connectionEpoch, tabId, share.permittedAt, share.origin]);
+}
+
 function isOperationCommand(cmd: GatewayCommand): cmd is OperationCommand {
   return OPERATION_METHODS.has(cmd.method);
 }
@@ -2917,6 +2939,33 @@ async function requireSandboxAccess(tabId: number): Promise<void> {
 
 function buildOperation(cmd: OperationCommand, tabId: number): OperationDescriptor {
   const frame = readFrameParam(cmd.params);
+  if (cmd.method === "attach_uploaded_files") {
+    const selector = cmd.params?.selector;
+    const ids = cmd.params?.transferIds;
+    if (!selector || !ids || frame)
+      throw new Error("selector and transferIds required; top document only");
+    const files = fileTransfers.files(uploadScope(tabId), tabId, ids);
+    return {
+      intent: msg("intent.uploadFile", {
+        files: files.map((file) => JSON.stringify(file.name)).join("; "),
+        selector: quoteForIntent(selector),
+        frame: "",
+      }),
+      run: async () => {
+        const current = fileTransfers.files(uploadScope(tabId), tabId, ids);
+        // Once dispatched, a timeout must not make the same transfer attach twice.
+        fileTransfers.remove(ids);
+        const [result] = await browser.scripting.executeScript({
+          target: { tabId },
+          func: attachUploadedFiles,
+          args: [selector, current],
+        });
+        if (!result?.result)
+          throw new GatewayError("file_attach_failed", "The attachment did not return a result.");
+        return result.result;
+      },
+    };
+  }
   if (cmd.method === "click_selector") {
     const selector = cmd.params?.selector;
     if (typeof selector !== "string" || selector.length === 0) throw new Error("selector required");
