@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.1.1.zip
+dist/agent-browser-gateway-extension-1.1.3.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,10 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.1.3 review notes
+
+- No new Chrome permissions. Native file attachments follow the operation approval toggle on manual shares and Sandbox. When it is off, all file paths skip the attachment approval window without requiring Trusted automation or automatic resume. Cloud account-forced approval, Chrome file-URL permission, and separate recording approvals still apply. Desktop versions are unchanged.
 
 ## 1.1.1 review notes
 
@@ -256,7 +260,8 @@ is a public key string used for deterministic extension ID generation.
 The package workflow produces the submission ZIP for pull requests. The
 `Chrome Web Store Submit` workflow uploads the ZIP through the Chrome Web Store
 API and submits it for review. It can be called by the unified tag release
-workflow or run manually from GitHub Actions.
+workflow or dispatched with the GitHub CLI. Use this procedure for CRX / Chrome
+extension review submissions, including extension-only releases.
 
 - `extension/public/manifest.json` contains the public manifest `"key"` value so
   CI, local builds, and unpacked builds keep the stable extension ID.
@@ -290,8 +295,59 @@ The Google Cloud project is used only to enable the Chrome Web Store API and to
 create the OAuth client and refresh token. Build, verification, ZIP upload, and
 review submission run in GitHub Actions.
 
-To submit a merged extension version for review, push the release tag and let
-the unified `Release` workflow call `Chrome Web Store Submit`. For a manual
-resubmission, open GitHub Actions, run `Chrome Web Store Submit`, and optionally
-provide the expected extension version. Leaving the input empty uses
-`extension/package.json`.
+### Submit and verify through the CLI
+
+1. Confirm the release change is merged into `main`, and that the package,
+   manifest, and runtime versions agree. Build and verify the ZIP with
+   `scripts/chrome-web-store/build-extension-package.sh`. The ZIP must contain
+   `manifest.json` at its root and have the intended version.
+2. For an extension-only release, publish the verified ZIP and checksum under
+   `extension-v<version>` with `--latest=false`. This component tag does **not**
+   trigger the unified `Release` workflow or submit to the Store. A unified
+   `v<version>` release calls the submit workflow automatically; check that run
+   before dispatching a duplicate.
+3. Submit the merged extension version with the existing workflow:
+
+   ```bash
+   gh workflow run chrome-web-store-submit.yml --ref main \
+     -f extension_version=<version>
+   gh run list --workflow chrome-web-store-submit.yml --limit 5
+   gh run view <run-id>
+   ```
+
+   Identify the run for this dispatch and its commit. Supplying the version is
+   required for a release submission so the build rejects an unexpected version.
+   The workflow refreshes OAuth credentials and fetches Store status before
+   building, uploading, and submitting with `STAGED_PUBLISH`. Keep credentials in
+   GitHub Actions secrets; do not retrieve them into local commands.
+4. Wait for the run to finish, inspect failures with `gh run view <run-id>
+   --log-failed`, and download its evidence:
+
+   ```bash
+   gh run download <run-id> --name chrome-web-store-oauth-health --dir <health-dir>
+   gh run download <run-id> --name chrome-web-store-submission --dir <submission-dir>
+   ```
+
+   Inspect the saved JSON responses for the intended version and Store state.
+   Workflow dispatch, successful ZIP upload, and a GitHub Release alone are not
+   evidence of review acceptance. Report review submission as complete only when
+   the Store response confirms that version is `PENDING_REVIEW` (or a later review
+   state). If it was already pending, report the existing submission accurately.
+5. Report the GitHub release, review submission, Store publication, and installed
+   browser version separately. Review submission stops at staged publishing;
+   final Store publication requires its own authorization after approval.
+
+### When browser interaction is needed
+
+Routine status checks, OAuth health checks, uploads, review submissions, retries,
+and result verification use the CLI and the existing workflow. Do not open the
+Developer Dashboard as a submission preflight or fallback without a concrete
+blocker. Inspect workflow logs and API responses first.
+
+Use the Dashboard only when the returned error or requested listing change
+requires an interactive action, such as editing permission justifications,
+uploading listing assets, or renewing authorization that the workflow cannot
+refresh. Explain the specific blocker before requesting owner action. A different
+version pending review is a stop condition: do not withdraw it or publish it
+without explicit authorization. After a metadata fix, rerun the CLI workflow to
+submit and verify the result.

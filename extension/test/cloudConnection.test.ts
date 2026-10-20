@@ -62,6 +62,29 @@ const configure = (
   code: string | undefined = fixtureCode,
 ) => message({ type: "set_connection_destination", destination: "cloud", cloudUrl, code });
 
+function mockNativeUpload(): void {
+  Object.assign(mock.extension, { isAllowedFileSchemeAccess: vi.fn(async () => true) });
+  mock.debugger.sendCommand.mockImplementation(async (...call: unknown[]) => {
+    switch (call[1]) {
+      case "DOM.getDocument":
+        return { root: { nodeId: 1 } };
+      case "DOM.querySelector":
+        return { nodeId: 2 };
+      case "DOM.describeNode":
+        return {
+          node: {
+            nodeName: "INPUT",
+            attributes: ["type", "file", "multiple", ""],
+            backendNodeId: 3,
+          },
+        };
+      default:
+        return {};
+    }
+  });
+  mock.scripting.executeScript.mockResolvedValue([{ result: { files: 1 } }]);
+}
+
 describe("connection diagnostic integration", () => {
   async function diagnostics() {
     const response = await message({ type: "get_connection_diagnostics" });
@@ -193,6 +216,38 @@ afterEach(async () => {
 });
 
 describe("Cloud connection boundary", () => {
+  it.each([
+    ["manual", "/tmp/calendar-comparison-after.png"],
+    ["manual", "/Users/fixture/.cache/screenshots/after.png"],
+    ["manual", "/home/fixture/profile-default/Default/Cookies"],
+    ["all_tabs", "/tmp/calendar-comparison-after.png"],
+  ])("uploads on %s with approval off without automation consent: %s", async (mode, path) => {
+    await configure();
+    await message({ type: "set_operations_require_approval", value: false });
+    if (mode === "all_tabs") await message({ type: "set_all_tabs_access", value: true });
+    else await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(socket.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    mockNativeUpload();
+    socket.message({
+      id: "upload-off",
+      method: "upload_file",
+      params: { tabId: 1, selector: "input[type=file]", files: [path] },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.find((f) => f.id === "upload-off")).toMatchObject({
+        result: { ok: true, files: 1 },
+      }),
+    );
+    expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(false);
+    expect(mock.windows.create).not.toHaveBeenCalled();
+    expect(mock.debugger.sendCommand).toHaveBeenCalledWith({ tabId: 1 }, "DOM.setFileInputFiles", {
+      backendNodeId: 3,
+      files: [path],
+    });
+  });
   it("requires fresh personal-data and automation consent when changing destinations", async () => {
     const optedIn = {
       operationsRequireApproval: false,
@@ -1056,21 +1111,24 @@ describe("Saved Cloud Sandbox resume", () => {
     "/tmp/staging/../secret.png",
     "/tmp/staging/.ssh/id_ed25519",
     "/tmp/staging/profile-mediaid/Default/Cookies",
-  ])("still prompts for paths with protected or ambiguous names: %s", async (path) => {
+  ])("honors approval off for paths with protected or ambiguous names: %s", async (path) => {
     const { socket } = await allowInputs();
+    mockNativeUpload();
     socket.message({
       id: "outside",
       method: "upload_file",
       params: { tabId: 1, selector: "input[type=file]", files: [path] },
     });
     await vi.waitFor(() =>
-      expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(true),
+      expect(socket.sent.find((f) => f.id === "outside")).toMatchObject({
+        result: { ok: true, files: 1 },
+      }),
     );
-    expect(mock.debugger.sendCommand).not.toHaveBeenCalledWith(
-      { tabId: 1 },
-      "DOM.setFileInputFiles",
-      expect.anything(),
-    );
+    expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(false);
+    expect(mock.debugger.sendCommand).toHaveBeenCalledWith({ tabId: 1 }, "DOM.setFileInputFiles", {
+      backendNodeId: 3,
+      files: [path],
+    });
   });
   it.each([
     "get_dom",

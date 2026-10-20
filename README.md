@@ -140,15 +140,15 @@ and generate release notes.
 
 ---
 
-## Cloud connection (Chrome extension 1.1.2)
+## Cloud connection (Chrome extension 1.1.3)
 
-Chrome extension 1.1.2 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.2), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+Chrome extension 1.1.3 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.1.3), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
 
 Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
 
 AI connections use `https://app.agent-browser-gateway.com/oauth/authorize` to log in and authorize access. Passwords are handled by the Web account flow and are never stored in the extension or passed to AI clients. The official service uses `https://app.agent-browser-gateway.com` for account UI and `https://connect.agent-browser-gateway.com` / `wss://connect.agent-browser-gateway.com` for browser authentication, shared-tab traffic, and results. Custom destinations send those data to the gateway you select. See [Cloud usage](docs/CLOUD_EXTENSION.md) for plugins, artifacts, consent, and the separate Chrome Web Store publication status.
 
-To investigate a disconnect in extension 1.1.2, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes and connection stages.
+To investigate a disconnect in extension 1.1.3, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes and connection stages.
 
 ## Tab access modes
 
@@ -192,7 +192,7 @@ Operation approval mode adds a second local checkpoint for write operations. By 
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Allow approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
-When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Ordinary native file attachments skip approval only in a saved Cloud Sandbox with automatic resume and Trusted automation enabled and operation approval off. Other attachments, protected paths, and recording retain their approval gates. Use an isolated host containing only files intended for trusted automation; path checks do not resolve symlinks.
+When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Native file attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for all file paths, without requiring AutoMode or automatic resume. Chrome's file-URL permission is still required. Recording retains its separate approval gate.
 
 The extension UI is available in English and Japanese. Choose **Display language** under
 **Advanced** in the popup: **Auto** (the default) follows the browser UI language and uses English
@@ -1048,7 +1048,7 @@ In short:
 
 ## Status
 
-**Chrome extension v1.1.2** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
+**Chrome extension v1.1.3** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 

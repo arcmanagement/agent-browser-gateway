@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-20.
 
-Chrome extension version: **v1.1.2**, distributed separately as `extension-v1.1.2`.
+Chrome extension version: **v1.1.3**, distributed separately as `extension-v1.1.3`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,11 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.1.3 — File attachment approval setting (2026-10-20)
+
+- Cloud file attachments follow the operation approval toggle on manual shares and Sandbox. With approval off, file paths, Trusted automation, and automatic resume do not add an attachment prompt.
+- Account-forced approval, Chrome file-URL permissions, and separate recording approvals still apply. No new Chrome permissions; desktop versions are unchanged.
 
 ### Chrome extension v1.1.2 — Connection diagnostics (2026-10-20)
 
