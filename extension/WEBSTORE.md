@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.1.3.zip
+dist/agent-browser-gateway-extension-1.2.1.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,11 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.2.1 review notes
+
+- No new Chrome permissions. Connection history recognizes exact Cloudflare proxy-restart messages for WebSocket close code 1001 and stores the fixed label `cloudflare_proxy_restarting`. Other arbitrary close text remains excluded from browser-local history and JSON exports.
+- No change to sharing consent, data transmission, or desktop versions.
 
 ## 1.1.3 review notes
 

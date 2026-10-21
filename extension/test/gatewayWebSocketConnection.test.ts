@@ -29,6 +29,42 @@ class MockGatewaySocket implements GatewaySocket {
 }
 
 describe("GatewayWebSocketConnection", () => {
+  it.each([
+    [1001, "CloudFlare WebSocket proxy restarting", "cloudflare_proxy_restarting"],
+    [1001, "Cloudflare WebSocket proxy restarting", "cloudflare_proxy_restarting"],
+    [1001, "CloudFlare WebSocket proxy restarting token=secret", undefined],
+    [1001, "secret CloudFlare WebSocket proxy restarting", undefined],
+    [1001, "https://private.example?token=secret", undefined],
+    [1001, "cloudflare_proxy_restarting", undefined],
+    [1001, "", undefined],
+    [1006, "CloudFlare WebSocket proxy restarting", undefined],
+  ])("records only an exact recognized close reason: %s %s", (code, reason, serverReason) => {
+    const socket = new MockGatewaySocket();
+    const onDiagnostic = vi.fn();
+    const connection = new GatewayWebSocketConnection({
+      endpoint: "wss://gateway.example/ws",
+      createSocket: () => socket,
+      onOpen: vi.fn(),
+      onMessage: vi.fn(),
+      onConnectionChange: vi.fn(),
+      onWarning: vi.fn(),
+      onDiagnostic,
+      autoReconnect: () => false,
+    });
+    connection.ensureConnected();
+    socket.emit("open", new Event("open"));
+    socket.emit("close", Object.assign(new Event("close"), { code, wasClean: true, reason }));
+    expect(onDiagnostic).toHaveBeenLastCalledWith(
+      "socket_closed",
+      expect.objectContaining({
+        closeCode: code,
+        serverReason,
+        reasonPresent: reason.length > 0,
+      }),
+    );
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain("secret");
+  });
+
   it("retains a late close after error without changing the replacement connection", () => {
     const sockets: MockGatewaySocket[] = [];
     const onDiagnostic = vi.fn();
