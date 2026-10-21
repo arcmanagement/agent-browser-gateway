@@ -54,6 +54,8 @@ export const ja: MessageCatalog = {
     "Cloudを設定してタブを共有してください。接続が終了した場合は改めて共有してください。",
   "popup.connection.cloudAudit": "読み取りと操作はCloudの監査ログへ記録します。",
   "popup.gateway.checking": "確認中…",
+  "popup.gateway.connecting": "接続しています…",
+  "popup.gateway.authenticating": "認証しています…",
   "popup.gateway.connected": "接続中",
   "popup.gateway.connectedDescription": "Gateway に接続しています",
   "popup.gateway.disconnected": "未接続",

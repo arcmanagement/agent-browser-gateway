@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.2.1.zip
+dist/agent-browser-gateway-extension-1.2.2.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,11 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.2.2 review notes
+
+- No new Chrome permissions. The popup refreshes connection status while open and shows connection/authentication progress instead of a false Disconnected warning. Edited settings are preserved.
+- Includes the 1.2.1 connection-history improvements below. Sharing consent and data transmission are unchanged.
 
 ## 1.2.1 review notes
 

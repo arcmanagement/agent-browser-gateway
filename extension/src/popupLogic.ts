@@ -193,6 +193,39 @@ export function gatewayStatusPill(wsConnected: boolean, lang: Language): StatusP
       };
 }
 
+export function connectionStatusPresentation(
+  state: Extract<BackgroundToPopup, { type: "connection_status" }>,
+  lang: Language,
+): { pill: StatusPill; gateway: "connected" | "checking" | "idle" | "disconnected" } {
+  if (state.wsConnected) return { pill: gatewayStatusPill(true, lang), gateway: "connected" };
+  if (["discovering", "connecting", "authenticating"].includes(state.phase)) {
+    return {
+      pill: {
+        label: t(
+          lang,
+          state.phase === "authenticating"
+            ? "popup.gateway.authenticating"
+            : "popup.gateway.connecting",
+        ),
+        tone: "neutral",
+      },
+      gateway: "checking",
+    };
+  }
+  if (
+    state.destination === "cloud" &&
+    state.cloudCodeConfigured &&
+    !state.cloudConnectionFailed &&
+    state.sharedTabCount === 0
+  ) {
+    return {
+      pill: { label: t(lang, "popup.connection.idle"), tone: "neutral" },
+      gateway: "idle",
+    };
+  }
+  return { pill: gatewayStatusPill(false, lang), gateway: "disconnected" };
+}
+
 /**
  * How the popup's gate shows the active tab. `mode` drives the gate graphic and the primary
  * action; tone and headline put the state into words, so consent never depends on color or

@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-21.
 
-Chrome extension version: **v1.2.1**, distributed separately as `extension-v1.2.1`.
+Chrome extension version: **v1.2.2**, distributed separately as `extension-v1.2.2`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,11 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.2.2 — Live popup connection status (2026-10-21)
+
+- The open popup follows live connection changes without resetting edited settings. Discovery and authentication show progress instead of a red Disconnected label.
+- Actual disconnects still show the offline warning. No new Chrome permissions; desktop versions are unchanged.
 
 ### Chrome extension v1.2.1 — Proxy restart diagnostics (2026-10-21)
 

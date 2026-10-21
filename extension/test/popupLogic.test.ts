@@ -4,6 +4,7 @@ import { formatText } from "../src/i18n.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  connectionStatusPresentation,
   errorMessage,
   errorText,
   gatewayStatusPill,
@@ -21,7 +22,7 @@ import {
   trustedAutomationNote,
   visibleSharedTabs,
 } from "../src/popupLogic.js";
-import type { ExtensionSettings } from "../src/types.js";
+import type { BackgroundToPopup, ExtensionSettings } from "../src/types.js";
 
 const baseSettings: ExtensionSettings = {
   allTabsAccessEnabled: false,
@@ -207,6 +208,49 @@ describe("popupLogic", () => {
       label: "接続中",
       tone: "success",
       description: "Gateway に接続しています",
+    });
+  });
+
+  it("keeps authentication progress distinct from an actual disconnect", () => {
+    const state: Extract<BackgroundToPopup, { type: "connection_status" }> = {
+      type: "connection_status",
+      destination: "cloud",
+      phase: "authenticating",
+      wsConnected: false,
+      cloudCodeConfigured: true,
+      cloudConnectionFailed: false,
+      sharedTabCount: 1,
+    };
+    expect(connectionStatusPresentation(state, "en")).toEqual({
+      pill: { label: "Authenticating…", tone: "neutral" },
+      gateway: "checking",
+    });
+    expect(connectionStatusPresentation(state, "ja").pill.label).toBe("認証しています…");
+    for (const phase of ["discovering", "connecting"] as const) {
+      expect(connectionStatusPresentation({ ...state, phase }, "en")).toEqual({
+        pill: { label: "Connecting…", tone: "neutral" },
+        gateway: "checking",
+      });
+    }
+    expect(
+      connectionStatusPresentation({ ...state, phase: "ready", wsConnected: true }, "en"),
+    ).toMatchObject({ pill: { label: "Connected", tone: "success" }, gateway: "connected" });
+    expect(
+      connectionStatusPresentation({ ...state, phase: "idle", sharedTabCount: 0 }, "en"),
+    ).toMatchObject({ pill: { label: "Ready to share" }, gateway: "idle" });
+    expect(
+      connectionStatusPresentation(
+        {
+          ...state,
+          phase: "idle",
+          sharedTabCount: 0,
+          cloudConnectionFailed: true,
+        },
+        "en",
+      ),
+    ).toMatchObject({
+      pill: { label: "Disconnected", tone: "danger" },
+      gateway: "disconnected",
     });
   });
 

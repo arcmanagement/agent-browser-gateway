@@ -1,10 +1,10 @@
-# Chrome extension 1.2.1
+# Chrome extension 1.2.2
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.2.1.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.1).
+1. Download `agent-browser-gateway-extension-1.2.2.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.2).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,9 +12,11 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.1.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.2.
 
 ## Sharing and operations
+
+The open popup updates its connection indicator automatically. Discovery and socket connection show **Connecting…**; authentication shows **Authenticating…** until the service accepts it. A completed connection shows **Connected**, while an actual disconnect shows the offline warning. These updates preserve edits in connection settings and do not restore sharing automatically.
 
 Personal and mixed-use profiles use per-tab sharing. A manual share ends on close, origin change, or revoke. Isolated profiles may enable **Share all tabs (sandbox profiles only)**, accept Chrome's optional site access, and separately opt into **Resume Sandbox after restart or disconnect**. Resume is bound to the selected saved destination and credential and authenticates before announcing tabs. Switching destinations, revoking site access, disabling Sandbox, deleting the destination, rejected credentials, or replacement by another browser cancels resume.
 
@@ -55,4 +57,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.2.1. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.1` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.2.2. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.2` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
