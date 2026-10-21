@@ -3,7 +3,7 @@ import type {
   DiagnosticEvent,
   DisconnectReason,
 } from "./connectionDiagnostics.js";
-import { serverCloseReasons } from "./connectionDiagnostics.js";
+import { classifyServerCloseReason } from "./connectionDiagnostics.js";
 
 const CONNECTING = 0;
 const OPEN = 1;
@@ -115,7 +115,7 @@ export class GatewayWebSocketConnection {
           ...details(),
           closeCode: close.code,
           wasClean: close.wasClean,
-          serverReason: serverCloseReasons.find((reason) => reason === close.reason),
+          serverReason: classifyServerCloseReason(close.code, close.reason),
           reasonPresent: typeof close.reason === "string" && close.reason.length > 0,
         });
       }

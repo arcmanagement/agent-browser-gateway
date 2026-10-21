@@ -58,6 +58,22 @@ describe("connection diagnostic history", () => {
     expect((await log.read()).events.map((e) => e.event)).toEqual(["worker_started"]);
   });
 
+  it("preserves the fixed proxy-restart reason across worker restarts and JSON export", async () => {
+    const f = fixture();
+    const first = f.create();
+    first.record("socket_closed", {
+      closeCode: 1001,
+      wasClean: true,
+      reasonPresent: true,
+      serverReason: "cloudflare_proxy_restarting",
+    });
+    await first.read();
+    const result = JSON.parse(JSON.stringify(await f.create("bbb").read()));
+    expect(result.events).toEqual([
+      expect.objectContaining({ closeCode: 1001, serverReason: "cloudflare_proxy_restarting" }),
+    ]);
+  });
+
   it("whitelists fields and labels on both write and read, never storing arbitrary reasons or secrets", async () => {
     const f = fixture();
     const log = f.create();

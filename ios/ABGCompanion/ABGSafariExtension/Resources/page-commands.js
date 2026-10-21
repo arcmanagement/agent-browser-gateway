@@ -899,12 +899,17 @@
     reading_list_update: "Safari does not expose Reading List to this Web Extension",
     reading_list_remove: "Safari does not expose Reading List to this Web Extension",
     paste_rich: "the Mac clipboard cannot be transferred into iPhone Safari",
+    clipboard_write: "Safari Web Extensions do not expose the Chrome offscreen clipboard bridge",
+    upload_chunk: "Safari Web Extensions do not support in-memory Cloud file transfers",
+    attach_uploaded_files: "Safari Web Extensions do not support in-memory Cloud file transfers",
+    stream_read: "Safari Web Extensions do not expose the runtime event buffer",
     sandbox_action: "iOS Safari has no isolated all-tabs browser profile",
     dialog_state: "Safari Web Extensions do not expose JavaScript dialog state",
     dialog_action: "Safari Web Extensions cannot accept or dismiss page dialogs",
     record_start: "Safari Web Extensions do not expose tab video capture",
     record_stop: "Safari Web Extensions do not expose tab video capture",
     record_status: "Safari Web Extensions do not expose tab video capture",
+    record_read: "Safari Web Extensions do not expose tab video capture",
   };
 
   globalThis.__abgSafariPageCommands = {

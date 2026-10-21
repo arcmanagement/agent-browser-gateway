@@ -39,7 +39,7 @@ abg audit --lines 20
 
 ## ABG はブラウザーのデータをクラウドに送りますか？
 
-ローカル接続は `127.0.0.1`、または本人が許可した非公開のスマートフォン接続を使います。拡張1.2.0のCloud接続では、共有した内容と要求した結果を、選択したサービスを通して許可済みAI連携へ渡します。Webログインを使い、デスクトップアプリは不要です。どちらも広告・分析用テレメトリーは追加しません。[Cloud手順](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md)を参照してください。
+ローカル接続は `127.0.0.1`、または本人が許可した非公開のスマートフォン接続を使います。拡張1.2.1のCloud接続では、共有した内容と要求した結果を、選択したサービスを通して許可済みAI連携へ渡します。Webログインを使い、デスクトップアプリは不要です。どちらも広告・分析用テレメトリーは追加しません。[Cloud手順](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md)を参照してください。
 
 ## どのエージェントで使えますか？
 
@@ -51,7 +51,7 @@ Claude Code、Codex、Cursor、Cline など、シェルのコマンドを実行�
 
 ## Cloud接続が切れた原因を調べるには？
 
-拡張1.2.0の **詳細設定 → 接続履歴** から **JSONを保存** を選びます。直近7日間・最大200件の切断コード、認証失敗、意図した切断などをブラウザー内に保存し、再起動後も確認できます。認証情報やページ内容は含まれません。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合します。[診断ガイド](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md#connection-diagnostics)を参照してください。
+拡張1.2.1の **詳細設定 → 接続履歴** から **JSONを保存** を選びます。直近7日間・最大200件の切断コード、認証失敗、意図した切断などをブラウザー内に保存し、再起動後も確認できます。認証情報やページ内容は含まれません。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残ります。1001だけでは原因を断定できません。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合します。[診断ガイド](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md#connection-diagnostics)を参照してください。
 
 ## ABG は Playwright の代わりになりますか？
 

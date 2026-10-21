@@ -38,7 +38,26 @@ export const serverCloseReasons = [
   "connection_replaced",
   "authentication_required",
   "invalid_message_or_credential",
+  "cloudflare_proxy_restarting",
 ] as const;
+
+// Match entire fixed provider messages, never arbitrary close text or substrings.
+// Keep the stored label stable across the provider's capitalization variants.
+export function classifyServerCloseReason(
+  code: number,
+  reason: string,
+): (typeof serverCloseReasons)[number] | undefined {
+  if (
+    code === 1001 &&
+    (reason === "CloudFlare WebSocket proxy restarting" ||
+      reason === "Cloudflare WebSocket proxy restarting")
+  )
+    return "cloudflare_proxy_restarting";
+  return serverCloseReasons.find(
+    (label) => label !== "cloudflare_proxy_restarting" && label === reason,
+  );
+}
+
 export type DiagnosticDetails = {
   failure?: "permission_missing" | "http_error" | "timeout" | "aborted" | "network_or_response";
   serverReason?: (typeof serverCloseReasons)[number];

@@ -1,10 +1,10 @@
-# Chrome extension 1.2.0
+# Chrome extension 1.2.1
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.2.0.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.0).
+1. Download `agent-browser-gateway-extension-1.2.1.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.1).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.0.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.1.
 
 ## Sharing and operations
 
@@ -38,13 +38,14 @@ The history shows the latest 200 events within seven days, persists in this brow
 |---|---|
 | `disconnect_requested` | The extension initiated the close; `reason` identifies configuration changes, no remaining shared tabs, or authentication failure. |
 | `socket_closed`, code `4001`, `connection_replaced` | Another browser connection replaced this one on the selected Cloud route. |
+| `socket_closed`, code `1001`, `cloudflare_proxy_restarting` | The peer sent the exact fixed message `CloudFlare WebSocket proxy restarting` (also recognized with `Cloudflare` capitalization). This reports a proxy restart, not a tab limit or proof of an ABG deployment. Code `1001` alone does not identify the cause. |
 | Code `4003` with a recognized `serverReason` | The service required authentication or rejected a message/credential. |
 | `discovery_failed` | `failure` distinguishes missing site access, HTTP error, timeout, cancellation, and network/response failure; `httpStatus` is included when available. |
 | `socket_error` followed by code `1006` / `wasClean: false` | No normal close handshake was received. This alone cannot distinguish a network interruption from a service failure; correlate the UTC time with service logs. |
 | A new `worker_started` after a ready connection, without a close event | The worker restarted without recording a close. Browser shutdown, worker termination and extension reload/update remain possible; `browser_started` provides additional context when Chrome delivers it. |
 | `active: false` on a close | A late event from an already replaced/closed socket. Its original `attempt` still identifies it; it does not disconnect the current socket. |
 
-History excludes credentials, endpoints, page URLs/titles/content, message payloads and exception text. Only three fixed service close reasons are recognized (`connection_replaced`, `authentication_required`, `invalid_message_or_credential`); other close text is omitted. Online/offline is the browser's network signal and does not prove Internet reachability. Abrupt process termination can prevent the last event from being saved. A storage failure is reported in the popup and export (`storageFailed`); the history may then be incomplete. Recording diagnostics does not enable automatic reconnection or restore sharing consent.
+History excludes credentials, endpoints, page URLs/titles/content, message payloads and exception text. Fixed service close reasons are recognized (`connection_replaced`, `authentication_required`, `invalid_message_or_credential`), along with the exact proxy-restart messages above, stored as `cloudflare_proxy_restarting`. Messages with additional text are not matched; all other close text is omitted, with `reasonPresent` indicating whether a non-empty reason was received. New labels require an updated extension; previously omitted reasons cannot be recovered. Online/offline is the browser's network signal and does not prove Internet reachability. Abrupt process termination can prevent the last event from being saved. A storage failure is reported in the popup and export (`storageFailed`); the history may then be incomplete. Recording diagnostics does not enable automatic reconnection or restore sharing consent.
 
 ## Data and endpoints
 
@@ -54,4 +55,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.2.0. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.0` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.2.1. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.1` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.

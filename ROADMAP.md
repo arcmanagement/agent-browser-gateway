@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-20.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-21.
 
-Chrome extension version: **v1.1.3**, distributed separately as `extension-v1.1.3`.
+Chrome extension version: **v1.2.1**, distributed separately as `extension-v1.2.1`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,16 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.2.1 — Proxy restart diagnostics (2026-10-21)
+
+- Connection history and JSON exports recognize exact Cloudflare proxy-restart close messages as `cloudflare_proxy_restarting` when the close code is 1001.
+- Unknown close text remains excluded. Existing consent, Chrome permissions, and desktop versions are unchanged.
+
+### Chrome extension v1.2.0 — Cloud file transfers (2026-10-20)
+
+- Cloud clients can transfer file bytes to the extension and attach them to a shared tab without copying files to the browser host.
+- In-memory transfers are bounded and expire; attachments follow the existing operation approval setting.
 
 ### Chrome extension v1.1.3 — File attachment approval setting (2026-10-20)
 
