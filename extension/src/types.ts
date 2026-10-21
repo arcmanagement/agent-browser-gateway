@@ -1,7 +1,7 @@
 // Shared message types between background, popup, and Gateway.
 
 import type { ShortcutOutcome } from "./backgroundLogic.js";
-import type { ConnectionDiagnostic } from "./connectionDiagnostics.js";
+import type { ConnectionDiagnostic, DiagnosticContext } from "./connectionDiagnostics.js";
 import type { LocalizedText, UiLanguageSetting } from "./i18n.js";
 
 export type AnnotationAction =
@@ -373,6 +373,7 @@ export type ApprovalRequest = {
 
 export type PopupToBackground =
   | { type: "get_connection_diagnostics" }
+  | { type: "get_connection_status" }
   | { type: "get_state"; tabId: number }
   | { type: "permit"; tabId: number }
   | { type: "revoke"; tabId: number }
@@ -400,6 +401,12 @@ export type PopupToBackground =
 
 export type BackgroundToPopup =
   | { type: "connection_diagnostics"; events: ConnectionDiagnostic[]; storageFailed: boolean }
+  | (Pick<DiagnosticContext, "phase" | "destination" | "sharedTabCount"> & {
+      type: "connection_status";
+      wsConnected: boolean;
+      cloudCodeConfigured: boolean;
+      cloudConnectionFailed: boolean;
+    })
   | {
       type: "state";
       permitted: boolean;

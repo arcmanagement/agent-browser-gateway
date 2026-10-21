@@ -86,6 +86,49 @@ function mockNativeUpload(): void {
 }
 
 describe("connection diagnostic integration", () => {
+  it("reports live connection phases without page queries or new Cloud requests", async () => {
+    await configure();
+    const status = () => message({ type: "get_connection_status" });
+    expect(await status()).toMatchObject({ phase: "idle", wsConnected: false });
+    let resolveDiscovery!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveDiscovery = resolve;
+        }),
+    );
+    const sharing = message({ type: "permit", tabId: 1 });
+    await vi.waitFor(async () => expect(await status()).toMatchObject({ phase: "discovering" }));
+    resolveDiscovery(Response.json({ path: fixtureRoute }));
+    await sharing;
+    expect(await status()).toMatchObject({ phase: "connecting", wsConnected: false });
+    const socket = lastSocket();
+    socket.open();
+    expect(await status()).toMatchObject({ phase: "authenticating", wsConnected: false });
+    socket.message({ type: "authenticated" });
+    expect(await status()).toMatchObject({ phase: "ready", wsConnected: true });
+    await state();
+    const fetchCount = vi.mocked(fetch).mock.calls.length;
+    const scriptCount = mock.scripting.executeScript.mock.calls.length;
+    await status();
+    await status();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(fetchCount);
+    expect(mock.scripting.executeScript).toHaveBeenCalledTimes(scriptCount);
+    socket.close(1006);
+    expect(await status()).toMatchObject({
+      phase: "idle",
+      wsConnected: false,
+      cloudConnectionFailed: true,
+      sharedTabCount: 0,
+    });
+    expect(
+      await message(
+        { type: "get_connection_status" },
+        { id: mock.runtime.id, url: "https://page.example.test", tab: { id: 1 } },
+      ),
+    ).toMatchObject({ type: "error" });
+  });
+
   async function diagnostics() {
     const response = await message({ type: "get_connection_diagnostics" });
     if (response.type !== "connection_diagnostics") throw new Error("Missing diagnostics");

@@ -12,9 +12,9 @@ import {
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  connectionStatusPresentation,
   errorText,
   type GateMode,
-  gatewayStatusPill,
   recentShortcutMessage,
   restoreAnnotationsLabel,
   type StatusPill,
@@ -136,6 +136,44 @@ function renderPill(el: HTMLElement, pill: StatusPill): void {
 async function send(msg: PopupToBackground): Promise<BackgroundToPopup> {
   return (await browser.runtime.sendMessage(msg)) as BackgroundToPopup;
 }
+
+let connectionStatusRequest = 0;
+let connectionStatusTimer: ReturnType<typeof setTimeout> | undefined;
+let popupClosed = false;
+
+async function refreshConnectionStatus(): Promise<void> {
+  const request = ++connectionStatusRequest;
+  try {
+    // Read only live connection flags; a full refresh would reset form fields and
+    // re-query annotations while the owner is editing the popup.
+    const response = await send({ type: "get_connection_status" });
+    if (popupClosed || request !== connectionStatusRequest) return;
+    if (response.type !== "connection_status") throw new Error("Connection status unavailable");
+    const status = connectionStatusPresentation(response, lang);
+    renderPill(gatewayStatusEl, status.pill);
+    topEl.dataset.gateway = status.gateway;
+    gatewayBannerEl.hidden = status.gateway !== "disconnected";
+  } catch {
+    if (popupClosed || request !== connectionStatusRequest) return;
+    // An unavailable worker must not leave a stale green Connected indicator.
+    renderPill(gatewayStatusEl, { label: t(lang, "popup.gateway.checking"), tone: "neutral" });
+    topEl.dataset.gateway = "checking";
+    gatewayBannerEl.hidden = true;
+  }
+}
+
+function scheduleConnectionStatusRefresh(): void {
+  if (popupClosed) return;
+  connectionStatusTimer = setTimeout(() => {
+    void refreshConnectionStatus().finally(scheduleConnectionStatusRefresh);
+  }, 500);
+}
+
+window.addEventListener("pagehide", () => {
+  popupClosed = true;
+  connectionStatusRequest++;
+  clearTimeout(connectionStatusTimer);
+});
 
 async function openExtensionSettings(): Promise<void> {
   await browser.tabs.create({ url: `chrome://extensions/?id=${browser.runtime.id}` });
@@ -867,20 +905,7 @@ async function refresh(): Promise<void> {
   renderShortcutKeys(commands);
   shortcutHintEl.textContent = shortcutHint(commands, browser.kind, lang);
 
-  const cloudIdle =
-    state.settings.connectionDestination === "cloud" &&
-    Boolean(state.cloudCodeConfigured) &&
-    !state.cloudConnectionFailed &&
-    state.sharedTabs.length === 0;
-  renderPill(
-    gatewayStatusEl,
-    cloudIdle
-      ? { label: t(lang, "popup.connection.idle"), tone: "neutral" }
-      : gatewayStatusPill(state.wsConnected, lang),
-  );
-  topEl.dataset.gateway = state.wsConnected ? "connected" : cloudIdle ? "idle" : "disconnected";
-  gatewayBannerEl.hidden = state.wsConnected || cloudIdle;
-  if (!state.wsConnected) {
+  {
     const [before, after = ""] = t(lang, "popup.gateway.offlineBody").split("{url}");
     const code = document.createElement("code");
     code.textContent = state.settings.gatewayWebSocketUrl;
@@ -888,6 +913,7 @@ async function refresh(): Promise<void> {
       gatewayBannerBodyEl.textContent = t(lang, "popup.connection.offline");
     else gatewayBannerBodyEl.replaceChildren(before ?? "", code, after);
   }
+  await refreshConnectionStatus();
 
   const auditNote = document.querySelector<HTMLElement>('[data-i18n="popup.footer.audit"]');
   if (auditNote)
@@ -919,7 +945,10 @@ readUiLanguage(browser.storage.local)
   .catch((e) => {
     setStatus(t(lang, "common.errorPrefix", { message: String(e) }), true);
   })
-  .finally(markReady);
+  .finally(() => {
+    markReady();
+    scheduleConnectionStatusRefresh();
+  });
 
 async function readConnectionDiagnostics() {
   diagnosticsStatus.textContent = "";

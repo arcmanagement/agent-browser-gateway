@@ -58,6 +58,8 @@ export const en = {
     "Configure Cloud, then share a tab. If the connection ends, share it again.",
   "popup.connection.cloudAudit": "Every read and operation is written to the Cloud audit log.",
   "popup.gateway.checking": "Checking…",
+  "popup.gateway.connecting": "Connecting…",
+  "popup.gateway.authenticating": "Authenticating…",
   "popup.gateway.connected": "Connected",
   "popup.gateway.connectedDescription": "Connected to the Gateway",
   "popup.gateway.disconnected": "Disconnected",

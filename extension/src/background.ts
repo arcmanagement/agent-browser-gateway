@@ -110,7 +110,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.2.1";
+const VERSION = "1.2.2";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -8702,6 +8702,7 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
     if (
       [
         "get_connection_diagnostics",
+        "get_connection_status",
         "set_connection_destination",
         "begin_cloud_login",
         "delete_cloud_connection",
@@ -8729,6 +8730,17 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
 });
 
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
+  if (msg.type === "get_connection_status") {
+    return {
+      type: "connection_status",
+      phase: diagnosticPhase,
+      destination: connectionDestination,
+      sharedTabCount: permittedTabs.size,
+      wsConnected,
+      cloudCodeConfigured: Boolean(cloudCode),
+      cloudConnectionFailed,
+    };
+  }
   if (msg.type === "get_connection_diagnostics") {
     return { type: "connection_diagnostics", ...(await connectionDiagnostics.read()) };
   }
@@ -8883,6 +8895,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
 function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
   if (!isRecord(rawMsg) || typeof rawMsg.type !== "string") return null;
   if (rawMsg.type === "get_connection_diagnostics") return { type: "get_connection_diagnostics" };
+  if (rawMsg.type === "get_connection_status") return { type: "get_connection_status" };
   if (rawMsg.type === "get_state" && typeof rawMsg.tabId === "number") {
     return { type: "get_state", tabId: rawMsg.tabId };
   }
