@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-23.
 
-Chrome extension version: **v1.3.0**, distributed separately as `extension-v1.3.0`.
+Chrome extension version: **v1.3.1**, distributed separately as `extension-v1.3.1`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,11 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.1 — Saved connection re-login keeps its identity (2026-10-23)
+
+- Logging in again from a saved Cloud connection proves that the browser already holds that connection, so the service keeps the same browser identity. The saved credential is not sent with the login request.
+- New connections are unchanged. No new Chrome permissions; desktop versions are unchanged.
 
 ### Chrome extension v1.3.0 — Annotation shortcuts and movable toolbar (2026-10-23)
 
