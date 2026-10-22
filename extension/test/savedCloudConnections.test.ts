@@ -5,6 +5,25 @@ let mock: ChromeMock;
 let publicKey: JsonWebKey;
 const code = "a".repeat(43);
 const url = "https://gateway.example.test";
+const encode = (value: string) => new TextEncoder().encode(value);
+const toBase64url = (value: ArrayBuffer) =>
+  btoa(String.fromCharCode(...new Uint8Array(value)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+async function expectedProof(secret: string, message: string) {
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", encode(secret)))]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encode(digest),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return toBase64url(await crypto.subtle.sign("HMAC", key, encode(message)));
+}
 beforeEach(() => {
   vi.resetModules();
   mock = createChromeMock();
@@ -30,6 +49,9 @@ describe("saved login connections", () => {
   it("pairs through Web login, stores no password or private key locally, and persists the encrypted handoff once", async () => {
     const connections = await import("../src/savedCloudConnections.js");
     await connections.beginCloudLogin(url, "Work browser");
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]?.[1]?.body as string)).not.toHaveProperty(
+      "proof",
+    );
     expect(mock.storage.local.setAccessLevel).toHaveBeenCalledWith({
       accessLevel: "TRUSTED_CONTEXTS",
     });
@@ -99,8 +121,10 @@ describe("saved login connections", () => {
     });
     const connections = await import("../src/savedCloudConnections.js");
     await connections.beginCloudLogin(url, "My Chrome", id);
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string).browserId).toBe(
-      `browser-${id}`,
+    const started = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]!.body as string);
+    expect(started.browserId).toBe(`browser-${id}`);
+    expect(started.proof).toBe(
+      await expectedProof(code, `abg-browser-proof-v1:browser-${id}:${started.challenge}`),
     );
     const { pendingCloudLogin: pending } = (await mock.storage.session.get(
       "pendingCloudLogin",

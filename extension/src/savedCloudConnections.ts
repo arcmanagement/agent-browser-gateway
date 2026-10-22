@@ -27,6 +27,27 @@ const base64url = (value: ArrayBuffer) =>
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
+const hex = (value: ArrayBuffer) =>
+  [...new Uint8Array(value)].map((b) => b.toString(16).padStart(2, "0")).join("");
+// Proves possession of the saved credential so the service only replaces that browser identity.
+async function replacementProof(code: string, browserId: string, challenge: string) {
+  const encoder = new TextEncoder();
+  const digest = hex(await crypto.subtle.digest("SHA-256", encoder.encode(code)));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(digest),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return base64url(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(`abg-browser-proof-v1:${browserId}:${challenge}`),
+    ),
+  );
+}
 
 export async function protectCloudStorage(): Promise<boolean> {
   if (typeof browser.storage.local.setAccessLevel !== "function") return false;
@@ -178,11 +199,13 @@ async function startCloudLogin(url: string, name: string, savedId?: string): Pro
     "activeCloudConnectionId",
     "cloudWebSocketUrl",
   ]);
+  const browserId = `browser-${id}`;
   const result = await request(normalized, "start", {
-    browserId: `browser-${id}`,
+    browserId,
     name: name.trim(),
     challenge,
     publicKey: { kty: publicKey.kty, n: publicKey.n, e: publicKey.e },
+    ...(selected ? { proof: await replacementProof(selected.code, browserId, challenge) } : {}),
   });
   if (
     typeof result.request !== "string" ||
