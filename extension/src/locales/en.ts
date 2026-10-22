@@ -115,6 +115,10 @@ export const en = {
     "{toggle} shares or revokes the current tab. {copy} copies its tab ID. Change shortcuts at {settingsPage}.",
   "popup.shortcut.toggle": "Share / revoke",
   "popup.shortcut.copy": "Copy tab ID",
+  "popup.shortcut.annotate": "Start / stop annotating",
+  "popup.shortcut.mode": "Area / Text",
+  "popup.shortcut.clear": "Clear all (press twice)",
+  "popup.shortcut.toolbar": "Show / hide toolbar",
   "popup.shortcut.notSet": "(not set)",
   "popup.shortcut.chromeSettingsPage": "chrome://extensions/shortcuts",
   "popup.shortcut.firefoxSettingsPage": "about:addons > Manage Extension Shortcuts",
@@ -335,6 +339,7 @@ export const en = {
   "shortcut.copiedSharedAllTabs":
     "Copied the ID of {tab}. This tab is shared with agents through all-tabs mode.",
   "shortcut.copyFailed": "Couldn't copy tab ID {tabId}: {error}",
+  "shortcut.annotationFailed": "Couldn't annotate tab {tabId}: {error}",
 
   // ---- Annotation overlay (passed into the page as a string table) ----
   "overlay.annotating": "Annotating",
@@ -346,6 +351,10 @@ export const en = {
   "overlay.clearConfirmTitle": "Click again to remove every annotation on this page",
   "overlay.done": "Done",
   "overlay.doneTitle": "Finish annotating (Esc)",
+  "overlay.hideToolbar": "Hide toolbar",
+  "overlay.showToolbar": "Show toolbar",
+  "overlay.moveToolbar": "Move toolbar · Drag or use arrow keys",
+  "overlay.closeToast": "Dismiss notification",
   "overlay.count": { one: "{count} annotation", other: "{count} annotations" },
   "overlay.hintArea": "Drag or click to mark",
   "overlay.hintText": "Select text to mark",

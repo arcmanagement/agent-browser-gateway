@@ -176,13 +176,18 @@ describe("runAnnotationModeWithSnapshots", () => {
     ).toBeNull();
   });
 
-  it("deletes the saved snapshot on clear", async () => {
+  it.each([
+    "clear",
+    "clear_confirm",
+  ] as const)("deletes the saved snapshot on confirmed %s", async (action) => {
     const { storage, run, deps } = setup();
     run.mockResolvedValueOnce(result("s1", [first]));
     await runAnnotationModeWithSnapshots(deps, 7, { action: "list" });
 
-    run.mockResolvedValueOnce(result("s1", []));
-    await runAnnotationModeWithSnapshots(deps, 7, { action: "clear" });
+    run.mockResolvedValueOnce(
+      result("s1", [], action === "clear_confirm" ? { cleared: true } : {}),
+    );
+    await runAnnotationModeWithSnapshots(deps, 7, { action });
 
     expect(storage.values.has(annotationSnapshotStorageKey(7))).toBe(false);
   });

@@ -225,13 +225,13 @@ function renderGate(mode: GateMode): void {
 }
 
 function renderShortcutKeys(commands: { name?: string; shortcut?: string }[]): void {
-  const items = shortcutKeys(commands, lang).filter((item) => item.keys);
+  const items = shortcutKeys(commands, lang);
   shortcutKeysEl.replaceChildren(
     ...items.map((item) => {
       const row = document.createElement("span");
       row.className = "key";
       const kbd = document.createElement("kbd");
-      kbd.textContent = item.keys;
+      kbd.textContent = item.keys ?? t(lang, "popup.shortcut.notSet");
       row.append(kbd, item.label);
       return row;
     }),

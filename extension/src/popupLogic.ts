@@ -1,5 +1,11 @@
 import type { AnnotationRestoreReport } from "./annotationOverlay.js";
 import {
+  CLEAR_ANNOTATIONS_COMMAND,
+  SWITCH_ANNOTATION_MODE_COMMAND,
+  TOGGLE_ANNOTATE_COMMAND,
+  TOGGLE_ANNOTATION_TOOLBAR_COMMAND,
+} from "./annotationShortcuts.js";
+import {
   COPY_TAB_ID_COMMAND,
   isShareableTabUrl,
   shortcutFeedbackText,
@@ -29,7 +35,7 @@ export function shortcutHint(
   });
 }
 
-/** The bound keys for the two shortcuts, labeled for the popup's key legend. */
+/** Current browser assignments; a missing binding must never look like a working default. */
 export function shortcutKeys(
   commands: { name?: string; shortcut?: string }[],
   lang: Language,
@@ -39,6 +45,10 @@ export function shortcutKeys(
   return [
     { keys: keyFor(TOGGLE_SHARE_COMMAND), label: t(lang, "popup.shortcut.toggle") },
     { keys: keyFor(COPY_TAB_ID_COMMAND), label: t(lang, "popup.shortcut.copy") },
+    { keys: keyFor(TOGGLE_ANNOTATE_COMMAND), label: t(lang, "popup.shortcut.annotate") },
+    { keys: keyFor(SWITCH_ANNOTATION_MODE_COMMAND), label: t(lang, "popup.shortcut.mode") },
+    { keys: keyFor(CLEAR_ANNOTATIONS_COMMAND), label: t(lang, "popup.shortcut.clear") },
+    { keys: keyFor(TOGGLE_ANNOTATION_TOOLBAR_COMMAND), label: t(lang, "popup.shortcut.toolbar") },
   ];
 }
 
