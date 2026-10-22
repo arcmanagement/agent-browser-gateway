@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.0.zip
+dist/agent-browser-gateway-extension-1.3.1.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,11 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.1 review notes
+
+- No new Chrome permissions or host access. Re-login from a saved Cloud connection also sends a value derived from the saved credential, so the service keeps the same browser identity for that browser. The saved credential itself is not included in the login request.
+- Sharing consent and data transmission are otherwise unchanged. Desktop versions are unchanged.
 
 ## 1.3.0 review notes
 
