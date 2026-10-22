@@ -19,6 +19,10 @@
     "message": "現在のタブを共有／共有解除",
     "description": "Keyboard shortcut description for toggle-share-current-tab."
   },
+  "commandToggleAnnotate": { "message": "現在のタブの注釈モードを開始／終了（未共有なら共有）" },
+  "commandSwitchAnnotationMode": { "message": "注釈の対象を範囲／テキストで切り替え" },
+  "commandClearAnnotations": { "message": "現在のタブの注釈をすべて削除（2回押して確定）" },
+  "commandToggleAnnotationToolbar": { "message": "注釈ツールバーを表示／非表示" },
   "commandCopyTabId": {
     "message": "現在のタブ ID をコピー（タブは共有しません）",
     "description": "Keyboard shortcut description for copy-current-tab-id."

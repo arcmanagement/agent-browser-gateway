@@ -1,10 +1,18 @@
-# Chrome extension 1.2.2
+# Chrome extension 1.3.0
+
+Use Alt+Shift+A (Option+Shift+A on macOS) to start or stop annotating the current tab. If it is not
+shared, the shortcut shares it first using the existing consent checks. Alt+Shift+M switches
+Area/Text. Assign Clear all and toolbar visibility in `chrome://extensions/shortcuts`; Clear all
+requires a second press within three seconds. The popup and toolbar show your actual assignments.
+Move the toolbar by its grip or arrow keys, collapse it, and reuse the saved placement on other
+pages. Notices close with × or Escape and stop further Escape propagation without stopping
+annotation mode. Page handlers already registered on window capture can run first.
 
 Agent Browser Gateway supports both a local desktop Gateway and an optional Cloud connection. The Cloud path does not require installing the desktop app or CLI.
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.2.2.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.2).
+1. Download `agent-browser-gateway-extension-1.3.0.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.0).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -12,7 +20,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.2.2.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.3.0.
 
 ## Sharing and operations
 
@@ -57,4 +65,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.2.2. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.2.2` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.3.0. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.3.0` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.

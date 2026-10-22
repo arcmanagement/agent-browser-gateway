@@ -140,17 +140,17 @@ and generate release notes.
 
 ---
 
-## Cloud connection (Chrome extension 1.2.2)
+## Cloud connection (Chrome extension 1.3.0)
 
 The popup follows connection changes while open, showing **Connecting…** and **Authenticating…** before **Connected**. Status updates preserve connection settings being edited.
 
-Chrome extension 1.2.2 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.2.2), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+Chrome extension 1.3.0 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.0), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
 
 Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
 
 AI connections use `https://app.agent-browser-gateway.com/oauth/authorize` to log in and authorize access. Passwords are handled by the Web account flow and are never stored in the extension or passed to AI clients. The official service uses `https://app.agent-browser-gateway.com` for account UI and `https://connect.agent-browser-gateway.com` / `wss://connect.agent-browser-gateway.com` for browser authentication, shared-tab traffic, and results. Custom destinations send those data to the gateway you select. See [Cloud usage](docs/CLOUD_EXTENSION.md) for plugins, artifacts, consent, and the separate Chrome Web Store publication status.
 
-To investigate a disconnect in extension 1.2.2, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes, connection stages, and recognized Cloudflare proxy-restart reasons.
+To investigate a disconnect in extension 1.3.0, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes, connection stages, and recognized Cloudflare proxy-restart reasons.
 
 ## Tab access modes
 
@@ -171,13 +171,27 @@ Keyboard shortcuts act only on the current tab:
 |---|---|
 | `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the current tab if it is not shared, or revoke it if it is. This uses the same per-tab consent and revoke path as the popup button and never touches other tabs. |
 | `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the current tab's numeric tab ID to the clipboard. This never grants or changes access; if the tab is not shared, ABG says so, and agents cannot use it until you share it. |
+| `Alt+Shift+A` (`Option+Shift+A` on macOS) | Start or stop annotation mode. If needed, share the current tab first using the same consent checks as Share. Stopping annotation mode keeps the tab shared. |
+| `Alt+Shift+M` (`Option+Shift+M` on macOS) | Switch between Area and Text while annotating. |
+| Unassigned | Clear all annotations while annotating. Press twice within three seconds to confirm. |
+| Unassigned | Show or hide the annotation toolbar while annotating. |
 
 The result (which tab, and the new state or the reason nothing changed) appears briefly on the
 extension badge and its tooltip, as a short in-page notice where the page allows extension scripts,
 and in the popup for two minutes. The share shortcut does nothing on `chrome://` and other non-web
 pages, on incognito tabs until "Allow in incognito" is enabled, and while all-tabs sandbox mode is
-on. Rebind or clear either shortcut at `chrome://extensions/shortcuts` (Firefox:
-`about:addons` → Manage Extension Shortcuts); the popup shows the current keys.
+on. Rebind or clear shortcuts at `chrome://extensions/shortcuts` (Firefox:
+`about:addons` → Manage Extension Shortcuts). The popup shows the current bindings, including
+unassigned actions; the annotation toolbar displays the current keys on its controls. Only four
+commands can have suggested keys, so Clear all and Show/hide start unassigned.
+
+Drag the annotation toolbar by its grip, or focus the grip and use the arrow keys to move it.
+The minus button collapses it to a small ABG launcher; click the launcher to expand it again.
+Its position and collapsed state are kept in local extension storage for other pages and reloads.
+Shortcut notices and the annotation completion notice have a close button and can be dismissed
+with Escape. Dismissing a notice stops further propagation of that Escape, including key release,
+and leaves annotation mode unchanged. Page handlers already registered on window capture run first;
+ABG preserves the page's keyboard focus.
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs (sandbox profiles only)**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
 
@@ -1050,7 +1064,7 @@ In short:
 
 ## Status
 
-**Chrome extension v1.2.2** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
+**Chrome extension v1.3.0** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 

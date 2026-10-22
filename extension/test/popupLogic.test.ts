@@ -158,11 +158,23 @@ describe("popupLogic", () => {
     expect(shortcutKeys(commands, "en")).toEqual([
       { keys: "⌥⇧S", label: "Share / revoke" },
       { keys: null, label: "Copy tab ID" },
+      { keys: null, label: "Start / stop annotating" },
+      { keys: null, label: "Area / Text" },
+      { keys: null, label: "Clear all (press twice)" },
+      { keys: null, label: "Show / hide toolbar" },
     ]);
     expect(shortcutKeys([], "ja").map((key) => key.label)).toEqual([
       "共有／解除",
       "タブ ID をコピー",
+      "注釈を開始／終了",
+      "範囲／テキスト",
+      "すべて削除（2回押す）",
+      "ツールバーを表示／非表示",
     ]);
+    expect(
+      shortcutKeys([{ name: "toggle-annotate-current-tab", shortcut: "Ctrl+Shift+9" }], "en")[2]
+        ?.keys,
+    ).toBe("Ctrl+Shift+9");
   });
 
   it("shows only recent shortcut results", () => {

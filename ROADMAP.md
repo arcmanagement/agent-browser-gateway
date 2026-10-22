@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-21.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-23.
 
-Chrome extension version: **v1.2.2**, distributed separately as `extension-v1.2.2`.
+Chrome extension version: **v1.3.0**, distributed separately as `extension-v1.3.0`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.0 — Annotation shortcuts and movable toolbar (2026-10-23)
+
+- Start or stop annotating the current tab with Alt+Shift+A, sharing it first with the existing consent checks when needed. Alt+Shift+M switches Area/Text; Clear all and toolbar visibility have configurable shortcuts.
+- The toolbar displays actual browser shortcut assignments, moves by dragging or keyboard, and remembers its position and collapsed state.
+- Shortcut and completion notices have close buttons and stop further Escape propagation through key release while preserving page focus.
 
 ### Chrome extension v1.2.2 — Live popup connection status (2026-10-21)
 

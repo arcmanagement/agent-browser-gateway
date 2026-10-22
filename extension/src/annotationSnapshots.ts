@@ -224,7 +224,7 @@ export async function runAnnotationModeWithSnapshots(
   }
 
   const result = await deps.run(tabId, command);
-  if (command.action === "clear") {
+  if (command.action === "clear" || result.cleared === true) {
     await deps.store.delete(tabId);
     return withoutSessionId(result);
   }

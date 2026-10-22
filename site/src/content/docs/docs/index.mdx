@@ -122,15 +122,24 @@ Every `abg` error is JSON with an `error` code and, in most cases, a `nextComman
   window by default. Read-only commands do not prompt, but they still need a shared tab.
 - Every operation is written to a local audit log. Run `abg audit --lines 50` to see recent entries.
 
-Two shortcuts act on the current tab only:
+Shortcuts act on the current tab only:
 
 | Shortcut | Action |
 | --- | --- |
 | `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the tab, or revoke it if it is already shared. |
 | `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the numeric tab ID. This does not share the tab. |
+| `Alt+Shift+A` (`Option+Shift+A` on macOS) | Start or stop annotating. Share the tab first if needed, using the existing sharing checks. |
+| `Alt+Shift+M` (`Option+Shift+M` on macOS) | Switch Area/Text while annotating. |
+| Unassigned | Clear all annotations; press twice within three seconds to confirm. |
+| Unassigned | Show or hide the annotation toolbar. |
 
 The badge, its tooltip, and the popup show the result. Change the keys at
-`chrome://extensions/shortcuts`.
+`chrome://extensions/shortcuts`. The popup and annotation toolbar display the current assignments.
+
+Drag the toolbar by its grip, or focus the grip and use the arrow keys. Its position and collapsed
+state are remembered. Dismiss a notice with its close button or Escape; ABG stops further Escape
+propagation and leaves annotation mode unchanged. Page handlers already registered on window
+capture can run first.
 
 For isolated profiles and sandbox machines, an opt-in all-tabs mode shares every tab in the profile.
 See [Security](./security/#consent-boundaries).

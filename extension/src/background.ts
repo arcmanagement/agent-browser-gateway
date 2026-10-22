@@ -1,6 +1,16 @@
-import { type AnnotationCommand, manageAnnotationMode } from "./annotationOverlay.js";
+import {
+  type AnnotationCommand,
+  annotationToolbarPreferencesFromDebugger,
+  forgetAnnotationDebuggerContext,
+  manageAnnotationMode,
+} from "./annotationOverlay.js";
 import { parseAnnotationSnapshotMessage } from "./annotationPersistenceLogic.js";
+import { ANNOTATION_COMMANDS, performAnnotationShortcut } from "./annotationShortcuts.js";
 import { AnnotationSnapshotStore, runAnnotationModeWithSnapshots } from "./annotationSnapshots.js";
+import {
+  ANNOTATION_TOOLBAR_STORAGE_KEY,
+  parseAnnotationToolbarPreferences,
+} from "./annotationToolbarLogic.js";
 import { scriptBlockPresentation } from "./approvalLogic.js";
 import {
   type AuditDiffPayload,
@@ -83,6 +93,7 @@ import {
   protectCloudStorage,
   savedCloudConnections,
 } from "./savedCloudConnections.js";
+import { showShortcutToastInPage } from "./shortcutToast.js";
 import type {
   AnnotationAction,
   ApprovalDecision,
@@ -110,7 +121,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.2.2";
+const VERSION = "1.3.0";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -1843,6 +1854,9 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 
 browser.tabs.onActivated.addListener(async ({ tabId }) => {
   await updateBadge(tabId);
+  if (permittedTabs.has(tabId)) {
+    await runAnnotationCommand(tabId, { action: "list" }).catch(() => undefined);
+  }
 });
 
 browser.windows.onRemoved.addListener((windowId) => {
@@ -1873,6 +1887,7 @@ async function attachDebugger(tabId: number): Promise<void> {
 }
 
 async function detachDebugger(tabId: number): Promise<void> {
+  forgetAnnotationDebuggerContext(tabId);
   if (!attachedTabs.has(tabId)) return;
   try {
     await browser.debugger.detach({ tabId });
@@ -1882,6 +1897,16 @@ async function detachDebugger(tabId: number): Promise<void> {
 
 browser.debugger.onEvent.addListener((source, method, params) => {
   if (!source.tabId) return;
+  if (method === "Runtime.bindingCalled") {
+    if (!permittedTabs.has(source.tabId)) return;
+    const preferences = annotationToolbarPreferencesFromDebugger(source.tabId, params);
+    if (preferences) {
+      void browser.storage.local
+        .set({ [ANNOTATION_TOOLBAR_STORAGE_KEY]: preferences })
+        .catch(() => undefined);
+    }
+    return;
+  }
   if (method === "Runtime.consoleAPICalled") {
     const p = params as {
       type: string;
@@ -2087,7 +2112,10 @@ browser.debugger.onDetach.addListener((source, reason) => {
       detachReason:
         reason === "target_closed" || reason === "canceled_by_user" ? reason : undefined,
     });
-  if (source.tabId) attachedTabs.delete(source.tabId);
+  if (source.tabId) {
+    attachedTabs.delete(source.tabId);
+    forgetAnnotationDebuggerContext(source.tabId);
+  }
 });
 
 browser.downloads.onCreated.addListener((item) => {
@@ -8397,12 +8425,11 @@ async function scrollElementIntoView(
 
 // ---------- Keyboard shortcuts ----------
 //
-// Both shortcuts act only on the active tab. The toggle reuses permitTab /
-// revokeTab exactly like the popup's Share / Revoke button. Copying the tab ID
-// never grants or changes access; it only reports whether the tab is shared.
+// Commands act on the active tab; only Share and Start annotating may grant access.
 
 const SHORTCUT_FEEDBACK_MS = 4_000;
 const shortcutFeedbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const annotationShortcutQueues = new Map<number, Promise<void>>();
 
 browser.commands.onCommand.addListener((command, tab) => {
   void handleShortcutCommand(command, tab).catch((error) => {
@@ -8411,13 +8438,73 @@ browser.commands.onCommand.addListener((command, tab) => {
 });
 
 async function handleShortcutCommand(command: string, commandTab?: BrowserTab): Promise<void> {
-  if (command !== TOGGLE_SHARE_COMMAND && command !== COPY_TAB_ID_COMMAND) return;
+  if (
+    command !== TOGGLE_SHARE_COMMAND &&
+    command !== COPY_TAB_ID_COMMAND &&
+    !ANNOTATION_COMMANDS.includes(command)
+  )
+    return;
   await bootstrapReady.catch(() => {});
   const tab = await activeTabForShortcut(commandTab);
   if (command === TOGGLE_SHARE_COMMAND) {
     await toggleShareFromShortcut(tab);
-  } else {
+  } else if (command === COPY_TAB_ID_COMMAND) {
     await copyTabIdFromShortcut(tab);
+  } else {
+    const tabId = tab?.id ?? -1;
+    const previous = annotationShortcutQueues.get(tabId) ?? Promise.resolve();
+    const pending = previous
+      .catch(() => undefined)
+      .then(() => annotationFromShortcut(command, tab));
+    annotationShortcutQueues.set(tabId, pending);
+    try {
+      await pending;
+    } finally {
+      if (annotationShortcutQueues.get(tabId) === pending) annotationShortcutQueues.delete(tabId);
+    }
+  }
+}
+
+async function annotationFromShortcut(command: string, tab: BrowserTab | undefined): Promise<void> {
+  await reconcileAllTabsAccess();
+  const tabId = tab?.id;
+  if (typeof tabId !== "number") {
+    await showShortcutFeedback(undefined, { kind: "blocked", reason: "no_active_tab" });
+    return;
+  }
+  try {
+    await performAnnotationShortcut(command, {
+      shared: permittedTabs.has(tabId),
+      share: async () => {
+        const decision = decideShareToggle({
+          tab,
+          permitted: false,
+          allTabsActive: await isAllTabsAccessActive(),
+          incognitoAccessAllowed: await isIncognitoAccessAllowed(),
+        });
+        if (decision.action === "blocked") {
+          await showShortcutFeedback(tabId, {
+            kind: "blocked",
+            reason: decision.reason,
+            url: tab?.url,
+          });
+          return false;
+        }
+        await permitTab(tabId);
+        return permittedTabs.has(tabId);
+      },
+      run: async (annotationCommand) => {
+        if (!permittedTabs.has(tabId)) throw new Error("tab is no longer shared with ABG");
+        await attachDebugger(tabId);
+        return runAnnotationCommand(tabId, annotationCommand);
+      },
+    });
+  } catch (error) {
+    await showShortcutFeedback(tabId, {
+      kind: "annotation_failed",
+      tabId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -8582,26 +8669,13 @@ async function showShortcutToast(tabId: number, feedback: ShortcutFeedback): Pro
   try {
     await browser.scripting.executeScript({
       target: { tabId },
-      func: (message: string, accent: string, durationMs: number) => {
-        const hostId = "__abg_shortcut_toast__";
-        document.getElementById(hostId)?.remove();
-        const host = document.createElement("div");
-        host.id = hostId;
-        host.style.cssText =
-          "all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:none;";
-        const root = host.attachShadow({ mode: "closed" });
-        const box = document.createElement("div");
-        box.setAttribute("role", "status");
-        box.style.cssText = `max-width:360px;padding:10px 12px;border-radius:8px;border-left:4px solid ${accent};background:#1c1c1e;color:#fff;font:13px/1.4 -apple-system,system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
-        const label = document.createElement("strong");
-        label.textContent = "Agent Browser Gateway";
-        label.style.cssText = "display:block;margin-bottom:2px;font-size:11px;opacity:.75;";
-        box.append(label, document.createTextNode(message));
-        root.append(box);
-        (document.body ?? document.documentElement).append(host);
-        setTimeout(() => host.remove(), durationMs);
-      },
-      args: [feedback.message, feedback.badgeColor, SHORTCUT_FEEDBACK_MS],
+      func: showShortcutToastInPage,
+      args: [
+        feedback.message,
+        feedback.badgeColor,
+        SHORTCUT_FEEDBACK_MS,
+        formatText(await currentUiLanguage(), msg("overlay.closeToast")),
+      ],
     });
   } catch {
     // Scripting is not allowed on this page.
@@ -8616,11 +8690,27 @@ function runAnnotationCommand(tabId: number, command: AnnotationCommand) {
     {
       store: annotationSnapshots,
       // The overlay gets its UI strings in the display language with every command.
-      run: async (id, overlayCommand) =>
-        manageAnnotationMode(id, {
+      run: async (id, overlayCommand) => {
+        const [lang, commands, stored] = await Promise.all([
+          currentUiLanguage(),
+          browser.commands.getAll().catch(() => []),
+          browser.storage.local.get(ANNOTATION_TOOLBAR_STORAGE_KEY),
+        ]);
+        const keyFor = (name: string) => commands.find((item) => item.name === name)?.shortcut;
+        return manageAnnotationMode(id, {
           ...overlayCommand,
-          ui: annotationOverlayStrings(await currentUiLanguage()),
-        }),
+          ui: annotationOverlayStrings(lang),
+          shortcuts: {
+            toggle: keyFor("toggle-annotate-current-tab"),
+            mode: keyFor("switch-annotation-mode"),
+            clear: keyFor("clear-annotations-current-tab"),
+            toolbar: keyFor("toggle-annotation-toolbar"),
+          },
+          toolbarPreferences: parseAnnotationToolbarPreferences(
+            stored[ANNOTATION_TOOLBAR_STORAGE_KEY],
+          ),
+        });
+      },
       currentPage: async (id) => {
         const tab = await browser.tabs.get(id).catch(() => undefined);
         const permitted = permittedTabs.get(id);
@@ -8670,6 +8760,23 @@ async function handleAnnotationSnapshotMessage(
 
 browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) => {
   (async () => {
+    if (isRecord(rawMsg) && rawMsg.type === "abg_annotation_toolbar") {
+      await bootstrapReady;
+      const preferences = parseAnnotationToolbarPreferences(rawMsg.preferences);
+      if (
+        sender.id !== browser.runtime.id ||
+        typeof sender.tab?.id !== "number" ||
+        (sender.frameId ?? 0) !== 0 ||
+        !permittedTabs.has(sender.tab.id) ||
+        !preferences
+      ) {
+        sendResponse({ type: "error", message: "toolbar preferences rejected" });
+        return;
+      }
+      await browser.storage.local.set({ [ANNOTATION_TOOLBAR_STORAGE_KEY]: preferences });
+      sendResponse({ type: "ok" });
+      return;
+    }
     if (isRecord(rawMsg) && rawMsg.type === "stream_dom_mutation" && sender.tab?.id) {
       emitStreamEvent(sender.tab.id, {
         kind: "dom_mutation",

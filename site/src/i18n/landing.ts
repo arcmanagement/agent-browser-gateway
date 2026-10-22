@@ -93,8 +93,10 @@ const en = {
     shortcuts: [
       { keys: ["⌥", "⇧", "S"], alt: "Alt+Shift+S", label: "Share the tab, or revoke it if it is already shared." },
       { keys: ["⌥", "⇧", "C"], alt: "Alt+Shift+C", label: "Copy the tab ID. It never grants access." },
+      { keys: ["⌥", "⇧", "A"], alt: "Alt+Shift+A", label: "Start or stop annotating. Shares the tab first if needed." },
+      { keys: ["⌥", "⇧", "M"], alt: "Alt+Shift+M", label: "Switch between Area and Text while annotating." },
     ],
-    shortcutNote: "Option on macOS, Alt elsewhere. Rebind at chrome://extensions/shortcuts.",
+    shortcutNote: "Option on macOS, Alt elsewhere. Rebind or assign Clear all and toolbar visibility at chrome://extensions/shortcuts. The toolbar displays your current keys and remembers where you move it.",
     realTitle: "The controls you actually click",
     realNote: "Screens from the extension's popup and approval window.",
     real: [
@@ -178,7 +180,7 @@ const en = {
   },
   download: {
     title: "Install in a minute.|Verify before you trust it.",
-    lead: "Chrome extension v1.2.2 supports Cloud login without a desktop app. For local mode, install macOS v0.5.2 with Homebrew or the signed DMG, then add the extension.",
+    lead: "Chrome extension v1.3.0 supports Cloud login without a desktop app. For local mode, install macOS v0.5.2 with Homebrew or the signed DMG, then add the extension.",
     steps: ["Install the Gateway and CLI", "Add the Chrome extension", "Share a tab and run abg tabs"],
     brewTitle: "Homebrew",
     brewNote: "Tap the repository, trust the cask when Homebrew asks for tap trust, then install.",
@@ -188,7 +190,7 @@ const en = {
     sha: "SHA-256",
     shaNote: "Verify the checksum before opening the DMG.",
     store: "Chrome Web Store",
-    storeMeta: "Chrome Web Store review and publication are separate from the v1.2.2 GitHub ZIP release. Check the Store listing's version before installing.",
+    storeMeta: "Chrome Web Store review and publication are separate from the v1.3.0 GitHub ZIP release. Check the Store listing's version before installing.",
     windows: "Windows",
     windowsMeta: "v0.5.3 · Windows 10/11 x64 · The Gate UI",
     windowsNote: "Extract the ZIP and run AgentBrowserGatewaySetup.exe. This ZIP is unsigned and may show a Windows security warning. WinGet remains pending.",
@@ -305,8 +307,10 @@ const ja: LandingCopy = {
     shortcuts: [
       { keys: ["⌥", "⇧", "S"], alt: "Alt+Shift+S", label: "タブを共有。共有中なら解除します。" },
       { keys: ["⌥", "⇧", "C"], alt: "Alt+Shift+C", label: "タブ ID をコピー。アクセス権は付与しません。" },
+      { keys: ["⌥", "⇧", "A"], alt: "Alt+Shift+A", label: "注釈を開始・終了。未共有なら先に共有します。" },
+      { keys: ["⌥", "⇧", "M"], alt: "Alt+Shift+M", label: "注釈中に Area と Text を切り替えます。" },
     ],
-    shortcutNote: "macOS では Option、それ以外では Alt。chrome://extensions/shortcuts で変更できます。",
+    shortcutNote: "macOS では Option、それ以外では Alt。chrome://extensions/shortcuts で変更し、全削除・バーの表示切替にもキーを割り当てられます。ツールバーには現在のキーが表示され、移動した位置も保存されます。",
     realTitle: "実際に押すのは、この画面です",
     realNote: "拡張機能のポップアップと承認ウィンドウの画面です。",
     real: [
@@ -390,7 +394,7 @@ const ja: LandingCopy = {
   },
   download: {
     title: "数分で導入。|信頼する前に検証を。",
-    lead: "Chrome拡張 v1.2.2 はデスクトップアプリなしでCloudへログインできます。ローカル接続ではmacOS v0.5.2をHomebrewまたは署名済みDMGで入れ、拡張を追加してください。",
+    lead: "Chrome拡張 v1.3.0 はデスクトップアプリなしでCloudへログインできます。ローカル接続ではmacOS v0.5.2をHomebrewまたは署名済みDMGで入れ、拡張を追加してください。",
     steps: ["Gateway と CLI をインストール", "Chrome 拡張機能を追加", "タブを共有して abg tabs を実行"],
     brewTitle: "Homebrew",
     brewNote: "リポジトリを tap し、Homebrew に求められたら cask を trust してからインストールします。",
@@ -400,7 +404,7 @@ const ja: LandingCopy = {
     sha: "SHA-256",
     shaNote: "DMG を開く前にチェックサムを確認してください。",
     store: "Chrome ウェブストア",
-    storeMeta: "Chromeウェブストアの審査・公開と、GitHubでのv1.2.2 ZIP配布は別です。ストアから入れる場合は掲載バージョンを確認してください。",
+    storeMeta: "Chromeウェブストアの審査・公開と、GitHubでのv1.3.0 ZIP配布は別です。ストアから入れる場合は掲載バージョンを確認してください。",
     windows: "Windows",
     windowsMeta: "v0.5.3 · Windows 10/11 x64 · The Gate UI",
     windowsNote: "ZIP を展開し、AgentBrowserGatewaySetup.exe を実行してください。この ZIP は未署名のため、Windows のセキュリティ警告が出る場合があります。WinGet は登録待ちです。",

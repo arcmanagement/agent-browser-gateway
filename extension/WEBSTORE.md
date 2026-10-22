@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.2.2.zip
+dist/agent-browser-gateway-extension-1.3.0.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.0 review notes
+
+- Adds current-tab annotation toggle, Area/Text switching, confirmed Clear all, and toolbar visibility commands. Only the annotation toggle may share an unshared tab, using the existing sharing checks.
+- Shortcut labels reflect browser settings. Toolbar position and collapsed state are stored in extension-local storage. Notices have close buttons and consume Escape through key release.
+- No new Chrome permissions or host access. Desktop versions are unchanged.
 
 ## 1.2.2 review notes
 
