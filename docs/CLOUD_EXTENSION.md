@@ -1,4 +1,4 @@
-# Chrome extension 1.3.1
+# Chrome extension 1.3.2
 
 Use Alt+Shift+A (Option+Shift+A on macOS) to start or stop annotating the current tab. If it is not
 shared, the shortcut shares it first using the existing consent checks. Alt+Shift+M switches
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.3.1.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.1).
+1. Download `agent-browser-gateway-extension-1.3.2.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.2).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -20,9 +20,13 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.3.1.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.3.2.
 
 ## Sharing and operations
+
+Reloading a manually shared tab or navigating within the same origin keeps its sharing badge visible. A restored extension worker refreshes each shared tab's badge from the current sharing and recording state. Closing the tab, changing origin, or revoking sharing ends access.
+
+Native input fill avoids focusing the field. If an inline password-manager menu blocks debugger access, an approved unmodified Escape can attempt bounded recovery without changing password-manager settings, losing the field value, or replaying the failed action. Recovery stops if the original sharing grant changes. Unclipped screenshots may use visible-tab capture, with active-tab and permission checks before and after capture; results are discarded if access changes.
 
 The open popup updates its connection indicator automatically. Discovery and socket connection show **Connecting…**; authentication shows **Authenticating…** until the service accepts it. A completed connection shows **Connected**, while an actual disconnect shows the offline warning. These updates preserve edits in connection settings and do not restore sharing automatically.
 
@@ -65,4 +69,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.3.1. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.3.1` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.3.2. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.3.2` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
