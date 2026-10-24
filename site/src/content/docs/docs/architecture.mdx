@@ -153,8 +153,7 @@ A private LAN address is the fallback when no Tailnet address is available. ABG 
 automatic LAN discovery. It would advertise the Gateway on untrusted networks, make lookalike
 Gateways easier to phish with, and confuse setups with several Gateways.
 
-ABG does not operate a cloud relay. A relay would be a central service that can observe metadata,
-would need accounts and abuse prevention, and would weaken the local-first design.
+Extension 1.3.1 also offers an optional Cloud path, separate from local/private pairing. Web login registers the browser, and client authorization scopes access to shared tabs. The selected service can process shared metadata and requested results; this path is not local-only. See the [Cloud guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md) for endpoints, credentials, and consent.
 
 ### Limits
 

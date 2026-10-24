@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.4.1",
+    [string]$Version = "0.5.3",
     [string]$Configuration = "Release",
     [switch]$SkipWinUiApp,
     [string]$PagesOutputDir = "",
@@ -12,6 +12,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$WindowsVersion = ([xml](Get-Content (Join-Path $Root "windows/Directory.Build.props") -Raw)).Project.PropertyGroup.Version
+if ($Version -ne $WindowsVersion) {
+    throw "Requested version $Version does not match Windows source version $WindowsVersion. Update windows/Directory.Build.props before packaging."
+}
 $Dist = Join-Path $Root "dist"
 $PublishRoot = Join-Path $Dist "windows-publish"
 $Stage = Join-Path $Dist "agent-browser-gateway-$Version-windows-x64"
@@ -162,7 +166,10 @@ function Copy-WinUiGeneratedResources {
         "App.xbf",
         "MainWindow.xbf",
         "SetupWindow.xbf",
-        "StatusWindow.xbf"
+        "StatusWindow.xbf",
+        "GatewayDashboard.xbf",
+        "SharedTabCard.xbf",
+        "GateMark.xbf"
     )
 
     foreach ($file in $requiredFiles) {
@@ -246,6 +253,23 @@ Copy-Item -Recurse -Force (Join-Path $Stage "*") (Join-Path $SetupStage "payload
 
 Write-Host "==> sign"
 Invoke-CodeSign -Paths @($Stage, $SetupStage)
+
+Write-Host "==> verify binary versions"
+$VersionBinaries = @(
+    (Join-Path $Stage "abg.exe"),
+    (Join-Path $Stage "agent-browser-gateway.exe"),
+    (Join-Path $SetupStage "AgentBrowserGatewaySetup.exe")
+)
+if (-not $SkipWinUi) {
+    $VersionBinaries += (Join-Path $Stage "AgentBrowserGateway.Windows.exe")
+}
+foreach ($Binary in $VersionBinaries) {
+    $FileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($Binary).FileVersion
+    if ($FileVersion -ne "$Version.0") {
+        throw "Binary version mismatch: $Binary reports $FileVersion, expected $Version.0"
+    }
+    Write-Host "$(Split-Path -Leaf $Binary): $FileVersion"
+}
 
 Write-Host "==> zip"
 Compress-Archive -Path $Stage -DestinationPath $ZipPath -Force

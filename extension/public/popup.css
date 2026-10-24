@@ -1015,3 +1015,36 @@ html:not(.ready) .top * {
 .foot-mark rect {
   stroke: none;
 }
+
+.connection-panel {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.connection-panel summary {
+  padding: 10px var(--space-3);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.connection-panel summary span:last-child {
+  margin-left: 10px;
+  color: var(--text-2);
+}
+.connection-panel .fields {
+  margin-top: 0;
+  border-top: 1px solid var(--line);
+}
+.connection-panel [hidden] { display: none; }
+
+/* Diagnostic exports contain only the bounded connection history. */
+.diagnostic-actions { display: flex; gap: 8px; margin: 10px 0; }
+.connection-diagnostics {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.5 ui-monospace, monospace;
+  color: var(--text-2);
+  user-select: text;
+}

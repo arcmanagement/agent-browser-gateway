@@ -18,6 +18,8 @@ public sealed partial class SetupWindow : Window
     public SetupWindow(string? payloadDir)
     {
         InitializeComponent();
+        WindowSizing.Apply(this, Root, 720, 780);
+        Root.Loaded += (_, _) => UiText.Apply(Root);
         _payloadDir = Path.GetFullPath(string.IsNullOrWhiteSpace(payloadDir) ? AppContext.BaseDirectory : payloadDir);
         InstallDirBox.Text = DefaultInstallDir;
         PayloadText.Text = $"Payload: {_payloadDir}";
@@ -27,7 +29,12 @@ public sealed partial class SetupWindow : Window
     private void DetectMode()
     {
         var installed = File.Exists(Path.Combine(DefaultInstallDir, "abg.exe"));
-        ModeText.Text = installed ? "Ready to update the Windows Gateway" : "Ready to install the Windows Gateway";
+        ModeText.Text = UiText.T(installed ? "Ready to update the Windows Gateway" : "Ready to install the Windows Gateway");
+    }
+
+    private void Viewport_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SetupContent.Width = Math.Max(0, Math.Min(620, e.NewSize.Width - 80));
     }
 
     private async void Install_Click(object sender, RoutedEventArgs e)
@@ -44,7 +51,7 @@ public sealed partial class SetupWindow : Window
         {
             await Task.Run(() => InstallAsync(installDir, addToPath, startAfterInstall, enableStartup)).ConfigureAwait(true);
             SetStatus("Installed successfully.", 100);
-            ModeText.Text = "Installed";
+            ModeText.Text = UiText.T("Installed");
         }
         catch (Exception ex)
         {
@@ -346,7 +353,7 @@ public sealed partial class SetupWindow : Window
     {
         RunOnUi(() =>
         {
-            StatusText.Text = text;
+            StatusText.Text = UiText.T(text);
             Progress.Value = Math.Max(0, Math.Min(100, progress));
         });
     }

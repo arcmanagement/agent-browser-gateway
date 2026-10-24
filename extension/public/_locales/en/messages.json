@@ -19,6 +19,10 @@
     "message": "Share or revoke the current tab",
     "description": "Keyboard shortcut description for toggle-share-current-tab."
   },
+  "commandToggleAnnotate": { "message": "Start or stop annotating the current tab (shares it first)" },
+  "commandSwitchAnnotationMode": { "message": "Switch annotation target between Area and Text" },
+  "commandClearAnnotations": { "message": "Clear all annotations on the current tab (press twice to confirm)" },
+  "commandToggleAnnotationToolbar": { "message": "Show or hide the annotation toolbar" },
   "commandCopyTabId": {
     "message": "Copy the current tab ID (does not share the tab)",
     "description": "Keyboard shortcut description for copy-current-tab-id."

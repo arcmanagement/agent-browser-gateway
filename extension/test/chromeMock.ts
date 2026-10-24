@@ -67,6 +67,7 @@ export function createChromeStorageArea(initialValues: Record<string, unknown> =
 
   return {
     values,
+    setAccessLevel: vi.fn(async () => undefined),
     get: vi.fn(async (keys?: StorageKeys) => readStorageValues(values, keys)),
     set: vi.fn(async (items: Record<string, unknown>) => {
       for (const [key, value] of Object.entries(items)) values.set(key, value);
@@ -168,6 +169,7 @@ function createChromeTabs(initialTabs: MockTab[] = []) {
 function createChromePermissions() {
   const origins = new Set<string>();
   const permissions = new Set<string>();
+  const onRemoved = createChromeEvent<[{ origins?: string[]; permissions?: string[] }]>();
 
   function remember(permissionRequest: { origins?: string[]; permissions?: string[] }) {
     for (const origin of permissionRequest.origins ?? []) origins.add(origin);
@@ -184,6 +186,7 @@ function createChromePermissions() {
   return {
     origins,
     permissions,
+    onRemoved,
     request: vi.fn(async (permissionRequest: { origins?: string[]; permissions?: string[] }) => {
       remember(permissionRequest);
       return true;
@@ -191,6 +194,7 @@ function createChromePermissions() {
     remove: vi.fn(async (permissionRequest: { origins?: string[]; permissions?: string[] }) => {
       for (const origin of permissionRequest.origins ?? []) origins.delete(origin);
       for (const permission of permissionRequest.permissions ?? []) permissions.delete(permission);
+      await onRemoved.dispatch(permissionRequest);
       return true;
     }),
     contains: vi.fn(async (permissionRequest: { origins?: string[]; permissions?: string[] }) =>
@@ -224,7 +228,7 @@ export function createChromeMock() {
     tabs: createChromeTabs(),
     permissions: createChromePermissions(),
     scripting: {
-      executeScript: vi.fn(async (): Promise<unknown[]> => []),
+      executeScript: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
     },
     action: {
       setBadgeBackgroundColor: vi.fn(async () => undefined),
@@ -241,12 +245,13 @@ export function createChromeMock() {
     },
     alarms: {
       create: vi.fn(),
+      clear: vi.fn(async () => true),
       onAlarm: createChromeEvent<[Record<string, unknown>]>(),
     },
     debugger: {
       attach: vi.fn(async () => undefined),
       detach: vi.fn(async () => undefined),
-      sendCommand: vi.fn(async () => ({})),
+      sendCommand: vi.fn(async (..._args: unknown[]) => ({})),
       onDetach: createChromeEvent<[unknown, string]>(),
       onEvent: createChromeEvent<[unknown, string, Record<string, unknown> | undefined]>(),
     },

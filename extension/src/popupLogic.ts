@@ -1,5 +1,11 @@
 import type { AnnotationRestoreReport } from "./annotationOverlay.js";
 import {
+  CLEAR_ANNOTATIONS_COMMAND,
+  SWITCH_ANNOTATION_MODE_COMMAND,
+  TOGGLE_ANNOTATE_COMMAND,
+  TOGGLE_ANNOTATION_TOOLBAR_COMMAND,
+} from "./annotationShortcuts.js";
+import {
   COPY_TAB_ID_COMMAND,
   isShareableTabUrl,
   shortcutFeedbackText,
@@ -29,7 +35,7 @@ export function shortcutHint(
   });
 }
 
-/** The bound keys for the two shortcuts, labeled for the popup's key legend. */
+/** Current browser assignments; a missing binding must never look like a working default. */
 export function shortcutKeys(
   commands: { name?: string; shortcut?: string }[],
   lang: Language,
@@ -39,6 +45,10 @@ export function shortcutKeys(
   return [
     { keys: keyFor(TOGGLE_SHARE_COMMAND), label: t(lang, "popup.shortcut.toggle") },
     { keys: keyFor(COPY_TAB_ID_COMMAND), label: t(lang, "popup.shortcut.copy") },
+    { keys: keyFor(TOGGLE_ANNOTATE_COMMAND), label: t(lang, "popup.shortcut.annotate") },
+    { keys: keyFor(SWITCH_ANNOTATION_MODE_COMMAND), label: t(lang, "popup.shortcut.mode") },
+    { keys: keyFor(CLEAR_ANNOTATIONS_COMMAND), label: t(lang, "popup.shortcut.clear") },
+    { keys: keyFor(TOGGLE_ANNOTATION_TOOLBAR_COMMAND), label: t(lang, "popup.shortcut.toolbar") },
   ];
 }
 
@@ -141,6 +151,14 @@ export function restoreReportText(
 
 // Gateway error codes that have a human-facing translation.
 const ERROR_MESSAGE_KEYS: Readonly<Record<string, MessageKey>> = {
+  cloud_url_invalid: "error.cloud_url_invalid",
+  cloud_service_permission_required: "error.cloud_service_permission_required",
+  cloud_new_url_code_required: "error.cloud_new_url_code_required",
+  cloud_code_invalid: "error.cloud_code_invalid",
+  cloud_code_required: "error.cloud_code_required",
+  cloud_tab_unsupported: "error.cloud_tab_unsupported",
+  cloud_manual_sharing_required: "error.cloud_manual_sharing_required",
+  connection_changing: "error.connection_changing",
   all_tabs_permission_required: "error.all_tabs_permission_required",
   bookmarks_permission_required: "error.bookmarks_permission_required",
   reading_list_permission_required: "error.reading_list_permission_required",
@@ -183,6 +201,39 @@ export function gatewayStatusPill(wsConnected: boolean, lang: Language): StatusP
         tone: "danger",
         description: t(lang, "popup.gateway.disconnectedDescription"),
       };
+}
+
+export function connectionStatusPresentation(
+  state: Extract<BackgroundToPopup, { type: "connection_status" }>,
+  lang: Language,
+): { pill: StatusPill; gateway: "connected" | "checking" | "idle" | "disconnected" } {
+  if (state.wsConnected) return { pill: gatewayStatusPill(true, lang), gateway: "connected" };
+  if (["discovering", "connecting", "authenticating"].includes(state.phase)) {
+    return {
+      pill: {
+        label: t(
+          lang,
+          state.phase === "authenticating"
+            ? "popup.gateway.authenticating"
+            : "popup.gateway.connecting",
+        ),
+        tone: "neutral",
+      },
+      gateway: "checking",
+    };
+  }
+  if (
+    state.destination === "cloud" &&
+    state.cloudCodeConfigured &&
+    !state.cloudConnectionFailed &&
+    state.sharedTabCount === 0
+  ) {
+    return {
+      pill: { label: t(lang, "popup.connection.idle"), tone: "neutral" },
+      gateway: "idle",
+    };
+  }
+  return { pill: gatewayStatusPill(false, lang), gateway: "disconnected" };
 }
 
 /**

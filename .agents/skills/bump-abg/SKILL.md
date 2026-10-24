@@ -38,7 +38,33 @@ docs/HOMEBREW.md
 docs/WINGET.md
 docs/TEMPORARY_ZIP_INSTALL.md
 Casks/agent-browser-gateway.rb
+windows/Directory.Build.props
+windows/AgentBrowserGateway.Windows/app.manifest
+windows/Install-AgentBrowserGateway.ps1
+scripts/dist-windows-x64.ps1
+scripts/build-install-windows-x64.ps1
+.github/workflows/windows-ci.yml
 ```
+
+Windows runtime version is derived from the Core assembly version in `windows/Directory.Build.props`.
+Windows packaging rejects a requested version that differs from that file, checks EXE file versions,
+and Windows CI smoke-tests the packaged Gateway/CLI version before producing release artifacts.
+
+For a Windows-only release, update only the Windows version files and the Windows download
+metadata/guidance. Use `windows-v<version>` after the PR lands on main; leave the Mac and
+extension versions unchanged. This tag does not run the Mac/Chrome release workflow.
+When the owner authorizes unsigned distribution, publish the payload ZIP and setup ZIP
+manually with their verified SHA-256 files. Do not publish unsigned MSIX or submit WinGet.
+The shared checksum reconciliation workflow assumes a `v<version>` release with Mac assets,
+so build and verify a Windows-only `SHA256SUMS.txt` from those two uploaded ZIPs instead.
+
+For a Chrome-extension-only release, update `extension/package.json`, `extension/public/manifest.json`, and the background handshake version together. Use `extension-v<version>` after the PR lands on main; keep desktop/Cask/WinGet versions and their hashes unchanged. Build the Chrome Web Store ZIP, verify its root manifest/version and checksums, and attach the ZIP and checksum to the GitHub Release. Create this component release with `--latest=false` so desktop users following `releases/latest` still reach a desktop release. This ZIP is loaded unpacked; Chrome Web Store supplies Store package signing. Do not build or sign desktop apps for this scope.
+
+When the owner authorizes CRX / Chrome extension review submission, follow the
+[Chrome Web Store submission procedure](../../../extension/WEBSTORE.md#github-actions-review-submission-boundary)
+through verified Store acceptance. Read that procedure before choosing a tool:
+it defines the CLI workflow, component-tag behavior, evidence required for
+completion, and the concrete blockers that can require Dashboard interaction.
 
 `Casks/agent-browser-gateway.rb` and the temporary zip checksums must be updated from the actual generated artifacts, not guessed.
 
@@ -162,7 +188,7 @@ git commit -m "Release v<new-version>"
 git push origin main
 ```
 
-Create a GitHub Release only when requested. Pushing the tag starts `release-artifacts.yml`, which
+Create a GitHub Release only when requested. Pushing a unified `v<version>` tag starts `release-artifacts.yml`, which
 builds adhoc-signed archives, submits the extension to the Chrome Web Store (staged publish), and runs
 Windows CI. Create the draft release with the signed assets right after pushing the tag, before CI
 reaches its upload step, so CI keeps them:
@@ -206,22 +232,13 @@ If `codesign` reports the Developer ID identity as ambiguous (two certificates w
 the keychain), pass the SHA-1 hash of the certificate used for the previous release as
 `SIGN_IDENTITY`.
 
-## Chrome Web Store Before Tagging
+## Chrome Web Store Submission
 
-The tag's Chrome Web Store job uploads the package and submits it for review. Check these before
-pushing the tag; each one needs the owner in the Developer Dashboard:
-
-- If the release adds or changes a manifest permission, the owner must add its justification under
-  Privacy practices first. Otherwise the upload succeeds but submission fails with
-  `INVALID_ITEM_METADATA`. Put the justification text in `extension/WEBSTORE.md` and hand it over.
-- If another version is pending review, the job stops on purpose. Either wait for that review or ask
-  the owner to withdraw it, then confirm the withdrawal before tagging.
-- Store screenshots, promo tiles, and the store icon are not part of the package. Regenerate them
-  with `extension/store-assets/render.mjs` when the UI changes and have the owner upload them.
-- Staged publishing means an approved version still needs a manual Publish.
-
-To resubmit after fixing listing metadata, the owner can press Submit for review in the dashboard;
-the uploaded package stays as the draft.
+Use the [canonical submission procedure](../../../extension/WEBSTORE.md#github-actions-review-submission-boundary)
+for release preflight, submission, pending-review conflicts, metadata fixes, and
+completion reporting. Keep the operational steps there rather than duplicating
+them in this skill. An `extension-v<version>` GitHub Release does not submit the
+extension for review.
 
 ## Local Install Refresh
 

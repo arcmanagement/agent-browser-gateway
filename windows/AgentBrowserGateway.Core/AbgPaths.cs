@@ -2,7 +2,8 @@ namespace AgentBrowserGateway.Core;
 
 public static class AbgPaths
 {
-    public const string Version = "0.4.5";
+    public static string Version => typeof(AbgPaths).Assembly.GetName().Version?.ToString(3)
+        ?? throw new InvalidOperationException("ABG assembly version is missing.");
     public const int DefaultWsPort = 8765;
     public static string WsHost => "127.0.0.1";
     public static int WsPort => ResolveWsPort(Environment.GetEnvironmentVariable("ABG_PORT"));

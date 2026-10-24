@@ -1,6 +1,7 @@
 // Shared message types between background, popup, and Gateway.
 
 import type { ShortcutOutcome } from "./backgroundLogic.js";
+import type { ConnectionDiagnostic, DiagnosticContext } from "./connectionDiagnostics.js";
 import type { LocalizedText, UiLanguageSetting } from "./i18n.js";
 
 export type AnnotationAction =
@@ -37,6 +38,7 @@ export type RecentShortcutFeedback = {
 export type ExtToGateway =
   | {
       type: "hello";
+      capabilities?: string[];
       extensionId: string;
       version: string;
       profileLabel?: string;
@@ -101,6 +103,7 @@ export type GatewayCommand = {
   id: string;
   method: GatewayMethod;
   params?: {
+    _requireApproval?: boolean;
     tabId?: number;
     selector?: string;
     frame?: string;
@@ -159,6 +162,11 @@ export type GatewayCommand = {
     // as a legacy single-path alias.
     files?: string[];
     file?: string;
+    transferId?: string;
+    transferIds?: string[];
+    totalBytes?: number;
+    offset?: number;
+    data?: string;
     // scroll (mouseWheel)
     deltaX?: number;
     deltaY?: number;
@@ -209,11 +217,14 @@ export type GatewayCommand = {
     // record
     mic?: boolean;
     recordingId?: string;
+    after?: number;
+    part?: number;
     timesliceMs?: number;
   };
 };
 
 export type GatewayMethod =
+  | "upload_chunk"
   | "frames"
   | "read_dom"
   | "get_dom"
@@ -251,6 +262,8 @@ export type GatewayMethod =
   | "annotation_mode"
   | "validate_editable"
   | "stream_control"
+  | "stream_read"
+  | "record_read"
   | "dialog_state"
   | "dialog_action"
   | "click_selector"
@@ -265,9 +278,11 @@ export type GatewayMethod =
   | "fill"
   | "paste"
   | "paste_rich"
+  | "clipboard_write"
   | "clear"
   | "replace_dom"
   | "upload_file"
+  | "attach_uploaded_files"
   | "type_text"
   | "key_press"
   | "key_down"
@@ -297,9 +312,11 @@ export type OperationMethod = Extract<
   | "fill"
   | "paste"
   | "paste_rich"
+  | "clipboard_write"
   | "clear"
   | "replace_dom"
   | "upload_file"
+  | "attach_uploaded_files"
   | "type_text"
   | "key_press"
   | "key_down"
@@ -320,6 +337,8 @@ export type ExtensionSettings = {
   trustedAutomationEnabled: boolean;
   profileLabel: string;
   gatewayWebSocketUrl: string;
+  connectionDestination: "local" | "cloud";
+  cloudWebSocketUrl: string;
   allTabsAccessEnabled: boolean;
   bookmarksAccessEnabled: boolean;
   readingListAccessEnabled: boolean;
@@ -353,6 +372,8 @@ export type ApprovalRequest = {
 };
 
 export type PopupToBackground =
+  | { type: "get_connection_diagnostics" }
+  | { type: "get_connection_status" }
   | { type: "get_state"; tabId: number }
   | { type: "permit"; tabId: number }
   | { type: "revoke"; tabId: number }
@@ -361,7 +382,17 @@ export type PopupToBackground =
   | { type: "set_trusted_automation_enabled"; value: boolean }
   | { type: "set_profile_label"; value: string }
   | { type: "set_gateway_websocket_url"; value: string }
+  | {
+      type: "set_connection_destination";
+      destination: "local" | "cloud";
+      cloudUrl: string;
+      code?: string;
+      savedId?: string;
+    }
+  | { type: "begin_cloud_login"; cloudUrl: string; name: string; savedId?: string }
+  | { type: "delete_cloud_connection"; id: string }
   | { type: "set_all_tabs_access"; value: boolean }
+  | { type: "set_cloud_sandbox_resume"; value: boolean }
   | { type: "set_bookmarks_access"; value: boolean }
   | { type: "set_reading_list_access"; value: boolean }
   | { type: "set_personal_data_mutations"; value: boolean }
@@ -369,16 +400,29 @@ export type PopupToBackground =
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
+  | { type: "connection_diagnostics"; events: ConnectionDiagnostic[]; storageFailed: boolean }
+  | (Pick<DiagnosticContext, "phase" | "destination" | "sharedTabCount"> & {
+      type: "connection_status";
+      wsConnected: boolean;
+      cloudCodeConfigured: boolean;
+      cloudConnectionFailed: boolean;
+    })
   | {
       type: "state";
       permitted: boolean;
       wsConnected: boolean;
+      cloudCodeConfigured?: boolean;
+      cloudConnectionFailed?: boolean;
+      savedCloudConnections?: { id: string; name: string; url: string; expiresAt?: string }[];
+      activeCloudConnectionId?: string;
+      cloudLoginPending?: boolean;
       activeTab: {
         incognito: boolean;
         incognitoAccessAllowed: boolean;
       };
       sharedTabs: { tabId: number; title: string; url: string; accessMode: TabAccessMode }[];
       allTabsAccess: {
+        resumeEnabled?: boolean;
         permissionGranted: boolean;
         active: boolean;
         shareableTabCount: number;
@@ -447,7 +491,7 @@ export type BackgroundToOffscreen =
       timesliceMs?: number;
     }
   | { target: "abg-offscreen"; cmd: "stop"; recordingId: string }
-  | { target: "abg-offscreen"; cmd: "copy_text"; text: string };
+  | { target: "abg-offscreen"; cmd: "copy_text"; text: string; html?: string };
 
 export type OffscreenStartResult = {
   ok: boolean;

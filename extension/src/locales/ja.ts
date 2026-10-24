@@ -7,12 +7,55 @@
 import type { MessageCatalog } from "../i18n.js";
 
 export const ja: MessageCatalog = {
+  "error.cloud_service_permission_required":
+    "接続するには、選択したCloudサービスへのアクセスを許可してください。",
   // ---- Shared ----
   "common.untitled": "（無題）",
   "common.errorPrefix": "エラー: {message}",
 
   // ---- Popup ----
+  "popup.connection.destination": "接続先",
+  "popup.connection.saved": "登録済みの接続先",
+  "popup.connection.add": "接続先を追加…",
+  "popup.connection.name": "接続名",
+  "popup.connection.relogin": "再ログイン",
+  "popup.connection.login": "ログインして追加",
+  "popup.connection.registrationSettings": "接続名・サーバーを変更（任意）",
+  "popup.connection.delete": "接続先の登録を削除",
+  "popup.connection.manual": "手動接続（詳細設定）",
+  "popup.connection.loginPending": "Web画面でログインして許可すると、接続先を保存して接続します。",
+  "popup.connection.savedNote":
+    "接続先はこの拡張に保存されます。選ぶと接続を切り替えます。期限が切れたら、同じ接続先から再ログインしてください。",
+  "popup.connection.expires": "有効期限: {date}。管理画面から期限を更新できます。",
+  "error.cloud_url_invalid":
+    "HTTPSまたはWSSのCloud URLを入力してください。認証情報・クエリ・フラグメントは含めず、ルートまたは/wsを指定してください。",
+  "error.cloud_new_url_code_required":
+    "新しいCloud URL用のブラウザー接続コードを入力してください。",
+  "error.cloud_code_invalid": "CloudのURLと有効なブラウザー接続コードを入力してください。",
+  "error.cloud_code_required": "タブを共有する前にCloudの接続コードを設定してください。",
+  "error.cloud_tab_unsupported":
+    "CloudにはHTTPまたはHTTPSのタブを共有できます。URLは8,192文字以内にしてください。",
+  "error.cloud_manual_sharing_required": "Cloudではタブを一つずつ選んで共有してください。",
+  "error.connection_changing": "接続先を切り替えています。完了してからもう一度操作してください。",
+  "popup.connection.local": "Local（このマシン）",
+  "popup.connection.cloud": "Cloud",
+  "popup.connection.url": "CloudのURL",
+  "popup.connection.code": "ブラウザー接続コード",
+  "popup.connection.codeSaved": "このブラウザーセッションでは設定済み",
+  "popup.connection.codeNeeded": "ブラウザー接続コードを入力",
+  "popup.connection.apply": "接続する",
+  "popup.connection.note":
+    "接続先を切り替えると現在の共有を解除します。タブを改めて共有してください。",
+  "popup.connection.cloudNote":
+    "手動コードはブラウザーの終了まで有効です。再起動後も使う接続先は、上のログインから登録してください。",
+  "popup.connection.applied": "接続先を設定しました。タブを共有すると接続を開始します。",
+  "popup.connection.idle": "共有待ち",
+  "popup.connection.offline":
+    "Cloudを設定してタブを共有してください。接続が終了した場合は改めて共有してください。",
+  "popup.connection.cloudAudit": "読み取りと操作はCloudの監査ログへ記録します。",
   "popup.gateway.checking": "確認中…",
+  "popup.gateway.connecting": "接続しています…",
+  "popup.gateway.authenticating": "認証しています…",
   "popup.gateway.connected": "接続中",
   "popup.gateway.connectedDescription": "Gateway に接続しています",
   "popup.gateway.disconnected": "未接続",
@@ -66,6 +109,10 @@ export const ja: MessageCatalog = {
     "{toggle} で現在のタブを共有／共有解除、{copy} でタブ ID をコピーします。ショートカットは {settingsPage} で変更できます。",
   "popup.shortcut.toggle": "共有／解除",
   "popup.shortcut.copy": "タブ ID をコピー",
+  "popup.shortcut.annotate": "注釈を開始／終了",
+  "popup.shortcut.mode": "範囲／テキスト",
+  "popup.shortcut.clear": "すべて削除（2回押す）",
+  "popup.shortcut.toolbar": "ツールバーを表示／非表示",
   "popup.shortcut.notSet": "（未設定）",
   "popup.shortcut.chromeSettingsPage": "chrome://extensions/shortcuts",
   "popup.shortcut.firefoxSettingsPage": "about:addons > 拡張機能のショートカットキーを管理",
@@ -91,9 +138,12 @@ export const ja: MessageCatalog = {
   "popup.permissions.trustedAutomation.off":
     "共有中のタブでの eval で、承認ウィンドウを省略します。スクリプトは監査ログに記録されます。",
   "popup.permissions.trustedAutomation.active":
-    "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。",
+    "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。Cloudの入力値の読み取りとファイル添付は、すべての共有タブで操作の承認設定に従います。Cloud側の承認ルールは優先されます。",
   "popup.permissions.trustedAutomation.evalDisabled":
     "オンですが、上の eval を許可するまで eval は使えません。",
+  "popup.permissions.allTabs.resume": "再起動・切断後にSandboxを自動復帰",
+  "popup.permissions.allTabs.resumeNote":
+    "この保存済みCloud接続先だけに適用します。SandboxをOFFにするか、接続先を切り替えると自動復帰もOFFになります。",
   "popup.permissions.allTabs": "全タブ共有（サンドボックス専用）",
   "popup.permissions.allTabs.active":
     "{count} 個のタブを共有中です。この隔離プロファイルでは、ブラウザ操作の自動化機能が有効です。",
@@ -119,6 +169,15 @@ export const ja: MessageCatalog = {
   "popup.permissions.personalDataMutations": "ブックマークとリーディングリストの変更を許可",
   "popup.permissions.personalDataMutations.note":
     "エージェントが変更を依頼できます。変更のたびに承認ウィンドウが開き、削除は取り消せない操作として表示されます。",
+  "popup.diagnostics.heading": "接続履歴",
+  "popup.diagnostics.note":
+    "このブラウザに直近7日間・最大200件を保存します。認証情報やページの内容は含みません。",
+  "popup.diagnostics.refresh": "更新",
+  "popup.diagnostics.save": "JSONを保存",
+  "popup.diagnostics.empty": "接続履歴はまだありません。",
+  "popup.diagnostics.incomplete":
+    "保存できなかったイベントがあり、履歴が一部欠けている可能性があります。",
+  "popup.diagnostics.unavailable": "接続履歴を読み込めませんでした。更新を試してください。",
   "popup.advanced.heading": "詳細設定",
   "popup.advanced.language": "表示言語",
   "popup.advanced.language.auto": "自動（ブラウザの言語）",
@@ -166,6 +225,10 @@ export const ja: MessageCatalog = {
   "approval.loadFailed": "承認リクエストを読み込めませんでした。",
 
   // ---- Approval intents ----
+  "intent.clipboardWrite": "ブラウザーのクリップボードに{payload}を書き込みます。",
+  "intent.sensitiveRead":
+    "機密情報を含む可能性がある値の読み取り: {method}（{detail}）。この値を共有する場合のみ許可してください。",
+  "intent.accountPolicy": "アカウントの設定により、この共有タブでの {method} の承認が必要です。",
   "intent.frameSuffix": " (フレーム {frame} 内)",
   "intent.clickSelector": "セレクタ {selector}{frame} に一致する要素をクリックします。",
   "intent.clickAt": "ページ座標 ({x}, {y}) をクリックします。",
@@ -275,6 +338,7 @@ export const ja: MessageCatalog = {
   "shortcut.copiedSharedAllTabs":
     "{tab}の ID をコピーしました。このタブは全タブ共有でエージェントと共有中です。",
   "shortcut.copyFailed": "タブ ID {tabId} をコピーできませんでした: {error}",
+  "shortcut.annotationFailed": "タブ {tabId} の注釈を操作できませんでした: {error}",
 
   // ---- Annotation overlay ----
   "overlay.annotating": "注釈中",
@@ -286,6 +350,10 @@ export const ja: MessageCatalog = {
   "overlay.clearConfirmTitle": "もう一度クリックすると、このページの注釈をすべて削除します",
   "overlay.done": "完了",
   "overlay.doneTitle": "注釈を終了（Esc）",
+  "overlay.hideToolbar": "ツールバーを隠す",
+  "overlay.showToolbar": "ツールバーを表示",
+  "overlay.moveToolbar": "ツールバーを移動 · ドラッグまたは矢印キー",
+  "overlay.closeToast": "通知を閉じる",
   "overlay.count": "注釈 {count} 件",
   "overlay.hintArea": "ドラッグかクリックで指定",
   "overlay.hintText": "テキストを選択して指定",

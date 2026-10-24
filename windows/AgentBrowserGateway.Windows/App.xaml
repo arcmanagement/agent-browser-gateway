@@ -7,6 +7,51 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="GateCanvas" Color="#F6F7F5" />
+                    <SolidColorBrush x:Key="GateCard" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="GateInset" Color="#EEF0ED" />
+                    <SolidColorBrush x:Key="GateLine" Color="#1F07090A" />
+                    <SolidColorBrush x:Key="GateSignal" Color="#0A7A3F" />
+                    <SolidColorBrush x:Key="GateDanger" Color="#B42318" />
+                    <SolidColorBrush x:Key="GateWarning" Color="#9A5100" />
+                    <SolidColorBrush x:Key="GateOnSignal" Color="#FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="GateCanvas" Color="#0D1112" />
+                    <SolidColorBrush x:Key="GateCard" Color="#141A1C" />
+                    <SolidColorBrush x:Key="GateInset" Color="#07090A" />
+                    <SolidColorBrush x:Key="GateLine" Color="#24FFFFFF" />
+                    <SolidColorBrush x:Key="GateSignal" Color="#3DFF8F" />
+                    <SolidColorBrush x:Key="GateDanger" Color="#FF7D73" />
+                    <SolidColorBrush x:Key="GateWarning" Color="#FFC46E" />
+                    <SolidColorBrush x:Key="GateOnSignal" Color="#07090A" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="GateCanvas" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="GateCard" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="GateInset" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="GateLine" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="GateSignal" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="GateDanger" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="GateWarning" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="GateOnSignal" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <Style x:Key="GateCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource GateCard}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource GateLine}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="Padding" Value="24" />
+            </Style>
+            <Style x:Key="GatePrimaryButton" TargetType="Button">
+                <Setter Property="Background" Value="{ThemeResource GateSignal}" />
+                <Setter Property="Foreground" Value="{ThemeResource GateOnSignal}" />
+                <Setter Property="Padding" Value="16,10" />
+                <Setter Property="CornerRadius" Value="8" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -112,7 +112,7 @@ public sealed class GatewayHost
                 lock (_gate)
                 {
                     _permittedTabs.RemoveAll(tab => tab.ExtensionId == connection.ExtensionId && tab.TabId == tabId.Value);
-                    _permittedTabs.Add(new PermittedTab(connection.ExtensionId, tabId.Value, url, title, origin, DateTimeOffset.UtcNow, expiresAt, accessMode));
+                    _permittedTabs.Add(new PermittedTab(connection.ExtensionId, tabId.Value, url, title, origin, DateTimeOffset.UtcNow, expiresAt, accessMode, ValidFavicon(root.GetString("favicon"))));
                 }
                 await _auditLog.LogAsync(
                     "permit",
@@ -158,7 +158,8 @@ public sealed class GatewayHost
                             Url = root.GetString("url") ?? current.Url,
                             Title = root.GetString("title") ?? current.Title,
                             Origin = root.GetString("origin") ?? current.Origin,
-                            AccessMode = accessMode
+                            AccessMode = accessMode,
+                            Favicon = root.TryGetProperty("favicon", out _) ? ValidFavicon(root.GetString("favicon")) : current.Favicon
                         };
                     }
                 }
@@ -389,11 +390,14 @@ public sealed class GatewayHost
     {
         var tabId = request.Params.GetInt("tabId");
         if (tabId is null) return Error(request, "bad_params", "tabId required");
+        var owner = request.Params.GetString("extensionId");
         List<string> extensionIds;
         lock (_gate)
         {
-            extensionIds = _connections.Keys.ToList();
-            _permittedTabs.RemoveAll(tab => tab.TabId == tabId.Value);
+            extensionIds = _connections.Keys.Where(id => owner is null || id == owner).ToList();
+            if (owner is not null && _permittedTabs.Any(tab => tab.TabId == tabId.Value && tab.ExtensionId == owner && tab.AccessMode == "all_tabs"))
+                return Error(request, "all_tabs_mode", "Turn off all-tabs mode in the owning extension popup.");
+            _permittedTabs.RemoveAll(tab => tab.TabId == tabId.Value && (owner is null || tab.ExtensionId == owner));
         }
         foreach (var extensionId in extensionIds)
         {
@@ -406,7 +410,7 @@ public sealed class GatewayHost
                 // The owning extension will revoke; non-owning extensions may ignore/fail.
             }
         }
-        await _auditLog.LogAsync("revoke_via_cli", tabId: tabId, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await _auditLog.LogAsync("revoke_via_cli", extensionId: owner, tabId: tabId, cancellationToken: cancellationToken).ConfigureAwait(false);
         OnStateChanged();
         return Ok(request, new Dictionary<string, object?> { ["ok"] = true });
     }
@@ -540,11 +544,25 @@ public sealed class GatewayHost
                     ["accessMode"] = tab.AccessMode
                 };
                 if (tab.ExpiresAt is not null) dict["expiresAt"] = tab.ExpiresAt.Value.ToString("O");
+                if (tab.Favicon is not null) dict["favicon"] = tab.Favicon;
                 if (!string.IsNullOrWhiteSpace(extension?.Profile)) dict["profile"] = extension.Profile;
                 if (!string.IsNullOrWhiteSpace(extension?.Browser)) dict["browser"] = extension.Browser;
                 return dict;
             })
             .ToList();
+    }
+
+    private static string? ValidFavicon(string? value)
+    {
+        // Browser-provided PNG only: never fetch a favicon URL from the desktop app.
+        const string prefix = "data:image/png;base64,";
+        if (value is null || !value.StartsWith(prefix, StringComparison.Ordinal) || value.Length > 90_000) return null;
+        try
+        {
+            var bytes = Convert.FromBase64String(value[prefix.Length..]);
+            return bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ? value : null;
+        }
+        catch (FormatException) { return null; }
     }
 
     private ErrorPayload TabUnavailableError(int tabId)

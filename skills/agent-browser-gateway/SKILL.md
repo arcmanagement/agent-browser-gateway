@@ -1,10 +1,22 @@
 ---
 name: agent-browser-gateway
-version: 0.5.2
+version: 1.3.1
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
 # Agent Browser Gateway
+
+## Cloud接続
+
+Chrome拡張1.3.1のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+
+Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
+
+接続先は拡張に保存できる。パスワードをAIへ渡したり、CLIで入力したりする必要はない。隔離プロファイルだけがSandboxと自動復帰を本人操作で有効にできる。Cloudへ送られる内容、upload・録画の承認、配布方法は [Cloud extension guide](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md) を参照。以下のCLI手順はローカルGateway用。
+
+操作の承認がOFFなら、Cloudのsnapshot、describe、find、入力値、編集検証、stateの値、network本文の読み取りに毎回のAllowは不要。手動共有とSandboxのどちらにも適用され、AutoModeや自動復帰は不要。Cloud側の強制承認とパスワード・認証コードの読み取り禁止は残る。ファイル添付も同じ操作の承認設定に従い、OFFなら全ファイルパスで承認画面を出さない。Sandbox、信頼済み自動化、自動復帰を条件にしない。ブラウザー上のpathを使う従来の添付だけがChromeのファイルURLアクセス許可を必要とする。録画の個別承認は引き続き必要。
+
+Cloudでローカル画像を添付する時は、`tab_upload_chunk`でbase64を転送し、`tab_attach_files`で対象のfile inputへ添付する。拡張の`file-transfer-v1`対応が必要。転送と添付はABGだけで完結し、SSH・SCPやGCE上のfile配置、file URL権限は不要。1file16MiB、合計32MiB、20fileまで、chunkは36KiB以下。現在のtool schemaに従う。操作の承認OFFなら追加承認は不要。ローカルpathを接続先が読めないだけでABGで送れないと断定しない。
 
 Windows では `abg.exe` を使う。パス、profile、制限の差分は [WINDOWS.md](WINDOWS.md) を参照。
 
@@ -13,6 +25,10 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 例外として、隔離した Chrome プロファイル / sandbox マシンでは、拡張 popup の `Share all tabs (sandbox profiles only)` をユーザーが明示的に ON にできる。この場合のみ Chrome の optional `<all_urls>` 権限を要求し、`abg tabs` に `accessMode: "all_tabs"` のタブが並ぶ。普段使いプロファイルでは per-tab 明示許可を前提にする。
 
 ## 基本フロー
+
+ポップアップを開いている間は接続表示が自動更新される。接続準備・認証中は進行状態、認証完了後はConnected、実際の切断時はDisconnectedを表示する。設定の入力途中でも接続表示だけ更新し、共有の許可は自動で復元しない。
+
+Cloud切断の調査では、拡張1.3.1の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残る。1001だけでは原因を断定できない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認
@@ -496,6 +512,8 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF。Trusted automation / AutoMode OFF では CLI の `--approve` と正確な script を表示する per-call approval が必要。AutoMode ON では共有済み tab に限って approval popup を省略できる。audit には script source、approval mode、result type/bytes summary が残る
 - eval の既定 timeout は 75 秒またはそれより長い profile 既定値で、`--timeout` は 1〜300 秒に clamp される。script は 64 KiB 以下を推奨し、256 KiB が hard limit。超過は送信前に `script_too_large`、実行時間超過は `command_timeout` で失敗する。大きな処理は分割するか named primitive / plugin にする
 - **Annotation mode**:
+  - 拡張の `Alt+Shift+A`（macOSは `Option+Shift+A`）で現在のタブの注釈を開始・終了できる。未共有なら既存の共有条件を確認して先に共有する。`Alt+Shift+M` は Area/Text 切替。全削除とバー表示切替にも `chrome://extensions/shortcuts` でキーを設定でき、画面には実際の割り当てが出る。全削除は3秒以内に2回押して確定する
+  - ツールバーはグリップのドラッグ、またはフォーカス後の矢印キーで移動でき、位置と折り畳み状態が保存される。通知の×またはEscは通知を閉じ、Escの押下・キー解放の後続処理への伝播を止め、注釈モードを維持する。ページが先に登録したwindowのcapture処理は先に実行される場合がある
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
   - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る
   - Area 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。Text 由来の注釈は必ず `kind: "text"` として扱い、選択文字列を純粋なテキストデータとして読む

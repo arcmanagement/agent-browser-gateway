@@ -459,7 +459,8 @@ export type ShortcutOutcome =
   | { kind: "blocked"; reason: ShortcutBlockReason; url?: string }
   | { kind: "toggle_failed"; action: "permit" | "revoke"; tabId: number; error: string }
   | { kind: "copied"; tabId: number; title?: string; accessMode?: TabAccessMode }
-  | { kind: "copy_failed"; tabId: number; error: string };
+  | { kind: "copy_failed"; tabId: number; error: string }
+  | { kind: "annotation_failed"; tabId: number; error: string };
 
 const BADGE_GREEN = "#34c759";
 const BADGE_BLUE = "#0a84ff";
@@ -528,6 +529,8 @@ export function shortcutFeedbackText(outcome: ShortcutOutcome): LocalizedText {
     }
     case "copy_failed":
       return msg("shortcut.copyFailed", { tabId: outcome.tabId, error: outcome.error });
+    case "annotation_failed":
+      return msg("shortcut.annotationFailed", { tabId: outcome.tabId, error: outcome.error });
   }
 }
 
@@ -550,6 +553,7 @@ export function shortcutFeedback(
         ? { level: "success", badgeText: "ID", badgeColor: BADGE_BLUE, message }
         : { level: "warning", badgeText: "ID", badgeColor: BADGE_ORANGE, message };
     case "copy_failed":
+    case "annotation_failed":
       return { level: "error", badgeText: "ERR", badgeColor: BADGE_RED, message };
   }
 }

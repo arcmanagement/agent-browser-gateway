@@ -6,8 +6,10 @@ ABG for Windows is submitted to the Microsoft Windows Package Manager Community 
 ArcManagement.AgentBrowserGateway
 ```
 
-Current `v0.4.8` status: ABG is not indexed by WinGet yet, and no Windows release ZIP has been
-published. The release is waiting on the signed Windows release and WinGet submission workflow.
+Current Windows `v0.5.3` status: ABG is not indexed by WinGet yet. Unsigned Windows setup and payload ZIPs
+are available from [GitHub Releases](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/windows-v0.5.3).
+Extract the setup ZIP and run `AgentBrowserGatewaySetup.exe`. Windows may show a security warning.
+Signed release publication and WinGet submission remain separate follow-up work.
 
 Once the WinGet PR for a release is merged into `microsoft/winget-pkgs`, users can install ABG with:
 
@@ -25,6 +27,10 @@ The setup ZIP contains `AgentBrowserGatewaySetup.exe` at the archive root and th
 `payload/`. The WinGet manifest treats it as a ZIP installer with a nested EXE installer.
 
 ## Release Workflow
+
+Windows-only releases use `windows-v<version>` tags and the `Windows CI` workflow.
+They do not publish macOS or Chrome extension builds. The unsigned ZIPs are uploaded manually
+after validation; WinGet submission requires signed binaries.
 
 The unified `Release` workflow runs on `v*.*.*` tag pushes, creates a draft
 GitHub Release, and calls `Windows CI` with the same tag version. The Windows job:
@@ -59,19 +65,19 @@ release is published.
 Generate manifests without submitting:
 
 ```powershell
-.\scripts\update-winget-manifest.ps1 -Version 0.4.8
+.\scripts\update-winget-manifest.ps1 -Version 0.5.3 -InstallerUrl "https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip"
 ```
 
 The output path is:
 
 ```text
-dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.8
+dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.5.3
 ```
 
 Validate on Windows when `winget` is available:
 
 ```powershell
-winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.4.8
+winget validate dist\winget\manifests\a\ArcManagement\AgentBrowserGateway\0.5.3
 ```
 
 Submit or resubmit manually from GitHub Actions with the `WinGet Submission` workflow. Set

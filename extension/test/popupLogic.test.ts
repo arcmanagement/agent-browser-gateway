@@ -4,6 +4,7 @@ import { formatText } from "../src/i18n.js";
 import {
   allTabsAccessNote,
   annotationButtonLabel,
+  connectionStatusPresentation,
   errorMessage,
   errorText,
   gatewayStatusPill,
@@ -21,13 +22,15 @@ import {
   trustedAutomationNote,
   visibleSharedTabs,
 } from "../src/popupLogic.js";
-import type { ExtensionSettings } from "../src/types.js";
+import type { BackgroundToPopup, ExtensionSettings } from "../src/types.js";
 
 const baseSettings: ExtensionSettings = {
   allTabsAccessEnabled: false,
   evalEnabled: false,
   operationsRequireApproval: true,
   profileLabel: "",
+  connectionDestination: "local",
+  cloudWebSocketUrl: "",
   gatewayWebSocketUrl: "ws://127.0.0.1:8765/ws",
   trustedAutomationEnabled: false,
   bookmarksAccessEnabled: false,
@@ -155,11 +158,23 @@ describe("popupLogic", () => {
     expect(shortcutKeys(commands, "en")).toEqual([
       { keys: "⌥⇧S", label: "Share / revoke" },
       { keys: null, label: "Copy tab ID" },
+      { keys: null, label: "Start / stop annotating" },
+      { keys: null, label: "Area / Text" },
+      { keys: null, label: "Clear all (press twice)" },
+      { keys: null, label: "Show / hide toolbar" },
     ]);
     expect(shortcutKeys([], "ja").map((key) => key.label)).toEqual([
       "共有／解除",
       "タブ ID をコピー",
+      "注釈を開始／終了",
+      "範囲／テキスト",
+      "すべて削除（2回押す）",
+      "ツールバーを表示／非表示",
     ]);
+    expect(
+      shortcutKeys([{ name: "toggle-annotate-current-tab", shortcut: "Ctrl+Shift+9" }], "en")[2]
+        ?.keys,
+    ).toBe("Ctrl+Shift+9");
   });
 
   it("shows only recent shortcut results", () => {
@@ -205,6 +220,49 @@ describe("popupLogic", () => {
       label: "接続中",
       tone: "success",
       description: "Gateway に接続しています",
+    });
+  });
+
+  it("keeps authentication progress distinct from an actual disconnect", () => {
+    const state: Extract<BackgroundToPopup, { type: "connection_status" }> = {
+      type: "connection_status",
+      destination: "cloud",
+      phase: "authenticating",
+      wsConnected: false,
+      cloudCodeConfigured: true,
+      cloudConnectionFailed: false,
+      sharedTabCount: 1,
+    };
+    expect(connectionStatusPresentation(state, "en")).toEqual({
+      pill: { label: "Authenticating…", tone: "neutral" },
+      gateway: "checking",
+    });
+    expect(connectionStatusPresentation(state, "ja").pill.label).toBe("認証しています…");
+    for (const phase of ["discovering", "connecting"] as const) {
+      expect(connectionStatusPresentation({ ...state, phase }, "en")).toEqual({
+        pill: { label: "Connecting…", tone: "neutral" },
+        gateway: "checking",
+      });
+    }
+    expect(
+      connectionStatusPresentation({ ...state, phase: "ready", wsConnected: true }, "en"),
+    ).toMatchObject({ pill: { label: "Connected", tone: "success" }, gateway: "connected" });
+    expect(
+      connectionStatusPresentation({ ...state, phase: "idle", sharedTabCount: 0 }, "en"),
+    ).toMatchObject({ pill: { label: "Ready to share" }, gateway: "idle" });
+    expect(
+      connectionStatusPresentation(
+        {
+          ...state,
+          phase: "idle",
+          sharedTabCount: 0,
+          cloudConnectionFailed: true,
+        },
+        "en",
+      ),
+    ).toMatchObject({
+      pill: { label: "Disconnected", tone: "danger" },
+      gateway: "disconnected",
     });
   });
 

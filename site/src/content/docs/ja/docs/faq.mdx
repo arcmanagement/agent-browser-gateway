@@ -39,7 +39,7 @@ abg audit --lines 20
 
 ## ABG はブラウザーのデータをクラウドに送りますか？
 
-送りません。Gateway は `127.0.0.1` で待ち受け、ABG にはホスト型のアカウントも、クラウドの中継も、テレメトリーもありません。スマートフォンをペアリングした場合は、選んだ非公開の Tailnet か LAN のインターフェースでも待ち受けます。
+ローカル接続は `127.0.0.1`、または本人が許可した非公開のスマートフォン接続を使います。拡張1.3.1のCloud接続では、共有した内容と要求した結果を、選択したサービスを通して許可済みAI連携へ渡します。Webログインを使い、デスクトップアプリは不要です。どちらも広告・分析用テレメトリーは追加しません。[Cloud手順](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md)を参照してください。
 
 ## どのエージェントで使えますか？
 
@@ -48,6 +48,10 @@ Claude Code、Codex、Cursor、Cline など、シェルのコマンドを実行�
 ## MCP に対応していますか？
 
 はい。`abg mcp-server` は、ローカルの CLI を呼ぶ `abg_cli` ツールを1つだけ公開する stdio の MCP サーバーです。基準は CLI のままです。シェルを使えるエージェントならどれでも使え、人もそのまま動きを確かめられます。[エージェントスキルと MCP](../install/#エージェントスキルと-mcp) を参照してください。
+
+## Cloud接続が切れた原因を調べるには？
+
+拡張1.3.1の **詳細設定 → 接続履歴** から **JSONを保存** を選びます。直近7日間・最大200件の切断コード、認証失敗、意図した切断などをブラウザー内に保存し、再起動後も確認できます。認証情報やページ内容は含まれません。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残ります。1001だけでは原因を断定できません。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合します。[診断ガイド](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md#connection-diagnostics)を参照してください。
 
 ## ABG は Playwright の代わりになりますか？
 

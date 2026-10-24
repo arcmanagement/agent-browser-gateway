@@ -1,11 +1,47 @@
+import {
+  type AnnotationToolbarPreferences,
+  parseAnnotationToolbarPreferences,
+} from "./annotationToolbarLogic.js";
 import { browserAdapter } from "./browserAdapter.js";
 import { type AnnotationOverlayStrings, annotationOverlayStrings } from "./i18n.js";
 import type { AnnotationAction } from "./types.js";
 
 const browser = browserAdapter;
+const toolbarBinding = "__abgAnnotationToolbarChanged";
+const annotationWorld = "abg-annotation";
+const debuggerContexts = new Map<number, number>();
+
+export function forgetAnnotationDebuggerContext(tabId: number): void {
+  debuggerContexts.delete(tabId);
+}
+
+export function annotationToolbarPreferencesFromDebugger(
+  tabId: number,
+  params: unknown,
+): AnnotationToolbarPreferences | undefined {
+  if (!params || typeof params !== "object") return undefined;
+  const { name, payload, executionContextId } = params as Record<string, unknown>;
+  if (
+    name !== toolbarBinding ||
+    typeof executionContextId !== "number" ||
+    executionContextId !== debuggerContexts.get(tabId) ||
+    typeof payload !== "string" ||
+    payload.length > 512
+  )
+    return undefined;
+  try {
+    return parseAnnotationToolbarPreferences(JSON.parse(payload));
+  } catch {
+    return undefined;
+  }
+}
 
 export type AnnotationCommand = {
-  action: AnnotationAction;
+  action: AnnotationAction | "switch_mode" | "toggle_toolbar" | "clear_confirm";
+  shortcuts?: { toggle?: string; mode?: string; clear?: string; toolbar?: string };
+  toolbarPreferences?: AnnotationToolbarPreferences;
+  /** Private transport available only in the debugger's isolated annotation world. */
+  toolbarBinding?: string;
   selector?: string;
   comment?: string;
   x?: number;
@@ -16,8 +52,8 @@ export type AnnotationCommand = {
   saved?: unknown[];
   /**
    * True only when the command runs in the extension's isolated world, where the overlay can
-   * report changes to the background through chrome.runtime. The debugger fallback runs in the
-   * page's main world and must never try to message the extension from there.
+   * report changes to the background through chrome.runtime. The debugger's isolated world
+   * does not have extension runtime bindings.
    */
   persist?: boolean;
   /**
@@ -72,6 +108,7 @@ export type AnnotationModeResult = {
   pageSessionId?: string;
   restore?: AnnotationRestoreReport;
   saved?: unknown;
+  cleared?: boolean;
 };
 
 function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): AnnotationModeResult {
@@ -150,6 +187,11 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     // Optional so a state object created by an older overlay build stays valid.
     clearArmedUntil?: number;
     toastTimer?: number | null;
+    toolbarPreferences: AnnotationToolbarPreferences;
+    toolbarBinding?: string;
+    shortcuts: NonNullable<AnnotationCommand["shortcuts"]>;
+    toolbarDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null;
+    escapeToastHeld?: boolean;
   };
   type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
@@ -171,12 +213,14 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     clearConfirmTitle: strings.clearConfirmTitle,
     done: strings.done,
     doneTitle: strings.doneTitle,
+    hideToolbar: strings.hideToolbar,
+    showToolbar: strings.showToolbar,
+    moveToolbar: strings.moveToolbar,
+    closeToast: strings.closeToast,
     count: (count: number) =>
       fill(count === 1 ? strings.countOne : strings.countOther, "count", count),
     hintArea: strings.hintArea,
     hintText: strings.hintText,
-    hintSelected: strings.hintSelected,
-    hintFinish: strings.hintFinish,
     annotationLabel: (displayNumber: number) =>
       fill(strings.annotationLabel, "number", displayNumber),
     editorTitle: (displayNumber: number) => fill(strings.annotationLabel, "number", displayNumber),
@@ -996,7 +1040,10 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       // The extension may have been reloaded; the overlay keeps working without persistence.
     }
   };
-  const makeResult = (state: AnnotationState, action: AnnotationAction): AnnotationModeResult => {
+  const makeResult = (
+    state: AnnotationState,
+    action: AnnotationCommand["action"],
+  ): AnnotationModeResult => {
     const annotations = snapshotAnnotations(state);
     return {
       ok: true,
@@ -1051,7 +1098,19 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       state.shadow.append(toast);
     }
     if (state.toastTimer) clearTimeout(state.toastTimer);
-    toast.textContent = message;
+    const text = document.createElement("span");
+    text.textContent = message;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.title = `${ui.closeToast} (Esc)`;
+    close.setAttribute("aria-label", close.title);
+    close.addEventListener("click", (event) => {
+      hideToast(state);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    toast.replaceChildren(text, close);
     toast.classList.remove("abg-fading");
     toast.hidden = false;
     const shownToast = toast;
@@ -1076,31 +1135,49 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
   };
+  const positionToolbar = (state: AnnotationState) => {
+    const { width, height } = state.toolbar.getBoundingClientRect();
+    state.toolbar.style.left = `${8 + state.toolbarPreferences.x * Math.max(0, innerWidth - width - 16)}px`;
+    state.toolbar.style.top = `${8 + state.toolbarPreferences.y * Math.max(0, innerHeight - height - 16)}px`;
+    state.toolbar.style.right = "auto";
+  };
+  const saveToolbarPreferences = (state: AnnotationState) => {
+    try {
+      if (!state.persist) {
+        const binding = state.toolbarBinding
+          ? (globalThis as unknown as Record<string, unknown>)[state.toolbarBinding]
+          : undefined;
+        if (typeof binding === "function") binding(JSON.stringify(state.toolbarPreferences));
+        return;
+      }
+      void chrome.runtime
+        .sendMessage({
+          type: "abg_annotation_toolbar",
+          preferences: state.toolbarPreferences,
+        })
+        .catch(() => undefined);
+    } catch {
+      /* The extension may have reloaded. */
+    }
+  };
+  const toggleToolbar = (state: AnnotationState) => {
+    state.toolbarPreferences.collapsed = !state.toolbarPreferences.collapsed;
+    updateToolbar(state);
+    saveToolbarPreferences(state);
+    state.toolbar
+      .querySelector<HTMLButtonElement>(
+        state.toolbarPreferences.collapsed ? '[data-action="expand"]' : '[data-action="collapse"]',
+      )
+      ?.focus();
+  };
   const updateToolbar = (state: AnnotationState) => {
     state.toolbar.hidden = !state.enabled;
+    state.toolbar.classList.toggle("abg-collapsed", state.toolbarPreferences.collapsed);
     const count = state.annotations.length;
     const countEl = state.toolbar.querySelector("[data-count]");
     if (countEl) {
       const countText = ui.count(count);
       if (countEl.textContent !== countText) countEl.textContent = countText;
-    }
-    const hintEl = state.toolbar.querySelector<HTMLElement>("[data-hint]");
-    if (hintEl) {
-      const hasSelection =
-        state.selectedId !== null && state.annotations.some((item) => item.id === state.selectedId);
-      const primaryHint = hasSelection
-        ? ui.hintSelected
-        : state.mode === "text"
-          ? ui.hintText
-          : ui.hintArea;
-      if (hintEl.dataset.hint !== primaryHint) {
-        hintEl.dataset.hint = primaryHint;
-        const first = document.createElement("span");
-        const second = document.createElement("span");
-        first.textContent = primaryHint;
-        second.textContent = ui.hintFinish;
-        hintEl.replaceChildren(first, second);
-      }
     }
     const clearButton = state.toolbar.querySelector<HTMLButtonElement>(
       'button[data-action="clear"]',
@@ -1109,9 +1186,10 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       const armed = count > 0 && (state.clearArmedUntil ?? 0) > Date.now();
       const clearText = armed ? ui.clearConfirm(count) : ui.clear;
       clearButton.disabled = count === 0;
-      if (clearButton.textContent !== clearText) clearButton.textContent = clearText;
+      const label = clearButton.querySelector("[data-label]");
+      if (label && label.textContent !== clearText) label.textContent = clearText;
       clearButton.classList.toggle("abg-danger", armed);
-      clearButton.title = armed ? ui.clearConfirmTitle : "";
+      clearButton.dataset.title = armed ? ui.clearConfirmTitle : ui.clear;
     }
     for (const modeButton of state.toolbar.querySelectorAll<HTMLButtonElement>(
       "button[data-mode]",
@@ -1120,6 +1198,20 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       modeButton.classList.toggle("abg-active", active);
       modeButton.setAttribute("aria-pressed", String(active));
     }
+    for (const button of state.toolbar.querySelectorAll<HTMLButtonElement>(
+      "button[data-shortcut]",
+    )) {
+      const name = button.dataset.shortcut as keyof typeof state.shortcuts;
+      const keys = state.shortcuts[name];
+      const base = button.dataset.title ?? button.textContent ?? "";
+      button.title = keys ? `${base} (${keys})` : base;
+      const kbd = button.querySelector("kbd");
+      if (kbd) {
+        kbd.textContent = keys ?? "";
+        kbd.hidden = !keys;
+      }
+    }
+    positionToolbar(state);
   };
   const editAnnotation = (state: AnnotationState, annotation: Annotation) => {
     closeEditor(state);
@@ -1445,6 +1537,28 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     hideToast(state);
     applyInteractionMode(state);
   };
+  const clearAnnotations = (state: AnnotationState) => {
+    state.clearArmedUntil = 0;
+    state.annotations = [];
+    state.nextId = 1;
+    state.selectedId = null;
+    state.editGesture = null;
+    state.lastSelectionSignature = null;
+    closeEditor(state);
+    renderAnnotations(state);
+    reportAnnotationsChanged(state, true);
+  };
+  const confirmClear = (state: AnnotationState): boolean => {
+    if (state.annotations.length === 0) return false;
+    if ((state.clearArmedUntil ?? 0) > Date.now()) {
+      clearAnnotations(state);
+      return true;
+    }
+    state.clearArmedUntil = Date.now() + 3000;
+    state.toolbarPreferences.collapsed = false;
+    updateToolbar(state);
+    return false;
+  };
   const createState = (): AnnotationState => {
     document.getElementById("__abg_annotation_mode")?.remove();
     const host = document.createElement("div");
@@ -1565,12 +1679,35 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             max-width: calc(100vw - 24px);
             padding: 6px;
             border: 1px solid var(--abg-line-strong);
-            border-radius: 12px;
+            border-radius: 18px;
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
             pointer-events: auto;
             user-select: none;
+            flex-wrap: wrap;
+            width: max-content;
+            backdrop-filter: blur(16px);
           }
+          .abg-toolbar .abg-grip {
+            padding: 0 5px;
+            min-width: 24px;
+            border: 0;
+            color: var(--abg-muted);
+            cursor: grab;
+            touch-action: none;
+            font-size: 20px;
+          }
+          .abg-toolbar.abg-dragging .abg-grip { cursor: grabbing; }
+          .abg-toolbar [data-action="expand"] { display: none; gap: 8px; }
+          .abg-toolbar.abg-collapsed > :not(.abg-grip):not([data-action="expand"]) { display: none; }
+          .abg-toolbar.abg-collapsed [data-action="expand"] { display: inline-flex; }
+          .abg-toolbar kbd {
+            margin-left: 7px;
+            color: var(--abg-muted);
+            font: 10px/1.4 ui-monospace, monospace;
+          }
+          .abg-toolbar .abg-icon-button { min-width: 30px; padding: 4px 7px; }
+          @media (max-width: 600px) { .abg-toolbar kbd, .abg-chip { display: none; } }
           .abg-chip {
             display: inline-flex;
             align-items: center;
@@ -1644,18 +1781,6 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
           }
-          .abg-hint {
-            display: inline-flex;
-            gap: 6px;
-            padding-left: 8px;
-            border-left: 1px solid var(--abg-line);
-            color: var(--abg-muted);
-            white-space: nowrap;
-          }
-          .abg-hint span + span::before {
-            content: "·";
-            margin-right: 6px;
-          }
           .abg-toolbar button.abg-danger,
           .abg-toolbar button.abg-danger:hover:not(:disabled) {
             border-color: var(--abg-danger-line);
@@ -1674,11 +1799,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             background: var(--abg-inverse);
             opacity: 0.86;
           }
-          @media (max-width: 760px) {
-            .abg-hint {
-              display: none;
-            }
-          }
+          .abg-toolbar .abg-primary kbd { color: inherit; opacity: 0.65; }
           @media (max-width: 520px) {
             .abg-count {
               display: none;
@@ -2007,8 +2128,18 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
             font-weight: 500;
-            pointer-events: none;
+            pointer-events: auto;
             transition: opacity 200ms ease;
+          }
+          .abg-toast button {
+            border: 0;
+            border-radius: 5px;
+            color: var(--abg-muted);
+            background: transparent;
+            width: 26px;
+            height: 26px;
+            font-size: 20px;
+            cursor: pointer;
           }
           .abg-toast::before {
             content: "";
@@ -2051,9 +2182,20 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       return node;
     };
     const toolbarButton = (action: string, text: string, className?: string) => {
-      const button = toolbarNode("button", className, text) as HTMLButtonElement;
+      const button = toolbarNode("button", className) as HTMLButtonElement;
       button.type = "button";
       button.dataset.action = action;
+      button.dataset.title = text;
+      const label = toolbarNode("span", undefined, text);
+      label.dataset.label = "";
+      button.append(label);
+      return button;
+    };
+    const shortcutButton = (button: HTMLButtonElement, name: string) => {
+      button.dataset.shortcut = name;
+      const kbd = toolbarNode("kbd");
+      kbd.setAttribute("aria-hidden", "true");
+      button.append(kbd);
       return button;
     };
     const chip = toolbarNode("span", "abg-chip");
@@ -2062,22 +2204,38 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     modeGroup.setAttribute("role", "group");
     modeGroup.setAttribute("aria-label", ui.modeGroup);
     const areaButton = toolbarButton("mode-area", ui.modeArea);
+    areaButton.dataset.title = `${ui.modeArea} · ${ui.hintArea}`;
     areaButton.dataset.mode = "area";
     areaButton.setAttribute("aria-pressed", "true");
     const textButton = toolbarButton("mode-text", ui.modeText);
+    textButton.dataset.title = `${ui.modeText} · ${ui.hintText}`;
     textButton.dataset.mode = "text";
     textButton.setAttribute("aria-pressed", "false");
     modeGroup.append(areaButton, textButton);
     const countEl = toolbarNode("span", "abg-count", ui.count(0));
     countEl.dataset.count = "";
     countEl.setAttribute("aria-live", "polite");
-    const hintEl = toolbarNode("span", "abg-hint");
-    hintEl.dataset.hint = "";
     const doneButton = toolbarButton("done", ui.done, "abg-primary");
-    doneButton.title = ui.doneTitle;
+    doneButton.dataset.title = ui.doneTitle;
+    shortcutButton(doneButton, "toggle");
+    const clearButton = shortcutButton(toolbarButton("clear", ui.clear), "clear");
+    shortcutButton(areaButton, "mode");
+    textButton.dataset.shortcut = "mode";
+    const collapse = toolbarButton("collapse", "−", "abg-icon-button");
+    collapse.dataset.title = ui.hideToolbar;
+    collapse.setAttribute("aria-label", ui.hideToolbar);
+    collapse.dataset.shortcut = "toolbar";
+    const expand = toolbarButton("expand", "ABG");
+    expand.dataset.title = ui.showToolbar;
+    expand.setAttribute("aria-label", ui.showToolbar);
+    expand.dataset.shortcut = "toolbar";
+    expand.prepend(toolbarNode("span", "abg-dot"));
+    const grip = toolbarButton("move", "⠿", "abg-grip");
+    grip.title = ui.moveToolbar;
+    grip.setAttribute("aria-label", ui.moveToolbar);
     toolbar.setAttribute("role", "toolbar");
     toolbar.setAttribute("aria-label", ui.annotating);
-    toolbar.append(chip, modeGroup, countEl, hintEl, toolbarButton("clear", ui.clear), doneButton);
+    toolbar.append(grip, chip, modeGroup, countEl, clearButton, doneButton, collapse, expand);
     shadow.append(style, capture, layer, draft, editor, toolbar);
     document.documentElement.append(host);
 
@@ -2102,7 +2260,92 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       lastSelectionSignature: null,
       pageSessionId: makeUid(),
       persist: requestedCommand.persist === true,
+      toolbarPreferences: {
+        ...(requestedCommand.toolbarPreferences ?? { x: 0.5, y: 1, collapsed: false }),
+      },
+      toolbarBinding: requestedCommand.toolbarBinding,
+      shortcuts: requestedCommand.shortcuts ?? {},
+      toolbarDrag: null,
     };
+    grip.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const rect = toolbar.getBoundingClientRect();
+      state.toolbarDrag = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        left: rect.left,
+        top: rect.top,
+      };
+      grip.setPointerCapture(event.pointerId);
+      toolbar.classList.add("abg-dragging");
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    grip.addEventListener("pointermove", (event) => {
+      const drag = state.toolbarDrag;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const rect = toolbar.getBoundingClientRect();
+      state.toolbarPreferences.x = Math.max(
+        0,
+        Math.min(
+          1,
+          (drag.left + event.clientX - drag.x - 8) / Math.max(1, innerWidth - rect.width - 16),
+        ),
+      );
+      state.toolbarPreferences.y = Math.max(
+        0,
+        Math.min(
+          1,
+          (drag.top + event.clientY - drag.y - 8) / Math.max(1, innerHeight - rect.height - 16),
+        ),
+      );
+      positionToolbar(state);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      grip.addEventListener(type, () => {
+        if (!state.toolbarDrag) return;
+        state.toolbarDrag = null;
+        toolbar.classList.remove("abg-dragging");
+        saveToolbarPreferences(state);
+      });
+    }
+    grip.addEventListener("keydown", (event) => {
+      const directions: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      const direction = directions[event.key];
+      if (!direction) return;
+      const rect = toolbar.getBoundingClientRect();
+      state.toolbarPreferences.x = Math.max(
+        0,
+        Math.min(
+          1,
+          state.toolbarPreferences.x +
+            (direction[0] * 16) / Math.max(1, innerWidth - rect.width - 16),
+        ),
+      );
+      state.toolbarPreferences.y = Math.max(
+        0,
+        Math.min(
+          1,
+          state.toolbarPreferences.y +
+            (direction[1] * 16) / Math.max(1, innerHeight - rect.height - 16),
+        ),
+      );
+      positionToolbar(state);
+      saveToolbarPreferences(state);
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    for (const type of ["pointerdown", "mousedown", "mouseup"]) {
+      toolbar.addEventListener(type, (event) => event.stopPropagation());
+    }
     capture.addEventListener("mousedown", (event) => {
       if (!state.enabled || event.button !== 0) return;
       commitEditor(state);
@@ -2161,21 +2404,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       if (action === "done") setEnabled(state, false);
       if (action === "mode-area") setMode(state, "area");
       if (action === "mode-text") setMode(state, "text");
-      if (action === "clear" && (state.clearArmedUntil ?? 0) <= Date.now()) {
-        // First click arms the destructive action; the 150ms render tick disarms it.
-        state.clearArmedUntil = Date.now() + 3000;
-        updateToolbar(state);
-      } else if (action === "clear") {
-        state.clearArmedUntil = 0;
-        state.annotations = [];
-        state.nextId = 1;
-        state.selectedId = null;
-        state.editGesture = null;
-        state.lastSelectionSignature = null;
-        closeEditor(state);
-        renderAnnotations(state);
-        reportAnnotationsChanged(state, true);
-      }
+      if (action === "clear") confirmClear(state);
+      if (action === "collapse" || action === "expand") toggleToolbar(state);
       if (action) {
         event.preventDefault();
         event.stopPropagation();
@@ -2220,6 +2450,13 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     addEventListener(
       "mouseup",
       (event) => {
+        if (
+          event.composedPath().includes(toolbar) ||
+          event
+            .composedPath()
+            .some((node) => node instanceof Element && node.id === "__abg_shortcut_toast__")
+        )
+          return;
         if (state.enabled && state.mode === "text" && !state.editGesture) {
           window.setTimeout(() => addTextSelectionAnnotation(state), 0);
           return;
@@ -2240,6 +2477,15 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     addEventListener(
       "keydown",
       (event) => {
+        if (event.key === "Escape" && document.getElementById("__abg_shortcut_toast__")) return;
+        const toast = state.shadow.querySelector<HTMLDivElement>(".abg-toast");
+        if (event.key === "Escape" && ((!toast?.hidden && toast) || state.escapeToastHeld)) {
+          state.escapeToastHeld = true;
+          hideToast(state);
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          return;
+        }
         if (event.key === "Escape" && state.enabled) {
           // Escape backs out one level: cancel an open comment first, then finish.
           if (!state.editor.hidden) closeEditor(state);
@@ -2268,7 +2514,15 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     );
     addEventListener(
       "keyup",
-      () => {
+      (event) => {
+        if (event.key === "Escape") {
+          if (state.escapeToastHeld) {
+            state.escapeToastHeld = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+          return;
+        }
         if (state.enabled && state.mode === "text") {
           window.setTimeout(() => addTextSelectionAnnotation(state), 0);
         }
@@ -2644,19 +2898,23 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
   state.renderTimer ??= null;
   state.pageSessionId ??= makeUid();
   state.persist = requestedCommand.persist === true;
+  state.toolbarBinding = requestedCommand.toolbarBinding;
+  state.toolbarPreferences ??= { x: 0.5, y: 1, collapsed: false };
+  state.shortcuts = requestedCommand.shortcuts ?? state.shortcuts ?? {};
   for (const annotation of state.annotations) annotation.uid ??= makeUid();
   ensureRenderTimer(state);
 
   if (requestedAction === "start") setEnabled(state, true);
   if (requestedAction === "stop") setEnabled(state, false);
+  if (requestedAction === "switch_mode" && state.enabled) {
+    commitEditor(state);
+    setMode(state, state.mode === "area" ? "text" : "area");
+  }
+  if (requestedAction === "toggle_toolbar" && state.enabled) toggleToolbar(state);
+  let cleared = false;
+  if (requestedAction === "clear_confirm" && state.enabled) cleared = confirmClear(state);
   if (requestedAction === "clear") {
-    state.annotations = [];
-    state.nextId = 1;
-    state.selectedId = null;
-    state.editGesture = null;
-    closeEditor(state);
-    renderAnnotations(state);
-    reportAnnotationsChanged(state, true);
+    clearAnnotations(state);
   }
   if (requestedAction === "add_region") {
     const { x, y, width, height } = requestedCommand;
@@ -2710,7 +2968,11 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
   }
 
   const result = makeResult(state, requestedAction);
-  return restoreReport ? { ...result, restore: restoreReport } : result;
+  return {
+    ...result,
+    ...(restoreReport ? { restore: restoreReport } : {}),
+    ...(cleared ? { cleared: true } : {}),
+  };
 }
 
 export async function manageAnnotationMode(
@@ -2766,15 +3028,27 @@ async function evaluateAnnotationModeWithDebugger(
   tabId: number,
   command: AnnotationCommand,
 ): Promise<AnnotationModeResult> {
-  // The main world cannot reach the extension safely, so the overlay does not report changes
-  // from here; the background still saves the annotations returned by each command.
-  const commandSource = JSON.stringify(withOverlayStrings({ ...command, persist: false })).replace(
-    /[<>&\u2028\u2029]/g,
-    (char) => {
-      const code = char.charCodeAt(0).toString(16).padStart(4, "0");
-      return `\\u${code}`;
-    },
-  );
+  // Keep the fallback out of the page's main world. Only this isolated context gets the
+  // toolbar binding; page scripts cannot invoke it or forge preference updates.
+  const { frameTree } = (await browser.debugger.sendCommand({ tabId }, "Page.getFrameTree")) as {
+    frameTree: { frame: { id: string } };
+  };
+  await browser.debugger.sendCommand({ tabId }, "Runtime.addBinding", {
+    name: toolbarBinding,
+    executionContextName: annotationWorld,
+  });
+  const { executionContextId } = (await browser.debugger.sendCommand(
+    { tabId },
+    "Page.createIsolatedWorld",
+    { frameId: frameTree.frame.id, worldName: annotationWorld },
+  )) as { executionContextId: number };
+  debuggerContexts.set(tabId, executionContextId);
+  const commandSource = JSON.stringify(
+    withOverlayStrings({ ...command, persist: false, toolbarBinding }),
+  ).replace(/[<>&\u2028\u2029]/g, (char) => {
+    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+    return `\\u${code}`;
+  });
   const expression = `
     (() => {
       const runAnnotationCommand = ${runAnnotationCommand.toString()};
@@ -2783,6 +3057,7 @@ async function evaluateAnnotationModeWithDebugger(
   `;
   const evaluated = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
+    contextId: executionContextId,
     returnByValue: true,
     awaitPromise: false,
     userGesture: true,

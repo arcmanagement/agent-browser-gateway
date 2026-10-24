@@ -1,12 +1,81 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-04.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-23.
 
-Current repo version: **v0.5.2**.
+Chrome extension version: **v1.3.1**, distributed separately as `extension-v1.3.1`.
+macOS desktop version: **v0.5.2**.
+Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
+
+### Windows v0.5.3 — The Gate dashboard (2026-10-08)
+
+- Native overview, shared tabs, audit, plugins, and settings navigation matches the Mac/CRX visual language.
+- Shared tabs show browser-provided favicons, profile labels, expiry, copy actions, and owner-scoped revoke. All-tabs access is managed in the extension.
+- Light, dark, and system appearance; automatic, English, and Japanese language; persistent preferences; sign-in startup control.
+- Native setup and notification-area branding use The Gate. Dynamic plugins, record/replay, WinGet, and Store publication remain pending.
+- Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
 
+### Chrome extension v1.3.1 — Saved connection re-login keeps its identity (2026-10-23)
+
+- Logging in again from a saved Cloud connection proves that the browser already holds that connection, so the service keeps the same browser identity. The saved credential is not sent with the login request.
+- New connections are unchanged. No new Chrome permissions; desktop versions are unchanged.
+
+### Chrome extension v1.3.0 — Annotation shortcuts and movable toolbar (2026-10-23)
+
+- Start or stop annotating the current tab with Alt+Shift+A, sharing it first with the existing consent checks when needed. Alt+Shift+M switches Area/Text; Clear all and toolbar visibility have configurable shortcuts.
+- The toolbar displays actual browser shortcut assignments, moves by dragging or keyboard, and remembers its position and collapsed state.
+- Shortcut and completion notices have close buttons and stop further Escape propagation through key release while preserving page focus.
+
+### Chrome extension v1.2.2 — Live popup connection status (2026-10-21)
+
+- The open popup follows live connection changes without resetting edited settings. Discovery and authentication show progress instead of a red Disconnected label.
+- Actual disconnects still show the offline warning. No new Chrome permissions; desktop versions are unchanged.
+
+### Chrome extension v1.2.1 — Proxy restart diagnostics (2026-10-21)
+
+- Connection history and JSON exports recognize exact Cloudflare proxy-restart close messages as `cloudflare_proxy_restarting` when the close code is 1001.
+- Unknown close text remains excluded. Existing consent, Chrome permissions, and desktop versions are unchanged.
+
+### Chrome extension v1.2.0 — Cloud file transfers (2026-10-20)
+
+- Cloud clients can transfer file bytes to the extension and attach them to a shared tab without copying files to the browser host.
+- In-memory transfers are bounded and expire; attachments follow the existing operation approval setting.
+
+### Chrome extension v1.1.3 — File attachment approval setting (2026-10-20)
+
+- Cloud file attachments follow the operation approval toggle on manual shares and Sandbox. With approval off, file paths, Trusted automation, and automatic resume do not add an attachment prompt.
+- Account-forced approval, Chrome file-URL permissions, and separate recording approvals still apply. No new Chrome permissions; desktop versions are unchanged.
+
+### Chrome extension v1.1.2 — Connection diagnostics (2026-10-20)
+
+- Keep a browser-local connection timeline across disconnects and worker restarts: discovery, authentication, socket close codes, intentional disconnects and time since the last frame.
+- Inspect and export the latest 200 events within seven days from **Advanced → Connection history**. Credentials, endpoints, page data and arbitrary error text are excluded.
+- Preserve the original attempt and destination for delayed close events. No additional Chrome permissions; desktop versions are unchanged.
+
+### Chrome extension v1.1.1 — Read approval setting (2026-10-19)
+
+- Cloud reads including snapshots, descriptions, find results, editable validation, input values, state values, and network response bodies follow the operation approval toggle on all shared tabs.
+- With approval off, these reads run without a popup; AutoMode, Sandbox, and automatic resume are not required. Account-forced approval and credential-value protections remain in effect.
+- File attachments, recording, personal-data writes, and eval keep their existing approval rules. No Chrome permissions are added; desktop versions are unchanged.
+
+### Chrome extension v1.1.0 — Sandbox automation approvals (2026-10-19)
+
+- Saved Cloud Sandboxes with automatic resume, Trusted automation on, and write approval off can read input values and attach ordinary browser-host files without repeated approval prompts.
+- Uses the existing controls, with no additional switch or upload-directory setup. Manual shares, account-forced approval, protected file paths, and recording retain their approval gates.
+- Password and sign-in-code reads remain blocked. Run trusted automation only on an isolated host containing files intended for those clients.
+- Extension-only release; desktop versions and Chrome permission grants are unchanged.
+
+### Chrome extension v1.0.0 — Cloud connections (2026-10-19)
+
+- Connect directly to Agent Browser Gateway using Web account login, save named destinations, and select them after restarting Chrome without entering connection codes again.
+- Share tabs with authorized AI clients, use Cloud plugins, transfer files, and retrieve recordings and runtime events through the Cloud command surface.
+- Isolated profiles can explicitly opt into Sandbox and connection-scoped auto-resume. Personal profiles retain per-tab sharing; recording and Cloud file uploads retain approval gates.
+- GitHub provides the extension ZIP and checksums. Chrome Web Store review and publication are separate from this release; desktop versions are unchanged.
+
 ### v0.5.2 — Approval window fit (2026-10-04)
+
+- Windows distribution follow-up (2026-10-08): publish maintainer-approved unsigned setup/payload ZIPs, align binary/runtime versions with 0.5.2, and validate binary versions before packaging. WinGet remains pending.
 - The local approval window sizes to its content after the bundled fonts load, so its countdown and Esc hint are no longer cut off (#461). Found during the manual checks in #460.
 - Release docs: Chrome Web Store steps to finish before tagging (#459).
 - Chrome Web Store: the 0.5.1 submission was withdrawn and 0.5.2 submitted in its place.
@@ -502,7 +571,7 @@ Selected first target:
 
 These will not happen, regardless of demand:
 
-- Cloud relay we operate. ABG must remain runnable with all networking blocked except loopback; #71 is limited to private Tailnet/LAN pairing controlled by the user.
+- Making a Cloud account mandatory for local mode. Local ABG remains usable with networking blocked except loopback; optional Cloud mode has its own authenticated, registered-browser boundary.
 - Any telemetry / analytics sent to ABG operators. User/team-owned local metrics in self-hosted deployments are separate from official ABG telemetry.
 - Hidden JavaScript execution without explicit user policy. The only general eval path is disabled by default and requires explicit enablement plus either per-call local approval or explicit Trusted automation / AutoMode, with audit.
 - Closed-source modules in this repo. Commercial features (if any) live in separate repos.

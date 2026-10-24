@@ -46,7 +46,7 @@ abg activity --period day
 - CLI は、所有者だけが使える Unix ソケットか、起動ごとのトークンが必要なループバックの WebSocket で Gateway に接続します。
 - スマートフォンをペアリングすると、ABG は選んだ非公開の Tailnet か LAN のインターフェースでも待ち受けます。このリスナーは、ペアリングの申し出か有効な許可があるときだけ動きます。[アーキテクチャ](../architecture/#ネットワークの境界)を参照してください。
 
-公式の ABG は、クラウドの中継を運営せず、テレメトリーを集めず、広い範囲の JavaScript 実行を黙って有効にすることもしません。リモートのペアリングも利用者が管理する接続であり、ABG が運営する中継にはしません。
+拡張1.3.1では、本人が選んだCloud接続も使えます。共有した内容と要求した操作結果は、選択したサービスを通って許可済みのAI連携へ届きます。Webログインでブラウザーを登録し、通常はタブごとに共有します。Cloud側の方針による承認と、録画時の承認があります。Sandboxの自動復帰は隔離プロファイルだけで有効にしてください。認可・監査はサービスが担当し、デスクトップのローカル監査ファイルとは別です。テレメトリーやJavaScriptの無断有効化は追加しません。[Cloud手順](https://github.com/arcmanagement/agent-browser-gateway/blob/main/docs/CLOUD_EXTENSION.md)を参照してください。
 
 ## 防げること
 
@@ -72,3 +72,5 @@ abg activity --period day
 ## 脆弱性の報告
 
 セキュリティの脆弱性を GitHub の公開 issue に書かないでください。現在の報告の受け付け状況と脅威モデルは [SECURITY.md](https://github.com/arcmanagement/agent-browser-gateway/blob/main/SECURITY.md) にあります。
+
+書き込み承認がOFFの場合、入力値の読み取りとファイル添付は毎回の承認を省略します。手動共有とSandboxのどちらにも適用され、ファイルの場所、自動復帰、信頼済み自動化の設定には依存しません。ChromeのファイルURLへのアクセス許可は引き続き必要です。Cloud側の強制承認と録画の承認は残ります。パスワード・認証コードは読み取れません。

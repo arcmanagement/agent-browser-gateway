@@ -161,6 +161,10 @@ export type AnnotationOverlayStrings = {
   clearConfirmTitle: string;
   done: string;
   doneTitle: string;
+  hideToolbar: string;
+  showToolbar: string;
+  moveToolbar: string;
+  closeToast: string;
   countOne: string;
   countOther: string;
   hintArea: string;
@@ -189,6 +193,10 @@ export function annotationOverlayStrings(lang: Language): AnnotationOverlayStrin
     clearConfirmTitle: template(lang, "overlay.clearConfirmTitle"),
     done: template(lang, "overlay.done"),
     doneTitle: template(lang, "overlay.doneTitle"),
+    hideToolbar: template(lang, "overlay.hideToolbar"),
+    showToolbar: template(lang, "overlay.showToolbar"),
+    moveToolbar: template(lang, "overlay.moveToolbar"),
+    closeToast: template(lang, "overlay.closeToast"),
     countOne: template(lang, "overlay.count", 1),
     countOther: template(lang, "overlay.count", 2),
     hintArea: template(lang, "overlay.hintArea"),

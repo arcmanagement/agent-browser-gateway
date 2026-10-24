@@ -1,0 +1,96 @@
+<UserControl x:Class="AgentBrowserGateway.Windows.GatewayDashboard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AgentBrowserGateway.Windows">
+    <Grid x:Name="Root" Background="{ThemeResource GateCanvas}">
+        <NavigationView x:Name="Navigation" IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+            PaneDisplayMode="Auto" OpenPaneLength="220" CompactModeThresholdWidth="860" ExpandedModeThresholdWidth="1000"
+            SelectionChanged="Navigation_SelectionChanged" AlwaysShowHeader="False">
+            <NavigationView.PaneHeader>
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,20,12,20">
+                    <local:GateMark x:Name="SidebarMark" Width="30" Height="30" />
+                    <StackPanel><TextBlock Text="Agent Browser" FontWeight="SemiBold" /><TextBlock Text="Gateway" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                </StackPanel>
+            </NavigationView.PaneHeader>
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="OverviewItem" Content="Overview" Tag="Overview" Icon="Home" />
+                <NavigationViewItem x:Name="TabsItem" Content="Shared tabs" Tag="Shared tabs" Icon="World" />
+                <NavigationViewItem x:Name="AuditItem" Content="Audit" Tag="Audit" Icon="Clock" />
+                <NavigationViewItemSeparator />
+                <NavigationViewItem x:Name="PluginsItem" Content="Plugins" Tag="Plugins" Icon="Library" />
+                <NavigationViewItem x:Name="SettingsItem" Content="Settings" Tag="Settings" Icon="Setting" />
+            </NavigationView.MenuItems>
+            <NavigationView.PaneFooter>
+                <StackPanel Margin="20,16" Spacing="6">
+                    <TextBlock x:Name="SidebarState" Text="Waiting for a browser" FontSize="12" TextWrapping="Wrap" />
+                    <TextBlock x:Name="SidebarEndpoint" FontSize="11" FontFamily="Consolas" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </NavigationView.PaneFooter>
+            <Grid Padding="24" RowSpacing="20">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock x:Name="PageTitle" Text="Overview" FontSize="28" FontWeight="SemiBold" />
+                        <TextBlock x:Name="PageSubtitle" FontSize="13" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" x:Name="StartButton" Content="Start Gateway" Tag="Start Gateway" Click="Start_Click" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Content="Refresh" Tag="Refresh" Click="Refresh_Click" VerticalAlignment="Center" />
+                </Grid>
+                <InfoBar Grid.Row="1" x:Name="Feedback" IsOpen="False" IsClosable="True" />
+                <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled" HorizontalContentAlignment="Left" SizeChanged="Viewport_SizeChanged">
+                    <Grid x:Name="PageContent" MaxWidth="880" HorizontalAlignment="Left">
+                        <StackPanel x:Name="OverviewPage" Spacing="20">
+                            <Border Style="{StaticResource GateCardStyle}">
+                                <StackPanel Spacing="16">
+                                    <TextBlock Text="RIGHT NOW" Tag="RIGHT NOW" FontSize="11" CharacterSpacing="180" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Name="Headline" FontSize="30" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="StateDetail" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Grid ColumnSpacing="24" Margin="0,12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Border BorderBrush="{ThemeResource GateLine}" BorderThickness="1" CornerRadius="8" Padding="16" VerticalAlignment="Center"><TextBlock Text="Browser" Tag="Browser" HorizontalAlignment="Center" /></Border>
+                                        <local:GateMark Grid.Column="1" x:Name="HeroMark" Height="100" />
+                                        <Border Grid.Column="2" BorderBrush="{ThemeResource GateLine}" BorderThickness="1" CornerRadius="8" Padding="16" VerticalAlignment="Center"><TextBlock Text="Agents" Tag="Agents" HorizontalAlignment="Center" /></Border>
+                                    </Grid>
+                                    <Button Content="Manage shared tabs" Tag="Manage shared tabs" Click="ManageTabs_Click" Style="{StaticResource GatePrimaryButton}" />
+                                </StackPanel>
+                            </Border>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource GateCardStyle}" Padding="16"><StackPanel Spacing="8"><TextBlock Text="Browsers" Tag="Browsers" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="BrowserCount" FontSize="24" FontWeight="SemiBold" /><TextBlock x:Name="BrowserDetail" TextWrapping="Wrap" FontSize="12" /></StackPanel></Border>
+                                <Border Grid.Column="1" Style="{StaticResource GateCardStyle}" Padding="16"><StackPanel Spacing="8"><TextBlock Text="CLI transport" Tag="CLI transport" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock Text="Named pipe" Tag="Named pipe" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" /><TextBlock Text="Local · current user" Tag="Local · current user" FontSize="12" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Border>
+                                <Border Grid.Column="2" Style="{StaticResource GateCardStyle}" Padding="16"><StackPanel Spacing="8"><TextBlock Text="Gateway" Tag="Gateway" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="Endpoint" FontFamily="Consolas" FontSize="16" TextWrapping="Wrap" /><TextBlock x:Name="Version" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Border>
+                            </Grid>
+                            <Border Style="{StaticResource GateCardStyle}"><StackPanel Spacing="12"><TextBlock Text="Quick start" Tag="Quick start" FontWeight="SemiBold" /><TextBlock Text="Open Chrome with the ABG extension. Share a tab from its popup to let agents access it." Tag="Open Chrome with the ABG extension. Share a tab from its popup to let agents access it." TextWrapping="Wrap" /><Button Content="Copy status command" Tag="Copy status command" Click="CopyStatus_Click" /><TextBlock Text="abg tabs --compact" FontFamily="Consolas" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel x:Name="TabsPage" Spacing="16" Visibility="Collapsed">
+                            <Border x:Name="TabsEmpty" Style="{StaticResource GateCardStyle}"><StackPanel Spacing="12"><local:GateMark Width="60" Height="60" HorizontalAlignment="Left" /><TextBlock Text="No shared tabs" Tag="No shared tabs" FontSize="24" FontWeight="SemiBold" /><TextBlock Text="Open Chrome with the ABG extension. Share a tab from its popup to let agents access it." Tag="Open Chrome with the ABG extension. Share a tab from its popup to let agents access it." TextWrapping="Wrap" /></StackPanel></Border>
+                            <ListView x:Name="TabsList" SelectionMode="None" HorizontalContentAlignment="Stretch">
+                                <ListView.ItemTemplate><DataTemplate><local:SharedTabCard RevokeRequested="Tab_RevokeRequested" CopyRequested="Tab_CopyRequested" /></DataTemplate></ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                        <StackPanel x:Name="AuditPage" Spacing="16" Visibility="Collapsed">
+                            <TextBox x:Name="AuditSearch" PlaceholderText="Filter activity" TextChanged="AuditSearch_TextChanged" />
+                            <TextBlock x:Name="AuditEmpty" Text="No activity yet" Tag="No activity yet" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ListView x:Name="AuditList" SelectionMode="None" HorizontalContentAlignment="Stretch">
+                                <ListView.ItemTemplate><DataTemplate><Border BorderBrush="{ThemeResource GateLine}" BorderThickness="0,0,0,1" Padding="8,12"><StackPanel Spacing="4"><TextBlock Text="{Binding Summary}" FontWeight="SemiBold" /><TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel></Border></DataTemplate></ListView.ItemTemplate>
+                            </ListView>
+                            <Button Content="Open audit log" Tag="Open audit log" Click="OpenAudit_Click" />
+                        </StackPanel>
+                        <StackPanel x:Name="PluginsPage" Spacing="16" Visibility="Collapsed">
+                            <Border Style="{StaticResource GateCardStyle}"><StackPanel Spacing="12"><TextBlock Text="Windows plugins" Tag="Windows plugins" FontSize="24" FontWeight="SemiBold" /><TextBlock Text="Dynamic plugin commands are not supported on Windows yet." Tag="Dynamic plugin commands are not supported on Windows yet." TextWrapping="Wrap" /><Button Content="Open plugins folder" Tag="Open plugins folder" Click="OpenPlugins_Click" /></StackPanel></Border>
+                        </StackPanel>
+                        <StackPanel x:Name="SettingsPage" Spacing="20" Visibility="Collapsed">
+                            <Border Style="{StaticResource GateCardStyle}"><StackPanel Spacing="20">
+                                <ComboBox x:Name="AppearancePicker" Header="Appearance" Tag="Appearance" HorizontalAlignment="Stretch" SelectionChanged="Preferences_SelectionChanged" />
+                                <ComboBox x:Name="LanguagePicker" Header="Language" Tag="Language" HorizontalAlignment="Stretch" SelectionChanged="Preferences_SelectionChanged" />
+                                <ToggleSwitch x:Name="StartupToggle" Header="Launch at sign in" Toggled="Startup_Toggled" />
+                            </StackPanel></Border>
+                            <Border Style="{StaticResource GateCardStyle}"><StackPanel Spacing="12"><TextBlock Text="Local files" Tag="Local files" FontWeight="SemiBold" /><TextBlock Text="Everything stays on this PC. No analytics or cloud dependency." Tag="Everything stays on this PC. No analytics or cloud dependency." TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><TextBlock x:Name="LocalPath" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap" IsTextSelectionEnabled="True" /><Button Content="Open logs folder" Tag="Open logs folder" Click="OpenLogs_Click" /></StackPanel></Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</UserControl>

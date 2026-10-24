@@ -4,11 +4,11 @@
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-A private contact channel will be published before the project is opened up for general use. Until then, the project is at pre-alpha and security reports outside the maintainer's circle are not yet being processed.
+Report vulnerabilities privately to `contact@arcm.co.jp`. Do not include account passwords, browser credentials, or private page content in public reports.
 
 ## Supported versions
 
-ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased commits on `main` may contain known issues.
+The Chrome extension is 1.3.1; desktop packages retain separate versions. Only the latest released version of each component receives security fixes. Unreleased commits on `main` may contain known issues.
 
 | Version | Supported |
 |---|---|
@@ -17,6 +17,18 @@ ABG is pre-1.0. Only the latest released tag receives security fixes. Unreleased
 | older tagged releases | no |
 
 ## Threat model
+
+### Optional Cloud mode
+
+The extension's connection diagnostic history stays in trusted local extension storage and is not uploaded automatically. It retains up to 200 events within seven days and excludes credentials, endpoints, page data and arbitrary error text. The owner can inspect and export it from **Advanced → Connection history**.
+
+Extension 1.3.1 can connect to the service selected in the popup without a desktop Gateway. The official account UI is `https://app.agent-browser-gateway.com`; browser login, route discovery, and shared-tab traffic use `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`. Account login authorizes browser registration and client access. The service handles shared-tab metadata, requested content, screenshots, operation inputs/results, and transferred artifacts. This mode is not local-only, and local audit-file guarantees below apply to the desktop path. See [Cloud usage](docs/CLOUD_EXTENSION.md).
+
+The extension stores a browser credential in trusted extension storage, never the account password. Only registered browsers and authorized clients may participate. Per-tab consent remains the default. Sandbox and auto-resume require separate explicit opt-in in an isolated profile; resume is scoped to the saved destination and credential and authenticates before tabs are announced. Revocation and invalid credentials stop access. Cloud policy can require approval even when the browser's local write-approval toggle is off. Recording retains its browser approval gate. When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Native file attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for all file paths, without requiring AutoMode or automatic resume. Browser-host path attachments require Chrome's file-URL permission; in-memory transfers through ABG do not. Recording retains its separate approval gate.
+
+Switching local/Cloud mode, changing a Cloud endpoint, or replacing its credential resets personal-data access, mutation, eval, and Trusted automation settings and restores operation approval. Reapplying the same endpoint and credential preserves these settings. Bookmark and Reading List opt-ins cover data outside the shared tab and send requested list data through the selected service. Trusted automation can waive ordinary operation/eval prompts only after the owner enables it for that destination. File attachment can use absolute browser-host paths, which require Chrome's file-URL grant, or bounded client-to-browser transfers through ABG, which stay in extension memory and do not require that grant. Both follow the operation approval setting, and attached files are exposed to the target website. Transfers expire after ten minutes and are discarded on revoke, reconnect, worker restart, or attachment dispatch. Download inspection returns metadata and browser-host paths.
+
+The following desktop transport and filesystem properties describe local mode, not Cloud service storage or transport.
 
 ### What ABG defends against
 
@@ -41,9 +53,7 @@ These are explicit non-goals; we will not accept "fixes" that pretend otherwise 
 
 ### User-controlled remote and self-hosted deployments
 
-The official no-cloud/no-telemetry claim applies to services operated by ABG maintainers or
-distributed as default ABG behavior. It does not prohibit a user or organization from operating
-their own private infrastructure, as long as that boundary is explicit and auditable.
+Local mode does not require a Cloud account or relay. Optional Cloud mode is explicitly selected by the user and disclosed above; it does not add analytics or advertising telemetry. A user or organization may also operate a private gateway with an explicit trust boundary.
 
 - Private remote pairing over Tailnet/LAN with QR code is tracked by #71. It must use user-controlled
   connectivity, pairing expiry, revocation, and audit entries, not an ABG-operated cloud relay.
@@ -65,7 +75,7 @@ If a future PR violates any of these, it should be rejected:
 5. The CLI reaches the Gateway only through owner-protected rendezvous points: the Unix socket (standard state dir, or the app-group container for the sandboxed Store build) is created with `chmod 0700`, and the loopback WebSocket `/cli` fallback and the `/stream` runtime-event route both require the per-launch token from the owner-only (`0600`) `cli-endpoint.json` in the `x-abg-token` header and reject any upgrade that carries an `Origin` header. Loopback TCP is reachable by other local accounts and WebSocket upgrades from web pages are exempt from same-origin policy, so the token requirement must never be dropped from any non-extension local route.
 6. Runtime support/log directories are owner-only (`0700`), and the audit log file is owner-only (`0600`).
 7. General JavaScript eval is never hidden: it must be disabled by default, require either explicit per-call approval or explicit Trusted automation / AutoMode, and write an audit entry with script source, approval mode, and result type/size summary. Prefer curated, structured, named tools whenever possible.
-8. Tab recording is never hidden: it must require a local approval window, target only a live shared tab, visibly mark the tab with `REC`, stream chunks to a local file, and audit start/stop metadata without uploading media.
+8. Tab recording is never hidden: it must require a browser approval window, target only a live shared tab, and visibly mark the tab with `REC`. Local mode streams chunks to a local file and audits start/stop metadata. Cloud mode retains chunks in extension IndexedDB for retrieval by the authorized client through the selected service.
 9. Any outbound network connection from the Gateway or extension is explicitly disclosed in the README, with the exact endpoint and purpose.
 10. The audit log records every read and every operation, with the originating agent identifier where available.
 11. Advanced automation features must follow `docs/ADVANCED_AUTOMATION_POLICY.md`: normal per-tab, sandbox/all-tabs only, self-hosted only, or official non-goal. Mutating browser-owned state must not appear in normal personal-profile per-tab mode.

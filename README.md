@@ -9,8 +9,8 @@ Patent allowed; registration fee paid: JP 2026-080620
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
 - 🌐 **Any agent** — Works with Claude Code, Codex, Cursor, Cline, or any tool that can run a shell command
 - 📖 **Public source** — Every line of code that touches your browser is auditable
-- 🚫 **Zero telemetry** — No analytics. No phone-home. No cloud dependency
-- 💻 **Local first** — Runs entirely on your machine. No account, no subscription
+- 🚫 **No analytics** — Local mode needs no backend; optional Cloud mode relays the data you share
+- 💻 **Local or Cloud** — Run a desktop Gateway locally, or sign in to Cloud from the extension
 - 🔐 **No vendor lock-in** — Use any AI agent you choose; switch any time
 
 ---
@@ -25,15 +25,13 @@ ABG is built on a single principle:
 
 > **If your AI can see your browser, you should be able to see your AI's code.**
 
-Anthropic's Claude in Chrome, Google's Gemini in Chrome, Microsoft's Copilot — these may be safe today, but as a structural matter their providers cannot offer **zero telemetry, no backend, no cloud dependency**. Their business models depend on data flowing back. ABG's does not.
-
-ABG provides a value its commercial counterparts **structurally cannot**: code-level verifiability of exactly what your AI agent does in your browser.
+ABG makes its browser integration available for code-level inspection. Local mode keeps the Gateway on your machine; optional Cloud mode trades that local transport for access from remote clients, with an explicit account and browser authorization boundary.
 
 ---
 
 ## How it works
 
-ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is the primary interface for AI agents.
+In local mode, ABG is a desktop app + a Chrome extension + a small `abg` CLI. The CLI is the local interface for AI agents. Cloud mode connects the extension directly to the selected service and exposes tools to authorized AI clients without the desktop app.
 
 ```
 ┌──────────────────────────┐
@@ -63,7 +61,7 @@ ABG is a Mac menubar app + a Chrome extension + a small `abg` CLI. The CLI is th
 └──────────────────────────────┘
 ```
 
-Nothing leaves your machine. The Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup.
+In local mode, the Gateway listens **only on `127.0.0.1`**. The extension declares **zero default `host_permissions`**; the optional all-tabs mode requests `<all_urls>` only after you enable it in the extension popup. The optional Cloud connection described below sends explicitly shared tab data through your selected gateway.
 
 ---
 
@@ -76,8 +74,7 @@ CLI. Install the browser extension first, then install the local Gateway.
 
    https://chromewebstore.google.com/detail/agent-browser-gateway/ojgedfcgebjchckaagjkmlpgonpjggpi
 
-   The public listing currently serves extension `v0.4.4`. The Chrome extension and macOS app can
-   advance independently while store review and signed app publication complete.
+   The Store and direct ZIP have separate publication status; check the listing for its current version. The Chrome extension and macOS app advance independently.
 
 2. Install the local Gateway.
 
@@ -104,7 +101,7 @@ CLI. Install the browser extension first, then install the local Gateway.
    winget install --id ArcManagement.AgentBrowserGateway --source winget
    ```
 
-   WinGet is not live for `v0.5.2` yet. If this command reports no matching package, that is the
+   WinGet is not live for Windows `v0.5.3` yet. If this command reports no matching package, that is the
    current expected result until the signed Windows release and Microsoft indexing are complete.
 
 3. For manual macOS install, download the current DMG from
@@ -116,9 +113,12 @@ The DMG installer copies `Agent Browser Gateway.app` to `/Applications`, install
 `abg` under `/usr/local/bin`, and starts the menubar app. Install the Claude Code and Codex skills
 separately with `npx skills add arcmanagement/agent-browser-gateway -g`.
 
-Windows package-manager install and release ZIPs are pending for `v0.5.2` while the signed Windows
-release workflow is completed. For current Windows testing, clone the repository on Windows and run
-`.\windows-build-install.cmd` from the repository root.
+For Windows, download the `v0.5.3` [setup ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/download/windows-v0.5.3/agent-browser-gateway-0.5.3-windows-x64-setup.zip)
+and its `.sha256.txt` file, extract it, and run `AgentBrowserGatewaySetup.exe`.
+This Windows ZIP is unsigned and may show a Windows security warning. WinGet remains pending.
+Windows 0.5.3 brings The Gate design to the native dashboard and setup: shared tabs with favicons,
+copy and revoke actions, searchable audit history, light/dark/system appearance, and English/Japanese UI.
+Source builds use `.\windows-build-install.cmd` from the repository root.
 
 After installation, open the tab you want to share, click the ABG extension icon,
 choose **Share this tab with agents**, and verify from a terminal:
@@ -140,6 +140,18 @@ and generate release notes.
 
 ---
 
+## Cloud connection (Chrome extension 1.3.1)
+
+The popup follows connection changes while open, showing **Connecting…** and **Authenticating…** before **Connected**. Status updates preserve connection settings being edited.
+
+Chrome extension 1.3.1 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.1), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+
+Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
+
+AI connections use `https://app.agent-browser-gateway.com/oauth/authorize` to log in and authorize access. Passwords are handled by the Web account flow and are never stored in the extension or passed to AI clients. The official service uses `https://app.agent-browser-gateway.com` for account UI and `https://connect.agent-browser-gateway.com` / `wss://connect.agent-browser-gateway.com` for browser authentication, shared-tab traffic, and results. Custom destinations send those data to the gateway you select. See [Cloud usage](docs/CLOUD_EXTENSION.md) for plugins, artifacts, consent, and the separate Chrome Web Store publication status.
+
+To investigate a disconnect in extension 1.3.1, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes, connection stages, and recognized Cloudflare proxy-restart reasons.
+
 ## Tab access modes
 
 The core security model:
@@ -159,15 +171,31 @@ Keyboard shortcuts act only on the current tab:
 |---|---|
 | `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the current tab if it is not shared, or revoke it if it is. This uses the same per-tab consent and revoke path as the popup button and never touches other tabs. |
 | `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the current tab's numeric tab ID to the clipboard. This never grants or changes access; if the tab is not shared, ABG says so, and agents cannot use it until you share it. |
+| `Alt+Shift+A` (`Option+Shift+A` on macOS) | Start or stop annotation mode. If needed, share the current tab first using the same consent checks as Share. Stopping annotation mode keeps the tab shared. |
+| `Alt+Shift+M` (`Option+Shift+M` on macOS) | Switch between Area and Text while annotating. |
+| Unassigned | Clear all annotations while annotating. Press twice within three seconds to confirm. |
+| Unassigned | Show or hide the annotation toolbar while annotating. |
 
 The result (which tab, and the new state or the reason nothing changed) appears briefly on the
 extension badge and its tooltip, as a short in-page notice where the page allows extension scripts,
 and in the popup for two minutes. The share shortcut does nothing on `chrome://` and other non-web
 pages, on incognito tabs until "Allow in incognito" is enabled, and while all-tabs sandbox mode is
-on. Rebind or clear either shortcut at `chrome://extensions/shortcuts` (Firefox:
-`about:addons` → Manage Extension Shortcuts); the popup shows the current keys.
+on. Rebind or clear shortcuts at `chrome://extensions/shortcuts` (Firefox:
+`about:addons` → Manage Extension Shortcuts). The popup shows the current bindings, including
+unassigned actions; the annotation toolbar displays the current keys on its controls. Only four
+commands can have suggested keys, so Clear all and Show/hide start unassigned.
+
+Drag the annotation toolbar by its grip, or focus the grip and use the arrow keys to move it.
+The minus button collapses it to a small ABG launcher; click the launcher to expand it again.
+Its position and collapsed state are kept in local extension storage for other pages and reloads.
+Shortcut notices and the annotation completion notice have a close button and can be dismissed
+with Escape. Dismissing a notice stops further propagation of that Escape, including key release,
+and leaves annotation mode unchanged. Page handlers already registered on window capture run first;
+ABG preserves the page's keyboard focus.
 
 For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs (sandbox profiles only)**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+
+A saved Cloud connection with Sandbox enabled can additionally opt into **Resume Sandbox after restart or disconnect**. The extension reconnects and authenticates before announcing tabs, using consent scoped to that saved connection and credential. Turning Sandbox off, removing site access, switching or deleting the connection, rejected credentials, or another browser replacing the connection cancels auto-resume. Profiles that do not opt in keep the default restart behaviour. HTTP 401/403 responses also cancel resume when caused by a Cloud service authentication configuration fault; the current server protocol cannot distinguish that fault from a rejected browser credential.
 
 Short refs from `abg tabs --compact` are the pin-equivalent for a running Gateway session. A ref is
 bound to the pair of browser profile and Chrome tab ID, so adding/removing other tabs does not
@@ -176,9 +204,11 @@ renumber it, and the same ref can be reused across a multi-step flow. Prefer ref
 profiles, and ABG returns `ambiguous_tab_id` rather than routing to the wrong profile. Re-resolve the
 ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross-origin navigation.
 
-Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. Read-only tools, `raise`, and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
+Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. In Cloud mode, reads that may include sensitive values also follow this toggle. With it off, these reads skip approval on shared tabs; Cloud account-forced approval still applies. `raise` and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Allow approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
+
+When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. Native file attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for all file paths, without requiring AutoMode or automatic resume. Chrome's file-URL permission is still required. Recording retains its separate approval gate.
 
 The extension UI is available in English and Japanese. Choose **Display language** under
 **Advanced** in the popup: **Auto** (the default) follows the browser UI language and uses English
@@ -794,8 +824,9 @@ binaries are barely better. ABG aims for **end-to-end verifiability**:
 - **Audit log is itself open**: see [`Sources/Gateway/AuditLog.swift`](Sources/Gateway/AuditLog.swift). There is no "secret bypass" to log everywhere except where I'd prefer not to.
 - **Dependency minimalism.** PRs that add dependencies require a stated reason. Binary dependencies (`.dylib`, `.so`, `.dll`) are avoided.
 
-Traffic outside loopback is limited to a paired device connecting to the private listener. Any
-ABG-operated relay or unpaired external connection is a bug. Open an issue or, even better, a PR.
+Local mode works without a Cloud account. Cloud mode is an explicit alternative that sends shared
+tab data and operation results through the selected gateway to authorized AI clients. It does not
+enable telemetry or share unapproved browsers. See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -1057,7 +1088,7 @@ In short:
 
 ## Status
 
-🚧 **v0.5.2 / pre-alpha.** Functional for the author's daily use. APIs may change without notice until v1.0.
+**Chrome extension v1.3.1** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 

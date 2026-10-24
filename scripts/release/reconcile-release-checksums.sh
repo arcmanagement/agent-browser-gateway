@@ -28,6 +28,8 @@ fi
 app_zip="agent-browser-gateway-$VERSION-macos-arm64.zip"
 dmg="agent-browser-gateway-$VERSION-macos-arm64.dmg"
 extension_zip="agent-browser-gateway-extension-$VERSION.zip"
+windows_zip="agent-browser-gateway-$VERSION-windows-x64.zip"
+windows_setup_zip="agent-browser-gateway-$VERSION-windows-x64-setup.zip"
 cask="agent-browser-gateway.rb"
 sums="SHA256SUMS.txt"
 # Order matches the checksum file CI has always written; the DMG is appended
@@ -39,8 +41,10 @@ summed=(
   "agent-browser-gateway-$VERSION.spdx.json"
   "agent-browser-gateway-$VERSION.cyclonedx.json"
   "$dmg"
+  "$windows_zip"
+  "$windows_setup_zip"
 )
-per_file=("$app_zip" "$dmg" "$extension_zip")
+per_file=("$app_zip" "$dmg" "$extension_zip" "$windows_zip" "$windows_setup_zip")
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
