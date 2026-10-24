@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.1.zip
+dist/agent-browser-gateway-extension-1.3.2.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.2 review notes
+
+- Restore the shared-tab badge after reload and same-origin navigation, and restore the current badge when the extension worker resumes. Cross-origin navigation still revokes sharing.
+- Native input fill avoids focus changes that can open password-manager suggestions. An approved, unmodified Escape can dismiss a blocking page-mounted inline menu and reconnect the debugger without replaying the failed action or changing password-manager settings.
+- Recovery remains bound to the original tab-sharing grant. Unclipped screenshot fallback verifies the active shared tab and its origin before and after capture, discarding results if access changes.
+- No new Chrome permissions or host access. Desktop versions are unchanged.
 
 ## 1.3.1 review notes
 

@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-23.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-25.
 
-Chrome extension version: **v1.3.1**, distributed separately as `extension-v1.3.1`.
+Chrome extension version: **v1.3.2**, distributed separately as `extension-v1.3.2`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.2 — Shared-tab badges and blocked Escape recovery (2026-10-25)
+
+- Restore sharing and recording badges after reload, same-origin navigation, and service-worker restoration; origin changes revoke sharing.
+- Avoid focusing native inputs during fill. Recover unmodified Escape from extension-frame debugger denial without changing password-manager settings or replaying failed actions.
+- Keep recovery bound to the original sharing grant. Verify the active shared tab around visible screenshot capture and discard results after access changes.
+- No new Chrome permissions or host access. Desktop packages retain their separate versions.
 
 ### Chrome extension v1.3.1 — Saved connection re-login keeps its identity (2026-10-23)
 
