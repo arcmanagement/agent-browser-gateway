@@ -228,7 +228,7 @@ export function createChromeMock() {
     tabs: createChromeTabs(),
     permissions: createChromePermissions(),
     scripting: {
-      executeScript: vi.fn(async (): Promise<unknown[]> => []),
+      executeScript: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
     },
     action: {
       setBadgeBackgroundColor: vi.fn(async () => undefined),
@@ -251,7 +251,7 @@ export function createChromeMock() {
     debugger: {
       attach: vi.fn(async () => undefined),
       detach: vi.fn(async () => undefined),
-      sendCommand: vi.fn(async () => ({})),
+      sendCommand: vi.fn(async (..._args: unknown[]) => ({})),
       onDetach: createChromeEvent<[unknown, string]>(),
       onEvent: createChromeEvent<[unknown, string, Record<string, unknown> | undefined]>(),
     },
