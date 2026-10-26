@@ -166,3 +166,169 @@ describe("background recovery boundaries", () => {
     expect(chrome.tabs.captureVisibleTab).toHaveBeenCalledExactlyOnceWith(1, { format: "png" });
   });
 });
+
+describe("keyboard event compatibility", () => {
+  it.each(["cmd", "ctrl"])("sends keyCode for %s+A without typing a letter", async (modifier) => {
+    const { chrome, command } = await startBackground();
+    await command("key_press", { key: "a", modifiers: [modifier] });
+    const events = chrome.debugger.sendCommand.mock.calls
+      .filter(([, method]) => method === "Input.dispatchKeyEvent")
+      .map(([, , payload]) => payload);
+    expect(events).toEqual([
+      {
+        type: "keyDown",
+        key: "a",
+        code: "KeyA",
+        modifiers: modifier === "cmd" ? 4 : 2,
+        windowsVirtualKeyCode: 65,
+      },
+      {
+        type: "keyUp",
+        key: "a",
+        code: "KeyA",
+        modifiers: modifier === "cmd" ? 4 : 2,
+        windowsVirtualKeyCode: 65,
+      },
+    ]);
+  });
+  it("keeps character input and individual key edges", async () => {
+    const { chrome, command } = await startBackground();
+    await command("key_press", { key: "7" });
+    await command("key_down", { key: "ArrowLeft", modifiers: ["shift"] });
+    await command("key_up", { key: "ArrowLeft", modifiers: ["shift"] });
+    const events = chrome.debugger.sendCommand.mock.calls
+      .filter(([, method]) => method === "Input.dispatchKeyEvent")
+      .map(([, , payload]) => payload);
+    expect(events).toHaveLength(5);
+    expect(events[1]).toMatchObject({
+      type: "char",
+      text: "7",
+      code: "Digit7",
+      windowsVirtualKeyCode: 55,
+    });
+    expect(events[3]).toMatchObject({
+      type: "keyDown",
+      code: "ArrowLeft",
+      modifiers: 8,
+      windowsVirtualKeyCode: 37,
+    });
+    expect(events[4]).toMatchObject({ type: "keyUp", windowsVirtualKeyCode: 37 });
+  });
+});
+
+describe("CodeMirror document operations", () => {
+  async function fixture() {
+    const host = await startBackground();
+    let text = '{\n  "name": "Original"\n}';
+    let readOnly = false,
+      ignoreWrites = false;
+    const setValue = vi.fn((value: string) => {
+      if (!ignoreWrites) text = value;
+    });
+    const editor = { getValue: () => text, setValue, getOption: () => readOnly };
+    const wrapper = {
+      CodeMirror: editor as typeof editor | undefined,
+      tagName: "DIV",
+      getAttribute: () => null,
+      closest: () => wrapper,
+    };
+    const input = {
+      tagName: "TEXTAREA",
+      value: "visible line only",
+      getAttribute: () => null,
+      closest: () => wrapper,
+    };
+    const page = {
+      title: "Fixture",
+      querySelectorAll: (selector: string) =>
+        selector === ".CodeMirror" ? [wrapper] : selector === "textarea" ? [input] : [],
+    };
+    const location = { href: url, origin: new URL(url).origin };
+    host.chrome.debugger.sendCommand.mockImplementation(async (_target, method, params) => {
+      if (method !== "Runtime.evaluate") return {};
+      return {
+        result: {
+          value: new Function(
+            "document",
+            "window",
+            "HTMLInputElement",
+            "HTMLTextAreaElement",
+            `return ${(params as { expression: string }).expression}`,
+          )(page, { location }, class {}, class {}),
+        },
+      };
+    });
+    return {
+      ...host,
+      initial: text,
+      setValue,
+      input,
+      wrapper,
+      setReadOnly: () => {
+        readOnly = true;
+      },
+      ignoreWrites: () => {
+        ignoreWrites = true;
+      },
+    };
+  }
+  it("reads the full document and replaces it through the hidden input's editor", async () => {
+    const f = await fixture();
+    expect(
+      await f.command("get_dom", { kind: "editable-value", selector: "textarea" }),
+    ).toMatchObject({ result: { kind: "codemirror", source: "editor", editableText: f.initial } });
+    const replacement = JSON.stringify({ name: "Replacement", unicode: "日本語" }, null, 2);
+    expect(
+      await f.command("fill", {
+        selector: "textarea",
+        value: replacement,
+        expectedUrl: url,
+        expectedValue: f.initial,
+      }),
+    ).toMatchObject({ result: { ok: true, kind: "codemirror", verified: true } });
+    expect(f.input.value).toBe("visible line only");
+    expect(
+      await f.command("get_dom", { kind: "editable-value", selector: ".CodeMirror" }),
+    ).toMatchObject({ result: { editableText: replacement } });
+    expect(f.setValue).toHaveBeenCalledExactlyOnceWith(replacement);
+  });
+  it("previews without writing and refuses a stale document or navigated tab", async () => {
+    const f = await fixture();
+    expect(
+      await f.command("fill", { selector: ".CodeMirror", value: "preview", dryRun: true }),
+    ).toMatchObject({ result: { ok: true, dryRun: true, verified: false } });
+    expect(
+      await f.command("fill", {
+        selector: ".CodeMirror",
+        value: "changed",
+        expectedValue: "stale",
+      }),
+    ).toMatchObject({ result: { ok: false, error: "editor_changed" } });
+    expect(
+      await f.command("fill", {
+        selector: ".CodeMirror",
+        value: "changed",
+        expectedUrl: "https://other.test/",
+      }),
+    ).toMatchObject({ result: { ok: false, error: "page_changed" } });
+    expect(f.setValue).not.toHaveBeenCalled();
+  });
+  it("refuses read-only or uninitialized editors and reports ignored writes", async () => {
+    const f = await fixture();
+    f.setReadOnly();
+    expect(await f.command("fill", { selector: ".CodeMirror", value: "changed" })).toMatchObject({
+      result: { ok: false, error: "editor_read_only" },
+    });
+    f.wrapper.CodeMirror = undefined;
+    expect(await f.command("fill", { selector: "textarea", value: "changed" })).toMatchObject({
+      result: { ok: false, error: "editor_unavailable" },
+    });
+    expect(f.setValue).not.toHaveBeenCalled();
+    vi.resetModules();
+    const ignored = await fixture();
+    ignored.ignoreWrites();
+    expect(
+      await ignored.command("fill", { selector: ".CodeMirror", value: "changed" }),
+    ).toMatchObject({ result: { ok: false, verified: false, error: "replacement_mismatch" } });
+  });
+});
