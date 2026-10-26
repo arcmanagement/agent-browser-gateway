@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.3.zip
+dist/agent-browser-gateway-extension-1.3.2.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,12 +30,6 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
-
-## 1.3.3 review notes
-
-- Read and replace complete CodeMirror 5 documents through the editor API instead of its hidden input buffer. Read-only editors and mismatched replacement preconditions fail without editing.
-- Send virtual key codes for legacy keyboard handlers, and avoid inserting text for modifier shortcuts such as Command+A and Control+A.
-- No new Chrome permissions or host access. Desktop versions are unchanged.
 
 ## 1.3.2 review notes
 

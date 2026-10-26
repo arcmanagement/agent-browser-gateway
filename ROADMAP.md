@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-26.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-25.
 
-Chrome extension version: **v1.3.3**, distributed separately as `extension-v1.3.3`.
+Chrome extension version: **v1.3.2**, distributed separately as `extension-v1.3.2`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,13 +15,6 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
-
-### Chrome extension v1.3.3 — CodeMirror documents and keyboard shortcuts (2026-10-26)
-
-- Read and replace complete CodeMirror 5 documents, including offscreen lines, and verify the resulting text.
-- Reject read-only editors and stale URL/document preconditions before replacement.
-- Send virtual key codes for legacy keyboard handlers and avoid typing characters during modifier shortcuts.
-
 
 ### Chrome extension v1.3.2 — Shared-tab badges and blocked Escape recovery (2026-10-25)
 

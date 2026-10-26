@@ -48,7 +48,6 @@ import {
   readCloudRecording,
 } from "./cloudArtifacts.js";
 import { cloudServiceOrigin, discoverCloudRoute } from "./cloudConnection.js";
-import { type CodeMirrorEditor, resolveCodeMirror } from "./codeMirror.js";
 import {
   ConnectionDiagnostics,
   DIAGNOSTIC_LIMIT,
@@ -86,7 +85,6 @@ import {
   resolveUiLanguage,
   type UiLanguageSetting,
 } from "./i18n.js";
-import { keyboardEventBase } from "./keyboardLogic.js";
 import {
   canRecoverEscape,
   type ExtensionFrameRecovery,
@@ -129,7 +127,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.3.3";
+const VERSION = "1.3.2";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -3155,10 +3153,6 @@ function buildOperation(cmd: OperationCommand, tabId: number): OperationDescript
         fillField(tabId, selector, value, dryRun, frame, {
           auditDiff,
           auditDiffExcerptChars,
-          expectedValue:
-            typeof cmd.params?.expectedValue === "string" ? cmd.params.expectedValue : undefined,
-          expectedUrl:
-            typeof cmd.params?.expectedUrl === "string" ? cmd.params.expectedUrl : undefined,
         }),
     };
   }
@@ -4075,7 +4069,6 @@ type FrameContext = {
   isCredential(el: Element): boolean;
   inputValue(el: Element): string | undefined;
   readHtml(el: Element): string;
-  codeMirror(el: Element): CodeMirrorEditor | null;
   frame?: FrameDescriptor;
   offsetX: number;
   offsetY: number;
@@ -4379,7 +4372,6 @@ async function runFrameScript<T, Args>(
       const __abgApi = __abgCreateFrameApi();
       const ctx = __abgApi.resolve(__abgFrameTarget);
       const cloud = ${JSON.stringify(connectionDestination === "cloud")};
-      ctx.codeMirror = ${resolveCodeMirror.toString()};
       ctx.isCredential = el => cloud && ["input","textarea"].includes(el.tagName.toLowerCase()) &&
         (String(el.type).toLowerCase() === "password" || ["current-password","new-password","one-time-code"].some(token=>String(el.autocomplete || "").toLowerCase().split(/\\s+/).includes(token)));
       ctx.inputValue = el => ctx.isCredential(el) ? undefined : el.value;
@@ -4522,25 +4514,6 @@ async function getDomValue(
         return { ...base, found: true, value };
       }
       if (getter === "editable-value") {
-        if (first.closest(".CodeMirror")) {
-          const editor = ctx.codeMirror(first);
-          if (!editor)
-            return {
-              ...base,
-              found: true,
-              editable: false,
-              kind: "codemirror",
-              error: "editor_unavailable",
-            };
-          return {
-            ...base,
-            found: true,
-            editable: !editor.getOption("readOnly"),
-            kind: "codemirror",
-            source: "editor",
-            editableText: editor.getValue(),
-          };
-        }
         let editableText = "";
         let kind = "unsupported";
         let source = "none";
@@ -6936,30 +6909,17 @@ async function drag(
   return { ok: true, from: fromPoint, to: toPoint, steps };
 }
 
-type EditableKind =
-  | "codemirror"
-  | "input"
-  | "textarea"
-  | "contenteditable"
-  | "role-textbox"
-  | "unsupported";
+type EditableKind = "input" | "textarea" | "contenteditable" | "role-textbox" | "unsupported";
 
 type FillResult = {
   ok: boolean;
   found: boolean;
   kind?: EditableKind;
   dryRun?: boolean;
-  error?: string;
-  verified?: boolean;
   beforeLength?: number;
   afterLength?: number;
   replacementLength?: number;
-  strategy?:
-    | "codeMirror"
-    | "valueSetter"
-    | "selectionReplacement"
-    | "textContentFallback"
-    | "preview";
+  strategy?: "valueSetter" | "selectionReplacement" | "textContentFallback" | "preview";
   auditDiff?: AuditDiffPayload;
 };
 
@@ -6978,12 +6938,7 @@ async function fillField(
   value: string,
   dryRun: boolean,
   frame?: string,
-  options: {
-    auditDiff?: boolean;
-    auditDiffExcerptChars?: number;
-    expectedValue?: string;
-    expectedUrl?: string;
-  } = {},
+  options: { auditDiff?: boolean; auditDiffExcerptChars?: number } = {},
 ): Promise<FillResult> {
   const frameResult = await runFrameScript<
     FillFrameResult,
@@ -6992,20 +6947,11 @@ async function fillField(
       value: string;
       dryRun: boolean;
       auditDiff: boolean;
-      expectedValue?: string;
-      expectedUrl?: string;
     }
   >(
     tabId,
     frame,
-    {
-      selector,
-      value,
-      dryRun,
-      auditDiff: options.auditDiff === true,
-      expectedValue: options.expectedValue,
-      expectedUrl: options.expectedUrl,
-    },
+    { selector, value, dryRun, auditDiff: options.auditDiff === true },
     (ctx, opts) => {
       const sel = opts.selector;
       const val = opts.value;
@@ -7014,49 +6960,6 @@ async function fillField(
       type LocalAuditValue = { text: string; html?: string };
       const el = ctx.query(sel) as HTMLInputElement | HTMLTextAreaElement | HTMLElement | null;
       if (!el) return { ok: false, found: false } as const;
-      if (opts.expectedUrl !== undefined && ctx.win.location.href !== opts.expectedUrl) {
-        return { ok: false, found: true, error: "page_changed" } as const;
-      }
-      if (el.closest(".CodeMirror")) {
-        const editor = ctx.codeMirror(el);
-        if (!editor)
-          return {
-            ok: false,
-            found: true,
-            kind: "codemirror",
-            error: "editor_unavailable",
-          } as const;
-        if (editor.getOption("readOnly"))
-          return { ok: false, found: true, kind: "codemirror", error: "editor_read_only" } as const;
-        const before = editor.getValue();
-        if (opts.expectedValue !== undefined && before !== opts.expectedValue)
-          return { ok: false, found: true, kind: "codemirror", error: "editor_changed" } as const;
-        if (!previewOnly && before !== val) editor.setValue(val);
-        const after = editor.getValue();
-        const verified = after === val;
-        return {
-          ok: previewOnly || verified,
-          found: true,
-          kind: "codemirror",
-          dryRun: previewOnly,
-          beforeLength: before.length,
-          afterLength: after.length,
-          replacementLength: val.length,
-          strategy: previewOnly ? "preview" : "codeMirror",
-          verified: !previewOnly && verified,
-          ...(!previewOnly && !verified ? { error: "replacement_mismatch" } : {}),
-          ...(opts.auditDiff && !previewOnly
-            ? { auditDiffSource: { before: { text: before }, after: { text: after } } }
-            : {}),
-        } as const;
-      }
-      if (
-        opts.expectedValue !== undefined &&
-        (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) ||
-          el.value !== opts.expectedValue)
-      ) {
-        return { ok: false, found: true, error: "editor_changed" } as const;
-      }
 
       const kindOf = (target: Element): LocalKind => {
         if (target instanceof HTMLInputElement) return "input";
@@ -7955,6 +7858,36 @@ async function execCommand(
   return res?.result ?? { ok: false, command, valueBytes };
 }
 
+const KEY_CODE_MAP: Record<string, string> = {
+  Enter: "Enter",
+  Tab: "Tab",
+  Escape: "Escape",
+  Backspace: "Backspace",
+  Delete: "Delete",
+  ArrowUp: "ArrowUp",
+  ArrowDown: "ArrowDown",
+  ArrowLeft: "ArrowLeft",
+  ArrowRight: "ArrowRight",
+  Home: "Home",
+  End: "End",
+  PageUp: "PageUp",
+  PageDown: "PageDown",
+  " ": "Space",
+  Space: "Space",
+};
+
+function modifiersToBitmask(modifiers: string[]): number {
+  let mask = 0;
+  for (const m of modifiers) {
+    const lc = m.toLowerCase();
+    if (lc === "alt") mask |= 1;
+    else if (lc === "ctrl") mask |= 2;
+    else if (lc === "cmd" || lc === "meta") mask |= 4;
+    else if (lc === "shift") mask |= 8;
+  }
+  return mask;
+}
+
 async function keyPress(
   tabId: number,
   key: string,
@@ -7962,17 +7895,21 @@ async function keyPress(
   modifiers: string[],
 ): Promise<{ ok: true; recovery?: ExtensionFrameRecovery }> {
   const isPermitted = sharedTabAccessGuard(tabId);
-  const base = keyboardEventBase(key, code, modifiers);
+  const mods = modifiersToBitmask(modifiers);
+  const resolvedCode =
+    code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
+  const resolvedKey = key === "Space" ? " " : key;
+  const base = { key: resolvedKey, code: resolvedCode, modifiers: mods };
   try {
     await attachDebugger(tabId);
     await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "keyDown",
       ...base,
     });
-    if (base.key.length === 1 && (base.modifiers & 7) === 0) {
+    if (resolvedKey.length === 1) {
       await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
         type: "char",
-        text: base.key,
+        text: resolvedKey,
         ...base,
       });
     }
@@ -8031,9 +7968,15 @@ async function keyEdge(
   modifiers: string[],
 ): Promise<{ ok: true; type: "keyDown" | "keyUp" }> {
   await attachDebugger(tabId);
+  const mods = modifiersToBitmask(modifiers);
+  const resolvedCode =
+    code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
+  const resolvedKey = key === "Space" ? " " : key;
   await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
     type,
-    ...keyboardEventBase(key, code, modifiers),
+    key: resolvedKey,
+    code: resolvedCode,
+    modifiers: mods,
   });
   return { ok: true, type };
 }
