@@ -116,6 +116,8 @@ export type GatewayCommand = {
     dryRun?: boolean;
     auditDiff?: boolean;
     auditDiffExcerptChars?: number;
+    expectedValue?: string;
+    expectedUrl?: string;
     text?: string;
     url?: string;
     x?: number;
