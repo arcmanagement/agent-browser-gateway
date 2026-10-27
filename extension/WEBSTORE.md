@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.2.zip
+dist/agent-browser-gateway-extension-1.3.4.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.4 review notes
+
+- Cloud connections negotiate a fixed ping/pong every 20 seconds to keep the extension worker and socket active. The service answers without querying its API or database.
+- A transient network failure or proxy restart permits one reconnect after three seconds, preserving only existing in-memory grants. Reauthentication and current-tab origin/expiry checks precede re-announcement.
+- Previous operations/results, pending approvals, recordings and file transfers are discarded. Revoked shares, closed tabs, origin/destination changes and rejected credentials end access. Worker/browser restarts do not restore manual shares.
+- No new Chrome permissions or host access. Desktop versions are unchanged.
 
 ## 1.3.2 review notes
 

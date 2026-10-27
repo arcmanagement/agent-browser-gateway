@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 1.3.2
+version: 1.3.4
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -8,7 +8,7 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 ## Cloud接続
 
-Chrome拡張1.3.2のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+Chrome拡張1.3.4のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
 
 Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
 
@@ -26,9 +26,11 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 
 ## 基本フロー
 
-ポップアップを開いている間は接続表示が自動更新される。接続準備・認証中は進行状態、認証完了後はConnected、実際の切断時はDisconnectedを表示する。設定の入力途中でも接続表示だけ更新し、共有の許可は自動で復元しない。
+ポップアップを開いている間、接続表示は自動で更新されます。接続の準備中や認証中は進行状況を示し、認証済みの接続ではConnected、実際に接続が切れた場合はDisconnectedと表示します。表示の更新時も、編集中の設定は保持されます。
 
-Cloud切断の調査では、拡張1.3.2の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残る。1001だけでは原因を断定できない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
+接続済みの手動Cloud接続は、一時的なネットワーク障害やプロキシの再起動で切断された場合、3秒後に1回だけ再接続を試みます。既存の共有許可はメモリ内に保持し、拡張機能が再認証を行ったうえで、各タブの現在のオリジンと有効期限を確認してから共有を通知します。共有の取り消し、タブの閉鎖、オリジンや接続先の変更、認証の失敗があれば、アクセスを終了します。以前の操作や結果を再送することはなく、ワーカーやブラウザーの再起動後は手動共有を復元しません。サービスが対応している場合は、20秒ごとに定型のping/pongフレームを交換し、ワーカーとソケットを稼働状態に保ちます。再接続後はタブ一覧を再取得し、現在の世代を確認してください。
+
+Cloud切断の調査では、拡張1.3.4の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残る。1001だけでは原因を断定できない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認

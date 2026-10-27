@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-25.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-27.
 
-Chrome extension version: **v1.3.2**, distributed separately as `extension-v1.3.2`.
+Chrome extension version: **v1.3.4**, distributed separately as `extension-v1.3.4`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.4 — Cloud connection recovery (2026-10-27)
+
+- Keep the Cloud socket and extension worker active with negotiated ping/pong every 20 seconds.
+- Preserve existing manual sharing grants for one retry after a transient network failure or proxy restart. Authenticate again and check each tab's origin and expiry before announcing it.
+- Discard old operations and results across connections. Revocation, tab closure, origin/destination changes and rejected credentials still end access; worker/browser restarts do not restore manual shares.
+- No new Chrome permissions or host access. Desktop packages retain their separate versions.
 
 ### Chrome extension v1.3.2 — Shared-tab badges and blocked Escape recovery (2026-10-25)
 
