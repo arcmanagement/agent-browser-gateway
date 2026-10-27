@@ -23,7 +23,7 @@ type GatewayWebSocketConnectionOptions = {
   createSocket: (endpoint: string) => GatewaySocket;
   onOpen: (endpoint: string) => void | Promise<void>;
   onMessage: (event: MessageEvent) => void;
-  onConnectionChange: (connected: boolean, closeCode?: number) => void;
+  onConnectionChange: (connected: boolean, closeCode?: number, transient?: boolean) => void;
   onWarning: (message: string, error: unknown) => void;
   onDiagnostic?: (event: DiagnosticEvent, details?: DiagnosticDetails) => void;
   reconnectDelayMs?: number;
@@ -40,6 +40,7 @@ export class GatewayWebSocketConnection {
   private endpoint: string;
   private socket: GatewaySocket | null = null;
   private reconnectTimer: unknown = null;
+  private keepAliveTimer: unknown = null;
   private readonly reconnectDelayMs: number;
   private readonly schedule: (callback: () => void, delayMs: number) => unknown;
   private readonly cancelScheduled: (timer: unknown) => void;
@@ -74,6 +75,7 @@ export class GatewayWebSocketConnection {
     } catch (error) {
       this.diagnostic("socket_construct_failed", { attempt });
       this.options.onWarning("[ABG] WS construct failed", error);
+      this.options.onConnectionChange(false);
       this.scheduleReconnect();
       return;
     }
@@ -104,6 +106,8 @@ export class GatewayWebSocketConnection {
     socket.addEventListener("message", (event) => {
       if (this.socket !== socket) return;
       receivedAt = Date.now();
+      if (this.keepAliveTimer !== null && (event as MessageEvent).data === '{"type":"pong"}')
+        return;
       this.options.onMessage(event as MessageEvent);
     });
     let closeRecorded = false;
@@ -120,28 +124,20 @@ export class GatewayWebSocketConnection {
         });
       }
       if (this.socket !== socket) return;
+      this.stopKeepAlive();
       this.socket = null;
       this.socketDetails = undefined;
       this.markSent = undefined;
-      this.options.onConnectionChange(false, (event as CloseEvent).code);
+      const code = (event as CloseEvent).code;
+      this.options.onConnectionChange(false, code, [1001, 1006, 1011, 1012, 1013].includes(code));
       this.scheduleReconnect();
     });
-    socket.addEventListener("error", () => {
-      if (this.socket !== socket) return;
-      this.diagnostic("socket_error", this.socketDetails?.());
-      this.socket = null;
-      this.socketDetails = undefined;
-      this.markSent = undefined;
-      this.options.onConnectionChange(false);
-      try {
-        socket.close();
-      } catch {}
-      this.scheduleReconnect();
-    });
+    socket.addEventListener("error", () => this.handleSocketError(socket));
   }
 
   reconnect(endpoint: string): void {
     this.endpoint = endpoint;
+    this.stopKeepAlive();
     this.cancelReconnect();
     if (this.socket)
       this.diagnostic("disconnect_requested", {
@@ -163,6 +159,7 @@ export class GatewayWebSocketConnection {
   }
 
   disconnect(reason: DisconnectReason = "configuration_changed"): void {
+    this.stopKeepAlive();
     if (this.socket) this.diagnostic("disconnect_requested", { ...this.socketDetails?.(), reason });
     this.socketDetails = undefined;
     this.markSent = undefined;
@@ -178,6 +175,44 @@ export class GatewayWebSocketConnection {
     this.socket.send(data);
     this.markSent?.();
     return true;
+  }
+
+  startKeepAlive(): void {
+    this.stopKeepAlive();
+    const socket = this.socket;
+    if (!socket || socket.readyState !== OPEN) return;
+    const ping = () => {
+      this.keepAliveTimer = null;
+      if (this.socket !== socket || socket.readyState !== OPEN) return;
+      try {
+        this.send('{"type":"ping"}');
+        this.keepAliveTimer = this.schedule(ping, 20_000);
+      } catch (error) {
+        this.options.onWarning("[ABG] WS keepalive failed", error);
+        this.handleSocketError(socket);
+      }
+    };
+    this.keepAliveTimer = this.schedule(ping, 20_000);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveTimer === null) return;
+    this.cancelScheduled(this.keepAliveTimer);
+    this.keepAliveTimer = null;
+  }
+
+  private handleSocketError(socket: GatewaySocket): void {
+    if (this.socket !== socket) return;
+    this.diagnostic("socket_error", this.socketDetails?.());
+    this.stopKeepAlive();
+    this.socket = null;
+    this.socketDetails = undefined;
+    this.markSent = undefined;
+    this.options.onConnectionChange(false, undefined, true);
+    try {
+      socket.close();
+    } catch {}
+    this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {

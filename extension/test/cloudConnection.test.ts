@@ -119,7 +119,7 @@ describe("connection diagnostic integration", () => {
       phase: "idle",
       wsConnected: false,
       cloudConnectionFailed: true,
-      sharedTabCount: 0,
+      sharedTabCount: 1,
     });
     expect(
       await message(
@@ -259,6 +259,96 @@ afterEach(async () => {
 });
 
 describe("Cloud connection boundary", () => {
+  it.each([
+    "origin",
+    "revoke",
+    "close",
+    "destination",
+    "authentication",
+  ])("does not restore a transient manual share after %s changes", async (change) => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await state();
+    socket.close(1006);
+    if (change === "origin")
+      mock.tabs.tabs.set(1, {
+        id: 1,
+        active: true,
+        currentWindow: true,
+        incognito: false,
+        url: "https://other.example.test/",
+      });
+    if (change === "revoke") await message({ type: "revoke", tabId: 1 });
+    if (change === "close") mock.tabs.tabs.delete(1);
+    if (change === "destination")
+      await configure("https://replacement.example.test", "b".repeat(43));
+    await vi.advanceTimersByTimeAsync(3001);
+    const next = lastSocket();
+    if (next !== socket) {
+      next.open();
+      if (change === "authentication") next.close(4003);
+      else next.message({ type: "authenticated" });
+    }
+    await vi.waitFor(async () => expect(await state()).toMatchObject({ sharedTabs: [] }));
+    expect(next.sent.filter((frame) => frame.type === "tab_permitted")).toHaveLength(
+      next === socket ? 1 : 0,
+    );
+    const count = Socket.instances.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(Socket.instances).toHaveLength(count);
+  });
+
+  it("reauthenticates a manual share after a transient proxy restart without replaying operations", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await state();
+    socket.close(1001);
+    expect(await state()).toMatchObject({
+      wsConnected: false,
+      sharedTabs: [expect.objectContaining({ tabId: 1 })],
+    });
+    await vi.advanceTimersByTimeAsync(3001);
+    const next = lastSocket();
+    expect(next).not.toBe(socket);
+    expect(next.sent).toEqual([]);
+    next.open();
+    expect(next.sent).toEqual([{ type: "authenticate", token: fixtureCode }]);
+    next.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(next.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    expect(next.sent.some((f) => f.type === "response")).toBe(false);
+  });
+
+  it.each([
+    true,
+    false,
+  ])("keeps manual shares active only when Cloud negotiates keepalive (%s)", async (supported) => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({
+      type: "authenticated",
+      ...(supported ? { capabilities: ["keepalive-v1"] } : {}),
+    });
+    await state();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(socket.sent.filter((frame) => frame.type === "ping")).toHaveLength(supported ? 3 : 0);
+    expect(await state()).toMatchObject({
+      wsConnected: true,
+      sharedTabs: [expect.objectContaining({ tabId: 1 })],
+    });
+    await configure("https://replacement.example.test", "b".repeat(43));
+    const sent = socket.sent.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(socket.sent).toHaveLength(sent);
+  });
+
   it("transfers and attaches client bytes with no approval window or file-URL grant when operation approval is off", async () => {
     const fileSchemeGrant = vi.fn(async () => false);
     Object.assign(mock.extension, { isAllowedFileSchemeAccess: fileSchemeGrant });
@@ -1043,7 +1133,10 @@ describe("Cloud connection boundary", () => {
       expect(current.cloudConnectionFailed).toBe(true);
     }
   });
-  it("does not forward an old read response to the replacement connection", async () => {
+  it.each([
+    "destination",
+    "transient",
+  ])("does not forward an old read response after %s replacement", async (kind) => {
     await configure();
     await message({ type: "permit", tabId: 1 });
     const previous = lastSocket();
@@ -1067,8 +1160,13 @@ describe("Cloud connection boundary", () => {
         ),
       ).toBe(true),
     );
-    await configure("https://replacement.example.test", "b".repeat(43));
-    await message({ type: "permit", tabId: 1 });
+    if (kind === "destination") {
+      await configure("https://replacement.example.test", "b".repeat(43));
+      await message({ type: "permit", tabId: 1 });
+    } else {
+      previous.close(1006);
+      await vi.advanceTimersByTimeAsync(3001);
+    }
     const replacement = lastSocket();
     replacement.open();
     replacement.message({ type: "authenticated" });

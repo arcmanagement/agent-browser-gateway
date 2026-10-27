@@ -127,7 +127,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.3.2";
+const VERSION = "1.3.4";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -330,6 +330,7 @@ let cloudSandboxResumeEnabled = false;
 let sandboxConsentRevision = 0;
 let cloudResumeTimer: ReturnType<typeof setTimeout> | undefined;
 let cloudResumeDelay = 3000;
+let manualReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
 let diagnosticPhase: DiagnosticContext["phase"] = "idle";
 const socketDiagnosticContexts = new Map<number, DiagnosticContext>();
@@ -527,7 +528,25 @@ async function announceSharedTabs(): Promise<void> {
   });
   await reconcileAllTabsAccess({ emit: false });
   if (epoch !== connectionEpoch || !wsConnected) return;
-  for (const [tabId, permittedTab] of permittedTabs) sendTabPermitted(tabId, permittedTab);
+  for (const [tabId, permittedTab] of [...permittedTabs]) {
+    if (connectionDestination === "cloud") {
+      const tab = await browser.tabs.get(tabId).catch(() => undefined);
+      if (epoch !== connectionEpoch || !wsConnected) return;
+      if (
+        !tab?.url ||
+        originForUrl(tab.url) !== permittedTab.origin ||
+        (permittedTab.expiresAt !== undefined && permittedTab.expiresAt <= Date.now())
+      ) {
+        await revokeTab(tabId, "share_no_longer_valid");
+        continue;
+      }
+      permittedTab.url = tab.url;
+      permittedTab.title = tab.title ?? "";
+    }
+    if (epoch !== connectionEpoch || !wsConnected || permittedTabs.get(tabId) !== permittedTab)
+      return;
+    sendTabPermitted(tabId, permittedTab);
+  }
 }
 
 async function clearConnectionShares(): Promise<void> {
@@ -586,12 +605,22 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     }
     connectionDiagnostics.record(event, details, context);
   },
-  onConnectionChange: (connected, closeCode) => {
+  onConnectionChange: (connected, closeCode, transient = false) => {
     if (connected) {
       wsConnected = connectionDestination === "local";
       if (wsConnected) diagnosticPhase = "ready";
       return;
     }
+    clearTimeout(manualReconnectTimer);
+    manualReconnectTimer = undefined;
+    const recoverManualShares =
+      transient &&
+      wsConnected &&
+      connectionDestination === "cloud" &&
+      connectionConfigured &&
+      !changingConnection &&
+      !cloudSandboxActive &&
+      permittedTabs.size > 0;
     // A replacement browser owns this route now; retrying would evict it repeatedly.
     if (connectionDestination === "cloud" && closeCode === 4001) void disableCloudSandboxResume();
     if (
@@ -607,6 +636,29 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
     wsConnected = false;
     diagnosticPhase = "idle";
     connectionEpoch++;
+    if (recoverManualShares) {
+      // Results, pending approvals and transfers cannot cross a transport session.
+      fileTransfers.clear();
+      cloudRuntimeEvents.clear();
+      streamingTabs.clear();
+      for (const tabId of permittedTabs.keys()) {
+        snapshotRefCache.delete(tabId);
+        consoleBuffers.delete(tabId);
+        networkBuffers.delete(tabId);
+        pendingDialogs.delete(tabId);
+        stopRecordingForTab(tabId);
+      }
+      for (const id of [...pendingApprovals.keys()])
+        finalizeApproval(id, { decision: "deny", message: "Connection changed." }, true);
+      const epoch = connectionEpoch;
+      connectionDiagnostics.record("reconnect_scheduled");
+      manualReconnectTimer = setTimeout(() => {
+        manualReconnectTimer = undefined;
+        if (epoch === connectionEpoch)
+          void ensureWS().catch(() => gatewayWebSocketConnection.disconnect("discovery_failed"));
+      }, 3000);
+      return;
+    }
     if (
       connectionDestination === "cloud" &&
       !changingConnection &&
@@ -675,6 +727,8 @@ const gatewayWebSocketConnection = new GatewayWebSocketConnection({
           wsConnected = true;
           diagnosticPhase = "ready";
           connectionDiagnostics.record("authenticated");
+          if (Array.isArray(payload.capabilities) && payload.capabilities.includes("keepalive-v1"))
+            gatewayWebSocketConnection.startKeepAlive();
           void announceSharedTabs();
           return;
         }

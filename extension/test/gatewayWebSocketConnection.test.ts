@@ -29,6 +29,67 @@ class MockGatewaySocket implements GatewaySocket {
 }
 
 describe("GatewayWebSocketConnection", () => {
+  it("treats a failed keepalive send as a transient transport failure", () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new MockGatewaySocket();
+      const onConnectionChange = vi.fn();
+      const connection = new GatewayWebSocketConnection({
+        endpoint: "wss://gateway.example/ws",
+        createSocket: () => socket,
+        onOpen: vi.fn(),
+        onMessage: vi.fn(),
+        onConnectionChange,
+        onWarning: vi.fn(),
+        autoReconnect: () => false,
+      });
+      connection.ensureConnected();
+      socket.emit("open", new Event("open"));
+      socket.send.mockImplementationOnce(() => {
+        throw new Error("transport failed");
+      });
+      connection.startKeepAlive();
+      vi.advanceTimersByTime(20_000);
+      expect(onConnectionChange).toHaveBeenLastCalledWith(false, undefined, true);
+      expect(socket.close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an authenticated Cloud worker active without leaking heartbeats to command handling", () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new MockGatewaySocket();
+      const onMessage = vi.fn();
+      const connection = new GatewayWebSocketConnection({
+        endpoint: "wss://gateway.example/ws",
+        createSocket: () => socket,
+        onOpen: vi.fn(),
+        onMessage,
+        onConnectionChange: vi.fn(),
+        onWarning: vi.fn(),
+        autoReconnect: () => false,
+      });
+      connection.ensureConnected();
+      socket.emit("open", new Event("open"));
+      connection.startKeepAlive();
+      vi.advanceTimersByTime(20_000);
+      expect(socket.send).toHaveBeenLastCalledWith('{"type":"ping"}');
+      socket.emit("message", new MessageEvent("message", { data: '{"type":"pong"}' }));
+      expect(onMessage).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(20_000);
+      expect(socket.send).toHaveBeenCalledTimes(2);
+      connection.disconnect();
+      vi.advanceTimersByTime(60_000);
+      expect(socket.send).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     [1001, "CloudFlare WebSocket proxy restarting", "cloudflare_proxy_restarting"],
     [1001, "Cloudflare WebSocket proxy restarting", "cloudflare_proxy_restarting"],
