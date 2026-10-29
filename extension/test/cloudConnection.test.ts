@@ -1394,6 +1394,52 @@ describe("Domain scoped Sandbox sharing", () => {
       });
     }
   });
+  it.each([
+    "click_at",
+    "eval_script",
+  ])("does not dispatch %s after revoke/regrant during a tab lookup", async (method) => {
+    vi.spyOn(Date, "now").mockReturnValue(1000);
+    const socket = await start();
+    await message({ type: "set_eval_enabled", value: true });
+    const originalTab = await mock.tabs.get(1);
+    socket.message({
+      id: "pending-click",
+      method,
+      params: { tabId: 1, x: 10, y: 10, script: "document.title" },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    const approval = socket.sent.find((f) => f.type === "approval_pending")?.approval as {
+      approvalId: string;
+    };
+    let completeLookup!: (tab: typeof originalTab) => void;
+    let lookupStarted = false;
+    mock.tabs.get.mockImplementationOnce(async () => {
+      lookupStarted = true;
+      return await new Promise<typeof originalTab>((resolve) => {
+        completeLookup = resolve;
+      });
+    });
+    await message(
+      { type: "approval_decision", approvalId: approval.approvalId, decision: "allow" },
+      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+    );
+    await vi.waitFor(() => expect(lookupStarted).toBe(true));
+    await mock.tabs.update(1, { url: "https://outside.test/private" });
+    expect(await state()).toMatchObject({ sharedTabs: [] });
+    await mock.tabs.update(1, { url: "https://page.example.test/returned" });
+    completeLookup(originalTab);
+    await vi.waitFor(() => expect(socket.sent.find((f) => f.id === "pending-click")).toBeDefined());
+    expect(socket.sent.find((f) => f.id === "pending-click")).toMatchObject({
+      error: { code: "tab_permission_changed" },
+    });
+    expect(
+      mock.debugger.sendCommand.mock.calls.some(
+        (args) => args[1] === "Input.dispatchMouseEvent" || args[1] === "Runtime.evaluate",
+      ),
+    ).toBe(false);
+  });
   it("invalidates pending operations on rule changes and keeps settings bound to their destination", async () => {
     const socket = await start();
     socket.message({

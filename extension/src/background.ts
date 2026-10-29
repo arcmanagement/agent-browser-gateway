@@ -3191,6 +3191,7 @@ async function runApprovedOperation(
   epoch = connectionEpoch,
 ): Promise<unknown> {
   const shared = permittedTabs.get(tabId);
+  const grantStillValid = sharedTabAccessGuard(tabId);
   const consentRevision = sandboxConsentRevision;
   if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
   const operation = buildOperation(cmd, tabId);
@@ -3222,6 +3223,8 @@ async function runApprovedOperation(
   if (shared?.accessMode === "all_tabs" && consentRevision !== sandboxConsentRevision)
     throw new GatewayError("tab_permission_changed", "Sharing rules changed before the operation.");
   await requireCurrentSandboxScope(tabId);
+  if (!grantStillValid())
+    throw new GatewayError("tab_permission_changed", "Tab sharing changed before the operation.");
   return operation.run();
 }
 
@@ -8380,6 +8383,7 @@ async function runApprovedEval(
   tabId: number,
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<EvalResult> {
+  const grantStillValid = sharedTabAccessGuard(tabId);
   const consentRevision = sandboxConsentRevision;
   const automatic = permittedTabs.get(tabId)?.accessMode === "all_tabs";
   const settings = await getSettings();
@@ -8424,6 +8428,8 @@ async function runApprovedEval(
     throw new GatewayError("tab_permission_changed", "Sharing rules changed before eval.");
   if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
   await requireCurrentSandboxScope(tabId);
+  if (!grantStillValid())
+    throw new GatewayError("tab_permission_changed", "Tab sharing changed before eval.");
   const expression = `(${evalPageFunction.toString()})(${JSON.stringify(script)}, ${maxBytes})`;
   const res = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
