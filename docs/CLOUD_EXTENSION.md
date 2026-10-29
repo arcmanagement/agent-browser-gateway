@@ -34,7 +34,17 @@ A ready per-tab Cloud connection retries once, after three seconds, following a 
 
 With a Cloud service advertising `keepalive-v1`, the extension exchanges a fixed ping/pong every 20 seconds to keep its service worker and WebSocket active. The edge answers these frames without waking the Durable Object or calling the API/database. Older Cloud services retain their existing protocol.
 
-Personal and mixed-use profiles use per-tab sharing. A manual share ends on close, origin change, or revoke. Isolated profiles may enable **Share all tabs (sandbox profiles only)**, accept Chrome's optional site access, and separately opt into **Resume Sandbox after restart or disconnect**. Resume is bound to the selected saved destination and credential and authenticates before announcing tabs. Switching destinations, revoking site access, disabling Sandbox, deleting the destination, rejected credentials, or replacement by another browser cancels resume.
+Personal and mixed-use profiles use per-tab sharing. A manual share ends on close, origin change, or revoke. Isolated profiles may select **All tabs** in the popup’s **Tab sharing** setting, accept Chrome's optional site access, and separately opt into **Resume Sandbox after restart or disconnect**. Resume is bound to the selected saved destination and credential and authenticates before announcing tabs. Switching destinations, revoking site access, disabling Sandbox, deleting the destination, rejected credentials, or replacement by another browser cancels resume.
+
+The **Matching domains** sharing mode narrows Sandbox sharing to one or more hostname conditions.
+Exact domains, wildcard subdomains, and complete-hostname regular expressions can be combined;
+matching any condition is sufficient, subject to the shared HTTPS and port restrictions. Preview
+shows matching open tabs without enabling access. Existing and new matching tabs are shared
+regardless of who opens them. Leaving the scope revokes automatic access; returning restores it.
+Creating a Sandbox tab outside the scope is rejected. Conditions are saved per connection and are
+restored with that connection's explicit Sandbox auto-resume consent. Editing conditions cancels
+auto-resume consent and invalidates pending Sandbox operations. Manual shares and account-forced
+operation approval retain their separate rules.
 
 AI clients use Cloud tools such as `tabs_list`, `tab_read`, and the plugin command surface. A browser ID and current generation identify the browser session; rediscover tabs after reconnecting. Cloud plugin registration and execution use the selected service, rather than the desktop `~/.abg/plugins` directory. Install only trusted plugins, and authorize only the browsers and operations the client needs.
 

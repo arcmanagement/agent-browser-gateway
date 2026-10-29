@@ -82,6 +82,7 @@ export function createChromeStorageArea(initialValues: Record<string, unknown> =
 }
 
 type MockTab = {
+  pendingUrl?: string;
   id: number;
   active: boolean;
   currentWindow: boolean;
@@ -133,6 +134,7 @@ function createChromeTabs(initialTabs: MockTab[] = []) {
       return cloneTab(tab);
     }),
     create: vi.fn(async (properties: CreateTabProperties = {}) => {
+      while (tabs.has(nextTabId)) nextTabId += 1;
       const tab: MockTab = {
         id: nextTabId,
         active: properties.active ?? true,

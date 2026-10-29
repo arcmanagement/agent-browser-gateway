@@ -9,7 +9,7 @@ personal browser profile.
 | Mode | Meaning |
 |---|---|
 | `per-tab` | Allowed for an explicitly shared tab in a normal browser profile. Read-only tools should stay here when possible. |
-| `sandbox/all-tabs only` | Allowed only in an intentionally isolated browser profile where the user enabled all-tabs access. |
+| `sandbox/all-tabs only` | Allowed only with explicit Sandbox consent in an intentionally isolated browser profile. The user may select all tabs or narrow automatic sharing to domain conditions. Domain-scoped tab creation and controls must remain inside those conditions. |
 | `user-controlled deployment only` | Allowed only when the user explicitly controls the browser permission, local profile, organization deployment, plugin, or fork that exposes the capability. It is not part of normal per-tab or all-tabs sharing. |
 | `self-hosted only` | Allowed only when the user or their organization operates the network/service side. It is not an ABG-operated service. |
 | `non-goal` | Not accepted in official ABG, even if convenient. |

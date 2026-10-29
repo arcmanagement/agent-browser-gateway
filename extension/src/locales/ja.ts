@@ -141,6 +141,35 @@ export const ja: MessageCatalog = {
     "オン: 共有中のタブでの eval は承認ウィンドウなしで実行され、監査ログに記録されます。Cloudの入力値の読み取りとファイル添付は、すべての共有タブで操作の承認設定に従います。Cloud側の承認ルールは優先されます。",
   "popup.permissions.trustedAutomation.evalDisabled":
     "オンですが、上の eval を許可するまで eval は使えません。",
+  "popup.sharing.mode": "タブの共有",
+  "popup.sharing.manual": "手動",
+  "popup.sharing.domains": "条件に一致するドメイン",
+  "popup.sharing.all": "すべてのタブ",
+  "popup.sharing.note":
+    "いずれかの条件に一致するタブを自動で共有します。誰がタブを開いたかにかかわらず、ホスト名全体を条件と照合します。サブドメインには *.example.test を指定してください。正規表現も、URL全体ではなくホスト名を照合します。",
+  "popup.sharing.domain": "ドメイン",
+  "popup.sharing.regex": "正規表現",
+  "popup.sharing.pattern": "ホスト名または正規表現",
+  "popup.sharing.add": "条件を追加",
+  "popup.sharing.remove": "条件を削除",
+  "popup.sharing.https": "HTTPSのみ",
+  "popup.sharing.ports": "許可するポート",
+  "popup.sharing.portsNote":
+    "3000, 5173 のようにカンマで区切って指定します。空欄にするとすべてのポートを許可します。",
+  "popup.sharing.apply": "共有設定を適用",
+  "popup.sharing.preview": "条件に一致するタブを確認",
+  "popup.sharing.previewCount": "開いているタブのうち{count}件が条件に一致",
+  "popup.sharing.active":
+    "条件に一致する{count}件のタブを共有中です。許可範囲から外れたタブは、自動で共有が解除されます。",
+  "popup.sharing.shared": "ドメイン条件により共有中",
+  "popup.sharing.sharedDetail":
+    "このタブは自動共有の条件に一致します。許可範囲から外れると、共有が終了します。",
+  "popup.sharing.outside": "このタブは自動共有の条件に一致していません。",
+  "popup.sharing.invalid":
+    "条件とポートを確認してください。空欄でないホスト名、または有効な正規表現を1つ以上追加してください。ポートには1〜65535を指定してください。",
+  "popup.sharing.permissionDenied":
+    "サイトへのアクセスが許可されなかったため、共有設定を適用できませんでした。",
+  "popup.sharing.disable": "自動共有を停止",
   "popup.permissions.allTabs.resume": "再起動・切断後にSandboxを自動復帰",
   "popup.permissions.allTabs.resumeNote":
     "この保存済みCloud接続先だけに適用します。SandboxをOFFにするか、接続先を切り替えると自動復帰もOFFになります。",
@@ -150,7 +179,7 @@ export const ja: MessageCatalog = {
   "popup.permissions.allTabs.permissionMissing":
     "Chrome の権限がありません。もう一度オンにして許可してください。",
   "popup.permissions.allTabs.default":
-    "このプロファイルのタブをすべて共有します。隔離したサンドボックス用プロファイルだけで使い、普段のプロファイルでは使わないでください。",
+    "自動共有は、隔離したサンドボックス用プロファイルだけで使い、普段のプロファイルでは使わないでください。",
   "popup.permissions.allTabs.notGranted":
     "権限が許可されなかったため、全タブ共有はオフのままです。",
   "popup.permissions.bookmarks": "ブックマークへのアクセス",

@@ -93,6 +93,14 @@ import {
 } from "./passwordManagerRecoveryLogic.js";
 import { restoreReportText } from "./popupLogic.js";
 import {
+  DEFAULT_SANDBOX_SHARING,
+  matchesSandboxSharing,
+  restoreSandboxSharing,
+  type SandboxSharing,
+  sandboxConnectionKey,
+  validateSandboxSharing,
+} from "./sandboxSharing.js";
+import {
   beginCloudLogin,
   changeSavedCloudConnections,
   pollCloudLogin,
@@ -145,6 +153,7 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   connectionDestination: "local",
   cloudWebSocketUrl: "",
   allTabsAccessEnabled: false,
+  sandboxSharing: DEFAULT_SANDBOX_SHARING,
   bookmarksAccessEnabled: false,
   readingListAccessEnabled: false,
   personalDataMutationsEnabled: false,
@@ -865,6 +874,8 @@ async function getSettings(): Promise<ExtensionSettings> {
     "connectionDestination",
     "cloudWebSocketUrl",
     "allTabsAccessEnabled",
+    "sandboxSharingByConnection",
+    "activeCloudConnectionId",
     "bookmarksAccessEnabled",
     "readingListAccessEnabled",
     "personalDataMutationsEnabled",
@@ -896,6 +907,16 @@ async function getSettings(): Promise<ExtensionSettings> {
     typeof stored.allTabsAccessEnabled === "boolean"
       ? stored.allTabsAccessEnabled
       : DEFAULT_SETTINGS.allTabsAccessEnabled;
+  const sandboxKey = sandboxConnectionKey(
+    destination,
+    destination === "cloud" ? cloudWebSocketUrl : gatewayWebSocketUrl.url,
+    destination === "cloud" ? stored.activeCloudConnectionId : undefined,
+  );
+  const sandboxSharing = restoreSandboxSharing(
+    isRecord(stored.sandboxSharingByConnection)
+      ? stored.sandboxSharingByConnection[sandboxKey]
+      : undefined,
+  );
   const bookmarksAccessEnabled =
     typeof stored.bookmarksAccessEnabled === "boolean"
       ? stored.bookmarksAccessEnabled
@@ -947,6 +968,7 @@ async function getSettings(): Promise<ExtensionSettings> {
     connectionDestination: destination,
     cloudWebSocketUrl,
     allTabsAccessEnabled,
+    sandboxSharing,
     bookmarksAccessEnabled,
     readingListAccessEnabled,
     personalDataMutationsEnabled,
@@ -1022,7 +1044,14 @@ async function setGatewayWebSocketUrl(value: string): Promise<ExtensionSettings>
     DEFAULT_SETTINGS.gatewayWebSocketUrl,
   );
   const current = await getSettings();
-  const settings: ExtensionSettings = { ...current, gatewayWebSocketUrl: normalizedUrl };
+  const settings: ExtensionSettings = {
+    ...current,
+    gatewayWebSocketUrl: normalizedUrl,
+    allTabsAccessEnabled:
+      connectionDestination === "local" && normalizedUrl !== current.gatewayWebSocketUrl
+        ? false
+        : current.allTabsAccessEnabled,
+  };
   await browser.storage.local.set(settings);
   if (connectionDestination === "local") {
     changingConnection = true;
@@ -1159,6 +1188,100 @@ async function deleteCloudConnection(id: string): Promise<void> {
     connectionConfigured = true;
   } finally {
     changingConnection = false;
+  }
+}
+
+let sandboxSettingsUpdate: Promise<unknown> = Promise.resolve();
+function setSandboxSharing(enabled: boolean, input: unknown): Promise<void> {
+  const epoch = connectionEpoch;
+  const update = sandboxSettingsUpdate
+    .catch(() => undefined)
+    .then(async () => {
+      let config: SandboxSharing;
+      try {
+        config = validateSandboxSharing(input);
+      } catch (error) {
+        throw new GatewayError(
+          "invalid_sandbox_rules",
+          error instanceof Error ? error.message : "Invalid sharing rules.",
+        );
+      }
+      if (epoch !== connectionEpoch || changingConnection)
+        throw new GatewayError("connection_changing", "Connection is changing.");
+      const settings = await getSettings();
+      if (enabled && !(await hasAllUrlsPermission()))
+        throw new GatewayError("all_tabs_permission_required", "Grant optional site access first.");
+      if (enabled && connectionDestination === "cloud" && !cloudCode)
+        throw new GatewayError("cloud_code_required", "Enter a Cloud connection code first.");
+      if (epoch !== connectionEpoch || changingConnection)
+        throw new GatewayError("connection_changing", "Connection changed.");
+      await disableCloudSandboxResume();
+      // Invalidate automatic grants before changing the rules; pending commands keep no old lease.
+      await browser.storage.local.set({ allTabsAccessEnabled: false });
+      cloudSandboxActive = false;
+      await revokeAllTabsEntries("sandbox_scope_changed");
+      const stored = await browser.storage.local.get([
+        "sandboxSharingByConnection",
+        "activeCloudConnectionId",
+      ]);
+      if (epoch !== connectionEpoch || changingConnection)
+        throw new GatewayError("connection_changing", "Connection changed.");
+      const key = sandboxConnectionKey(
+        settings.connectionDestination,
+        settings.connectionDestination === "cloud"
+          ? settings.cloudWebSocketUrl
+          : settings.gatewayWebSocketUrl,
+        settings.connectionDestination === "cloud" ? stored.activeCloudConnectionId : undefined,
+      );
+      await browser.storage.local.set({
+        sandboxSharingByConnection: {
+          ...(isRecord(stored.sandboxSharingByConnection) ? stored.sandboxSharingByConnection : {}),
+          [key]: config,
+        },
+      });
+      if (epoch !== connectionEpoch || changingConnection)
+        throw new GatewayError("connection_changing", "Connection changed.");
+      await setAllTabsAccessEnabled(enabled);
+    });
+  sandboxSettingsUpdate = update;
+  return update;
+}
+
+async function sandboxTabMatches(tab: BrowserTab, config?: SandboxSharing): Promise<boolean> {
+  const sharing = config ?? (await getSettings()).sandboxSharing;
+  return (
+    isConnectionShareableTabUrl(tab.url) &&
+    matchesSandboxSharing(tab.url, sharing) &&
+    (!tab.pendingUrl ||
+      (isConnectionShareableTabUrl(tab.pendingUrl) &&
+        matchesSandboxSharing(tab.pendingUrl, sharing)))
+  );
+}
+
+async function requireCurrentSandboxScope(tabId: number, required = false): Promise<void> {
+  const share = permittedTabs.get(tabId);
+  if (share?.accessMode !== "all_tabs") {
+    if (required) throw new GatewayError("tab_permission_changed", "Automatic sharing ended.");
+    return;
+  }
+  const tab = await browser.tabs.get(tabId).catch(() => undefined);
+  const matches =
+    (await isAllTabsAccessActive()) &&
+    tab &&
+    (await sandboxTabMatches(tab)) &&
+    tab.url &&
+    originForUrl(tab.url) === share.origin;
+  if (permittedTabs.get(tabId) !== share)
+    throw new GatewayError(
+      "tab_permission_changed",
+      "Tab sharing changed during scope validation.",
+    );
+  if (!matches) {
+    await revokeTab(tabId, "sandbox_scope_mismatch");
+    throw new GatewayError(
+      "sandbox_scope_mismatch",
+      "The tab is outside the allowed sharing scope.",
+    );
   }
 }
 
@@ -1438,6 +1561,12 @@ function sendWS(msg: ExtToGateway): void {
 }
 
 function emitStreamEvent(tabId: number, event: Record<string, unknown>): void {
+  void emitScopedStreamEvent(tabId, event).catch(() => undefined);
+}
+async function emitScopedStreamEvent(tabId: number, event: Record<string, unknown>): Promise<void> {
+  const epoch = connectionEpoch;
+  await requireCurrentSandboxScope(tabId);
+  if (epoch !== connectionEpoch || !permittedTabs.has(tabId)) return;
   if (connectionDestination === "cloud") {
     if (!streamingTabs.has(tabId) || !permittedTabs.has(tabId)) return;
     const state = cloudRuntimeEvents.get(tabId) ?? { sequence: 0, events: [] };
@@ -1595,13 +1724,14 @@ async function syncAllTabsAccess(
   const epoch = connectionEpoch;
   const revision = sandboxConsentRevision;
   const tabs = await browser.tabs.query({});
+  const config = (await getSettings()).sandboxSharing;
   const shareableTabIds = new Set<number>();
   let skippedTabCount = 0;
 
   for (const tab of tabs) {
     if (epoch !== connectionEpoch || revision !== sandboxConsentRevision)
       return { shareableTabCount: 0, skippedTabCount };
-    if (typeof tab.id !== "number" || !isConnectionShareableTabUrl(tab.url)) {
+    if (typeof tab.id !== "number" || !(await sandboxTabMatches(tab, config))) {
       skippedTabCount += 1;
       continue;
     }
@@ -1635,7 +1765,8 @@ async function allTabsAccessState(): Promise<{
   let shareableTabCount = 0;
   let skippedTabCount = 0;
   for (const tab of tabs) {
-    if (typeof tab.id === "number" && isConnectionShareableTabUrl(tab.url)) shareableTabCount += 1;
+    if (typeof tab.id === "number" && (await sandboxTabMatches(tab, settings.sandboxSharing)))
+      shareableTabCount += 1;
     else skippedTabCount += 1;
   }
   return {
@@ -1678,9 +1809,20 @@ async function personalDataAccessState(): Promise<{
 }
 
 async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void> {
-  if (typeof tab.id !== "number" || !isConnectionShareableTabUrl(tab.url)) return;
+  const epoch = connectionEpoch;
+  const revision = sandboxConsentRevision;
+  if (typeof tab.id !== "number" || !tab.url || !(await isAllTabsAccessActive())) return;
+  const actual = await browser.tabs.get(tab.id).catch(() => undefined);
+  if (
+    !actual ||
+    !(await sandboxTabMatches(actual)) ||
+    epoch !== connectionEpoch ||
+    revision !== sandboxConsentRevision ||
+    changingConnection
+  )
+    return;
   const tabId = tab.id;
-  const url = tab.url;
+  const url = actual.url ?? tab.url;
   const origin = originForUrl(url);
   const title = tab.title ?? "";
   const existing = permittedTabs.get(tabId);
@@ -1698,18 +1840,19 @@ async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void>
     sendWS({ type: "tab_revoked", tabId, reason: "manual_origin_changed_during_all_tabs" });
   }
 
-  const entry: PermittedTab = {
-    url,
-    title,
-    origin,
-    permittedAt: existing?.origin === origin ? existing.permittedAt : Date.now(),
-    accessMode: "all_tabs",
-  };
+  const unchangedGrant = existing?.accessMode === "all_tabs" && existing.origin === origin;
+  const changed = existing?.url !== url || existing?.title !== title;
+  // Preserve the grant object only while its authorization remains continuous.
+  const entry: PermittedTab = unchangedGrant
+    ? existing
+    : { url, title, origin, permittedAt: Date.now(), accessMode: "all_tabs" };
+  entry.url = url;
+  entry.title = title;
   permittedTabs.set(tabId, entry);
 
   if (emit) {
-    if (existing?.accessMode === "all_tabs" && existing.origin === origin) {
-      if (existing.url !== url || existing.title !== title) sendTabUpdated(tabId, entry);
+    if (unchangedGrant) {
+      if (changed) sendTabUpdated(tabId, entry);
     } else sendTabPermitted(tabId, entry);
   }
   await updateBadge(tabId);
@@ -1810,9 +1953,19 @@ async function updateBadge(tabId: number): Promise<void> {
   const tab = permittedTabs.get(tabId);
   const isRecording = recordingSession?.tabId === tabId;
   try {
+    const automaticBadge =
+      tab?.accessMode === "all_tabs" && (await getSettings()).sandboxSharing.scope === "domains"
+        ? "DOM"
+        : "ALL";
     await browser.action.setBadgeText({
       tabId,
-      text: isRecording ? "REC" : tab ? (tab.accessMode === "all_tabs" ? "ALL" : "ON") : "",
+      text: isRecording
+        ? "REC"
+        : tab
+          ? tab.accessMode === "all_tabs"
+            ? automaticBadge
+            : "ON"
+          : "",
     });
     if (isRecording) {
       await browser.action.setBadgeBackgroundColor({ tabId, color: "#ff3b30" });
@@ -1828,7 +1981,8 @@ async function updateBadge(tabId: number): Promise<void> {
 // ---------- Tab lifecycle hooks ----------
 
 browser.tabs.onCreated.addListener(async (tab) => {
-  if ((await isAllTabsAccessActive()) && isConnectionShareableTabUrl(tab.url)) {
+  await bootstrapReady;
+  if ((await isAllTabsAccessActive()) && (await sandboxTabMatches(tab))) {
     await upsertAllTabsEntry(tab, true);
     await saveState();
   }
@@ -1837,7 +1991,7 @@ browser.tabs.onCreated.addListener(async (tab) => {
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   await bootstrapReady;
   const currentUrl = tab.url ?? changeInfo.url;
-  if ((await isAllTabsAccessActive()) && isConnectionShareableTabUrl(currentUrl)) {
+  if ((await isAllTabsAccessActive()) && (await sandboxTabMatches({ ...tab, url: currentUrl }))) {
     await upsertAllTabsEntry({ ...tab, id: tabId, url: currentUrl }, true);
     await saveState();
     return;
@@ -1940,6 +2094,7 @@ browser.windows.onRemoved.addListener((windowId) => {
 // ---------- Debugger (for screenshot + console) ----------
 
 async function attachDebugger(tabId: number): Promise<void> {
+  await requireCurrentSandboxScope(tabId);
   if (attachedTabs.has(tabId)) return;
   try {
     await browser.debugger.attach({ tabId }, "1.3");
@@ -2324,7 +2479,29 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 // ---------- Gateway -> Extension commands ----------
 
 async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch): Promise<void> {
-  const reply = (id: string, result: unknown) => {
+  const tabId = cmd.params?.tabId;
+  const automatic = tabId !== undefined && permittedTabs.get(tabId)?.accessMode === "all_tabs";
+  const grantStillValid = tabId === undefined ? undefined : sharedTabAccessGuard(tabId);
+  const consentRevision = sandboxConsentRevision;
+  const reply = async (id: string, result: unknown) => {
+    if (automatic && consentRevision !== sandboxConsentRevision)
+      throw new GatewayError(
+        "tab_permission_changed",
+        "Sharing rules changed during the operation.",
+      );
+    if (
+      automatic &&
+      tabId !== undefined &&
+      cmd.method !== "revoke" &&
+      !(cmd.method === "sandbox_action" && cmd.params?.action === "tab-close")
+    ) {
+      await requireCurrentSandboxScope(tabId, true);
+      if (!grantStillValid?.())
+        throw new GatewayError(
+          "tab_permission_changed",
+          "Tab sharing changed during the operation.",
+        );
+    }
     if (epoch === connectionEpoch) sendWS({ type: "response", id, result });
   };
   const replyError = (id: string, code: string, message: string, matchCount?: number) => {
@@ -2335,8 +2512,8 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
         error: matchCount === undefined ? { code, message } : { code, message, matchCount },
       });
   };
-  const tabId = cmd.params?.tabId;
   try {
+    if (automatic && tabId !== undefined) await requireCurrentSandboxScope(tabId, true);
     const sensitiveRead =
       connectionDestination === "cloud" &&
       ((cmd.method === "state_inspect" && cmd.params?.includeValues === true) ||
@@ -2366,35 +2543,39 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
         throw new Error("Connection or tab sharing changed before the operation.");
     }
+    if (automatic && tabId !== undefined) await requireCurrentSandboxScope(tabId, true);
     if (cmd.method === "upload_chunk") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, fileTransfers.append(uploadScope(tabId), tabId, cmd.params as UploadChunk));
+      await reply(
+        cmd.id,
+        fileTransfers.append(uploadScope(tabId), tabId, cmd.params as UploadChunk),
+      );
     } else if (cmd.method === "bookmarks_list") {
-      reply(cmd.id, await listBookmarks(cmd.params ?? {}));
+      await reply(cmd.id, await listBookmarks(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_search") {
-      reply(cmd.id, await searchBookmarks(cmd.params ?? {}));
+      await reply(cmd.id, await searchBookmarks(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_get") {
-      reply(cmd.id, await getBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await getBookmark(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_open") {
-      reply(cmd.id, await openBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await openBookmark(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_list") {
-      reply(cmd.id, await listReadingList(cmd.params ?? {}));
+      await reply(cmd.id, await listReadingList(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_search") {
-      reply(cmd.id, await searchReadingList(cmd.params ?? {}));
+      await reply(cmd.id, await searchReadingList(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_create") {
-      reply(cmd.id, await createBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await createBookmark(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_update") {
-      reply(cmd.id, await updateBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await updateBookmark(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_move") {
-      reply(cmd.id, await moveBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await moveBookmark(cmd.params ?? {}));
     } else if (cmd.method === "bookmarks_remove") {
-      reply(cmd.id, await removeBookmark(cmd.params ?? {}));
+      await reply(cmd.id, await removeBookmark(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_add") {
-      reply(cmd.id, await addReadingListEntry(cmd.params ?? {}));
+      await reply(cmd.id, await addReadingListEntry(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_update") {
-      reply(cmd.id, await updateReadingListEntry(cmd.params ?? {}));
+      await reply(cmd.id, await updateReadingListEntry(cmd.params ?? {}));
     } else if (cmd.method === "reading_list_remove") {
-      reply(cmd.id, await removeReadingListEntry(cmd.params ?? {}));
+      await reply(cmd.id, await removeReadingListEntry(cmd.params ?? {}));
     } else if (cmd.method === "approval_decide") {
       const approvalId = cmd.params?.approvalId;
       const decision = cmd.params?.decision;
@@ -2406,7 +2587,7 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       // Recording approvals can only be denied remotely: the capture stream must
       // be minted inside the desktop approval window's own click gesture.
       if (pending?.request.method === "record_start" && decision === "allow") {
-        reply(cmd.id, { applied: false, reason: "requires_desktop_gesture" });
+        await reply(cmd.id, { applied: false, reason: "requires_desktop_gesture" });
       } else {
         const applied = finalizeApproval(
           approvalId,
@@ -2414,67 +2595,70 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
           true,
           decidedBy,
         );
-        reply(
+        await reply(
           cmd.id,
           applied ? { applied: true } : { applied: false, reason: "approval_already_decided" },
         );
       }
     } else if (cmd.method === "raise_tab") {
       if (!tabId) throw new Error("tab not permitted");
-      reply(cmd.id, await raisePermittedBrowserTab(browser, permittedTabs, tabId));
+      await reply(cmd.id, await raisePermittedBrowserTab(browser, permittedTabs, tabId));
     } else if (cmd.method === "frames") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await listFrames(tabId));
+      await reply(cmd.id, await listFrames(tabId));
     } else if (cmd.method === "read_dom") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await readDom(tabId, cmd.params?.selector, readFrameParam(cmd.params));
-      reply(cmd.id, result);
+      await reply(cmd.id, result);
     } else if (cmd.method === "get_dom") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await getDomValue(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await getDomValue(tabId, cmd.params ?? {}));
     } else if (cmd.method === "predicate") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await getPredicate(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await getPredicate(tabId, cmd.params ?? {}));
     } else if (cmd.method === "find") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await runFindCommand(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await runFindCommand(tabId, cmd.params ?? {}));
     } else if (cmd.method === "snapshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await snapshotTab(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await snapshotTab(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const result = await screenshot(tabId, cmd.params?.clip);
-      reply(cmd.id, result);
+      await reply(cmd.id, result);
     } else if (cmd.method === "pdf") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await printPagePDF(tabId));
+      await reply(cmd.id, await printPagePDF(tabId));
     } else if (cmd.method === "console") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
       const logs = consoleBuffers.get(tabId) ?? [];
-      reply(cmd.id, { logs });
+      await reply(cmd.id, { logs });
     } else if (cmd.method === "table") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await extractTables(tabId, cmd.params?.selector, readFrameParam(cmd.params)));
+      await reply(
+        cmd.id,
+        await extractTables(tabId, cmd.params?.selector, readFrameParam(cmd.params)),
+      );
     } else if (cmd.method === "describe") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await describeElements(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await describeElements(tabId, cmd.params ?? {}));
     } else if (cmd.method === "network_log") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await getNetworkLog(tabId, cmd.params ?? {}));
     } else if (cmd.method === "har_export") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await exportHAR(tabId, cmd.params ?? {}));
     } else if (cmd.method === "state_inspect") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await inspectState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "framework_inspect") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await inspectFramework(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await inspectFramework(tabId, cmd.params ?? {}));
     } else if (cmd.method === "download_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
-      reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await getDownloadState(tabId, cmd.params ?? {}));
     } else if (cmd.method === "wait_for") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       if (connectionDestination === "cloud" && cmd.params?.predicate !== undefined) {
@@ -2486,32 +2670,32 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
           _requireApproval: cmd.params._requireApproval,
         });
       }
-      reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await waitFor(tabId, cmd.params ?? {}));
     } else if (cmd.method === "eval_script") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await runApprovedEval(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await runApprovedEval(tabId, cmd.params ?? {}));
     } else if (cmd.method === "annotation_mode") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
-      reply(cmd.id, await runAnnotationCommand(tabId, readAnnotationCommand(cmd.params)));
+      await reply(cmd.id, await runAnnotationCommand(tabId, readAnnotationCommand(cmd.params)));
     } else if (cmd.method === "validate_editable") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await validateEditable(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await validateEditable(tabId, cmd.params ?? {}));
     } else if (cmd.method === "stream_control") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
+      await reply(cmd.id, await setRuntimeStream(tabId, cmd.params?.enabled === true));
     } else if (cmd.method === "dialog_state") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       await attachDebugger(tabId);
-      reply(cmd.id, publicDialogState(tabId));
+      await reply(cmd.id, publicDialogState(tabId));
     } else if (cmd.method === "revoke") {
       if (!tabId) throw new Error("tabId required");
       await revokeTab(tabId, "gateway_revoke");
-      reply(cmd.id, { ok: true });
+      await reply(cmd.id, { ok: true });
     } else if (cmd.method === "stream_read") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
       const after = cmd.params?.after ?? 0;
-      reply(cmd.id, {
+      await reply(cmd.id, {
         events: (cloudRuntimeEvents.get(tabId)?.events ?? [])
           .filter((e) => e.sequence > after)
           .slice(0, 10),
@@ -2521,7 +2705,7 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       if (!tabId || !permittedTabs.has(tabId) || connectionDestination !== "cloud")
         throw new Error("tab not permitted");
       await cloudRecordingWrites;
-      reply(
+      await reply(
         cmd.id,
         await readCloudRecording(
           await cloudRecordingConnection(tabId),
@@ -2532,18 +2716,18 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       );
     } else if (cmd.method === "record_start") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await recordStart(tabId, cmd.params ?? {}));
+      await reply(cmd.id, await recordStart(tabId, cmd.params ?? {}));
     } else if (cmd.method === "record_stop") {
       if (connectionDestination === "cloud" && (!tabId || recordingSession?.tabId !== tabId))
         throw new Error("tab not permitted");
-      reply(cmd.id, await recordStop(cmd.params ?? {}));
+      await reply(cmd.id, await recordStop(cmd.params ?? {}));
     } else if (cmd.method === "record_status") {
       if (connectionDestination === "cloud" && recordingSession && recordingSession.tabId !== tabId)
         throw new Error("tab not permitted");
-      reply(cmd.id, recordStatus());
+      await reply(cmd.id, recordStatus());
     } else if (isOperationCommand(cmd)) {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      reply(cmd.id, await runApprovedOperation(cmd, tabId, epoch));
+      await reply(cmd.id, await runApprovedOperation(cmd, tabId, epoch));
     } else {
       replyError(cmd.id, "unknown_method", String(cmd.method));
     }
@@ -2995,6 +3179,7 @@ function sharedTabAccessGuard(tabId: number): () => boolean {
       !changingConnection &&
       epoch === connectionEpoch &&
       current !== undefined &&
+      current === share &&
       current.origin === origin &&
       current.permittedAt === permittedAt
     );
@@ -3011,6 +3196,8 @@ async function runApprovedOperation(
   epoch = connectionEpoch,
 ): Promise<unknown> {
   const shared = permittedTabs.get(tabId);
+  const grantStillValid = sharedTabAccessGuard(tabId);
+  const consentRevision = sandboxConsentRevision;
   if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
   const operation = buildOperation(cmd, tabId);
   await requireOperationApproval(
@@ -3028,6 +3215,7 @@ async function runApprovedOperation(
     epoch !== connectionEpoch ||
     !shared ||
     !current ||
+    current !== shared ||
     current.origin !== shared.origin ||
     current.permittedAt !== shared.permittedAt ||
     !actual.url ||
@@ -3037,6 +3225,11 @@ async function runApprovedOperation(
       "tab_permission_changed",
       "Tab sharing or origin changed before the operation.",
     );
+  if (shared?.accessMode === "all_tabs" && consentRevision !== sandboxConsentRevision)
+    throw new GatewayError("tab_permission_changed", "Sharing rules changed before the operation.");
+  await requireCurrentSandboxScope(tabId);
+  if (!grantStillValid())
+    throw new GatewayError("tab_permission_changed", "Tab sharing changed before the operation.");
   return operation.run();
 }
 
@@ -3044,8 +3237,9 @@ async function requireSandboxAccess(tabId: number): Promise<void> {
   if (!(await isAllTabsAccessActive()) || permittedTabs.get(tabId)?.accessMode !== "all_tabs")
     throw new GatewayError(
       "sandbox_profile_required",
-      "Sandbox operations require an all-tabs shared tab.",
+      "Sandbox operations require an automatically shared Sandbox tab.",
     );
+  await requireCurrentSandboxScope(tabId, true);
 }
 
 function buildOperation(cmd: OperationCommand, tabId: number): OperationDescriptor {
@@ -4339,6 +4533,8 @@ function createFrameApiSource(): string {
 }
 
 async function evaluatePageExpression<T>(tabId: number, expression: string): Promise<T> {
+  if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
+  await requireCurrentSandboxScope(tabId);
   if (!browser.supportsDebugger) {
     return evaluatePageExpressionWithScripting<T>(tabId, expression);
   }
@@ -6642,6 +6838,9 @@ async function sandboxStorage(
 }
 
 async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
+  await requireCurrentSandboxScope(tabId, true);
+  if (!matchesSandboxSharing(url, (await getSettings()).sandboxSharing))
+    throw new GatewayError("sandbox_scope_mismatch", "Tab creation is limited to allowed domains.");
   if (connectionDestination === "cloud" && !isCloudShareableUrl(url))
     throw new GatewayError(
       "cloud_tab_unsupported",
@@ -6653,6 +6852,7 @@ async function sandboxCreateTab(tabId: number, url: string): Promise<Record<stri
 }
 
 async function sandboxCloseTab(targetTabId: number): Promise<Record<string, unknown>> {
+  await requireCurrentSandboxScope(targetTabId, true);
   const target = permittedTabs.get(targetTabId);
   if (target?.accessMode !== "all_tabs") {
     throw new GatewayError(
@@ -6673,21 +6873,27 @@ async function clickSelector(
 }
 
 async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true }> {
+  const grantStillValid = sharedTabAccessGuard(tabId);
+  const sendMouse = (params: Record<string, unknown>) => {
+    if (!grantStillValid())
+      throw new GatewayError("tab_permission_changed", "Tab sharing changed before mouse input.");
+    return browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", params);
+  };
   await attachDebugger(tabId);
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mouseMoved",
     x,
     y,
     button: "none",
   });
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mousePressed",
     x,
     y,
     button: "left",
     clickCount: 1,
   });
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mouseReleased",
     x,
     y,
@@ -8188,6 +8394,9 @@ async function runApprovedEval(
   tabId: number,
   params: NonNullable<GatewayCommand["params"]>,
 ): Promise<EvalResult> {
+  const grantStillValid = sharedTabAccessGuard(tabId);
+  const consentRevision = sandboxConsentRevision;
+  const automatic = permittedTabs.get(tabId)?.accessMode === "all_tabs";
   const settings = await getSettings();
   if (!settings.evalEnabled) {
     throw new GatewayError(
@@ -8226,6 +8435,12 @@ async function runApprovedEval(
   }
 
   await attachDebugger(tabId);
+  if (automatic && consentRevision !== sandboxConsentRevision)
+    throw new GatewayError("tab_permission_changed", "Sharing rules changed before eval.");
+  if (!permittedTabs.has(tabId)) throw new Error("tab not permitted");
+  await requireCurrentSandboxScope(tabId);
+  if (!grantStillValid())
+    throw new GatewayError("tab_permission_changed", "Tab sharing changed before eval.");
   const expression = `(${evalPageFunction.toString()})(${JSON.stringify(script)}, ${maxBytes})`;
   const res = (await browser.debugger.sendCommand({ tabId }, "Runtime.evaluate", {
     expression,
@@ -8964,9 +9179,13 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
         "get_connection_diagnostics",
         "get_connection_status",
         "set_connection_destination",
+        "set_gateway_websocket_url",
+        "set_all_tabs_access",
         "begin_cloud_login",
         "delete_cloud_connection",
         "set_cloud_sandbox_resume",
+        "set_sandbox_sharing",
+        "preview_sandbox_sharing",
       ].includes(msg.type) &&
       (sender.id !== browser.runtime.id || sender.url !== browser.runtime.getURL("popup.html"))
     ) {
@@ -9042,6 +9261,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       activeTab: {
         incognito: activeTab?.incognito === true,
         incognitoAccessAllowed,
+        accessMode: permittedTabs.get(msg.tabId)?.accessMode,
       },
       sharedTabs,
       allTabsAccess,
@@ -9098,6 +9318,25 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
   if (msg.type === "set_cloud_sandbox_resume") {
     await setCloudSandboxResume(msg.value);
     return { type: "ok" };
+  }
+  if (msg.type === "set_sandbox_sharing") {
+    await setSandboxSharing(msg.enabled, msg.config);
+    return { type: "ok" };
+  }
+  if (msg.type === "preview_sandbox_sharing") {
+    let config: SandboxSharing;
+    try {
+      config = validateSandboxSharing(msg.config);
+    } catch {
+      throw new GatewayError("invalid_sandbox_rules", "Invalid sharing rules.");
+    }
+    const tabs = await browser.tabs.query({});
+    const matches = [];
+    for (const tab of tabs) {
+      if (typeof tab.id === "number" && (await sandboxTabMatches(tab, config)))
+        matches.push({ tabId: tab.id, url: tab.url ?? "", title: tab.title ?? "" });
+    }
+    return { type: "sandbox_preview", tabs: matches };
   }
   if (msg.type === "set_all_tabs_access") {
     await setAllTabsAccessEnabled(msg.value);
@@ -9211,6 +9450,16 @@ function parseRuntimeMessage(rawMsg: unknown): RuntimeMessage | null {
     return { type: "delete_cloud_connection", id: rawMsg.id };
   if (rawMsg.type === "set_cloud_sandbox_resume" && typeof rawMsg.value === "boolean") {
     return { type: "set_cloud_sandbox_resume", value: rawMsg.value };
+  }
+  if (rawMsg.type === "set_sandbox_sharing" && typeof rawMsg.enabled === "boolean") {
+    return {
+      type: "set_sandbox_sharing",
+      enabled: rawMsg.enabled,
+      config: rawMsg.config as SandboxSharing,
+    };
+  }
+  if (rawMsg.type === "preview_sandbox_sharing") {
+    return { type: "preview_sandbox_sharing", config: rawMsg.config as SandboxSharing };
   }
   if (rawMsg.type === "set_all_tabs_access" && typeof rawMsg.value === "boolean") {
     return { type: "set_all_tabs_access", value: rawMsg.value };

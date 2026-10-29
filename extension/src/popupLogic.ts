@@ -84,9 +84,15 @@ export function allTabsAccessNote(
   lang: Language,
 ): string {
   if (allTabsAccess.active) {
-    return t(lang, "popup.permissions.allTabs.active", {
-      count: allTabsAccess.shareableTabCount,
-    });
+    return t(
+      lang,
+      settings.sandboxSharing.scope === "domains"
+        ? "popup.sharing.active"
+        : "popup.permissions.allTabs.active",
+      {
+        count: allTabsAccess.shareableTabCount,
+      },
+    );
   }
   if (settings.allTabsAccessEnabled && !allTabsAccess.permissionGranted) {
     return t(lang, "popup.permissions.allTabs.permissionMissing");
@@ -160,6 +166,7 @@ const ERROR_MESSAGE_KEYS: Readonly<Record<string, MessageKey>> = {
   cloud_manual_sharing_required: "error.cloud_manual_sharing_required",
   connection_changing: "error.connection_changing",
   all_tabs_permission_required: "error.all_tabs_permission_required",
+  invalid_sandbox_rules: "popup.sharing.invalid",
   bookmarks_permission_required: "error.bookmarks_permission_required",
   reading_list_permission_required: "error.reading_list_permission_required",
   bookmarks_unsupported: "error.bookmarks_unsupported",
@@ -250,7 +257,8 @@ export type GateMode = "open" | "closed" | "sandbox" | "blocked" | "unsupported"
 export type TabGate = { mode: GateMode; tone: StatusTone; headline: string; detail: string };
 
 export function tabGate(
-  state: Pick<PopupState, "permitted" | "allTabsAccess" | "activeTab">,
+  state: Pick<PopupState, "permitted" | "allTabsAccess" | "activeTab"> &
+    Partial<Pick<PopupState, "settings">>,
   tabUrl: string | undefined,
   lang: Language,
 ): TabGate {
@@ -265,6 +273,13 @@ export function tabGate(
   if (state.allTabsAccess.active) {
     if (!state.permitted && unsupported) {
       return gate("unsupported", "neutral", "popup.tab.unsupported", "popup.tab.unsupportedDetail");
+    }
+    if (state.settings?.sandboxSharing.scope === "domains") {
+      if (state.activeTab.accessMode === "manual")
+        return gate("open", "success", "popup.tab.shared", "popup.tab.sharedDetail");
+      if (!state.permitted)
+        return gate("closed", "neutral", "popup.tab.notShared", "popup.sharing.outside");
+      return gate("sandbox", "warning", "popup.sharing.shared", "popup.sharing.sharedDetail");
     }
     return gate("sandbox", "warning", "popup.tab.allTabsShared", "popup.tab.allTabsDetail");
   }

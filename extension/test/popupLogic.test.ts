@@ -26,6 +26,7 @@ import type { BackgroundToPopup, ExtensionSettings } from "../src/types.js";
 
 const baseSettings: ExtensionSettings = {
   allTabsAccessEnabled: false,
+  sandboxSharing: { scope: "all", rules: [], httpsOnly: false, ports: [] },
   evalEnabled: false,
   operationsRequireApproval: true,
   profileLabel: "",
@@ -294,6 +295,35 @@ describe("popupLogic", () => {
     expect(
       tabGate({ permitted: true, allTabsAccess: allTabsOn, activeTab: normalTab }, web, "en"),
     ).toMatchObject({ mode: "sandbox", tone: "warning", headline: "All tabs shared" });
+  });
+
+  it("distinguishes automatic domain sharing, outside tabs, and manual grants", () => {
+    const settings: ExtensionSettings = {
+      ...baseSettings,
+      sandboxSharing: {
+        scope: "domains",
+        rules: [{ kind: "domain", pattern: "example.com" }],
+        httpsOnly: false,
+        ports: [],
+      },
+    };
+    const state = { allTabsAccess: allTabsOn, activeTab: normalTab, settings };
+    expect(tabGate({ ...state, permitted: true }, web, "en")).toMatchObject({
+      mode: "sandbox",
+      headline: "Shared by domain rule",
+    });
+    expect(tabGate({ ...state, permitted: false }, "https://outside.test/", "en")).toMatchObject({
+      mode: "closed",
+      headline: "Not shared",
+      detail: "This tab is outside the automatic sharing rules.",
+    });
+    expect(
+      tabGate(
+        { ...state, permitted: true, activeTab: { ...normalTab, accessMode: "manual" } },
+        web,
+        "en",
+      ),
+    ).toMatchObject({ mode: "open", headline: "Shared with agents" });
   });
 
   it("explains pages that cannot be shared instead of offering Share", () => {

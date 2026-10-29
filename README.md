@@ -193,7 +193,25 @@ with Escape. Dismissing a notice stops further propagation of that Escape, inclu
 and leaves annotation mode unchanged. Page handlers already registered on window capture run first;
 ABG preserves the page's keyboard focus.
 
-For isolated Chrome profiles, test machines, or sandbox browsers, the popup also has **Share all tabs (sandbox profiles only)**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+For isolated Chrome profiles, test machines, or sandbox browsers, the popup’s **Tab sharing** selector also offers **All tabs**. That mode is off by default. Turning it on asks Chrome for optional `<all_urls>` access, then lists every shareable `http`, `https`, and `file` tab in `abg tabs` with `accessMode: "all_tabs"`. Turning it off revokes all all-tabs entries and removes the optional host permission. Manual per-tab sharing remains the default for personal or mixed-use profiles.
+
+The **Tab sharing** selector offers **Manual**, **Matching domains**, and **All tabs**. In
+**Matching domains**, add one or more hostname conditions and choose **Apply sharing settings**.
+Each condition can be an exact domain, a wildcard such as `*.example.test` (subdomains only), or
+an advanced regular expression matched against the complete hostname, case-insensitively. Any
+matching condition is sufficient. URL paths, query strings, and usernames do not satisfy hostname
+conditions. Optional HTTPS-only and port restrictions apply to every condition; an empty port list
+allows any port, and implicit HTTP/HTTPS ports count as 80/443. **Preview matching tabs** shows the
+open tabs that would match without changing sharing.
+
+Domain sharing is an explicit Sandbox opt-in and requests the same optional browser site access as
+all-tabs mode. It shares matching existing and newly opened tabs, revokes automatic access when a
+tab leaves the allowed scope, and resumes sharing when it returns. Sandbox tab creation is limited
+to matching URLs. Operation approval and account policy still apply. Rules are saved per local
+Gateway endpoint or saved Cloud connection; switching connections stops automatic sharing, and
+changing the rules cancels Sandbox auto-resume until it is enabled again. Manual grants remain
+independent. The wire-level `all_tabs` access mode continues to identify Sandbox grants; the
+extension enforces the selected domain scope before commands and before returning their results.
 
 A saved Cloud connection with Sandbox enabled can additionally opt into **Resume Sandbox after restart or disconnect**. The extension reconnects and authenticates before announcing tabs, using consent scoped to that saved connection and credential. Turning Sandbox off, removing site access, switching or deleting the connection, rejected credentials, or another browser replacing the connection cancels auto-resume. Profiles that do not opt in keep the default restart behaviour. HTTP 401/403 responses also cancel resume when caused by a Cloud service authentication configuration fault; the current server protocol cannot distinguish that fault from a rejected browser credential.
 

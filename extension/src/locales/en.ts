@@ -147,6 +147,34 @@ export const en = {
     "On: eval on shared tabs runs without an approval window and is still audited. Cloud input reads and file attachments follow the operation approval setting on all shared tabs. Cloud account policies still apply.",
   "popup.permissions.trustedAutomation.evalDisabled":
     "On, but eval stays off until you allow it above.",
+  "popup.sharing.mode": "Tab sharing",
+  "popup.sharing.manual": "Manual",
+  "popup.sharing.domains": "Matching domains",
+  "popup.sharing.all": "All tabs",
+  "popup.sharing.note":
+    "Automatically share tabs matching any rule. Rules match the complete hostname, regardless of who opens the tab. Use *.example.test for subdomains. Regular expressions also match hostnames, not full URLs.",
+  "popup.sharing.domain": "Domain",
+  "popup.sharing.regex": "Regular expression",
+  "popup.sharing.pattern": "Hostname or regular expression",
+  "popup.sharing.add": "Add condition",
+  "popup.sharing.remove": "Remove condition",
+  "popup.sharing.https": "HTTPS only",
+  "popup.sharing.ports": "Allowed ports",
+  "popup.sharing.portsNote": "Comma-separated, such as 3000, 5173. Leave empty for any port.",
+  "popup.sharing.apply": "Apply sharing settings",
+  "popup.sharing.preview": "Preview matching tabs",
+  "popup.sharing.previewCount": "{count} open tabs match",
+  "popup.sharing.active":
+    "{count} matching tabs shared. Tabs leaving the allowed scope are automatically unshared.",
+  "popup.sharing.shared": "Shared by domain rule",
+  "popup.sharing.sharedDetail":
+    "This tab matches an automatic sharing rule. Sharing ends if it leaves the allowed scope.",
+  "popup.sharing.outside": "This tab is outside the automatic sharing rules.",
+  "popup.sharing.invalid":
+    "Check the conditions and ports. Add at least one non-empty hostname or valid regular expression. Ports must be between 1 and 65535.",
+  "popup.sharing.permissionDenied":
+    "Site access was not granted. The sharing settings were not applied.",
+  "popup.sharing.disable": "Stop automatic sharing",
   "popup.permissions.allTabs.resume": "Resume Sandbox after restart or disconnection",
   "popup.permissions.allTabs.resumeNote":
     "Only for this saved Cloud connection. Turning Sandbox off or changing connection cancels automatic resume.",
@@ -158,7 +186,7 @@ export const en = {
   "popup.permissions.allTabs.permissionMissing":
     "Chrome permission is missing. Turn this on again to grant it.",
   "popup.permissions.allTabs.default":
-    "Shares every tab in this profile. Use it only in an isolated sandbox profile, never your personal one.",
+    "Use automatic sharing only in an isolated sandbox profile, never your personal one.",
   "popup.permissions.allTabs.notGranted": "Permission wasn't granted, so all-tabs mode stays off.",
   "popup.permissions.bookmarks": "Bookmarks access",
   "popup.permissions.bookmarks.note":

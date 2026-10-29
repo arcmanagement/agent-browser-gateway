@@ -28,6 +28,12 @@ import {
   trustedAutomationNote,
   visibleSharedTabs,
 } from "./popupLogic.js";
+import {
+  type SandboxSharing,
+  type SandboxSharingRule,
+  sandboxConnectionKey,
+  validateSandboxSharing,
+} from "./sandboxSharing.js";
 import type { BackgroundToPopup, PopupToBackground } from "./types.js";
 
 const browser = browserAdapter;
@@ -52,7 +58,19 @@ const approvalToggleEl = byId<HTMLInputElement>("approvalToggle");
 const evalToggleEl = byId<HTMLInputElement>("evalToggle");
 const trustedAutomationToggleEl = byId<HTMLInputElement>("trustedAutomationToggle");
 const trustedAutomationNoteEl = byId<HTMLDivElement>("trustedAutomationNote");
-const allTabsToggleEl = byId<HTMLInputElement>("allTabsToggle");
+const sharingModeEl = byId<HTMLSelectElement>("sharingMode");
+const domainEditorEl = byId<HTMLElement>("domainSharingEditor");
+const sharingRulesEl = byId<HTMLElement>("domainSharingRules");
+const sharingHttpsEl = byId<HTMLInputElement>("sharingHttpsOnly");
+const sharingPortsEl = byId<HTMLInputElement>("sharingPorts");
+const sharingPreviewEl = byId<HTMLElement>("sharingPreview");
+const applySharingBtn = byId<HTMLButtonElement>("applySharingRules");
+const previewSharingBtn = byId<HTMLButtonElement>("previewSharingRules");
+const addSharingBtn = byId<HTMLButtonElement>("addSharingRule");
+let sharingFormDirty = false;
+let sharingConnection = "";
+let savedSharing: SandboxSharing | undefined;
+
 const allTabsNoteEl = byId<HTMLDivElement>("allTabsNote");
 const bookmarksToggleEl = byId<HTMLInputElement>("bookmarksToggle");
 const bookmarksNoteEl = byId<HTMLDivElement>("bookmarksNote");
@@ -273,7 +291,10 @@ function renderSharedTabs(state: PopupState, currentTabId: number): void {
     idEl.textContent = String(sharedTab.tabId);
     item.append(dot, titleEl, idEl);
 
-    const accessLabel = sharedTabAccessLabel(sharedTab, lang);
+    const accessLabel =
+      allTabs && state.settings.sandboxSharing.scope === "domains"
+        ? t(lang, "popup.sharing.domains")
+        : sharedTabAccessLabel(sharedTab, lang);
     if (accessLabel) {
       const tag = document.createElement("span");
       tag.className = "tag warning";
@@ -381,16 +402,166 @@ function renderAnnotations(state: PopupState, tabId: number): void {
   renderRestoreButton(state, tabId);
 }
 
+function sharingEdited(): void {
+  sharingFormDirty = true;
+  sharingPreviewEl.textContent = "";
+  domainEditorEl.hidden = sharingModeEl.value !== "domains";
+}
+
+function appendSharingRule(rule: SandboxSharingRule = { kind: "domain", pattern: "" }): void {
+  if (sharingRulesEl.children.length >= 50) return;
+  const row = document.createElement("div");
+  row.className = "sharing-rule";
+  const kind = document.createElement("select");
+  kind.setAttribute("aria-label", t(lang, "popup.sharing.domain"));
+  for (const value of ["domain", "regex"] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = t(
+      lang,
+      value === "domain" ? "popup.sharing.domain" : "popup.sharing.regex",
+    );
+    kind.append(option);
+  }
+  kind.value = rule.kind;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 256;
+  input.spellcheck = false;
+  input.value = rule.pattern;
+  input.placeholder = "example.test";
+  input.setAttribute("aria-label", t(lang, "popup.sharing.pattern"));
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "secondary";
+  remove.textContent = t(lang, "popup.sharing.remove");
+  remove.onclick = () => {
+    row.remove();
+    sharingEdited();
+    addSharingBtn.disabled = false;
+  };
+  kind.onchange = input.oninput = sharingEdited;
+  row.append(kind, remove, input);
+  sharingRulesEl.append(row);
+  addSharingBtn.disabled = sharingRulesEl.children.length >= 50;
+}
+
+function readSharingForm(): SandboxSharing {
+  const domains = sharingModeEl.value === "domains";
+  if (!domains)
+    return {
+      ...(savedSharing ?? { rules: [], httpsOnly: false, ports: [] }),
+      scope: sharingModeEl.value === "all" ? "all" : (savedSharing?.scope ?? "all"),
+    };
+  const rules = Array.from(sharingRulesEl.children).map((row) => ({
+    kind: row.querySelector("select")?.value,
+    pattern: row.querySelector("input")?.value ?? "",
+  }));
+  const text = sharingPortsEl.value.trim();
+  if (text && !/^\d+(?:\s*,\s*\d+)*$/.test(text)) throw new Error("Invalid ports.");
+  return validateSandboxSharing({
+    scope: "domains",
+    rules,
+    httpsOnly: sharingHttpsEl.checked,
+    ports: text ? text.split(",").map(Number) : [],
+  });
+}
+
+function renderSharingSettings(state: PopupState): void {
+  const key = sandboxConnectionKey(
+    state.settings.connectionDestination,
+    state.settings.connectionDestination === "cloud"
+      ? state.settings.cloudWebSocketUrl
+      : state.settings.gatewayWebSocketUrl,
+    state.activeCloudConnectionId,
+  );
+  if (sharingConnection !== key) {
+    sharingFormDirty = false;
+    sharingConnection = key;
+  }
+  savedSharing = state.settings.sandboxSharing;
+  if (!sharingFormDirty) {
+    sharingModeEl.value = state.allTabsAccess.active ? savedSharing.scope : "manual";
+    sharingRulesEl.replaceChildren();
+    for (const rule of savedSharing.rules) appendSharingRule(rule);
+    if (!savedSharing.rules.length) appendSharingRule();
+    sharingHttpsEl.checked = savedSharing.httpsOnly;
+    sharingPortsEl.value = savedSharing.ports.join(", ");
+    sharingPreviewEl.textContent = "";
+  }
+  domainEditorEl.hidden = sharingModeEl.value !== "domains";
+  const unavailable =
+    state.settings.connectionDestination === "cloud" && !state.cloudCodeConfigured;
+  sharingModeEl.disabled = applySharingBtn.disabled = unavailable;
+  allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
+  sharingModeEl.onchange = sharingHttpsEl.onchange = sharingPortsEl.oninput = sharingEdited;
+  addSharingBtn.onclick = () => {
+    appendSharingRule();
+    sharingEdited();
+  };
+  previewSharingBtn.onclick = async () => {
+    try {
+      const response = await send({ type: "preview_sandbox_sharing", config: readSharingForm() });
+      if (response.type === "error") {
+        showError(response);
+        return;
+      }
+      if (response.type === "sandbox_preview") {
+        sharingPreviewEl.textContent = [
+          t(lang, "popup.sharing.previewCount", { count: response.tabs.length }),
+          ...response.tabs.map((tab) => tab.url),
+        ].join("\n");
+      }
+    } catch {
+      setStatus(t(lang, "popup.sharing.invalid"), true);
+    }
+  };
+  applySharingBtn.onclick = async () => {
+    let config: SandboxSharing;
+    try {
+      config = readSharingForm();
+    } catch {
+      setStatus(t(lang, "popup.sharing.invalid"), true);
+      return;
+    }
+    const enabled = sharingModeEl.value !== "manual";
+    applySharingBtn.disabled = true;
+    clearStatus();
+    try {
+      if (enabled && !(await requestAllTabsPermission())) {
+        setStatus(t(lang, "popup.sharing.permissionDenied"), true);
+        return;
+      }
+      const response = await send(
+        enabled
+          ? { type: "set_sandbox_sharing", enabled, config }
+          : { type: "set_all_tabs_access", value: false },
+      );
+      if (response.type === "error") {
+        showError(response);
+        return;
+      }
+      if (!enabled) await removeAllTabsPermission();
+      sharingFormDirty = false;
+      await refresh();
+    } catch (error) {
+      setStatus(String(error), true);
+    } finally {
+      applySharingBtn.disabled = false;
+    }
+  };
+}
+
 function renderAction(state: PopupState, tabId: number, mode: GateMode): void {
   actionBtn.hidden = false;
   actionBtn.disabled = false;
   if (state.allTabsAccess.active) {
-    actionBtn.textContent = t(lang, "popup.action.disableAllTabs");
+    actionBtn.textContent = t(lang, "popup.sharing.disable");
     actionBtn.className = "action danger";
     actionBtn.onclick = async () => {
       actionBtn.disabled = true;
       clearStatus();
-      allTabsToggleEl.checked = false;
+      sharingFormDirty = false;
       const response = await send({ type: "set_all_tabs_access", value: false });
       if (response.type === "error") {
         showError(response);
@@ -543,38 +714,7 @@ async function refresh(): Promise<void> {
     if (response.type === "error") showError(response);
     await refresh();
   };
-  allTabsToggleEl.checked = state.allTabsAccess.active;
-  allTabsToggleEl.disabled =
-    state.settings.connectionDestination === "cloud" && !state.cloudCodeConfigured;
-  allTabsNoteEl.textContent = allTabsAccessNote(state.settings, state.allTabsAccess, lang);
-  allTabsToggleEl.onchange = async () => {
-    const nextValue = allTabsToggleEl.checked;
-    allTabsToggleEl.disabled = true;
-    if (nextValue) {
-      const granted = await requestAllTabsPermission();
-      if (!granted) {
-        allTabsToggleEl.checked = false;
-        allTabsNoteEl.textContent = t(lang, "popup.permissions.allTabs.notGranted");
-        allTabsToggleEl.disabled = false;
-        return;
-      }
-    }
-    const response = await send({
-      type: "set_all_tabs_access",
-      value: nextValue,
-    });
-    if (response.type === "error") {
-      allTabsToggleEl.checked = !nextValue;
-      showError(response);
-      if (nextValue) await removeAllTabsPermission();
-      allTabsToggleEl.disabled = false;
-      return;
-    } else if (!nextValue) {
-      await removeAllTabsPermission();
-    }
-    allTabsToggleEl.disabled = false;
-    await refresh();
-  };
+  renderSharingSettings(state);
 
   bookmarksToggleEl.checked = state.personalDataAccess.bookmarks.active;
   bookmarksToggleEl.disabled = !state.personalDataAccess.bookmarks.supported;

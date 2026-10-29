@@ -946,7 +946,10 @@ html:not(.ready) .top * {
   font-weight: 500;
 }
 .field input,
-.field select {
+.field select,
+.sharing-rule input,
+.sharing-rule select,
+#sharingMode {
   width: 100%;
   min-height: 34px;
   padding: 6px 10px;
@@ -958,18 +961,25 @@ html:not(.ready) .top * {
   transition: border-color var(--dur-fast) var(--ease);
 }
 .field input:hover,
-.field select:hover {
+.field select:hover,
+.sharing-rule input:hover,
+.sharing-rule select:hover,
+#sharingMode:hover {
   border-color: var(--text-3);
 }
 #gatewayWebSocketUrl {
   font-family: var(--mono);
   font-size: 11.5px;
 }
-.field input::placeholder {
+.field input::placeholder,
+.sharing-rule input::placeholder {
   color: var(--text-3);
 }
 .field input:focus-visible,
-.field select:focus-visible {
+.field select:focus-visible,
+.sharing-rule input:focus-visible,
+.sharing-rule select:focus-visible,
+#sharingMode:focus-visible {
   outline-offset: 0;
 }
 .input-with-action {
@@ -1048,3 +1058,12 @@ html:not(.ready) .top * {
   color: var(--text-2);
   user-select: text;
 }
+
+.sharing-rules { display: grid; gap: 8px; margin: 10px 0; }
+.sharing-rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.sharing-rule input { grid-column: 1 / -1; min-width: 0; width: 100%; box-sizing: border-box; }
+.sharing-rule select { min-width: 0; width: 100%; }
+#sharingMode { max-width: 66%; }
+#domainSharingEditor[hidden] { display: none; }
+#sharingPreview { overflow-wrap: anywhere; white-space: pre-wrap; }
+#applySharingRules { margin: 10px 0; }

@@ -183,13 +183,32 @@
             <div class="setting-note" id="trustedAutomationNote"></div>
           </div>
           <div class="setting" id="allTabsSetting">
-            <label class="setting-row">
-              <span data-i18n="popup.permissions.allTabs"
-                >Share all tabs (sandbox profiles only)</span
-              >
-              <input type="checkbox" class="switch warning" role="switch" id="allTabsToggle" />
+            <label class="setting-row" for="sharingMode">
+              <span data-i18n="popup.sharing.mode">Tab sharing</span>
+              <select id="sharingMode">
+                <option value="manual" data-i18n="popup.sharing.manual">Manual</option>
+                <option value="domains" data-i18n="popup.sharing.domains">Matching domains</option>
+                <option value="all" data-i18n="popup.sharing.all">All tabs</option>
+              </select>
             </label>
             <div class="setting-note" id="allTabsNote"></div>
+            <div id="domainSharingEditor" hidden>
+              <p class="setting-note" data-i18n="popup.sharing.note">Automatically share tabs matching any rule. Rules match the complete hostname, regardless of who opens the tab. Use *.example.test for subdomains. Regular expressions also match hostnames, not full URLs.</p>
+              <div id="domainSharingRules" class="sharing-rules"></div>
+              <button type="button" class="secondary" id="addSharingRule" data-i18n="popup.sharing.add">Add condition</button>
+              <label class="setting-row">
+                <span data-i18n="popup.sharing.https">HTTPS only</span>
+                <input type="checkbox" class="switch" role="switch" id="sharingHttpsOnly" />
+              </label>
+              <label class="field" for="sharingPorts">
+                <span data-i18n="popup.sharing.ports">Allowed ports</span>
+                <input id="sharingPorts" type="text" inputmode="numeric" placeholder="3000, 5173" />
+              </label>
+              <p class="setting-note" data-i18n="popup.sharing.portsNote">Comma-separated, such as 3000, 5173. Leave empty for any port.</p>
+              <button type="button" class="secondary" id="previewSharingRules" data-i18n="popup.sharing.preview">Preview matching tabs</button>
+              <div id="sharingPreview" class="setting-note" role="status" aria-live="polite"></div>
+            </div>
+            <button type="button" class="secondary" id="applySharingRules" data-i18n="popup.sharing.apply">Apply sharing settings</button>
             <label class="setting-row" id="cloudSandboxResumeSetting" hidden>
               <span data-i18n="popup.permissions.allTabs.resume">Resume Sandbox after restart or disconnection</span>
               <input type="checkbox" class="switch warning" role="switch" id="cloudSandboxResumeToggle" />
