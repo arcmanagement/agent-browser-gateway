@@ -140,17 +140,17 @@ and generate release notes.
 
 ---
 
-## Cloud connection (Chrome extension 1.3.5)
+## Cloud connection (Chrome extension 1.3.6)
 
 The popup follows connection changes while open, showing **Connecting…** and **Authenticating…** before **Connected**. Status updates preserve connection settings being edited.
 
-Chrome extension 1.3.5 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.5), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
+Chrome extension 1.3.6 can connect directly to Agent Browser Gateway without a local Gateway app. Download the [extension ZIP](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.6), extract it, and load that directory from Chrome's **Load unpacked** action. Open **Connect to → Cloud**, give the connection a name, and choose **Log in to register this connection**. The Web page handles email/password login and browser registration. Return to the extension, select the saved connection, apply it, and share the tabs you want to make available.
 
 Saved connections remain on that browser after a restart; tab-sharing permissions must be granted again unless an isolated profile explicitly enables the Sandbox auto-resume option described below. Remove a saved connection in the extension to remove its local credential and active shares. Use the Web dashboard to renew or revoke server access. Connections initially last 30 days. Manual connection codes remain available under advanced settings and are stored only for the browser session.
 
 AI connections use `https://app.agent-browser-gateway.com/oauth/authorize` to log in and authorize access. Passwords are handled by the Web account flow and are never stored in the extension or passed to AI clients. The official service uses `https://app.agent-browser-gateway.com` for account UI and `https://connect.agent-browser-gateway.com` / `wss://connect.agent-browser-gateway.com` for browser authentication, shared-tab traffic, and results. Custom destinations send those data to the gateway you select. See [Cloud usage](docs/CLOUD_EXTENSION.md) for plugins, artifacts, consent, and the separate Chrome Web Store publication status.
 
-To investigate a disconnect in extension 1.3.5, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes, connection stages, and recognized Cloudflare proxy-restart reasons.
+To investigate a disconnect in extension 1.3.6, open **Advanced → Connection history** and choose **Save JSON**. The browser-local history keeps up to 200 events within seven days across restarts, without credentials or page content. See the [diagnostic event guide](docs/CLOUD_EXTENSION.md#connection-diagnostics) for interpreting close codes, connection stages, and recognized Cloudflare proxy-restart reasons.
 
 ## Tab access modes
 
@@ -1111,7 +1111,7 @@ In short:
 
 ## Status
 
-**Chrome extension v1.3.5** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
+**Chrome extension v1.3.6** supports local and Cloud connections. The macOS app remains v0.5.2 and Windows remains v0.5.3; this is an extension-only release.
 
 ---
 

@@ -70,6 +70,107 @@ const redo = (page: Page) => page.keyboard.press(`${modifier}+Shift+z`);
 const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText());
 
 describe("annotation browser interactions", () => {
+  it("keeps marker focus and keyboard activation across position refreshes", async () => {
+    const { context, page } = await fixture();
+    try {
+      await command(page, { action: "start" });
+      await command(page, { action: "add_selector", selector: "#subject", comment: "Focus note" });
+      const marker = page.locator(".abg-annotation-box");
+      await marker.click();
+      const original = await marker.elementHandle();
+      await page.waitForTimeout(450);
+      expect(
+        await marker.evaluate(
+          (el) => el === (el.getRootNode() as Document | ShadowRoot).activeElement,
+        ),
+      ).toBe(true);
+      expect(await marker.evaluate((el, first) => el === first, original)).toBe(true);
+      await page.keyboard.press("Enter");
+      expect(await page.locator(".abg-editor textarea").inputValue()).toBe("Focus note");
+      await page.keyboard.press("Escape");
+      await marker.focus();
+      await page.keyboard.down("Space");
+      await page.waitForTimeout(450);
+      await page.keyboard.up("Space");
+      expect(await page.locator(".abg-editor textarea").inputValue()).toBe("Focus note");
+      await page.keyboard.press("Escape");
+      await page.locator("#pageInput").focus();
+      await page.waitForTimeout(300);
+      expect(
+        await page
+          .locator("#pageInput")
+          .evaluate((el) => el === (el.getRootNode() as Document | ShadowRoot).activeElement),
+      ).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps text-fragment focus, updates marker positions, and preserves inactive copying", async () => {
+    const { context, page } = await fixture();
+    try {
+      await command(page, { action: "start" });
+      await command(page, { action: "switch_mode" });
+      await page.locator("#subject").selectText();
+      await page.locator("#subject").dispatchEvent("mouseup", { bubbles: true });
+      await page.locator(".abg-editor textarea").fill("Text focus");
+      await page.keyboard.press("Enter");
+      const piece = page.locator(".abg-text-selection-piece").first();
+      await piece.click();
+      const first = await piece.elementHandle();
+      const bounds = await piece.boundingBox();
+      await page.locator("#subject").evaluate((el) => {
+        el.style.transform = "translateY(25px)";
+      });
+      await page.waitForTimeout(450);
+      expect(
+        await piece.evaluate((el) => el === (el.getRootNode() as ShadowRoot).activeElement),
+      ).toBe(true);
+      expect(await piece.evaluate((el, original) => el === original, first)).toBe(true);
+      expect((await piece.boundingBox())?.y).toBeCloseTo((bounds?.y ?? 0) + 25, 0);
+      await page.keyboard.press("Space");
+      expect(await page.locator(".abg-editor textarea").inputValue()).toBe("Text focus");
+      await page.keyboard.press("Escape");
+      const [note] = await notes(page);
+      await command(page, { action: "stop" });
+      await piece.focus();
+      await page.waitForTimeout(300);
+      await page.keyboard.press("Enter");
+      await expect.poll(() => clipboard(page)).toBe(note?.reference);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps the surviving marker focused when an earlier annotation is removed", async () => {
+    const { context, page } = await fixture();
+    try {
+      await command(page, { action: "start" });
+      await command(page, { action: "add_selector", selector: "#subject", comment: "First note" });
+      await command(page, {
+        action: "add_region",
+        x: 700,
+        y: 300,
+        width: 120,
+        height: 90,
+        comment: "Region note",
+      });
+      const [first] = await notes(page);
+      const marker = page.locator(".abg-annotation-box").nth(1);
+      await marker.click();
+      const focused = await marker.elementHandle();
+      await command(page, { action: "remove", uid: first?.uid });
+      await page.waitForTimeout(300);
+      expect(
+        await focused?.evaluate((el) => el === (el.getRootNode() as ShadowRoot).activeElement),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      expect(await page.locator(".abg-editor textarea").inputValue()).toBe("Region note");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("copies stable IDs while preserving native text copy and reports clipboard failures", async () => {
     const { context, page } = await fixture();
     try {

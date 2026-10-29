@@ -1,3 +1,4 @@
+import { chromium } from "playwright";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createChromeEvent, installChromeMock } from "./chromeMock.js";
 
@@ -69,6 +70,33 @@ beforeEach(() => vi.resetModules());
 afterEach(() => vi.unstubAllGlobals());
 
 describe("background recovery boundaries", () => {
+  it("activates native buttons with Enter and a held Space through debugger commands", async () => {
+    const { chrome, command } = await startBackground();
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(
+        '<button onclick="this.dataset.clicks=Number(this.dataset.clicks||0)+1">Activate</button>',
+      );
+      const session = await page.context().newCDPSession(page);
+      chrome.debugger.sendCommand.mockImplementation(async (_target, method, params) => {
+        if (method === "Input.dispatchKeyEvent")
+          return session.send(method, params as { type: "keyDown" | "keyUp" | "char" });
+        return {};
+      });
+      const button = page.locator("button");
+      await button.focus();
+      expect(await command("key_press", { key: "Enter" })).toMatchObject({ result: { ok: true } });
+      expect(await button.getAttribute("data-clicks")).toBe("1");
+      await command("key_down", { key: "Space" });
+      expect(await button.getAttribute("data-clicks")).toBe("1");
+      await command("key_up", { key: "Space" });
+      expect(await button.getAttribute("data-clicks")).toBe("2");
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("recovers Escape through scripting without replaying the debugger key operation", async () => {
     const { chrome, command } = await startBackground();
     chrome.debugger.sendCommand.mockImplementation(async (_target, method) => {

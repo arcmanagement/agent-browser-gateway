@@ -1384,8 +1384,24 @@ export function runAnnotationCommand(
     input.focus();
     input.select();
   };
+  const syncChildren = (parent: HTMLElement, children: HTMLElement[]) => {
+    const retained = new Set(children);
+    for (const child of Array.from(parent.children)) {
+      if (!retained.has(child as HTMLElement)) child.remove();
+    }
+    for (const [index, child] of children.entries()) {
+      if (parent.children[index] !== child)
+        parent.insertBefore(child, parent.children[index] ?? null);
+    }
+  };
   const renderAnnotations = (state: AnnotationState) => {
-    state.layer.replaceChildren();
+    const previous = new Map(
+      Array.from(state.layer.children, (element) => {
+        const marker = element as HTMLElement;
+        return [marker.dataset.uid, marker] as const;
+      }),
+    );
+    const markers: HTMLElement[] = [];
     for (const [index, annotation] of state.annotations.entries()) {
       const rect = anchoredToViewportRect(annotation);
       const isSelected = state.enabled && state.selectedId === annotation.id;
@@ -1418,7 +1434,10 @@ export function runAnnotationCommand(
             ?.focus();
       };
       if (annotation.kind === "text") {
-        const group = document.createElement("div");
+        const existing = previous.get(annotation.uid);
+        const group = existing?.tagName === "DIV" ? existing : document.createElement("div");
+        const pieces = Array.from(group.querySelectorAll<HTMLElement>(".abg-text-selection-piece"));
+        const children: HTMLElement[] = [];
         const textRects = highlightRectsForTextAnnotation(annotation, rect) ?? [];
         const anchorRect = textRects[0] ?? rect;
         const badge = document.createElement("span");
@@ -1430,22 +1449,23 @@ export function runAnnotationCommand(
           .filter(Boolean)
           .join(" ");
         group.dataset.id = String(annotation.id);
+        group.dataset.uid = annotation.uid;
         group.title = state.enabled ? strings.annotationInteraction : strings.copyReference;
-        group.addEventListener("click", openAnnotationEditor);
-        for (const textRect of textRects) {
-          const piece = document.createElement("span");
+        group.onclick = openAnnotationEditor;
+        for (const [pieceIndex, textRect] of textRects.entries()) {
+          const piece = pieces[pieceIndex] ?? document.createElement("span");
           piece.className = "abg-text-selection-piece";
           piece.dataset.id = String(annotation.id);
           piece.role = "button";
           piece.tabIndex = 0;
-          piece.addEventListener("keydown", (event) => {
+          piece.onkeydown = (event) => {
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
             piece.click();
-          });
+          };
           piece.setAttribute("aria-label", ui.annotationLabel(index + 1));
           setRectStyle(piece, textRect);
-          group.append(piece);
+          children.push(piece);
         }
         badge.className = "abg-text-selection-badge";
         badge.textContent = String(index + 1);
@@ -1457,11 +1477,14 @@ export function runAnnotationCommand(
         comment.style.left = `${Math.round(Math.max(8, rect.x))}px`;
         comment.style.top = `${Math.round(Math.min(innerHeight - 34, rect.y + rect.height + 6))}px`;
         comment.style.maxWidth = `${Math.round(Math.min(360, Math.max(120, innerWidth - rect.x - 16)))}px`;
-        group.append(badge, comment);
-        state.layer.append(group);
+        children.push(badge, comment);
+        syncChildren(group, children);
+        markers.push(group);
         continue;
       }
-      const box = document.createElement("button");
+      const existing = previous.get(annotation.uid);
+      const box =
+        existing instanceof HTMLButtonElement ? existing : document.createElement("button");
       const badge = document.createElement("span");
       const comment = document.createElement("span");
       const handles =
@@ -1485,6 +1508,7 @@ export function runAnnotationCommand(
         .filter(Boolean)
         .join(" ");
       box.dataset.id = String(annotation.id);
+      box.dataset.uid = annotation.uid;
       box.title = state.enabled ? strings.annotationInteraction : strings.copyReference;
       box.setAttribute("aria-label", ui.annotationLabel(index + 1));
       setRectStyle(box, rect);
@@ -1493,8 +1517,8 @@ export function runAnnotationCommand(
       comment.className = "abg-annotation-comment";
       comment.textContent = annotation.comment;
       comment.hidden = annotation.comment.length === 0;
-      box.append(badge, comment, ...handles);
-      box.addEventListener("mousedown", (event) => {
+      box.replaceChildren(badge, comment, ...handles);
+      box.onmousedown = (event) => {
         if (!state.enabled || event.button !== 0) return;
         if (!canEditRect) return;
         const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1513,12 +1537,11 @@ export function runAnnotationCommand(
         box.classList.add("abg-annotation-selected");
         event.preventDefault();
         event.stopPropagation();
-      });
-      box.addEventListener("click", (event) => {
-        openAnnotationEditor(event);
-      });
-      state.layer.append(box);
+      };
+      box.onclick = openAnnotationEditor;
+      markers.push(box);
     }
+    syncChildren(state.layer, markers);
     updateToolbar(state);
   };
   const ensureRenderTimer = (state: AnnotationState) => {
