@@ -389,6 +389,8 @@ export const ja: MessageCatalog = {
   "overlay.hintSelected": "Delete キーで削除",
   "overlay.hintFinish": "Esc で終了",
   "overlay.annotationLabel": "注釈 {number}",
+  "overlay.undo": "注釈の変更を元に戻す",
+  "overlay.redo": "注釈の変更をやり直す",
   "overlay.annotationInteraction":
     "クリックして選択し、もう一度クリックすると編集できます。選択した注釈のIDは、Command-CまたはCtrl-Cでコピーできます。",
   "overlay.annotationReference": "注釈ID",

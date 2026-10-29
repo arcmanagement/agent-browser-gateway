@@ -172,6 +172,8 @@ export type AnnotationOverlayStrings = {
   hintSelected: string;
   hintFinish: string;
   annotationLabel: string;
+  undo: string;
+  redo: string;
   annotationInteraction: string;
   annotationReference: string;
   copyReference: string;
@@ -209,6 +211,8 @@ export function annotationOverlayStrings(lang: Language): AnnotationOverlayStrin
     hintSelected: template(lang, "overlay.hintSelected"),
     hintFinish: template(lang, "overlay.hintFinish"),
     annotationLabel: template(lang, "overlay.annotationLabel"),
+    undo: template(lang, "overlay.undo"),
+    redo: template(lang, "overlay.redo"),
     annotationInteraction: template(lang, "overlay.annotationInteraction"),
     annotationReference: template(lang, "overlay.annotationReference"),
     copyReference: template(lang, "overlay.copyReference"),

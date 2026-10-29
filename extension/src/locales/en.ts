@@ -389,6 +389,8 @@ export const en = {
   "overlay.hintSelected": "Delete removes it",
   "overlay.hintFinish": "Esc to finish",
   "overlay.annotationLabel": "Annotation {number}",
+  "overlay.undo": "Undo annotation change",
+  "overlay.redo": "Redo annotation change",
   "overlay.annotationInteraction":
     "Click to select; click again to edit. Copy the selected ID with Command-C or Ctrl-C.",
   "overlay.annotationReference": "Annotation ID",
