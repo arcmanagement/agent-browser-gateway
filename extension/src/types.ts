@@ -3,6 +3,7 @@
 import type { ShortcutOutcome } from "./backgroundLogic.js";
 import type { ConnectionDiagnostic, DiagnosticContext } from "./connectionDiagnostics.js";
 import type { LocalizedText, UiLanguageSetting } from "./i18n.js";
+import type { SandboxSharing } from "./sandboxSharing.js";
 
 export type AnnotationAction =
   | "start"
@@ -340,6 +341,7 @@ export type ExtensionSettings = {
   connectionDestination: "local" | "cloud";
   cloudWebSocketUrl: string;
   allTabsAccessEnabled: boolean;
+  sandboxSharing: SandboxSharing;
   bookmarksAccessEnabled: boolean;
   readingListAccessEnabled: boolean;
   personalDataMutationsEnabled: boolean;
@@ -392,6 +394,12 @@ export type PopupToBackground =
   | { type: "begin_cloud_login"; cloudUrl: string; name: string; savedId?: string }
   | { type: "delete_cloud_connection"; id: string }
   | { type: "set_all_tabs_access"; value: boolean }
+  | {
+      type: "set_sandbox_sharing";
+      enabled: boolean;
+      config: SandboxSharing;
+    }
+  | { type: "preview_sandbox_sharing"; config: SandboxSharing }
   | { type: "set_cloud_sandbox_resume"; value: boolean }
   | { type: "set_bookmarks_access"; value: boolean }
   | { type: "set_reading_list_access"; value: boolean }
@@ -400,6 +408,7 @@ export type PopupToBackground =
   | { type: "annotation_action"; tabId: number; action: AnnotationAction };
 
 export type BackgroundToPopup =
+  | { type: "sandbox_preview"; tabs: { tabId: number; url: string; title: string }[] }
   | { type: "connection_diagnostics"; events: ConnectionDiagnostic[]; storageFailed: boolean }
   | (Pick<DiagnosticContext, "phase" | "destination" | "sharedTabCount"> & {
       type: "connection_status";
@@ -417,6 +426,7 @@ export type BackgroundToPopup =
       activeCloudConnectionId?: string;
       cloudLoginPending?: boolean;
       activeTab: {
+        accessMode?: TabAccessMode;
         incognito: boolean;
         incognitoAccessAllowed: boolean;
       };

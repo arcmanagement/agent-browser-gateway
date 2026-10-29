@@ -1,3 +1,4 @@
+import type { SandboxSharing } from "../src/sandboxSharing.js";
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeCloudWebSocketUrl } from "../src/gatewayEndpoint.js";
@@ -1195,8 +1196,215 @@ describe("Cloud connection boundary", () => {
   });
 });
 
+const domainConfig: SandboxSharing = {
+  scope: "domains",
+  rules: [
+    { kind: "domain", pattern: "page.example.test" },
+    { kind: "regex", pattern: "dev[0-9]+\\.example\\.test" },
+  ],
+  httpsOnly: true,
+  ports: [443, 8443],
+};
+
+describe("Domain scoped Sandbox sharing", () => {
+  async function start() {
+    await configure();
+    expect(
+      await message({ type: "set_sandbox_sharing", enabled: true, config: domainConfig }),
+    ).toEqual({ type: "ok" });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await vi.waitFor(() => expect(socket.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+    return socket;
+  }
+  async function command(
+    socket: Socket,
+    id: string,
+    method: string,
+    params: Record<string, unknown>,
+  ) {
+    socket.message({ id, method, params });
+    await vi.waitFor(() => expect(socket.sent.find((f) => f.id === id)).toBeDefined());
+    return socket.sent.find((f) => f.id === id);
+  }
+  it("shares matching existing and new tabs, revokes outside navigation, and shares on return", async () => {
+    await mock.tabs.create({ url: "https://unrelated.test/?next=page.example.test" });
+    const socket = await start();
+    expect(await state()).toMatchObject({ sharedTabs: [{ tabId: 1 }] });
+    const created = await mock.tabs.create({ url: "https://dev12.example.test:8443/" });
+    expect(socket.sent.filter((f) => f.type === "tab_permitted").map((f) => f.tabId)).toEqual([
+      1,
+      created.id,
+    ]);
+    await mock.tabs.update(created.id, { url: "https://outside.test/" });
+    expect(socket.sent).toContainEqual(
+      expect.objectContaining({ type: "tab_revoked", tabId: created.id }),
+    );
+    expect(await state()).toMatchObject({ sharedTabs: [{ tabId: 1 }] });
+    await mock.tabs.update(created.id, { url: "https://dev3.example.test/" });
+    expect(await state()).toMatchObject({ sharedTabs: [{ tabId: 1 }, { tabId: created.id }] });
+    await message({ type: "set_all_tabs_access", value: false });
+    expect(await state()).toMatchObject({
+      sharedTabs: [],
+      settings: { sandboxSharing: domainConfig },
+    });
+  });
+  it("previews multiple draft conditions without enabling sharing and rejects invalid saves atomically", async () => {
+    await configure();
+    await mock.tabs.create({ url: "https://dev2.example.test/" });
+    expect(await message({ type: "preview_sandbox_sharing", config: domainConfig })).toMatchObject({
+      type: "sandbox_preview",
+      tabs: [{ tabId: 1 }, { tabId: 2 }],
+    });
+    expect(await state()).toMatchObject({ sharedTabs: [], allTabsAccess: { active: false } });
+    await message({ type: "set_sandbox_sharing", enabled: true, config: domainConfig });
+    const invalid = { ...domainConfig, rules: [{ kind: "regex" as const, pattern: "[" }] };
+    expect(
+      await message({ type: "set_sandbox_sharing", enabled: true, config: invalid }),
+    ).toMatchObject({ type: "error", code: "invalid_sandbox_rules" });
+    expect(await state()).toMatchObject({
+      settings: { sandboxSharing: domainConfig },
+      sharedTabs: [{ tabId: 1 }, { tabId: 2 }],
+    });
+  });
+  it("creates and closes matching AI tabs and blocks creation outside the allowed domains", async () => {
+    const socket = await start();
+    await message({ type: "set_operations_require_approval", value: false });
+    expect(
+      await command(socket, "create-allowed", "sandbox_action", {
+        tabId: 1,
+        action: "tab-create",
+        url: "https://dev8.example.test/",
+      }),
+    ).toMatchObject({ result: { ok: true, tabId: 2 } });
+    expect(await state()).toMatchObject({ sharedTabs: [{ tabId: 1 }, { tabId: 2 }] });
+    expect(
+      await command(socket, "create-denied", "sandbox_action", {
+        tabId: 1,
+        action: "tab-create",
+        url: "https://outside.test/",
+      }),
+    ).toMatchObject({ error: { code: "sandbox_scope_mismatch" } });
+    expect(mock.tabs.create).toHaveBeenCalledTimes(1);
+    expect(
+      await command(socket, "close-allowed", "sandbox_action", { tabId: 2, action: "tab-close" }),
+    ).toMatchObject({ result: { ok: true } });
+    expect(mock.tabs.tabs.has(2)).toBe(false);
+  });
+  it("rejects access to a navigated tab even before its update event is processed", async () => {
+    const socket = await start();
+    const current = mock.tabs.tabs.get(1);
+    if (!current) throw new Error("Missing tab.");
+    current.url = "https://outside.test/private";
+    mock.scripting.executeScript.mockClear();
+    mock.debugger.sendCommand.mockClear();
+    expect(await command(socket, "stale-read", "screenshot", { tabId: 1 })).toMatchObject({
+      error: { code: "sandbox_scope_mismatch" },
+    });
+    expect(mock.scripting.executeScript).not.toHaveBeenCalled();
+    expect(mock.debugger.sendCommand).not.toHaveBeenCalled();
+    expect(await state()).toMatchObject({ sharedTabs: [] });
+  });
+  it("blocks access while a navigation outside the allowed domains is pending", async () => {
+    const socket = await start();
+    const current = mock.tabs.tabs.get(1);
+    if (!current) throw new Error("Missing tab.");
+    current.pendingUrl = "https://outside.test/private";
+    mock.scripting.executeScript.mockClear();
+    mock.debugger.sendCommand.mockClear();
+    expect(await command(socket, "pending-navigation", "screenshot", { tabId: 1 })).toMatchObject({
+      error: { code: "sandbox_scope_mismatch" },
+    });
+    expect(mock.scripting.executeScript).not.toHaveBeenCalled();
+    expect(mock.debugger.sendCommand).not.toHaveBeenCalled();
+  });
+  it("stops sharing when changing local endpoints and restores only that endpoint's rules", async () => {
+    const initial = await state();
+    if (initial.type !== "state") throw new Error("Missing state.");
+    const initialUrl = initial.settings.gatewayWebSocketUrl;
+    await message({ type: "set_sandbox_sharing", enabled: true, config: domainConfig });
+    expect(await state()).toMatchObject({ allTabsAccess: { active: true } });
+    expect(
+      await message({ type: "set_gateway_websocket_url", value: "ws://127.0.0.1:9876/ws" }),
+    ).toEqual({ type: "ok" });
+    expect(await state()).toMatchObject({
+      settings: { sandboxSharing: { scope: "all", rules: [] } },
+      allTabsAccess: { active: false },
+      sharedTabs: [],
+    });
+    await message({ type: "set_gateway_websocket_url", value: initialUrl });
+    expect(await state()).toMatchObject({
+      settings: { sandboxSharing: domainConfig },
+      allTabsAccess: { active: false },
+      sharedTabs: [],
+    });
+  });
+  it("does not return a captured result after leaving the domain scope", async () => {
+    const socket = await start();
+    mock.debugger.sendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.captureScreenshot") {
+        const tab = mock.tabs.tabs.get(1);
+        if (tab) tab.url = "https://outside.test/private";
+        return { data: "synthetic-private-capture" };
+      }
+      return {};
+    });
+    expect(await command(socket, "changed-read", "screenshot", { tabId: 1 })).toMatchObject({
+      error: { code: "sandbox_scope_mismatch" },
+    });
+    expect(JSON.stringify(socket.sent)).not.toContain("synthetic-private-capture");
+  });
+  it("invalidates pending operations on rule changes and keeps settings bound to their destination", async () => {
+    const socket = await start();
+    socket.message({
+      id: "pending-domain-create",
+      method: "sandbox_action",
+      params: { tabId: 1, action: "tab-create", url: "https://dev5.example.test/" },
+    });
+    await vi.waitFor(() =>
+      expect(socket.sent.some((f) => f.type === "approval_pending")).toBe(true),
+    );
+    const approval = socket.sent.find((f) => f.type === "approval_pending")?.approval as {
+      approvalId: string;
+    };
+    const changed = {
+      ...domainConfig,
+      rules: [{ kind: "domain" as const, pattern: "other.test" }],
+    };
+    await message({ type: "set_sandbox_sharing", enabled: true, config: changed });
+    await message(
+      { type: "approval_decision", approvalId: approval.approvalId, decision: "allow" },
+      { id: mock.runtime.id, url: mock.runtime.getURL("approval.html") },
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mock.tabs.create).not.toHaveBeenCalled();
+    expect(await state()).toMatchObject({ sharedTabs: [] });
+    await configure("https://other-gateway.test", "b".repeat(43));
+    expect(await state()).toMatchObject({
+      settings: { sandboxSharing: { scope: "all", rules: [] } },
+      allTabsAccess: { active: false },
+    });
+    await configure();
+    expect(await state()).toMatchObject({
+      settings: { sandboxSharing: changed },
+      allTabsAccess: { active: false },
+    });
+  });
+  it("accepts changes and previews only from the extension popup", async () => {
+    const sender = { id: mock.runtime.id, url: "https://page.example.test", tab: { id: 1 } };
+    expect(
+      await message({ type: "set_sandbox_sharing", enabled: true, config: domainConfig }, sender),
+    ).toMatchObject({ type: "error" });
+    expect(
+      await message({ type: "preview_sandbox_sharing", config: domainConfig }, sender),
+    ).toMatchObject({ type: "error" });
+    expect(await state()).toMatchObject({ allTabsAccess: { active: false }, sharedTabs: [] });
+  });
+});
+
 describe("Saved Cloud Sandbox resume", () => {
-  async function optIn() {
+  async function optIn(config?: SandboxSharing) {
     const saved = {
       id: crypto.randomUUID(),
       name: "Isolated",
@@ -1212,7 +1420,11 @@ describe("Saved Cloud Sandbox resume", () => {
         savedId: saved.id,
       }),
     ).toEqual({ type: "ok" });
-    await message({ type: "set_all_tabs_access", value: true });
+    await message(
+      config
+        ? { type: "set_sandbox_sharing", enabled: true, config }
+        : { type: "set_all_tabs_access", value: true },
+    );
     const socket = lastSocket();
     socket.open();
     socket.message({ type: "authenticated" });
@@ -1234,6 +1446,23 @@ describe("Saved Cloud Sandbox resume", () => {
     await import("../src/background.js");
     return state();
   }
+  it("restores domain rules after restart only with explicit automatic-resume consent", async () => {
+    await optIn(domainConfig);
+    await mock.tabs.create({ url: "https://outside.test/" });
+    expect(await restartWorker()).toMatchObject({
+      settings: { sandboxSharing: domainConfig },
+      allTabsAccess: { active: true, resumeEnabled: true },
+      sharedTabs: [{ tabId: 1 }],
+    });
+    const socket = lastSocket();
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await vi.waitFor(() =>
+      expect(socket.sent.filter((f) => f.type === "tab_permitted")).toHaveLength(1),
+    );
+    expect(socket.sent.find((f) => f.type === "tab_permitted")).toMatchObject({ tabId: 1 });
+  });
   async function allowInputs() {
     const current = await optIn();
     await message({ type: "set_operations_require_approval", value: false });
