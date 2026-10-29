@@ -112,7 +112,9 @@ export type AnnotationModeResult = {
   cleared?: boolean;
 };
 
-function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): AnnotationModeResult {
+export function runAnnotationCommand(
+  requestedCommand: InjectedAnnotationCommand,
+): AnnotationModeResult {
   type Rect = { x: number; y: number; width: number; height: number };
   type ScrollAnchor =
     | { type: "window" }
@@ -193,6 +195,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     shortcuts: NonNullable<AnnotationCommand["shortcuts"]>;
     toolbarDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null;
     escapeToastHeld?: boolean;
+    history?: { past: Annotation[][]; present: Annotation[]; future: Annotation[][] };
   };
   type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
@@ -1019,10 +1022,32 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     }
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
   };
+  const cloneAnnotations = (annotations: Annotation[]): Annotation[] =>
+    JSON.parse(JSON.stringify(annotations));
+  const resetHistory = (state: AnnotationState) => {
+    state.history = { past: [], present: cloneAnnotations(state.annotations), future: [] };
+    updateToolbar(state);
+  };
+  const recordHistory = (state: AnnotationState) => {
+    if (!state.history) {
+      resetHistory(state);
+      return;
+    }
+    const current = cloneAnnotations(state.annotations);
+    if (JSON.stringify(current) === JSON.stringify(state.history.present)) return;
+    if (state.enabled) {
+      state.history.past.push(state.history.present);
+      if (state.history.past.length > 50) state.history.past.shift();
+    } else state.history.past = [];
+    state.history.present = current;
+    state.history.future = [];
+    updateToolbar(state);
+  };
   // Reports the annotation list to the background so it survives a reload. The background
   // keeps it in chrome.storage.session, which page scripts and content scripts cannot read.
   // Nothing is written to page-visible storage.
   const reportAnnotationsChanged = (state: AnnotationState, cleared = false) => {
+    recordHistory(state);
     if (!state.persist) return;
     const runtime = (
       globalThis as unknown as {
@@ -1090,6 +1115,28 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     const form = state.editor.hidden ? null : state.editor.querySelector("form");
     if (form) form.requestSubmit();
     else closeEditor(state);
+  };
+  const applyHistory = (state: AnnotationState, redo = false) => {
+    if (!state.enabled) return;
+    commitEditor(state);
+    const history = state.history;
+    const source = redo ? history?.future : history?.past;
+    const snapshot = source?.pop();
+    if (!history || !snapshot) return;
+    (redo ? history.past : history.future).push(history.present);
+    history.present = cloneAnnotations(snapshot);
+    state.annotations = cloneAnnotations(snapshot);
+    state.nextId = Math.max(0, ...state.annotations.map((annotation) => annotation.id)) + 1;
+    state.selectedId = null;
+    state.editGesture = null;
+    state.dragStart = null;
+    state.activeDraft = null;
+    state.draft.hidden = true;
+    state.clearArmedUntil = 0;
+    state.lastSelectionSignature = null;
+    closeEditor(state);
+    renderAnnotations(state);
+    reportAnnotationsChanged(state);
   };
   const showToast = (state: AnnotationState, message: string) => {
     let toast = state.shadow.querySelector<HTMLDivElement>(".abg-toast");
@@ -1196,6 +1243,15 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       if (label && label.textContent !== clearText) label.textContent = clearText;
       clearButton.classList.toggle("abg-danger", armed);
       clearButton.dataset.title = armed ? ui.clearConfirmTitle : ui.clear;
+    }
+    for (const action of ["undo", "redo"] as const) {
+      const button = state.toolbar.querySelector<HTMLButtonElement>(
+        `button[data-action="${action}"]`,
+      );
+      if (button)
+        button.disabled = !(action === "undo"
+          ? state.history?.past.length
+          : state.history?.future.length);
     }
     for (const modeButton of state.toolbar.querySelectorAll<HTMLButtonElement>(
       "button[data-mode]",
@@ -1569,6 +1625,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     const wasEnabled = state.enabled;
     if (!enabled && wasEnabled) commitEditor(state);
     state.enabled = enabled;
+    if (wasEnabled !== enabled) resetHistory(state);
     if (!enabled) {
       if (wasEnabled) showToast(state, ui.doneToast(state.annotations.length));
       state.clearArmedUntil = 0;
@@ -2288,7 +2345,24 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     grip.setAttribute("aria-label", ui.moveToolbar);
     toolbar.setAttribute("role", "toolbar");
     toolbar.setAttribute("aria-label", ui.annotating);
-    toolbar.append(grip, chip, modeGroup, countEl, clearButton, doneButton, collapse, expand);
+    const undo = toolbarButton("undo", "↶", "abg-icon-button");
+    undo.title = `${strings.undo} (⌘Z / Ctrl+Z)`;
+    undo.setAttribute("aria-label", strings.undo);
+    const redo = toolbarButton("redo", "↷", "abg-icon-button");
+    redo.title = `${strings.redo} (⌘⇧Z / Ctrl+Shift+Z)`;
+    redo.setAttribute("aria-label", strings.redo);
+    toolbar.append(
+      grip,
+      chip,
+      modeGroup,
+      countEl,
+      undo,
+      redo,
+      clearButton,
+      doneButton,
+      collapse,
+      expand,
+    );
     shadow.append(style, capture, layer, draft, editor, toolbar);
     document.documentElement.append(host);
 
@@ -2458,6 +2532,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       if (action === "mode-area") setMode(state, "area");
       if (action === "mode-text") setMode(state, "text");
       if (action === "clear") confirmClear(state);
+      if (action === "undo") applyHistory(state);
+      if (action === "redo") applyHistory(state, true);
       if (action === "collapse" || action === "expand") toggleToolbar(state);
       if (action) {
         event.preventDefault();
@@ -2530,6 +2606,20 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     addEventListener(
       "keydown",
       (event) => {
+        if (
+          state.enabled &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          event.key.toLowerCase() === "z" &&
+          !event.isComposing &&
+          !isTextEditingTarget(event)
+        ) {
+          // Capture even an empty annotation history so page-level undo cannot run accidentally.
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          applyHistory(state, event.shiftKey);
+          return;
+        }
         if (
           state.enabled &&
           state.selectedId !== null &&
@@ -2974,6 +3064,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
   state.toolbarPreferences ??= { x: 0.5, y: 1, collapsed: false };
   state.shortcuts = requestedCommand.shortcuts ?? state.shortcuts ?? {};
   for (const annotation of state.annotations) annotation.uid ??= makeUid();
+  if (!state.history) resetHistory(state);
   ensureRenderTimer(state);
 
   if (requestedAction === "start") setEnabled(state, true);
@@ -2987,6 +3078,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
   if (requestedAction === "clear_confirm" && state.enabled) cleared = confirmClear(state);
   if (requestedAction === "clear") {
     clearAnnotations(state);
+    resetHistory(state);
   }
   if (requestedAction === "remove") {
     const removed = state.annotations.find((annotation) => annotation.uid === requestedCommand.uid);
@@ -3000,6 +3092,8 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       renderAnnotations(state);
       reportAnnotationsChanged(state);
     }
+    // Consumed notes must never be resurrected by a later user undo.
+    resetHistory(state);
   }
   if (requestedAction === "add_region") {
     const { x, y, width, height } = requestedCommand;
@@ -3050,6 +3144,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     );
     renderAnnotations(state);
     if (restoreReport.restored.length > 0) reportAnnotationsChanged(state);
+    resetHistory(state);
   }
 
   const result = makeResult(state, requestedAction);

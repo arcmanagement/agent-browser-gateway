@@ -121,6 +121,10 @@ jobs:
         working-directory: extension
         run: pnpm run lint
 
+      - name: Install headless Chromium
+        working-directory: extension
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Test extension with coverage
         working-directory: extension
         run: pnpm run test:coverage
