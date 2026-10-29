@@ -42,6 +42,7 @@ export type AnnotationCommand = {
   toolbarPreferences?: AnnotationToolbarPreferences;
   /** Private transport available only in the debugger's isolated annotation world. */
   toolbarBinding?: string;
+  uid?: string;
   selector?: string;
   comment?: string;
   x?: number;
@@ -1003,6 +1004,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     state.annotations.map((annotation, index) => ({
       ...annotation,
       displayNumber: index + 1,
+      reference: `abg-annotation:${annotation.uid}`,
       viewportRect: anchoredToViewportRect(annotation),
       scroll: scrollForAnchor(annotation.anchor),
       url: location.href,
@@ -1213,6 +1215,16 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     }
     positionToolbar(state);
   };
+  const annotationReference = (annotation: Annotation): string =>
+    `abg-annotation:${annotation.uid}`;
+  const copyAnnotationReference = async (state: AnnotationState, annotation: Annotation) => {
+    try {
+      await navigator.clipboard.writeText(annotationReference(annotation));
+      showToast(state, strings.referenceCopied);
+    } catch {
+      showToast(state, strings.referenceCopyFailed);
+    }
+  };
   const editAnnotation = (state: AnnotationState, annotation: Annotation) => {
     closeEditor(state);
     const viewportRect = anchoredToViewportRect(annotation);
@@ -1251,7 +1263,19 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     remove.textContent = ui.editorDelete;
     actions.append(remove, save);
     footer.append(keys, actions);
-    form.append(header, input, footer);
+    const referenceRow = document.createElement("div");
+    referenceRow.className = "abg-annotation-reference";
+    const reference = document.createElement("input");
+    reference.readOnly = true;
+    reference.value = annotationReference(annotation);
+    reference.setAttribute("aria-label", strings.annotationReference);
+    reference.addEventListener("click", () => reference.select());
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = strings.copyReference;
+    copy.addEventListener("click", () => void copyAnnotationReference(state, annotation));
+    referenceRow.append(reference, copy);
+    form.append(header, referenceRow, input, footer);
     const autoGrow = () => {
       input.style.height = "auto";
       input.style.height = `${Math.min(120, Math.max(34, input.scrollHeight + 2))}px`;
@@ -2052,6 +2076,9 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
             background: var(--abg-surface);
             box-shadow: var(--abg-shadow);
           }
+          .abg-annotation-reference { display: flex; gap: 8px; align-items: center; }
+          .abg-annotation-reference input { min-width: 0; flex: 1; font: 11px ui-monospace, monospace; color: inherit; padding: 6px; border: 1px solid #64748b; border-radius: 5px; background: transparent; }
+          .abg-annotation-reference button { flex-shrink: 0; }
           .abg-editor-header {
             display: flex;
             align-items: center;
@@ -2915,6 +2942,19 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
   if (requestedAction === "clear_confirm" && state.enabled) cleared = confirmClear(state);
   if (requestedAction === "clear") {
     clearAnnotations(state);
+  }
+  if (requestedAction === "remove") {
+    const removed = state.annotations.find((annotation) => annotation.uid === requestedCommand.uid);
+    if (removed) {
+      state.annotations = state.annotations.filter((annotation) => annotation.uid !== removed.uid);
+      if (state.selectedId === removed.id) {
+        state.selectedId = null;
+        closeEditor(state);
+      }
+      state.editGesture = null;
+      renderAnnotations(state);
+      reportAnnotationsChanged(state);
+    }
   }
   if (requestedAction === "add_region") {
     const { x, y, width, height } = requestedCommand;

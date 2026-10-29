@@ -56,6 +56,19 @@ export class AnnotationSnapshotStore {
     });
   }
 
+  removeAnnotation(tabId: number, uid: string): Promise<void> {
+    return this.serialize(tabId, async () => {
+      const record = await this.load(tabId);
+      if (!record) return;
+      record.annotations = record.annotations.filter((annotation) => annotation.uid !== uid);
+      record.pending = record.pending.filter((annotation) => annotation.uid !== uid);
+      const key = annotationSnapshotStorageKey(tabId);
+      if (record.annotations.length + record.pending.length > 0)
+        await this.storage.set({ [key]: record });
+      else await this.storage.remove(key);
+    });
+  }
+
   delete(tabId: number): Promise<void> {
     return this.serialize(tabId, () => this.storage.remove(annotationSnapshotStorageKey(tabId)));
   }
@@ -149,7 +162,20 @@ async function persistResult(
 
 function withoutSessionId(result: AnnotationModeResult): AnnotationModeResult {
   const { pageSessionId: _pageSessionId, ...rest } = result;
-  return rest;
+  const withReference = (value: unknown): unknown => {
+    if (!value || typeof value !== "object" || !("uid" in value) || typeof value.uid !== "string")
+      return value;
+    return { ...value, reference: `abg-annotation:${value.uid}` };
+  };
+  const saved =
+    rest.saved && typeof rest.saved === "object" ? (rest.saved as Record<string, unknown>) : null;
+  return {
+    ...rest,
+    annotations: rest.annotations.map(withReference),
+    ...(saved && Array.isArray(saved.annotations)
+      ? { saved: { ...saved, annotations: saved.annotations.map(withReference) } }
+      : {}),
+  };
 }
 
 /**
@@ -161,7 +187,42 @@ export async function runAnnotationModeWithSnapshots(
   tabId: number,
   command: AnnotationCommand,
 ): Promise<AnnotationModeResult> {
+  if (command.uid !== undefined && command.action !== "get" && command.action !== "remove") {
+    throw new Error("uid is supported only by get and remove");
+  }
   const page = await deps.currentPage(tabId);
+  if (command.action === "get" || command.action === "remove") {
+    const uid = command.uid;
+    if (!uid || !/^[A-Za-z0-9_-]{1,128}$/.test(uid))
+      throw new Error("A valid annotation uid is required");
+    // Keep the full live snapshot; filtering before persistence would discard other annotations.
+    const current = await deps.run(tabId, command.action === "get" ? { action: "list" } : command);
+    await persistResult(deps, tabId, current, page);
+    if (command.action === "remove") await deps.store.removeAnnotation(tabId, uid);
+    const record = await deps.store.load(tabId);
+    const live = current.annotations.filter(
+      (value) => value && typeof value === "object" && "uid" in value && value.uid === uid,
+    );
+    const saved = [...(record?.annotations ?? []), ...(record?.pending ?? [])].filter(
+      (annotation) => annotation.uid === uid,
+    );
+    const selected = live.length
+      ? live
+      : saved.map((annotation) => ({ ...annotation, url: record?.url, title: record?.title }));
+    return withoutSessionId({
+      ok: true,
+      enabled: current.enabled,
+      count: selected.length,
+      annotations: selected,
+      userMessage:
+        command.action === "remove"
+          ? "The selected annotation was removed."
+          : selected.length
+            ? undefined
+            : "Annotation not found in this tab.",
+      nextCommand: `abg annotate abg-annotation:${uid}`,
+    });
+  }
 
   if (command.action === "restore") {
     const record = await deps.store.load(tabId);

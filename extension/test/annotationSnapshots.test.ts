@@ -214,3 +214,61 @@ describe("AnnotationSnapshotStore", () => {
     expect(await store.load(1)).toBeNull();
   });
 });
+
+describe("individual annotation references", () => {
+  it("reads one live annotation without discarding the rest of the snapshot", async () => {
+    const { run, deps, store } = setup();
+    run.mockResolvedValue(result("s1", [first, second]));
+    const output = await runAnnotationModeWithSnapshots(deps, 7, { action: "get", uid: first.uid });
+    expect(output.annotations).toEqual([
+      expect.objectContaining({ uid: first.uid, reference: `abg-annotation:${first.uid}` }),
+    ]);
+    expect((await store.load(7))?.annotations).toEqual([first, second]);
+  });
+
+  it("finds a saved reference after reload and removes only that reference", async () => {
+    const { run, deps, store } = setup();
+    await store.apply(7, {
+      pageSessionId: "old",
+      url: pageUrl,
+      title: "Example",
+      annotations: [first, second],
+    });
+    run.mockResolvedValue(result(undefined, []));
+    expect(
+      (await runAnnotationModeWithSnapshots(deps, 7, { action: "get", uid: first.uid })).count,
+    ).toBe(1);
+    const removed = await runAnnotationModeWithSnapshots(deps, 7, {
+      action: "remove",
+      uid: first.uid,
+    });
+    expect(removed.count).toBe(0);
+    expect((await store.load(7))?.annotations).toEqual([second]);
+    expect(
+      (await runAnnotationModeWithSnapshots(deps, 7, { action: "get", uid: first.uid })).count,
+    ).toBe(0);
+  });
+
+  it("removes one pending annotation while preserving a newer live annotation", async () => {
+    const { run, deps, store } = setup();
+    await store.apply(7, {
+      pageSessionId: "old",
+      url: pageUrl,
+      title: "Example",
+      annotations: [first],
+    });
+    run.mockResolvedValue(result("new", [second]));
+    await runAnnotationModeWithSnapshots(deps, 7, { action: "remove", uid: first.uid });
+    expect(await store.load(7)).toMatchObject({ annotations: [second], pending: [] });
+  });
+
+  it("rejects missing or malformed UIDs before injecting any command", async () => {
+    const { run, deps } = setup();
+    for (const uid of [undefined, "", "a b", "x".repeat(129)]) {
+      await expect(
+        runAnnotationModeWithSnapshots(deps, 7, { action: "remove", uid }),
+      ).rejects.toThrow("valid annotation uid");
+    }
+    expect(run).not.toHaveBeenCalled();
+  });
+});

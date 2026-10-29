@@ -342,6 +342,8 @@ abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-cl
 abg annotate <tab|ref> [--format json|text]      # list current annotations
 abg annotate <tab|ref> --restore                 # restore annotations saved before a page reload
 abg annotate <tab|ref> --saved                   # print saved annotations without restoring them
+abg annotate abg-annotation:<uid>                 # resolve and read one annotation
+abg annotate abg-annotation:<uid> --clear         # remove only that annotation
 abg annotate <tab|ref> --selector "<css>" --comment "..."  # explicit DOM annotation
 abg annotate <tab|ref> --x N --y N --width N --height N --comment "..." [--out shot.png]
 abg console <tab|ref>                            # console messages
@@ -695,6 +697,7 @@ Annotation mode lets the human mark the current tab the way they would point at 
 - Use **Area** to drag a rectangle, or **Text** to select page text, including text that spans multiple DOM elements, and turn the selected text into a numbered annotation. Add a comment, then click **Done** or press Escape when finished.
 - Text annotations render as text-selection highlights instead of rectangular boxes. Screenshot annotations can be moved with drag-and-drop and resized from their edges/corners. DOM and text annotations stay locked to their selector so they keep following the page layout. Any selected annotation can be deleted with Delete/Backspace.
 - **Area** annotations are auto-classified as `kind: "dom"` when a stable DOM target is available, otherwise `kind: "screenshot"`. **Text** annotations are always `kind: "text"` and keep the selected text as first-class data.
+- Open an annotation editor to see its stable `abg-annotation:<uid>` ID and use **Copy ID**. The reference survives reload and restoration; display numbers are only positions in the current list. Paste the reference into `read-abg-annotations` or `abg annotate <reference>` to resolve its shared tab and read only that annotation. `abg annotate <reference> --clear` removes only that note, including its retained snapshot.
 - Agents retrieve the current state with `abg annotate t1`; the JSON includes comments, viewport/page rectangles, selector/text/style metadata for DOM targets, top-level `text` plus `textAnchor` metadata for text annotations, and screenshot-region coordinates for visual targets.
 - For explicit additions, use `abg annotate t1 --selector "button.save" --comment "..."` or `abg annotate t1 --x 120 --y 240 --width 360 --height 180 --comment "..."`.
 - Annotations survive a page reload as a saved snapshot, but they are not redrawn automatically. After a reload, `abg annotate t1` returns a `saved` summary and `nextCommand: "abg annotate t1 --restore"`; the popup shows **Restore N saved annotations**. `abg annotate t1 --saved` prints the saved annotations without touching the page.
