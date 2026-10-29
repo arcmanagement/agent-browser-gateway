@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.4.zip
+dist/agent-browser-gateway-extension-1.3.5.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.5 review notes
+
+- Adds an explicit Sandbox **Matching domains** mode with multiple exact domains, wildcard subdomains, or full-hostname regular expressions. Optional HTTPS and port restrictions apply to all conditions. Preview does not grant access. Matching existing and new tabs are shared; leaving the scope revokes automatic access. Rules are scoped to the selected connection, and editing them cancels auto-resume consent.
+- Annotation markers and editors expose stable references. Selected Cloud reads/removal affect only that UID, including saved snapshots, and require a compatible extension capability.
+- Command-C/Ctrl-C copies the selected annotation reference while annotating; clicking a marker outside annotation mode copies it directly. Toolbar buttons and Command-Z/Command-Shift-Z or Ctrl equivalents undo and redo annotation changes. Editable fields retain native shortcuts.
+- No new Chrome permissions. Sandbox domain sharing uses the existing optional `<all_urls>` grant and retains operation/account approval requirements. Desktop versions are unchanged.
 
 ## 1.3.4 review notes
 

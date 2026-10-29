@@ -113,6 +113,14 @@ printf "new content" | abg paste t1 --selector "[contenteditable=true]" --stdin
 
 ページを再読み込みすると、注釈は保存されますが再描画はされません。このとき `abg annotate t1` は `nextCommand` として `abg annotate t1 --restore` を返します。
 
+## 注釈の参照ID
+
+各注釈には、固定の参照ID `abg-annotation:<uid>`があります。注釈の編集画面を開いて**IDをコピー**を選ぶか、マーカーを選択して、macOSではCommand-C、それ以外ではCtrl-Cを押します。もう一度クリックすると編集画面が開きます。注釈モードがオフのときは、マーカーをクリックすると参照IDを直接コピーできます。テキストを選択している場合や編集可能な入力欄では、ブラウザーの通常のコピー操作が使えます。
+
+参照IDを`read-abg-annotations`に貼り付けると、対象を確認したうえで、その注釈だけを取得・削除できます。Cloudでは、メソッド`annotation_mode`に`action: "get"`または`action: "remove"`と`uid`を指定します。他の注釈は残ります。現在のソース版CLIは、`abg annotate <reference>`と`abg annotate <reference> --clear`にも対応しています。これらのコマンドを使用するには、注釈の参照IDへの対応を含むCLIビルドが必要です。
+
+注釈の編集中は、ツールバーの「元に戻す」「やり直す」ボタン、またはmacOSではCommand-Z／Command-Shift-Z、それ以外ではCtrl-Z／Ctrl-Shift-Zを使用できます。キャプチャセッション内の直近50件の変更を元に戻したり、やり直したりできます。停止、再読み込み、復元、エージェントによる注釈の削除・一括消去を行うと、この履歴はリセットされます。テキスト入力欄や編集可能なページ内のコンテンツでは、通常の「元に戻す」操作が使えます。
+
 ## タブを録画する
 
 ```bash
