@@ -52,6 +52,7 @@ jobs:
         with:
           name: chrome-web-store-oauth-health
           if-no-files-found: ignore
+          include-hidden-files: true
           path: .cws/cws-oauth-health.json
 
   submit:
