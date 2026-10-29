@@ -135,7 +135,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.3.5";
+const VERSION = "1.3.6";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -8146,6 +8146,9 @@ const KEY_CODE_MAP: Record<string, string> = {
   Space: "Space",
 };
 
+// Native button activation uses these codes in addition to DOM key names.
+const ACTIVATION_KEY_CODES: Record<string, number> = { Enter: 13, " ": 32 };
+
 function modifiersToBitmask(modifiers: string[]): number {
   let mask = 0;
   for (const m of modifiers) {
@@ -8169,17 +8172,24 @@ async function keyPress(
   const resolvedCode =
     code ?? KEY_CODE_MAP[key] ?? (key.length === 1 ? `Key${key.toUpperCase()}` : key);
   const resolvedKey = key === "Space" ? " " : key;
-  const base = { key: resolvedKey, code: resolvedCode, modifiers: mods };
+  const base = {
+    key: resolvedKey,
+    code: resolvedCode,
+    modifiers: mods,
+    windowsVirtualKeyCode: ACTIVATION_KEY_CODES[resolvedKey],
+  };
   try {
     await attachDebugger(tabId);
     await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "keyDown",
       ...base,
     });
-    if (resolvedKey.length === 1) {
+    const text =
+      resolvedKey === "Enter" ? "\r" : resolvedKey.length === 1 ? resolvedKey : undefined;
+    if (text !== undefined) {
       await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
         type: "char",
-        text: resolvedKey,
+        text,
         ...base,
       });
     }
@@ -8247,6 +8257,7 @@ async function keyEdge(
     key: resolvedKey,
     code: resolvedCode,
     modifiers: mods,
+    windowsVirtualKeyCode: ACTIVATION_KEY_CODES[resolvedKey],
   });
   return { ok: true, type };
 }

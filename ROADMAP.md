@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-10-29.
 
-Chrome extension version: **v1.3.5**, distributed separately as `extension-v1.3.5`.
+Chrome extension version: **v1.3.6**, distributed separately as `extension-v1.3.6`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.6 — Annotation keyboard focus (2026-10-29)
+
+- Preserve focused annotation markers during position refreshes and when an earlier annotation is removed, so Enter and Space continue opening the selected note.
+- Activate native buttons reliably through CLI Enter and Space input.
+- Keep native input focus and existing annotation editing, sharing, and approval boundaries.
+- Save Chrome Web Store submission and OAuth health response JSON in workflow artifacts.
 
 ### Chrome extension v1.3.5 — Domain sharing and annotation controls (2026-10-29)
 

@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.5.zip
+dist/agent-browser-gateway-extension-1.3.6.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.6 review notes
+
+- Keeps annotation marker keyboard focus through position refreshes and removal of earlier annotations, so Enter and Space continue activating the selected note.
+- Corrects CLI Enter and Space input so native buttons activate through the installed extension.
+- No new Chrome permissions or changes to sharing or approval boundaries. Desktop versions are unchanged.
 
 ## 1.3.5 review notes
 
