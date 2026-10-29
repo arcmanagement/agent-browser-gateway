@@ -142,6 +142,35 @@ describe("annotation browser interactions", () => {
     }
   });
 
+  it("keeps the surviving marker focused when an earlier annotation is removed", async () => {
+    const { context, page } = await fixture();
+    try {
+      await command(page, { action: "start" });
+      await command(page, { action: "add_selector", selector: "#subject", comment: "First note" });
+      await command(page, {
+        action: "add_region",
+        x: 700,
+        y: 300,
+        width: 120,
+        height: 90,
+        comment: "Region note",
+      });
+      const [first] = await notes(page);
+      const marker = page.locator(".abg-annotation-box").nth(1);
+      await marker.click();
+      const focused = await marker.elementHandle();
+      await command(page, { action: "remove", uid: first?.uid });
+      await page.waitForTimeout(300);
+      expect(
+        await focused?.evaluate((el) => el === (el.getRootNode() as ShadowRoot).activeElement),
+      ).toBe(true);
+      await page.keyboard.press("Enter");
+      expect(await page.locator(".abg-editor textarea").inputValue()).toBe("Region note");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("copies stable IDs while preserving native text copy and reports clipboard failures", async () => {
     const { context, page } = await fixture();
     try {

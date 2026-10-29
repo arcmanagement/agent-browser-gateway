@@ -1385,11 +1385,14 @@ export function runAnnotationCommand(
     input.select();
   };
   const syncChildren = (parent: HTMLElement, children: HTMLElement[]) => {
+    const retained = new Set(children);
+    for (const child of Array.from(parent.children)) {
+      if (!retained.has(child as HTMLElement)) child.remove();
+    }
     for (const [index, child] of children.entries()) {
       if (parent.children[index] !== child)
         parent.insertBefore(child, parent.children[index] ?? null);
     }
-    while (parent.children.length > children.length) parent.lastElementChild?.remove();
   };
   const renderAnnotations = (state: AnnotationState) => {
     const previous = new Map(
