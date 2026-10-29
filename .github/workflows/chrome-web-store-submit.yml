@@ -52,6 +52,7 @@ jobs:
         with:
           name: chrome-web-store-oauth-health
           if-no-files-found: ignore
+          include-hidden-files: true
           path: .cws/cws-oauth-health.json
 
   submit:
@@ -107,6 +108,12 @@ jobs:
         with:
           name: chrome-web-store-submission
           if-no-files-found: ignore
+          include-hidden-files: true
           path: |
             dist/agent-browser-gateway-extension-*.zip
-            .cws/**
+            .cws/cws-fetch-status.json
+            .cws/cws-upload-response.json
+            .cws/cws-submit-response.json
+            .cws/extension-version.txt
+            .cws/extension-zip-entries.txt
+            .cws/agent-browser-gateway-extension-*.zip.sha256
