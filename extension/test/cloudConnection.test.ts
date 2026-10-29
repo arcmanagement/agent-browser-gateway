@@ -1355,6 +1355,45 @@ describe("Domain scoped Sandbox sharing", () => {
     });
     expect(JSON.stringify(socket.sent)).not.toContain("synthetic-private-capture");
   });
+  it.each([
+    false,
+    true,
+  ])("binds captured results to the original grant when revoked=%s", async (revoked) => {
+    vi.spyOn(Date, "now").mockReturnValue(1000);
+    const socket = await start();
+    let completeCapture!: (result: { data: string }) => void;
+    const capture = new Promise<{ data: string }>((resolve) => {
+      completeCapture = resolve;
+    });
+    mock.debugger.sendCommand.mockImplementation(async (_target, method) =>
+      method === "Page.captureScreenshot" ? await capture : {},
+    );
+    socket.message({ id: "grant-read", method: "screenshot", params: { tabId: 1 } });
+    await vi.waitFor(() =>
+      expect(mock.debugger.sendCommand).toHaveBeenCalledWith(
+        { tabId: 1 },
+        "Page.captureScreenshot",
+        expect.anything(),
+      ),
+    );
+    if (revoked) {
+      await mock.tabs.update(1, { url: "https://outside.test/private" });
+      expect(await state()).toMatchObject({ sharedTabs: [] });
+    }
+    await mock.tabs.update(1, { url: "https://page.example.test/returned" });
+    expect(await state()).toMatchObject({ sharedTabs: [{ tabId: 1 }] });
+    completeCapture({ data: "synthetic-pending-capture" });
+    await vi.waitFor(() => expect(socket.sent.find((f) => f.id === "grant-read")).toBeDefined());
+    const response = socket.sent.find((f) => f.id === "grant-read");
+    if (revoked) {
+      expect(response).toMatchObject({ error: { code: "tab_permission_changed" } });
+      expect(JSON.stringify(socket.sent)).not.toContain("synthetic-pending-capture");
+    } else {
+      expect(response).toMatchObject({
+        result: { dataUrl: "data:image/png;base64,synthetic-pending-capture" },
+      });
+    }
+  });
   it("invalidates pending operations on rule changes and keeps settings bound to their destination", async () => {
     const socket = await start();
     socket.message({

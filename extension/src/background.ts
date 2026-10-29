@@ -1835,18 +1835,19 @@ async function upsertAllTabsEntry(tab: BrowserTab, emit: boolean): Promise<void>
     sendWS({ type: "tab_revoked", tabId, reason: "manual_origin_changed_during_all_tabs" });
   }
 
-  const entry: PermittedTab = {
-    url,
-    title,
-    origin,
-    permittedAt: existing?.origin === origin ? existing.permittedAt : Date.now(),
-    accessMode: "all_tabs",
-  };
+  const unchangedGrant = existing?.accessMode === "all_tabs" && existing.origin === origin;
+  const changed = existing?.url !== url || existing?.title !== title;
+  // Preserve the grant object only while its authorization remains continuous.
+  const entry: PermittedTab = unchangedGrant
+    ? existing
+    : { url, title, origin, permittedAt: Date.now(), accessMode: "all_tabs" };
+  entry.url = url;
+  entry.title = title;
   permittedTabs.set(tabId, entry);
 
   if (emit) {
-    if (existing?.accessMode === "all_tabs" && existing.origin === origin) {
-      if (existing.url !== url || existing.title !== title) sendTabUpdated(tabId, entry);
+    if (unchangedGrant) {
+      if (changed) sendTabUpdated(tabId, entry);
     } else sendTabPermitted(tabId, entry);
   }
   await updateBadge(tabId);
@@ -2475,6 +2476,7 @@ function findNetworkEntry(tabId: number, requestId: string): NetworkEntry | unde
 async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch): Promise<void> {
   const tabId = cmd.params?.tabId;
   const automatic = tabId !== undefined && permittedTabs.get(tabId)?.accessMode === "all_tabs";
+  const grantStillValid = tabId === undefined ? undefined : sharedTabAccessGuard(tabId);
   const consentRevision = sandboxConsentRevision;
   const reply = async (id: string, result: unknown) => {
     if (automatic && consentRevision !== sandboxConsentRevision)
@@ -2487,8 +2489,14 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       tabId !== undefined &&
       cmd.method !== "revoke" &&
       !(cmd.method === "sandbox_action" && cmd.params?.action === "tab-close")
-    )
+    ) {
       await requireCurrentSandboxScope(tabId, true);
+      if (!grantStillValid?.())
+        throw new GatewayError(
+          "tab_permission_changed",
+          "Tab sharing changed during the operation.",
+        );
+    }
     if (epoch === connectionEpoch) sendWS({ type: "response", id, result });
   };
   const replyError = (id: string, code: string, message: string, matchCount?: number) => {
@@ -3166,6 +3174,7 @@ function sharedTabAccessGuard(tabId: number): () => boolean {
       !changingConnection &&
       epoch === connectionEpoch &&
       current !== undefined &&
+      current === share &&
       current.origin === origin &&
       current.permittedAt === permittedAt
     );
@@ -3200,6 +3209,7 @@ async function runApprovedOperation(
     epoch !== connectionEpoch ||
     !shared ||
     !current ||
+    current !== shared ||
     current.origin !== shared.origin ||
     current.permittedAt !== shared.permittedAt ||
     !actual.url ||
