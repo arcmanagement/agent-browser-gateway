@@ -1135,7 +1135,11 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     // inspect the original target to recognize typing in the comment editor.
     const target = event.composedPath()[0] ?? event.target;
     if (!(target instanceof Element)) return false;
-    return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+    return Boolean(
+      target.closest("input, textarea, select") ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
+        document.designMode === "on",
+    );
   };
   const positionToolbar = (state: AnnotationState) => {
     const { width, height } = state.toolbar.getBoundingClientRect();
@@ -1331,17 +1335,31 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
       const isSelected = state.enabled && state.selectedId === annotation.id;
       const canEditRect = annotation.kind === "screenshot";
       const openAnnotationEditor = (event: MouseEvent) => {
-        if (!state.enabled) return;
+        if (!state.enabled) {
+          event.preventDefault();
+          event.stopPropagation();
+          void copyAnnotationReference(state, annotation);
+          return;
+        }
         if (state.suppressClickId === annotation.id) {
           state.suppressClickId = null;
           event.preventDefault();
           event.stopPropagation();
           return;
         }
-        state.selectedId = annotation.id;
+        event.preventDefault();
         event.stopPropagation();
-        editAnnotation(state, annotation);
+        commitEditor(state);
+        state.selectedId = annotation.id;
+        if (isSelected) editAnnotation(state, annotation);
+        else closeEditor(state);
         renderAnnotations(state);
+        if (!isSelected)
+          state.layer
+            .querySelector<HTMLElement>(
+              `button[data-id="${annotation.id}"], .abg-text-selection-piece[data-id="${annotation.id}"]`,
+            )
+            ?.focus();
       };
       if (annotation.kind === "text") {
         const group = document.createElement("div");
@@ -1356,12 +1374,19 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
           .filter(Boolean)
           .join(" ");
         group.dataset.id = String(annotation.id);
+        group.title = state.enabled ? strings.annotationInteraction : strings.copyReference;
         group.addEventListener("click", openAnnotationEditor);
         for (const textRect of textRects) {
           const piece = document.createElement("span");
           piece.className = "abg-text-selection-piece";
           piece.dataset.id = String(annotation.id);
           piece.role = "button";
+          piece.tabIndex = 0;
+          piece.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            piece.click();
+          });
           piece.setAttribute("aria-label", ui.annotationLabel(index + 1));
           setRectStyle(piece, textRect);
           group.append(piece);
@@ -1404,6 +1429,7 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
         .filter(Boolean)
         .join(" ");
       box.dataset.id = String(annotation.id);
+      box.title = state.enabled ? strings.annotationInteraction : strings.copyReference;
       box.setAttribute("aria-label", ui.annotationLabel(index + 1));
       setRectStyle(box, rect);
       badge.className = "abg-annotation-badge";
@@ -2504,6 +2530,25 @@ function runAnnotationCommand(requestedCommand: InjectedAnnotationCommand): Anno
     addEventListener(
       "keydown",
       (event) => {
+        if (
+          state.enabled &&
+          state.selectedId !== null &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "c" &&
+          !event.isComposing &&
+          !isTextEditingTarget(event) &&
+          getSelection()?.isCollapsed !== false
+        ) {
+          const annotation = state.annotations.find((item) => item.id === state.selectedId);
+          if (annotation) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            void copyAnnotationReference(state, annotation);
+            return;
+          }
+        }
         if (event.key === "Escape" && document.getElementById("__abg_shortcut_toast__")) return;
         const toast = state.shadow.querySelector<HTMLDivElement>(".abg-toast");
         if (event.key === "Escape" && ((!toast?.hidden && toast) || state.escapeToastHeld)) {
