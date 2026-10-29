@@ -389,6 +389,11 @@ export const ja: MessageCatalog = {
   "overlay.hintSelected": "Delete キーで削除",
   "overlay.hintFinish": "Esc で終了",
   "overlay.annotationLabel": "注釈 {number}",
+  "overlay.annotationReference": "注釈ID",
+  "overlay.copyReference": "IDをコピー",
+  "overlay.referenceCopied": "注釈IDをコピーしました",
+  "overlay.referenceCopyFailed":
+    "IDをコピーできませんでした。編集画面で選択してコピーしてください。",
   "overlay.editorPlaceholder": "エージェントへのコメントを入力…",
   "overlay.editorSave": "保存",
   "overlay.editorDelete": "削除",

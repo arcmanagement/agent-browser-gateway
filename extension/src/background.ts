@@ -531,7 +531,12 @@ async function announceSharedTabs(): Promise<void> {
     type: "hello",
     extensionId: extensionId ?? "?",
     version: VERSION,
-    capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
+    capabilities: [
+      "cloud-browser-v2",
+      "approval-policy-v1",
+      "file-transfer-v1",
+      "annotation-reference-v1",
+    ],
     profileLabel: profileLabel || undefined,
     browserKind,
   });
@@ -1028,7 +1033,12 @@ async function setProfileLabel(value: string): Promise<ExtensionSettings> {
       type: "hello",
       extensionId,
       version: VERSION,
-      capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
+      capabilities: [
+        "cloud-browser-v2",
+        "approval-policy-v1",
+        "file-transfer-v1",
+        "annotation-reference-v1",
+      ],
       profileLabel: trimmed || undefined,
       browserKind: await detectCurrentBrowserKind(),
     });
@@ -9519,7 +9529,9 @@ function isAnnotationAction(value: unknown): value is AnnotationAction {
     value === "add_region" ||
     value === "add_selector" ||
     value === "restore" ||
-    value === "saved"
+    value === "saved" ||
+    value === "get" ||
+    value === "remove"
   );
 }
 
@@ -9527,6 +9539,7 @@ function readAnnotationCommand(params: GatewayCommand["params"] | undefined): An
   const action = isAnnotationAction(params?.action) ? params.action : "list";
   return {
     action,
+    uid: typeof params?.uid === "string" ? params.uid : undefined,
     selector: typeof params?.selector === "string" ? params.selector : undefined,
     comment: typeof params?.comment === "string" ? params.comment : undefined,
     x: typeof params?.x === "number" ? params.x : undefined,

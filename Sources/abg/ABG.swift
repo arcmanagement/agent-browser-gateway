@@ -855,8 +855,31 @@ struct Annotate: AsyncParsableCommand {
             return "list"
         }()
         let client = UDSClient()
-        let tabId = try resolveTabId(client: client, target: target)
-        var params: [String: Any] = ["tabId": tabId, "action": action]
+        let annotationUid = try AnnotationReference.uid(from: target.tab)
+        if annotationUid != nil && (action != "list" && action != "clear" || target.matchUrl != nil || target.matchTitle != nil) {
+            try failWithJSON(["error": "bad_params", "message": "An annotation reference supports only reading or --clear, without tab match options."])
+        }
+        let tabId: Int
+        if let annotationUid {
+            let tabs = try tabsWithRefs(client.call(method: "list_tabs"))
+            var matches: [Int] = []
+            for tab in tabs {
+                guard let id = routingTabId(tab) else { continue }
+                guard let result = try? client.call(method: "annotate_tab", params: ["tabId": id, "action": "get", "uid": annotationUid]),
+                      let object = result as? [String: Any],
+                      let annotations = object["annotations"] as? [[String: Any]],
+                      annotations.contains(where: { $0["uid"] as? String == annotationUid }) else { continue }
+                matches.append(id)
+            }
+            guard matches.count == 1 else {
+                try failWithJSON(["error": matches.isEmpty ? "annotation_not_found" : "annotation_ambiguous", "message": "The annotation reference must identify exactly one currently shared tab."])
+            }
+            tabId = matches[0]
+        } else {
+            tabId = try resolveTabId(client: client, target: target)
+        }
+        var params: [String: Any] = ["tabId": tabId, "action": annotationUid == nil ? action : (clear ? "remove" : "get")]
+        if let annotationUid { params["uid"] = annotationUid }
         if let selector { params["selector"] = selector }
         if let comment { params["comment"] = comment }
         if hasFullRegion {
@@ -866,6 +889,14 @@ struct Annotate: AsyncParsableCommand {
             params["height"] = height!
         }
         var result = try client.call(method: "annotate_tab", params: params)
+        if let annotationUid {
+            guard let object = result as? [String: Any],
+                  let annotations = object["annotations"] as? [[String: Any]],
+                  annotations.allSatisfy({ $0["uid"] as? String == annotationUid }),
+                  !clear || annotations.isEmpty else {
+                try failWithJSON(["error": "annotation_reference_unsupported", "message": "The browser did not return an individual annotation result. Update the extension; no tab-wide clear was attempted."])
+            }
+        }
         if let out, action == "add_region" {
             result = try attachRegionScreenshotIfNeeded(client: client, tabId: tabId, result: result, out: out)
         }

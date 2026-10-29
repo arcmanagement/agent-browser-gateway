@@ -13,7 +13,9 @@ export type AnnotationAction =
   | "add_region"
   | "add_selector"
   | "restore"
-  | "saved";
+  | "saved"
+  | "get"
+  | "remove";
 export type TabAccessMode = "manual" | "all_tabs";
 
 export type ShortcutFeedbackLevel = "success" | "warning" | "error";
@@ -204,6 +206,7 @@ export type GatewayCommand = {
     // read_dom
     asMarkdown?: boolean;
     // annotation_mode
+    uid?: string;
     action?: AnnotationAction | string;
     comment?: string;
     // dialog_action

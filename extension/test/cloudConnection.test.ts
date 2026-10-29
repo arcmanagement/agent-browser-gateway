@@ -735,7 +735,12 @@ describe("Cloud connection boundary", () => {
     cloud.message({ type: "authenticated" });
     await vi.waitFor(() => expect(cloud.sent.some((f) => f.type === "hello")).toBe(true));
     expect(cloud.sent.find((f) => f.type === "hello")).toMatchObject({
-      capabilities: ["cloud-browser-v2", "approval-policy-v1", "file-transfer-v1"],
+      capabilities: [
+        "cloud-browser-v2",
+        "approval-policy-v1",
+        "file-transfer-v1",
+        "annotation-reference-v1",
+      ],
     });
     const before = mock.debugger.sendCommand.mock.calls.length;
     cloud.message({ id: "sensitive", method, params: { ...params, tabId: 1 } });
