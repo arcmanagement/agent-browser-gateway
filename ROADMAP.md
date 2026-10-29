@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-27.
+Living document. Reflects current intent, not commitment. Last updated 2026-10-29.
 
-Chrome extension version: **v1.3.4**, distributed separately as `extension-v1.3.4`.
+Chrome extension version: **v1.3.5**, distributed separately as `extension-v1.3.5`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.5 — Domain sharing and annotation controls (2026-10-29)
+
+- Automatically share matching tabs in an isolated Sandbox profile using multiple domain, wildcard, or hostname regular-expression conditions, with HTTPS and port restrictions and a preview before applying.
+- Copy stable `abg-annotation:<uid>` references from markers or editors. Cloud clients can read and remove an individual annotation by UID without clearing other notes.
+- Copy a selected marker's reference with Command-C or Ctrl-C; clicking a marker outside annotation mode copies it directly. Undo and redo annotation edits with toolbar buttons or keyboard shortcuts.
+- No new Chrome permissions. Domain sharing uses the existing optional site-access grant; desktop packages retain their separate versions.
 
 ### Chrome extension v1.3.4 — Cloud connection recovery (2026-10-27)
 

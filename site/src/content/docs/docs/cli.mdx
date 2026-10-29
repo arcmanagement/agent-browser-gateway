@@ -124,6 +124,14 @@ Annotations let you mark parts of a page and add comments that the agent can rea
 After a page reload, annotations are saved but not redrawn. `abg annotate t1` then returns a
 `nextCommand` of `abg annotate t1 --restore`.
 
+## Annotation references
+
+Each annotation has a stable `abg-annotation:<uid>` reference. Open its editor and choose **Copy ID**, or select a marker and press Command-C on macOS or Ctrl-C elsewhere. A second click opens the editor. Outside annotation mode, clicking the marker copies its reference directly. Selected text and editable fields retain normal browser copy behavior.
+
+Paste the reference into `read-abg-annotations` to read and remove only that annotation after confirming its target. In Cloud, use method `annotation_mode` with `action: "get"` or `action: "remove"` and `uid`; other notes remain. The current source CLI also supports `abg annotate <reference>` and `abg annotate <reference> --clear`; these commands require a CLI build containing annotation-reference support.
+
+While annotating, use toolbar Undo/Redo buttons or Command-Z/Command-Shift-Z on macOS and Ctrl-Z/Ctrl-Shift-Z elsewhere. The latest 50 changes in the capture session can be undone or redone. Stopping, reloading, restoring, or agent removal/clearing resets this history. Text inputs and editable page content retain native undo.
+
 ## Record a tab
 
 ```bash

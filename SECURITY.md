@@ -8,7 +8,7 @@ Report vulnerabilities privately to `contact@arcm.co.jp`. Do not include account
 
 ## Supported versions
 
-The Chrome extension is 1.3.4; desktop packages retain separate versions. Only the latest released version of each component receives security fixes. Unreleased commits on `main` may contain known issues.
+The Chrome extension is 1.3.5; desktop packages retain separate versions. Only the latest released version of each component receives security fixes. Unreleased commits on `main` may contain known issues.
 
 | Version | Supported |
 |---|---|
@@ -22,7 +22,7 @@ The Chrome extension is 1.3.4; desktop packages retain separate versions. Only t
 
 The extension's connection diagnostic history stays in trusted local extension storage and is not uploaded automatically. It retains up to 200 events within seven days and excludes credentials, endpoints, page data and arbitrary error text. The owner can inspect and export it from **Advanced → Connection history**.
 
-Extension 1.3.4 can connect to the service selected in the popup without a desktop Gateway. The official account UI is `https://app.agent-browser-gateway.com`; browser login, route discovery, and shared-tab traffic use `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`. Account login authorizes browser registration and client access. The service handles shared-tab metadata, requested content, screenshots, operation inputs/results, and transferred artifacts. This mode is not local-only, and local audit-file guarantees below apply to the desktop path. See [Cloud usage](docs/CLOUD_EXTENSION.md).
+Extension 1.3.5 can connect to the service selected in the popup without a desktop Gateway. The official account UI is `https://app.agent-browser-gateway.com`; browser login, route discovery, and shared-tab traffic use `https://connect.agent-browser-gateway.com` and `wss://connect.agent-browser-gateway.com`. Account login authorizes browser registration and client access. The service handles shared-tab metadata, requested content, screenshots, operation inputs/results, and transferred artifacts. This mode is not local-only, and local audit-file guarantees below apply to the desktop path. See [Cloud usage](docs/CLOUD_EXTENSION.md).
 
 A transient network failure or proxy restart may retry an authenticated per-tab connection once using its existing in-memory grants. The extension authenticates again and checks tab origin and expiry before re-announcing. Revocation, closed tabs, origin/destination changes and authentication failure end access. Old operations/results are not replayed, and worker/browser restarts do not restore manual shares.
 

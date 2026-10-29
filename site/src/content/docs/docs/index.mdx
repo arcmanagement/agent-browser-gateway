@@ -141,8 +141,9 @@ state are remembered. Dismiss a notice with its close button or Escape; ABG stop
 propagation and leaves annotation mode unchanged. Page handlers already registered on window
 capture can run first.
 
-For isolated profiles and sandbox machines, an opt-in all-tabs mode shares every tab in the profile.
-See [Security](./security/#consent-boundaries).
+## Domain sharing
+
+In isolated profiles or sandbox machines, select **Matching domains** under **Tab sharing** to share matching existing and new tabs automatically. Add multiple exact domains, wildcard subdomains such as `*.example.test`, or full-hostname regular expressions. Any matching condition is sufficient, subject to the shared HTTPS and port restrictions. Preview the matching tabs before applying. Leaving the allowed scope revokes automatic access. Rules are saved per connection, and editing them cancels Sandbox auto-resume consent. This mode requests the same optional `<all_urls>` permission as **All tabs**; use manual sharing in personal or mixed-use profiles.
 
 ## Next
 
