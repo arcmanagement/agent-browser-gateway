@@ -1395,9 +1395,14 @@ describe("Domain scoped Sandbox sharing", () => {
     }
   });
   it.each([
-    "click_at",
-    "eval_script",
-  ])("does not dispatch %s after revoke/regrant during a tab lookup", async (method) => {
+    { method: "click_at", deferLookup: 1 },
+    { method: "click_at", deferLookup: 2 },
+    { method: "click_at", deferLookup: 3 },
+    { method: "eval_script", deferLookup: 1 },
+  ])("does not dispatch $method after revoke/regrant during lookup $deferLookup", async ({
+    method,
+    deferLookup,
+  }) => {
     vi.spyOn(Date, "now").mockReturnValue(1000);
     const socket = await start();
     await message({ type: "set_eval_enabled", value: true });
@@ -1415,7 +1420,11 @@ describe("Domain scoped Sandbox sharing", () => {
     };
     let completeLookup!: (tab: typeof originalTab) => void;
     let lookupStarted = false;
-    mock.tabs.get.mockImplementationOnce(async () => {
+    let lookupCount = 0;
+    const getTab = mock.tabs.get.getMockImplementation();
+    if (!getTab) throw new Error("Missing tab lookup.");
+    mock.tabs.get.mockImplementation(async (tabId) => {
+      if (++lookupCount !== deferLookup) return await getTab(tabId);
       lookupStarted = true;
       return await new Promise<typeof originalTab>((resolve) => {
         completeLookup = resolve;

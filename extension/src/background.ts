@@ -1265,13 +1265,18 @@ async function requireCurrentSandboxScope(tabId: number, required = false): Prom
     return;
   }
   const tab = await browser.tabs.get(tabId).catch(() => undefined);
-  if (
-    !(await isAllTabsAccessActive()) ||
-    !tab ||
-    !(await sandboxTabMatches(tab)) ||
-    !tab.url ||
-    originForUrl(tab.url) !== share.origin
-  ) {
+  const matches =
+    (await isAllTabsAccessActive()) &&
+    tab &&
+    (await sandboxTabMatches(tab)) &&
+    tab.url &&
+    originForUrl(tab.url) === share.origin;
+  if (permittedTabs.get(tabId) !== share)
+    throw new GatewayError(
+      "tab_permission_changed",
+      "Tab sharing changed during scope validation.",
+    );
+  if (!matches) {
     await revokeTab(tabId, "sandbox_scope_mismatch");
     throw new GatewayError(
       "sandbox_scope_mismatch",
@@ -6868,21 +6873,27 @@ async function clickSelector(
 }
 
 async function clickAt(tabId: number, x: number, y: number): Promise<{ ok: true }> {
+  const grantStillValid = sharedTabAccessGuard(tabId);
+  const sendMouse = (params: Record<string, unknown>) => {
+    if (!grantStillValid())
+      throw new GatewayError("tab_permission_changed", "Tab sharing changed before mouse input.");
+    return browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", params);
+  };
   await attachDebugger(tabId);
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mouseMoved",
     x,
     y,
     button: "none",
   });
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mousePressed",
     x,
     y,
     button: "left",
     clickCount: 1,
   });
-  await browser.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+  await sendMouse({
     type: "mouseReleased",
     x,
     y,
