@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.6.zip
+dist/agent-browser-gateway-extension-1.3.7.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.7 review notes
+
+- Detects silent Cloud connection failures when a negotiated keepalive pong is missing for 10 seconds, then applies the existing reconnect and sharing policy without replaying pending operations.
+- Keeps popup connection settings usable after a page annotation-status read exceeds 1.5 seconds. Annotation controls remain disabled until a successful refresh.
+- No new Chrome permissions or changes to sharing or approval boundaries. Desktop versions are unchanged.
 
 ## 1.3.6 review notes
 
