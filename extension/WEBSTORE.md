@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.7.zip
+dist/agent-browser-gateway-extension-1.3.8.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.8 review notes
+
+- Fix select-all input through the common keyboard operation: Ctrl+A on Windows/Linux and Command+A on macOS.
+- Preserve the focused editor's normal key handlers and preventDefault behavior; ordinary typing still emits character input.
+- No new permissions, host access, or changes to sharing and operation approval.
 
 ## 1.3.7 review notes
 

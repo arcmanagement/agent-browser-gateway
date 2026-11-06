@@ -70,6 +70,105 @@ beforeEach(() => vi.resetModules());
 afterEach(() => vi.unstubAllGlobals());
 
 describe("background recovery boundaries", () => {
+  it("selects all editable text with the native shortcut and separate key edges", async () => {
+    const { chrome, command } = await startBackground();
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      const platform = await page.evaluate(() => navigator.platform);
+      vi.stubGlobal("navigator", { platform });
+      const modifier = /Mac/i.test(platform) ? "cmd" : "ctrl";
+      await page.setContent(
+        '<input value="connection-ok"><textarea>connection-ok</textarea><div contenteditable="true">connection-ok</div>',
+      );
+      const session = await page.context().newCDPSession(page);
+      chrome.debugger.sendCommand.mockImplementation(async (_target, method, params) => {
+        if (method === "Input.dispatchKeyEvent")
+          return session.send(method, params as { type: "keyDown" | "keyUp" | "char" });
+        return {};
+      });
+      for (const selector of ["input", "textarea", "div"]) {
+        for (const separate of [false, true]) {
+          const element = page.locator(selector);
+          await element.evaluate((el) => {
+            el.focus();
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+              el.setSelectionRange(13, 13);
+            } else {
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              range.collapse(false);
+              const selection = getSelection();
+              selection?.removeAllRanges();
+              selection?.addRange(range);
+            }
+          });
+          const params = { key: "a", modifiers: [modifier] };
+          if (separate) {
+            await command("key_down", params);
+            await command("key_up", params);
+          } else {
+            expect(await command("key_press", params)).toMatchObject({ result: { ok: true } });
+          }
+          expect(
+            await element.evaluate((el) =>
+              el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement
+                ? el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+                : getSelection()?.toString(),
+            ),
+          ).toBe("connection-ok");
+        }
+      }
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("respects prevented shortcuts and still types ordinary letters", async () => {
+    const { chrome, command } = await startBackground();
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      const platform = await page.evaluate(() => navigator.platform);
+      vi.stubGlobal("navigator", { platform });
+      const modifier = /Mac/i.test(platform) ? "cmd" : "ctrl";
+      await page.setContent('<input value="connection-ok">');
+      const session = await page.context().newCDPSession(page);
+      chrome.debugger.sendCommand.mockImplementation(async (_target, method, params) => {
+        if (method === "Input.dispatchKeyEvent")
+          return session.send(method, params as { type: "keyDown" | "keyUp" | "char" });
+        return {};
+      });
+      const input = page.locator("input");
+      await input.evaluate((el) => {
+        if (!(el instanceof HTMLInputElement)) throw new Error("Expected input");
+        el.focus();
+        el.setSelectionRange(13, 13);
+        el.addEventListener("keydown", (event) => {
+          if (event.ctrlKey || event.metaKey) event.preventDefault();
+        });
+      });
+      await command("key_press", { key: "a", modifiers: [modifier] });
+      expect(
+        await input.evaluate((el) => {
+          if (!(el instanceof HTMLInputElement)) throw new Error("Expected input");
+          return [el.selectionStart, el.selectionEnd];
+        }),
+      ).toEqual([13, 13]);
+      const keyEvents = chrome.debugger.sendCommand.mock.calls
+        .filter(([, method]) => method === "Input.dispatchKeyEvent")
+        .map(([, , params]) => params);
+      expect(keyEvents).toEqual([
+        expect.objectContaining({ type: "keyDown", windowsVirtualKeyCode: 65 }),
+        expect.objectContaining({ type: "keyUp", windowsVirtualKeyCode: 65 }),
+      ]);
+      await command("key_press", { key: "a" });
+      expect(await input.inputValue()).toBe("connection-oka");
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("activates native buttons with Enter and a held Space through debugger commands", async () => {
     const { chrome, command } = await startBackground();
     const browser = await chromium.launch({ headless: true });

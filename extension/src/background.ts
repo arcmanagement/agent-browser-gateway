@@ -135,7 +135,7 @@ declare const __ABG_WS_URL__: string;
 
 const browser = browserAdapter;
 const DEFAULT_GATEWAY_WEBSOCKET_URL = normalizeGatewayWebSocketUrl(__ABG_WS_URL__);
-const VERSION = "1.3.7";
+const VERSION = "1.3.8";
 const ALL_URLS_ORIGINS = ["<all_urls>"];
 const BOOKMARKS_PERMISSION = "bookmarks" as chrome.runtime.ManifestPermissions;
 const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.ManifestPermissions;
@@ -8150,6 +8150,17 @@ const KEY_CODE_MAP: Record<string, string> = {
 // Native button activation uses these codes in addition to DOM key names.
 const ACTIVATION_KEY_CODES: Record<string, number> = { Enter: 13, " ": 32 };
 
+function keyVirtualKeyCode(key: string): number | undefined {
+  return /^[a-z]$/i.test(key) ? key.toUpperCase().charCodeAt(0) : ACTIVATION_KEY_CODES[key];
+}
+
+function keyEditingCommands(key: string, modifiers: number): string[] {
+  // macOS CDP key events require an explicit editing command for native shortcuts.
+  return /Mac/i.test(navigator.platform) && key.toLowerCase() === "a" && modifiers === 4
+    ? ["selectAll"]
+    : [];
+}
+
 function modifiersToBitmask(modifiers: string[]): number {
   let mask = 0;
   for (const m of modifiers) {
@@ -8177,16 +8188,23 @@ async function keyPress(
     key: resolvedKey,
     code: resolvedCode,
     modifiers: mods,
-    windowsVirtualKeyCode: ACTIVATION_KEY_CODES[resolvedKey],
+    windowsVirtualKeyCode: keyVirtualKeyCode(resolvedKey),
   };
   try {
     await attachDebugger(tabId);
     await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
       type: "keyDown",
       ...base,
+      commands: keyEditingCommands(resolvedKey, mods),
     });
-    const text =
-      resolvedKey === "Enter" ? "\r" : resolvedKey.length === 1 ? resolvedKey : undefined;
+    const shortcut = (mods & 4) !== 0 || ((mods & 2) !== 0 && (mods & 1) === 0);
+    const text = shortcut
+      ? undefined
+      : resolvedKey === "Enter"
+        ? "\r"
+        : resolvedKey.length === 1
+          ? resolvedKey
+          : undefined;
     if (text !== undefined) {
       await browser.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
         type: "char",
@@ -8258,7 +8276,8 @@ async function keyEdge(
     key: resolvedKey,
     code: resolvedCode,
     modifiers: mods,
-    windowsVirtualKeyCode: ACTIVATION_KEY_CODES[resolvedKey],
+    windowsVirtualKeyCode: keyVirtualKeyCode(resolvedKey),
+    ...(type === "keyDown" ? { commands: keyEditingCommands(resolvedKey, mods) } : {}),
   });
   return { ok: true, type };
 }

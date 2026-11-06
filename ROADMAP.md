@@ -2,7 +2,7 @@
 
 Living document. Reflects current intent, not commitment. Last updated 2026-11-06.
 
-Chrome extension version: **v1.3.7**, distributed separately as `extension-v1.3.7`.
+Chrome extension version: **v1.3.8**, distributed separately as `extension-v1.3.8`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.8 — Select-all keyboard input (2026-11-06)
+
+- Select editable text with Ctrl+A on Windows/Linux and Command+A on macOS, including separate key-down/key-up operations.
+- Supply alphabetic virtual key codes, avoid character input for shortcuts, and send the native macOS select-all editing command.
+- Respect page shortcut cancellation and retain ordinary typing. No new Chrome permissions or changes to sharing and approval.
 
 ### Chrome extension v1.3.7 — Cloud connection liveness (2026-11-06)
 
