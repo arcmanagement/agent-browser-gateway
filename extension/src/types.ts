@@ -455,6 +455,7 @@ export type BackgroundToPopup =
       };
       settings: ExtensionSettings;
       annotationState: {
+        available?: boolean;
         enabled: boolean;
         count: number;
         // Saved annotations (from before a reload) that are not shown in the page right now.

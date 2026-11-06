@@ -142,6 +142,7 @@ const READING_LIST_PERMISSION = "readingList" as unknown as chrome.runtime.Manif
 const HEARTBEAT_PERIOD_MIN = 0.5; // 30s — Chrome 117+ minimum, anything lower is silently dropped
 const APPROVAL_TIMEOUT_MS = 60_000;
 const APPROVAL_WINDOW_FALLBACK_TIMEOUT_MS = APPROVAL_TIMEOUT_MS + 2_000;
+const POPUP_ANNOTATION_TIMEOUT_MS = 1500;
 const EVAL_DEFAULT_MAX_BYTES = 64 * 1024;
 const EVAL_HARD_MAX_BYTES = 256 * 1024;
 const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -9229,6 +9230,27 @@ browser.runtime.onMessage.addListener((rawMsg: unknown, sender, sendResponse) =>
   return true; // async response
 });
 
+async function popupAnnotationState(tabId: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    // Page scripts may stall on an unresponsive renderer. Keep connection repair available.
+    const state = await Promise.race([
+      runAnnotationCommand(tabId, { action: "list" }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Annotation status unavailable")),
+          POPUP_ANNOTATION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    return { ...state, available: true };
+  } catch {
+    return { enabled: false, count: 0, saved: undefined, available: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
   if (msg.type === "get_connection_status") {
     return {
@@ -9258,14 +9280,8 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       sharedTabs.push({ tabId, title: p.title, url: p.url, accessMode: p.accessMode });
     }
     const annotationState = permittedTabs.has(msg.tabId)
-      ? await runAnnotationCommand(msg.tabId, { action: "list" }).catch(() => ({
-          ok: true as const,
-          enabled: false,
-          count: 0,
-          annotations: [],
-          saved: undefined,
-        }))
-      : { ok: true as const, enabled: false, count: 0, annotations: [], saved: undefined };
+      ? await popupAnnotationState(msg.tabId)
+      : { enabled: false, count: 0, saved: undefined, available: true };
     return {
       type: "state",
       permitted: permittedTabs.has(msg.tabId),
@@ -9289,6 +9305,7 @@ async function handleRuntimeMessage(msg: RuntimeMessage): Promise<RuntimeRespons
       personalDataAccess: await personalDataAccessState(),
       settings: await getSettings(),
       annotationState: {
+        available: annotationState.available,
         enabled: annotationState.enabled,
         count: annotationState.count,
         restorableCount: restorableCountFromSummary(annotationState.saved),

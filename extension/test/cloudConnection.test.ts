@@ -87,6 +87,34 @@ function mockNativeUpload(): void {
 }
 
 describe("connection diagnostic integration", () => {
+  it("returns connection settings when the annotation page script never responds", async () => {
+    await configure();
+    await message({ type: "permit", tabId: 1 });
+    const socket = lastSocket();
+    socket.open();
+    socket.message({ type: "authenticated" });
+    await state();
+    mock.scripting.executeScript.mockImplementation(() => new Promise(() => {}));
+    const returned = vi.fn();
+    const response = state().then(returned);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(returned).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "state",
+        wsConnected: true,
+        permitted: true,
+        annotationState: expect.objectContaining({ available: false }),
+      }),
+    );
+    await response;
+    expect(await message({ type: "get_connection_status" })).toMatchObject({
+      phase: "ready",
+      wsConnected: true,
+    });
+    mock.scripting.executeScript.mockResolvedValue([]);
+    expect(await state()).toMatchObject({ annotationState: { available: true } });
+  });
+
   it("reports live connection phases without page queries or new Cloud requests", async () => {
     await configure();
     const status = () => message({ type: "get_connection_status" });
@@ -338,7 +366,10 @@ describe("Cloud connection boundary", () => {
       ...(supported ? { capabilities: ["keepalive-v1"] } : {}),
     });
     await state();
-    await vi.advanceTimersByTimeAsync(60_000);
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(20_000);
+      if (supported) socket.message({ type: "pong" });
+    }
     expect(socket.sent.filter((frame) => frame.type === "ping")).toHaveLength(supported ? 3 : 0);
     expect(await state()).toMatchObject({
       wsConnected: true,
@@ -1503,7 +1534,7 @@ describe("Domain scoped Sandbox sharing", () => {
 });
 
 describe("Saved Cloud Sandbox resume", () => {
-  async function optIn(config?: SandboxSharing) {
+  async function optIn(config?: SandboxSharing, capabilities?: string[]) {
     const saved = {
       id: crypto.randomUUID(),
       name: "Isolated",
@@ -1526,7 +1557,7 @@ describe("Saved Cloud Sandbox resume", () => {
     );
     const socket = lastSocket();
     socket.open();
-    socket.message({ type: "authenticated" });
+    socket.message({ type: "authenticated", ...(capabilities ? { capabilities } : {}) });
     await vi.waitFor(() => expect(socket.sent.some((f) => f.type === "tab_permitted")).toBe(true));
     expect(await message({ type: "set_cloud_sandbox_resume", value: true })).toEqual({
       type: "ok",
@@ -1743,6 +1774,42 @@ describe("Saved Cloud Sandbox resume", () => {
     expect(next.sent).toEqual([{ type: "authenticate", token: fixtureCode }]);
     next.message({ type: "authenticated" });
     await vi.waitFor(() => expect(next.sent.some((f) => f.type === "tab_permitted")).toBe(true));
+  });
+  it("recovers opted-in Sandbox after a silent keepalive failure without replaying operations", async () => {
+    const { socket: silent } = await optIn(undefined, ["keepalive-v1"]);
+    silent.message({
+      id: "before-timeout",
+      method: "click_selector",
+      params: { tabId: 1, selector: "#submit" },
+    });
+    await vi.waitFor(() =>
+      expect(silent.sent.some((frame) => frame.type === "approval_pending")).toBe(true),
+    );
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(silent.readyState).toBe(3);
+    await vi.waitFor(async () =>
+      expect(await state()).toMatchObject({ allTabsAccess: { resumeEnabled: true, active: true } }),
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+    const recovered = lastSocket();
+    expect(recovered).not.toBe(silent);
+    recovered.open();
+    expect(recovered.sent).toEqual([{ type: "authenticate", token: fixtureCode }]);
+    recovered.message({ type: "authenticated", capabilities: ["keepalive-v1"] });
+    await vi.waitFor(() =>
+      expect(recovered.sent.some((f) => f.type === "tab_permitted")).toBe(true),
+    );
+    expect(await state()).toMatchObject({ wsConnected: true, allTabsAccess: { active: true } });
+    expect(recovered.sent.some((f) => f.type === "response")).toBe(false);
+    expect(
+      mock.debugger.sendCommand.mock.calls.some(
+        ([, method]) => method === "Input.dispatchMouseEvent",
+      ),
+    ).toBe(false);
+    const diagnostic = await message({ type: "get_connection_diagnostics" });
+    expect(diagnostic).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ event: "keepalive_timeout" })]),
+    });
   });
   it("turning Sandbox off cancels pending resume and does not return after restart", async () => {
     const { socket } = await optIn();

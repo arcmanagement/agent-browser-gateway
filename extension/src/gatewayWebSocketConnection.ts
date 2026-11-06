@@ -41,6 +41,7 @@ export class GatewayWebSocketConnection {
   private socket: GatewaySocket | null = null;
   private reconnectTimer: unknown = null;
   private keepAliveTimer: unknown = null;
+  private keepAliveResponseTimer: unknown = null;
   private readonly reconnectDelayMs: number;
   private readonly schedule: (callback: () => void, delayMs: number) => unknown;
   private readonly cancelScheduled: (timer: unknown) => void;
@@ -106,8 +107,13 @@ export class GatewayWebSocketConnection {
     socket.addEventListener("message", (event) => {
       if (this.socket !== socket) return;
       receivedAt = Date.now();
-      if (this.keepAliveTimer !== null && (event as MessageEvent).data === '{"type":"pong"}')
+      if (
+        (this.keepAliveTimer !== null || this.keepAliveResponseTimer !== null) &&
+        (event as MessageEvent).data === '{"type":"pong"}'
+      ) {
+        this.cancelKeepAliveResponse();
         return;
+      }
       this.options.onMessage(event as MessageEvent);
     });
     let closeRecorded = false;
@@ -185,6 +191,10 @@ export class GatewayWebSocketConnection {
       this.keepAliveTimer = null;
       if (this.socket !== socket || socket.readyState !== OPEN) return;
       try {
+        this.keepAliveResponseTimer = this.schedule(() => {
+          this.keepAliveResponseTimer = null;
+          this.handleSocketError(socket, "keepalive_timeout");
+        }, 10_000);
         this.send('{"type":"ping"}');
         this.keepAliveTimer = this.schedule(ping, 20_000);
       } catch (error) {
@@ -196,14 +206,19 @@ export class GatewayWebSocketConnection {
   }
 
   private stopKeepAlive(): void {
-    if (this.keepAliveTimer === null) return;
-    this.cancelScheduled(this.keepAliveTimer);
+    if (this.keepAliveTimer !== null) this.cancelScheduled(this.keepAliveTimer);
     this.keepAliveTimer = null;
+    this.cancelKeepAliveResponse();
   }
 
-  private handleSocketError(socket: GatewaySocket): void {
+  private cancelKeepAliveResponse(): void {
+    if (this.keepAliveResponseTimer !== null) this.cancelScheduled(this.keepAliveResponseTimer);
+    this.keepAliveResponseTimer = null;
+  }
+
+  private handleSocketError(socket: GatewaySocket, event: DiagnosticEvent = "socket_error"): void {
     if (this.socket !== socket) return;
-    this.diagnostic("socket_error", this.socketDetails?.());
+    this.diagnostic(event, this.socketDetails?.());
     this.stopKeepAlive();
     this.socket = null;
     this.socketDetails = undefined;
