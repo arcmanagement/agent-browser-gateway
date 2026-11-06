@@ -1,4 +1,4 @@
-# Chrome extension 1.3.7
+# Chrome extension 1.3.8
 
 Use Alt+Shift+A (Option+Shift+A on macOS) to start or stop annotating the current tab. If it is not
 shared, the shortcut shares it first using the existing consent checks. Alt+Shift+M switches
@@ -12,7 +12,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 ## Install and connect
 
-1. Download `agent-browser-gateway-extension-1.3.7.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.7).
+1. Download `agent-browser-gateway-extension-1.3.8.zip` and its checksum from the [extension release](https://github.com/arcmanagement/agent-browser-gateway/releases/tag/extension-v1.3.8).
 2. Verify the checksum, extract the ZIP, enable Developer mode at `chrome://extensions`, and choose **Load unpacked** with the extracted directory. Keep that directory for as long as Chrome uses it.
 3. Choose **Connect to → Cloud** in the extension, name the destination, and choose **Log in to register this connection**.
 4. Sign in with email/password on the Web page and approve the browser. Return to the extension and apply the saved destination.
@@ -20,7 +20,7 @@ Agent Browser Gateway supports both a local desktop Gateway and an optional Clou
 
 Saved destinations keep a browser credential in trusted extension storage, not the account password. Credentials expire and can be renewed or revoked in the Web dashboard. A manual code is an advanced, session-only alternative. Removing a saved destination deletes its local credential and stops its active shares; revoke server access in the dashboard as well when retiring a browser.
 
-The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.3.7.
+The GitHub ZIP is the direct distribution artifact. Chrome Web Store upload, review, and final publication have separate status; do not assume a Store-installed version already contains 1.3.8.
 
 ## Sharing and operations
 
@@ -58,6 +58,13 @@ Changing between local and Cloud, changing the Cloud endpoint, or replacing its 
 
 When operation approval is off, Cloud reads including snapshots, element descriptions, find results, editable validation, input values, state values, and network response bodies skip the approval window on shared tabs. This applies to manual shares as well as Sandbox, without requiring AutoMode or automatic resume. Cloud account-forced approval still applies, and password and sign-in-code reads remain blocked. File attachments also follow the operation approval toggle on both manual shares and Sandbox. Turning it off skips the attachment approval window for both transferred bytes and browser-host file paths, without requiring AutoMode or automatic resume. Only browser-host path uploads require Chrome's file-URL permission. Recording retains its separate approval gate.
 
+## Select-all keyboard input
+
+Focus the intended editable field before sending `tab_key` with `key: "a"` and
+`modifiers: ["ctrl"]` on Windows/Linux, or `["cmd"]` on macOS. Separate
+`key_down`/`key_up` operations support the same shortcut. The page can cancel
+the shortcut with `preventDefault()`; inspect the selection before replacing text.
+
 ## Connection diagnostics
 
 Open **Advanced → Connection history** in the extension popup (**詳細設定 → 接続履歴** in Japanese). Choose **Refresh** after a disconnect and **Save JSON** to export the timeline. Connection diagnostics are available starting with version 1.1.2.
@@ -86,4 +93,4 @@ The browser credential is sent only to the selected gateway. The extension opens
 
 ## Release scope
 
-Only the Chrome extension is 1.3.7. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.3.7` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
+Only the Chrome extension is 1.3.8. macOS remains 0.5.2 and Windows remains 0.5.3. The extension release uses `extension-v1.3.8` so it does not run the unified desktop release pipeline. Chrome Web Store signs Store packages; the direct ZIP is an unpacked extension distribution, not a separately signed `.crx` file.
