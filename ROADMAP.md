@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-10-29.
+Living document. Reflects current intent, not commitment. Last updated 2026-11-06.
 
-Chrome extension version: **v1.3.6**, distributed separately as `extension-v1.3.6`.
+Chrome extension version: **v1.3.7**, distributed separately as `extension-v1.3.7`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.7 — Cloud connection liveness (2026-11-06)
+
+- Detect a missing negotiated keepalive response after 10 seconds and use the existing transient reconnect policy.
+- Keep connection settings usable when a page annotation-status read stalls; disable annotation controls until the next successful refresh.
+- Discard pending operations on recovery. No new Chrome permissions or changes to sharing consent; desktop versions are unchanged.
 
 ### Chrome extension v1.3.6 — Annotation keyboard focus (2026-10-29)
 
