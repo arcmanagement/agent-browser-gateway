@@ -12,6 +12,7 @@ export const diagnosticEvents = [
   "socket_construct_failed",
   "socket_open",
   "socket_error",
+  "keepalive_timeout",
   "socket_closed",
   "disconnect_requested",
   "reconnect_scheduled",

@@ -29,6 +29,105 @@ class MockGatewaySocket implements GatewaySocket {
 }
 
 describe("GatewayWebSocketConnection", () => {
+  it("does not mistake other traffic for a keepalive response", () => {
+    vi.useFakeTimers();
+    try {
+      const socket = new MockGatewaySocket();
+      const onMessage = vi.fn();
+      const connection = new GatewayWebSocketConnection({
+        endpoint: "wss://gateway.example/ws",
+        createSocket: () => socket,
+        onOpen: vi.fn(),
+        onMessage,
+        onConnectionChange: vi.fn(),
+        onWarning: vi.fn(),
+        autoReconnect: () => false,
+      });
+      connection.ensureConnected();
+      socket.emit("open", new Event("open"));
+      connection.startKeepAlive();
+      vi.advanceTimersByTime(20_000);
+      socket.emit("message", new MessageEvent("message", { data: '{"id":"command"}' }));
+      expect(onMessage).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(10_000);
+      expect(socket.close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels an outstanding keepalive deadline when replacing the endpoint", () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: MockGatewaySocket[] = [];
+      const onConnectionChange = vi.fn();
+      const connection = new GatewayWebSocketConnection({
+        endpoint: "wss://gateway.example/ws",
+        createSocket: () => {
+          const socket = new MockGatewaySocket();
+          sockets.push(socket);
+          return socket;
+        },
+        onOpen: vi.fn(),
+        onMessage: vi.fn(),
+        onConnectionChange,
+        onWarning: vi.fn(),
+        autoReconnect: () => false,
+      });
+      connection.ensureConnected();
+      sockets[0]?.emit("open", new Event("open"));
+      connection.startKeepAlive();
+      vi.advanceTimersByTime(20_000);
+      connection.reconnect("wss://replacement.example/ws");
+      sockets[1]?.emit("open", new Event("open"));
+      onConnectionChange.mockClear();
+      vi.advanceTimersByTime(60_000);
+      expect(sockets[1]?.close).not.toHaveBeenCalled();
+      expect(onConnectionChange).not.toHaveBeenCalled();
+      connection.disconnect();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reconnects when an open socket silently stops returning keepalive responses", () => {
+    vi.useFakeTimers();
+    try {
+      const sockets: MockGatewaySocket[] = [];
+      const onConnectionChange = vi.fn();
+      const onDiagnostic = vi.fn();
+      const connection = new GatewayWebSocketConnection({
+        endpoint: "wss://gateway.example/ws",
+        createSocket: () => {
+          const socket = new MockGatewaySocket();
+          sockets.push(socket);
+          return socket;
+        },
+        onOpen: vi.fn(),
+        onMessage: vi.fn(),
+        onConnectionChange,
+        onDiagnostic,
+        onWarning: vi.fn(),
+      });
+      connection.ensureConnected();
+      sockets[0]?.emit("open", new Event("open"));
+      connection.startKeepAlive();
+      vi.advanceTimersByTime(30_000);
+      expect(sockets[0]?.send).toHaveBeenCalledWith('{"type":"ping"}');
+      expect(sockets[0]?.close).toHaveBeenCalledOnce();
+      expect(onConnectionChange).toHaveBeenLastCalledWith(false, undefined, true);
+      expect(onDiagnostic).toHaveBeenCalledWith("keepalive_timeout", expect.any(Object));
+      vi.advanceTimersByTime(3000);
+      expect(sockets).toHaveLength(2);
+      connection.disconnect();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("treats a failed keepalive send as a transient transport failure", () => {
     vi.useFakeTimers();
     try {

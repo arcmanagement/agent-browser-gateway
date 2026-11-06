@@ -372,7 +372,7 @@ function renderRestoreButton(state: PopupState, tabId: number): void {
 function renderAnnotations(state: PopupState, tabId: number): void {
   annotationsEl.hidden = !state.permitted;
   if (!state.permitted) return;
-  annotationBtn.disabled = false;
+  annotationBtn.disabled = state.annotationState.available === false;
   annotationBtn.textContent = annotationButtonLabel(state.annotationState, lang);
   annotationBtn.className = state.annotationState.enabled ? "annotation-on" : "secondary";
   annotationBtn.onclick = async () => {
@@ -392,7 +392,8 @@ function renderAnnotations(state: PopupState, tabId: number): void {
     await refresh();
   };
   clearAnnotationsBtn.disabled =
-    state.annotationState.count === 0 && state.annotationState.restorableCount === 0;
+    state.annotationState.available === false ||
+    (state.annotationState.count === 0 && state.annotationState.restorableCount === 0);
   clearAnnotationsBtn.onclick = async () => {
     clearAnnotationsBtn.disabled = true;
     clearStatus();
