@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.8.zip
+dist/agent-browser-gateway-extension-1.3.9.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,13 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.9 review notes
+
+- In the optional Matching domains Sandbox mode, the user can now share or revoke an individual tab outside the domain rules from the popup or keyboard shortcut. This uses the existing per-tab consent flow.
+- A manually shared tab may create a Sandbox tab only for URLs that match the user's domain rules; other Sandbox actions still require automatic sharing.
+- With the existing Cloud Sandbox resume consent, manual shares survive a background worker restart. A browser restart still ends them, and the popup says so.
+- No new permissions or host access.
 
 ## 1.3.8 review notes
 

@@ -1,6 +1,6 @@
 ---
 name: agent-browser-gateway
-version: 1.3.8
+version: 1.3.9
 description: 普段使いの Chrome タブは per-tab 明示許可、隔離プロファイルでは opt-in の all-tabs mode で AI に渡すゲートウェイ。ユーザーが「いま見てる画面を見て」「このタブの DOM/スクショ/コンソールを取って」「ここをクリックして」のように現在の Chrome タブの内容や操作に言及したとき、`abg` CLI で共有中タブを観測・操作する
 ---
 
@@ -8,7 +8,7 @@ description: 普段使いの Chrome タブは per-tab 明示許可、隔離プ�
 
 ## Cloud接続
 
-Chrome拡張1.3.8のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
+Chrome拡張1.3.9のCloud接続では、ローカルのMacアプリや`abg` CLIは不要。拡張の **Connect to → Cloud** で接続先を選び、**Log in to register this connection** からWebでメール・パスワード認証してブラウザーを許可する。認証UIは `https://app.agent-browser-gateway.com` が担当する。AI連携は同サイトの `/oauth/authorize` で本人が許可する。
 
 Cloud MCPが接続済みなら `tabs_list` でbrowserId・generation・tab ID・URLを確認し、公開された `tab_read`、画面取得、操作、plugin commandのtool schemaに従う。ローカルCLIのコマンド名や引数をCloud toolへそのまま渡さない。接続し直したら一覧を取得し直す。未共有タブや、許可されていないブラウザーへ迂回しない。
 
@@ -26,7 +26,7 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 
 ## ドメイン単位の共有
 
-分離したプロファイルやサンドボックス環境では、**タブの共有**で**条件に一致するドメイン**を選ぶと、条件に一致する既存のタブと新しく開くタブを自動で共有できます。完全一致のドメイン、`*.example.test`のようなワイルドカード付きサブドメイン、ホスト名全体に一致する正規表現を複数登録できます。いずれかの条件に一致すれば共有対象になりますが、共有時のHTTPSとポートの制限も適用されます。適用前に、一致するタブをプレビューで確認してください。タブが許可範囲から外れると、自動アクセスは取り消されます。ルールは接続ごとに保存され、編集するとSandboxの自動再開への同意が取り消されます。このモードは、**すべてのタブ**と同じ任意権限の`<all_urls>`を要求します。個人用、または用途が混在するプロファイルでは、手動共有を使用してください。
+分離したプロファイルやサンドボックス環境では、**タブの共有**で**条件に一致するドメイン**を選ぶと、条件に一致する既存のタブと新しく開くタブを自動で共有できます。完全一致のドメイン、`*.example.test`のようなワイルドカード付きサブドメイン、ホスト名全体に一致する正規表現を複数登録できます。いずれかの条件に一致すれば共有対象になりますが、共有時のHTTPSとポートの制限も適用されます。適用前に、一致するタブをプレビューで確認してください。タブが許可範囲から外れると、自動アクセスは取り消されます。条件に一致しないタブも手動で共有でき、手動共有したタブからは、条件に一致するURLに限ってタブを作成できます。ルールは接続ごとに保存され、編集するとSandboxの自動再開への同意が取り消されます。このモードは、**すべてのタブ**と同じ任意権限の`<all_urls>`を要求します。個人用、または用途が混在するプロファイルでは、手動共有を使用してください。
 
 ## 注釈の参照ID
 
@@ -40,9 +40,9 @@ Windows では `abg.exe` を使う。パス、profile、制限の差分は [WIND
 
 ポップアップを開いている間、接続表示は自動で更新されます。接続の準備中や認証中は進行状況を示し、認証済みの接続ではConnected、実際に接続が切れた場合はDisconnectedと表示します。表示の更新時も、編集中の設定は保持されます。
 
-接続済みの手動Cloud接続は、一時的なネットワーク障害やプロキシの再起動で切断された場合、3秒後に1回だけ再接続を試みます。既存の共有許可はメモリ内に保持し、拡張機能が再認証を行ったうえで、各タブの現在のオリジンと有効期限を確認してから共有を通知します。共有の取り消し、タブの閉鎖、オリジンや接続先の変更、認証の失敗があれば、アクセスを終了します。以前の操作や結果を再送することはなく、ワーカーやブラウザーの再起動後は手動共有を復元しません。サービスが対応している場合は、20秒ごとに定型のping/pongフレームを交換し、ワーカーとソケットを稼働状態に保ちます。再接続後はタブ一覧を再取得し、現在の世代を確認してください。
+接続済みの手動Cloud接続は、一時的なネットワーク障害やプロキシの再起動で切断された場合、3秒後に1回だけ再接続を試みます。既存の共有許可はメモリ内に保持し、拡張機能が再認証を行ったうえで、各タブの現在のオリジンと有効期限を確認してから共有を通知します。共有の取り消し、タブの閉鎖、オリジンや接続先の変更、認証の失敗があれば、アクセスを終了します。以前の操作や結果を再送することはありません。ワーカーの再起動後は、保存済みのCloud接続にSandboxの自動再開への同意がある場合に限って手動共有を復元します。ブラウザーの再起動後は手動共有を復元しません。サービスが対応している場合は、20秒ごとに定型のping/pongフレームを交換し、ワーカーとソケットを稼働状態に保ちます。再接続後はタブ一覧を再取得し、現在の世代を確認してください。
 
-Cloud切断の調査では、拡張1.3.8の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残る。1001だけでは原因を断定できない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
+Cloud切断の調査では、拡張1.3.9の **詳細設定 → 接続履歴** からJSONを保存する。直近7日間・最大200件の切断コード、認証段階、意図した切断、worker再起動を追える。認証情報やページ内容は含まれない。1001で既知のプロキシ再起動理由を受けた場合は`cloudflare_proxy_restarting`が残る。1001だけでは原因を断定できない。1006だけではネットワークとサービスの障害を区別できないため、UTC時刻でサービスログと照合する。
 
 1. `abg status` で Gateway が起動しているか確認 (running: true なら OK)
 2. `abg tabs --compact` で共有中タブの安定 ref (`t1` など)、profile、URL、`accessMode` を確認
@@ -521,7 +521,7 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - Cookie / Web Storage inspection は `abg state <ref>` を使う。shared tab origin の cookies / localStorage / sessionStorage を read-only で列挙し、値は default redacted。`--values` を明示した場合だけ full values を返し、Gateway audit log に values requested と count が残る。write/delete は提供しない
 - Framework / Web Vitals inspection は `abg framework <ref>` を使う。React は page が compatible React DevTools hook を露出している場合だけ bounded tree を返し、hook がなければ unavailable と DOM marker summary を返す。Web Vitals は Performance API snapshot、SPA navigation は Navigation API がある場合のみ。pre-page-load instrumentation、component patch、telemetry collector は入れない
 - Advanced automation parity は `docs/ADVANCED_AUTOMATION_POLICY.md` の mode 境界に従う。normal per-tab / sandbox all-tabs / self-hosted / official non-goal を混同しない。cookie/storage mutation、network mocking、init scripts、emulation、tab/window の作成・閉鎖は normal personal-profile per-tab には出さない。共有済みタブの `raise` は既存ウィンドウの前面化に限定する
-- Sandbox browser-owned controls は `abg sandbox <ref> ...` を使う。Gateway は `accessMode: all_tabs` 以外では拒否する。viewport emulation、localStorage/sessionStorage set/delete、sandbox tab create/close は local approval と Gateway audit を通る。mixed personal profile では all-tabs mode を有効にしない
+- Sandbox browser-owned controls は `abg sandbox <ref> ...` を使う。Gateway は `accessMode: all_tabs` 以外では拒否する。ただし、**条件に一致するドメイン**のモードでは、手動共有したタブも条件に一致するURLに限って tab create を使える。viewport emulation、localStorage/sessionStorage set/delete、sandbox tab create/close は local approval と Gateway audit を通る。mixed personal profile では all-tabs mode を有効にしない
 - Official ABG non-goals: ABG-operated cloud relay、ABG operators への telemetry、明示的な per-call approval または Trusted automation / AutoMode なしの hidden general JS execution。#71 の remote pairing は user-controlled Tailnet/LAN path であり ABG-operated relay ではない。self-hosted metrics は user/team-owned endpoint に限定する
 - 共有はユーザーが明示的に許可した時だけ。CLI から `permit` で勝手に許可することはできない
 - screenshot / console / click_at / type / key は Chrome の DevTools Protocol を使うため、対象タブには「このタブはデバッグ中です」の黄色バーが表示される (透明性の担保)

@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-11-06.
+Living document. Reflects current intent, not commitment. Last updated 2026-11-09.
 
-Chrome extension version: **v1.3.8**, distributed separately as `extension-v1.3.8`.
+Chrome extension version: **v1.3.9**, distributed separately as `extension-v1.3.9`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,13 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.9 — Manual sharing with Matching domains (2026-11-09)
+
+- Share or revoke a tab outside the Matching domains rules from the popup or `Alt+Shift+S`; tabs a rule shares keep their automatic sharing.
+- Let a manually shared tab create Sandbox tabs that match the rules through Cloud; the local desktop Gateway accepts this from its next release. Other Sandbox actions still require an automatic share.
+- With Cloud Sandbox resume consent, keep manual shares across background worker restarts. The popup now says a browser restart ends sharing.
+- No new Chrome permissions.
 
 ### Chrome extension v1.3.8 — Select-all keyboard input (2026-11-06)
 
