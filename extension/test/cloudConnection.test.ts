@@ -1593,6 +1593,44 @@ describe("Saved Cloud Sandbox resume", () => {
     );
     expect(socket.sent.find((f) => f.type === "tab_permitted")).toMatchObject({ tabId: 1 });
   });
+  async function restartWorkerKeepingSession() {
+    // Unlike a browser restart, a worker restart keeps chrome.storage.session and tab IDs.
+    for (const socket of Socket.instances) socket.dispose();
+    mock.runtime.onMessage.clear();
+    mock.alarms.onAlarm.clear();
+    mock.permissions.onRemoved.clear();
+    vi.clearAllTimers();
+    vi.resetModules();
+    await import("../src/background.js");
+    return state();
+  }
+  it("keeps manual shares across a worker restart only with resume consent", async () => {
+    await optIn(domainConfig);
+    const outside = await mock.tabs.create({ url: "https://outside.test/" });
+    expect(await message({ type: "permit", tabId: outside.id })).toEqual({ type: "ok" });
+    const restarted = await restartWorkerKeepingSession();
+    expect(restarted).toMatchObject({ allTabsAccess: { active: true, resumeEnabled: true } });
+    if (restarted.type === "state")
+      expect(restarted.sharedTabs).toContainEqual(
+        expect.objectContaining({ tabId: outside.id, accessMode: "manual" }),
+      );
+
+    expect(await message({ type: "set_cloud_sandbox_resume", value: false })).toEqual({
+      type: "ok",
+    });
+    const withoutConsent = await restartWorkerKeepingSession();
+    if (withoutConsent.type === "state") expect(withoutConsent.sharedTabs).toEqual([]);
+  });
+  it("does not restore a manual share whose tab moved to another origin", async () => {
+    await optIn(domainConfig);
+    const outside = await mock.tabs.create({ url: "https://outside.test/" });
+    await message({ type: "permit", tabId: outside.id });
+    for (const socket of Socket.instances) socket.dispose();
+    mock.tabs.tabs.set(outside.id, { ...outside, url: "https://other.test/" });
+    const restarted = await restartWorkerKeepingSession();
+    if (restarted.type === "state")
+      expect(restarted.sharedTabs.map((tab) => tab.tabId)).not.toContain(outside.id);
+  });
   async function allowInputs() {
     const current = await optIn();
     await message({ type: "set_operations_require_approval", value: false });
