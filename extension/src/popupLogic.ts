@@ -277,6 +277,8 @@ export function tabGate(
     if (state.settings?.sandboxSharing.scope === "domains") {
       if (state.activeTab.accessMode === "manual")
         return gate("open", "success", "popup.tab.shared", "popup.tab.sharedDetail");
+      if (!state.permitted && state.activeTab.incognito && !state.activeTab.incognitoAccessAllowed)
+        return gate("blocked", "neutral", "popup.tab.blocked", "popup.incognito.body");
       if (!state.permitted)
         return gate("closed", "neutral", "popup.tab.notShared", "popup.sharing.outside");
       return gate("sandbox", "warning", "popup.sharing.shared", "popup.sharing.sharedDetail");

@@ -210,8 +210,10 @@ tab leaves the allowed scope, and resumes sharing when it returns. Sandbox tab c
 to matching URLs. Operation approval and account policy still apply. Rules are saved per local
 Gateway endpoint or saved Cloud connection; switching connections stops automatic sharing, and
 changing the rules cancels Sandbox auto-resume until it is enabled again. Manual grants remain
-independent. The wire-level `all_tabs` access mode continues to identify Sandbox grants; the
-extension enforces the selected domain scope before commands and before returning their results.
+independent: a tab outside the rules can still be shared manually from the popup or the shortcut,
+and that share follows the manual rules. The wire-level `all_tabs` access mode continues to identify
+Sandbox grants; the extension enforces the selected domain scope before commands and before
+returning their results.
 
 A saved Cloud connection with Sandbox enabled can additionally opt into **Resume Sandbox after restart or disconnect**. The extension reconnects and authenticates before announcing tabs, using consent scoped to that saved connection and credential. Turning Sandbox off, removing site access, switching or deleting the connection, rejected credentials, or another browser replacing the connection cancels auto-resume. Profiles that do not opt in keep the default restart behaviour. HTTP 401/403 responses also cancel resume when caused by a Cloud service authentication configuration fault; the current server protocol cannot distinguish that fault from a rejected browser credential.
 

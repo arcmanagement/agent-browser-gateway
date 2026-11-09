@@ -45,8 +45,9 @@ shows matching open tabs without enabling access. Existing and new matching tabs
 regardless of who opens them. Leaving the scope revokes automatic access; returning restores it.
 Creating a Sandbox tab outside the scope is rejected. Conditions are saved per connection and are
 restored with that connection's explicit Sandbox auto-resume consent. Editing conditions cancels
-auto-resume consent and invalidates pending Sandbox operations. Manual shares and account-forced
-operation approval retain their separate rules.
+auto-resume consent and invalidates pending Sandbox operations. Tabs outside the conditions can
+still be shared manually from the popup or the shortcut. Manual shares and account-forced operation
+approval retain their separate rules.
 
 AI clients use Cloud tools such as `tabs_list`, `tab_read`, and the plugin command surface. A browser ID and current generation identify the browser session; rediscover tabs after reconnecting. Cloud plugin registration and execution use the selected service, rather than the desktop `~/.abg/plugins` directory. Install only trusted plugins, and authorize only the browsers and operations the client needs.
 

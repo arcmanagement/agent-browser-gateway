@@ -8889,6 +8889,7 @@ async function annotationFromShortcut(command: string, tab: BrowserTab | undefin
           tab,
           permitted: false,
           allTabsActive: await isAllTabsAccessActive(),
+          sharingScope: (await getSettings()).sandboxSharing.scope,
           incognitoAccessAllowed: await isIncognitoAccessAllowed(),
         });
         if (decision.action === "blocked") {
@@ -8927,14 +8928,18 @@ async function activeTabForShortcut(commandTab?: BrowserTab): Promise<BrowserTab
 
 async function toggleShareFromShortcut(tab: BrowserTab | undefined): Promise<void> {
   await reconcileAllTabsAccess();
-  const [allTabsActive, incognitoAccessAllowed] = await Promise.all([
+  const [allTabsActive, incognitoAccessAllowed, settings] = await Promise.all([
     isAllTabsAccessActive(),
     isIncognitoAccessAllowed(),
+    getSettings(),
   ]);
+  const shared = typeof tab?.id === "number" ? permittedTabs.get(tab.id) : undefined;
   const decision = decideShareToggle({
     tab,
-    permitted: typeof tab?.id === "number" && permittedTabs.has(tab.id),
+    permitted: shared !== undefined,
+    accessMode: shared?.accessMode,
     allTabsActive,
+    sharingScope: settings.sandboxSharing.scope,
     incognitoAccessAllowed,
   });
   if (decision.action === "blocked") {
