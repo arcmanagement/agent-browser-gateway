@@ -3227,7 +3227,7 @@ async function runApprovedOperation(
   const shared = permittedTabs.get(tabId);
   const grantStillValid = sharedTabAccessGuard(tabId);
   const consentRevision = sandboxConsentRevision;
-  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
+  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId, cmd.params?.action);
   const operation = buildOperation(cmd, tabId);
   await requireOperationApproval(
     cmd.method,
@@ -3237,7 +3237,7 @@ async function runApprovedOperation(
   );
   if (epoch !== connectionEpoch || !permittedTabs.has(tabId))
     throw new Error("Connection or tab sharing changed before the operation.");
-  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId);
+  if (cmd.method === "sandbox_action") await requireSandboxAccess(tabId, cmd.params?.action);
   const current = permittedTabs.get(tabId);
   const actual = await browser.tabs.get(tabId);
   if (
@@ -3262,7 +3262,18 @@ async function runApprovedOperation(
   return operation.run();
 }
 
-async function requireSandboxAccess(tabId: number): Promise<void> {
+// A manual share outside the domain rules may open a tab, but only a tab the rules would share
+// automatically; sandboxCreateTab checks the URL. Other Sandbox actions stay automatic-only.
+async function isManualTabCreateSource(tabId: number): Promise<boolean> {
+  return (
+    permittedTabs.get(tabId)?.accessMode === "manual" &&
+    (await isAllTabsAccessActive()) &&
+    (await getSettings()).sandboxSharing.scope === "domains"
+  );
+}
+
+async function requireSandboxAccess(tabId: number, action: unknown): Promise<void> {
+  if (action === "tab-create" && (await isManualTabCreateSource(tabId))) return;
   if (!(await isAllTabsAccessActive()) || permittedTabs.get(tabId)?.accessMode !== "all_tabs")
     throw new GatewayError(
       "sandbox_profile_required",
@@ -6867,7 +6878,7 @@ async function sandboxStorage(
 }
 
 async function sandboxCreateTab(tabId: number, url: string): Promise<Record<string, unknown>> {
-  await requireCurrentSandboxScope(tabId, true);
+  await requireSandboxAccess(tabId, "tab-create");
   if (!matchesSandboxSharing(url, (await getSettings()).sandboxSharing))
     throw new GatewayError("sandbox_scope_mismatch", "Tab creation is limited to allowed domains.");
   if (connectionDestination === "cloud" && !isCloudShareableUrl(url))

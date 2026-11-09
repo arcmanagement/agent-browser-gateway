@@ -1498,7 +1498,10 @@ final class GatewayCoordinator: ObservableObject, GatewayRuntime, @unchecked Sen
             }
             params["targetTabId"] = targetTab.tabId
         }
-        guard tab.accessMode == "all_tabs" else {
+        // The extension decides whether a manual share may create a tab: it allows this only in
+        // Matching domains mode and only for URLs the rules would share automatically.
+        let manualTabCreate = tab.accessMode != "all_tabs" && params["action"] as? String == "tab-create"
+        guard tab.accessMode == "all_tabs" || manualTabCreate else {
             return CLIResponse(
                 id: req.id,
                 error: ErrorPayload(

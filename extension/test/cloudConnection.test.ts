@@ -1328,6 +1328,33 @@ describe("Domain scoped Sandbox sharing", () => {
     ).toMatchObject({ result: { ok: true } });
     expect(mock.tabs.tabs.has(2)).toBe(false);
   });
+  it("lets a manual share outside the rules create only matching tabs", async () => {
+    const socket = await start();
+    await message({ type: "set_operations_require_approval", value: false });
+    const outside = await mock.tabs.create({ url: "https://outside.test/" });
+    expect(await message({ type: "permit", tabId: outside.id })).toEqual({ type: "ok" });
+    expect(
+      await command(socket, "manual-create", "sandbox_action", {
+        tabId: outside.id,
+        action: "tab-create",
+        url: "https://dev8.example.test/",
+      }),
+    ).toMatchObject({ result: { ok: true } });
+    expect(
+      await command(socket, "manual-create-outside", "sandbox_action", {
+        tabId: outside.id,
+        action: "tab-create",
+        url: "https://other.test/",
+      }),
+    ).toMatchObject({ error: { code: "sandbox_scope_mismatch" } });
+    expect(
+      await command(socket, "manual-close", "sandbox_action", {
+        tabId: outside.id,
+        action: "tab-close",
+      }),
+    ).toMatchObject({ error: { code: "sandbox_profile_required" } });
+    expect(mock.tabs.tabs.has(outside.id)).toBe(true);
+  });
   it("rejects access to a navigated tab even before its update event is processed", async () => {
     const socket = await start();
     const current = mock.tabs.tabs.get(1);
