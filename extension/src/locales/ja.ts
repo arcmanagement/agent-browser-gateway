@@ -72,7 +72,7 @@ export const ja: MessageCatalog = {
   "popup.tab.notShared": "共有していません",
   "popup.tab.unsupported": "このページは共有できません",
   "popup.tab.sharedDetail":
-    "エージェントがこのタブを読み取り、操作できます。共有を解除するか、タブが別のサイトに移ると共有は終わります。",
+    "エージェントがこのタブを読み取り、操作できます。共有を解除したとき、タブが別のサイトに移ったとき、ブラウザを再起動したときに共有は終わります。",
   "popup.tab.notSharedDetail":
     "共有するまで、エージェントはこのタブを見ることも操作することもできません。",
   "popup.tab.allTabsDetail":

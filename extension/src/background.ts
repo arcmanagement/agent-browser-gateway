@@ -822,12 +822,13 @@ const bootstrapReady = (async () => {
   connectionDiagnostics.record("worker_started");
   if (connectionDestination === "local") await restoreState();
   else {
+    const { permittedTabs: storedShares } = await browser.storage.session.get("permittedTabs");
     await clearConnectionShares();
     cloudSandboxResumeEnabled = await restoreCloudSandboxResume();
     if (!cloudSandboxResumeEnabled) {
       await disableCloudSandboxResume();
       await browser.storage.local.set({ allTabsAccessEnabled: false });
-    }
+    } else await restoreCloudManualShares(storedShares);
   }
   await reconcileAllTabsAccess();
   ensureWS();
@@ -1453,6 +1454,23 @@ async function restoreState(): Promise<void> {
     permittedTabs.set(tabId, { ...v, accessMode: v.accessMode ?? "manual" });
     await updateBadge(tabId);
   }
+}
+
+// Resume consent is bound to the saved connection and credential, so it also covers manual
+// shares that survived a worker restart. A browser restart clears session storage and changes
+// tab IDs, so nothing from before it can be matched to a tab here.
+async function restoreCloudManualShares(stored: unknown): Promise<void> {
+  if (!stored || typeof stored !== "object") return;
+  for (const [key, share] of Object.entries(stored as Record<string, PermittedTab>)) {
+    if (share?.accessMode !== "manual") continue;
+    const tabId = Number(key);
+    const tab = await browser.tabs.get(tabId).catch(() => undefined);
+    if (!tab?.url || !isCloudShareableUrl(tab.url) || originForUrl(tab.url) !== share.origin)
+      continue;
+    permittedTabs.set(tabId, { ...share, url: tab.url, title: tab.title ?? share.title });
+    await updateBadge(tabId);
+  }
+  await saveState();
 }
 
 // ---------- WebSocket ----------

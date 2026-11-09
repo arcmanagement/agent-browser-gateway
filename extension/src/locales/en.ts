@@ -75,7 +75,7 @@ export const en = {
   "popup.tab.notShared": "Not shared",
   "popup.tab.unsupported": "Can't share this page",
   "popup.tab.sharedDetail":
-    "Agents can read and operate this tab. Sharing ends when you revoke it or the tab leaves this site.",
+    "Agents can read and operate this tab. Sharing ends when you revoke it, the tab leaves this site, or the browser restarts.",
   "popup.tab.notSharedDetail": "Agents can't see or operate this tab until you share it.",
   "popup.tab.allTabsDetail": "Sandbox mode is on: every tab in this profile is shared.",
   "popup.tab.unsupportedDetail": "Only http, https, and file pages can be shared.",
