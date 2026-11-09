@@ -169,7 +169,8 @@ export const en = {
   "popup.sharing.shared": "Shared by domain rule",
   "popup.sharing.sharedDetail":
     "This tab matches an automatic sharing rule. Sharing ends if it leaves the allowed scope.",
-  "popup.sharing.outside": "This tab is outside the automatic sharing rules.",
+  "popup.sharing.outside":
+    "This tab is outside the automatic sharing rules. You can share it manually.",
   "popup.sharing.invalid":
     "Check the conditions and ports. Add at least one non-empty hostname or valid regular expression. Ports must be between 1 and 65535.",
   "popup.sharing.permissionDenied":
@@ -353,6 +354,8 @@ export const en = {
   "shortcut.blocked.noActiveTab": "No active tab. Click into a tab, then press the shortcut again.",
   "shortcut.blocked.allTabsMode":
     "All-tabs mode is on, so tabs can't be shared or revoked one at a time. Nothing was changed. Turn off all-tabs mode in the popup first.",
+  "shortcut.blocked.domainRuleShared":
+    "A domain rule shares this tab, so it can't be revoked on its own. Nothing was changed. Change the rules or stop automatic sharing in the popup first.",
   "shortcut.blocked.incognito":
     'ABG is off in incognito, so this tab can\'t be shared. Turn on "Allow in incognito" in the extension settings first.',
   "shortcut.blocked.unsupportedPage":

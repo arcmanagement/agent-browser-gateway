@@ -164,7 +164,7 @@ export const ja: MessageCatalog = {
   "popup.sharing.shared": "ドメイン条件により共有中",
   "popup.sharing.sharedDetail":
     "このタブは自動共有の条件に一致します。許可範囲から外れると、共有が終了します。",
-  "popup.sharing.outside": "このタブは自動共有の条件に一致していません。",
+  "popup.sharing.outside": "このタブは自動共有の条件に一致していません。手動で共有できます。",
   "popup.sharing.invalid":
     "条件とポートを確認してください。空欄でないホスト名、または有効な正規表現を1つ以上追加してください。ポートには1〜65535を指定してください。",
   "popup.sharing.permissionDenied":
@@ -353,6 +353,8 @@ export const ja: MessageCatalog = {
     "アクティブなタブがありません。タブをクリックしてから、もう一度ショートカットを押してください。",
   "shortcut.blocked.allTabsMode":
     "全タブ共有がオンのため、タブごとの共有と共有解除はできません。変更はしていません。先にポップアップで全タブ共有をオフにしてください。",
+  "shortcut.blocked.domainRuleShared":
+    "このタブはドメイン条件で共有されているため、このタブだけ共有を解除することはできません。変更はしていません。先にポップアップで条件を変更するか、自動共有を停止してください。",
   "shortcut.blocked.incognito":
     "シークレット モードで ABG が無効なため、このタブは共有できません。先に拡張機能の設定で「シークレット モードでの実行を許可する」をオンにしてください。",
   "shortcut.blocked.unsupportedPage":

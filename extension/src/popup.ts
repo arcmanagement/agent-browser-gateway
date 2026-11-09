@@ -556,7 +556,12 @@ function renderSharingSettings(state: PopupState): void {
 function renderAction(state: PopupState, tabId: number, mode: GateMode): void {
   actionBtn.hidden = false;
   actionBtn.disabled = false;
-  if (state.allTabsAccess.active) {
+  // Matching domains leaves tabs outside its rules to the normal share flow; the Tab sharing
+  // setting remains the way to stop automatic sharing from those tabs.
+  if (
+    state.allTabsAccess.active &&
+    (state.settings.sandboxSharing.scope !== "domains" || mode === "sandbox")
+  ) {
     actionBtn.textContent = t(lang, "popup.sharing.disable");
     actionBtn.className = "action danger";
     actionBtn.onclick = async () => {

@@ -397,6 +397,20 @@ describe("decideShareToggle", () => {
     ).toEqual({ action: "blocked", reason: "all_tabs_mode", tabId: 7 });
   });
 
+  it("allows manual sharing outside Matching domains rules", () => {
+    const domains = { ...base, allTabsActive: true, sharingScope: "domains" as const };
+    expect(decideShareToggle({ ...domains, tab: httpsTab })).toEqual({
+      action: "permit",
+      tabId: 7,
+    });
+    expect(
+      decideShareToggle({ ...domains, tab: httpsTab, permitted: true, accessMode: "manual" }),
+    ).toEqual({ action: "revoke", tabId: 7 });
+    expect(
+      decideShareToggle({ ...domains, tab: httpsTab, permitted: true, accessMode: "all_tabs" }),
+    ).toEqual({ action: "blocked", reason: "domain_rule_shared", tabId: 7 });
+  });
+
   it("blocks incognito tabs until incognito access is allowed", () => {
     const incognitoTab = { ...httpsTab, incognito: true };
     expect(

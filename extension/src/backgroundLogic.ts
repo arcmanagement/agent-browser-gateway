@@ -1,4 +1,5 @@
 import { formatText, type Language, type LocalizedText, msg } from "./i18n.js";
+import type { SandboxSharing } from "./sandboxSharing.js";
 import type { ShortcutFeedback, TabAccessMode } from "./types.js";
 
 // Optional API permissions (bookmarks, readingList) hide their namespace until the user grants
@@ -423,6 +424,7 @@ export type ShortcutTabSnapshot = {
 export type ShortcutBlockReason =
   | "no_active_tab"
   | "all_tabs_mode"
+  | "domain_rule_shared"
   | "incognito_access_disabled"
   | "unsupported_page";
 
@@ -433,16 +435,22 @@ export type ShareToggleDecision =
 
 // Mirrors the popup's Share / Revoke button: all-tabs mode and missing incognito
 // access take precedence, a shared tab is revoked, and an unshared tab is shared
-// only when it is an http, https, or file page.
+// only when it is an http, https, or file page. Matching domains mode still allows
+// manual sharing, except for a tab its rules already share.
 export function decideShareToggle(input: {
   tab: ShortcutTabSnapshot | undefined;
   permitted: boolean;
+  accessMode?: TabAccessMode;
   allTabsActive: boolean;
+  sharingScope?: SandboxSharing["scope"];
   incognitoAccessAllowed: boolean;
 }): ShareToggleDecision {
   const tabId = input.tab?.id;
   if (typeof tabId !== "number") return { action: "blocked", reason: "no_active_tab" };
-  if (input.allTabsActive) return { action: "blocked", reason: "all_tabs_mode", tabId };
+  if (input.allTabsActive && input.sharingScope !== "domains")
+    return { action: "blocked", reason: "all_tabs_mode", tabId };
+  if (input.allTabsActive && input.permitted && input.accessMode === "all_tabs")
+    return { action: "blocked", reason: "domain_rule_shared", tabId };
   if (input.tab?.incognito && !input.incognitoAccessAllowed) {
     return { action: "blocked", reason: "incognito_access_disabled", tabId };
   }
@@ -490,6 +498,8 @@ function blockedMessage(reason: ShortcutBlockReason, url: string | undefined): L
       return msg("shortcut.blocked.noActiveTab");
     case "all_tabs_mode":
       return msg("shortcut.blocked.allTabsMode");
+    case "domain_rule_shared":
+      return msg("shortcut.blocked.domainRuleShared");
     case "incognito_access_disabled":
       return msg("shortcut.blocked.incognito");
     case "unsupported_page": {

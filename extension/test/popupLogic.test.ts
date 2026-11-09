@@ -315,7 +315,7 @@ describe("popupLogic", () => {
     expect(tabGate({ ...state, permitted: false }, "https://outside.test/", "en")).toMatchObject({
       mode: "closed",
       headline: "Not shared",
-      detail: "This tab is outside the automatic sharing rules.",
+      detail: "This tab is outside the automatic sharing rules. You can share it manually.",
     });
     expect(
       tabGate(
@@ -324,6 +324,17 @@ describe("popupLogic", () => {
         "en",
       ),
     ).toMatchObject({ mode: "open", headline: "Shared with agents" });
+    expect(
+      tabGate(
+        {
+          ...state,
+          permitted: false,
+          activeTab: { incognito: true, incognitoAccessAllowed: false },
+        },
+        "https://outside.test/",
+        "en",
+      ).mode,
+    ).toBe("blocked");
   });
 
   it("explains pages that cannot be shared instead of offering Share", () => {
