@@ -114,7 +114,7 @@ abg screenshot --latest                 # 最後に保存したスクショパ�
 abg record start <tab|ref> [--mic] [--out out.webm] # 共有中タブを webm 録画 (tab audio、--mic で部屋の音も録音)
 abg record stop                         # 録画を停止し、webm の path/bytes/duration を返す
 abg record status                       # 現在の録画状態を確認
-abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text 注釈 overlay。DOM/スクショを自動判定
+abg annotate <tab|ref> [--start|--stop|--clear]  # Area/Text/Arrow 注釈 overlay。範囲は DOM/スクショを自動判定
 abg annotate <tab|ref> [--format json|text]      # 現在の注釈一覧を取得
 abg annotate <tab|ref> --restore                 # 再読み込み前に保存された注釈を復元
 abg annotate <tab|ref> --saved                   # 保存済み注釈を復元せずに表示
@@ -528,12 +528,13 @@ mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) 
 - `abg eval` は最終手段。通常は `read` / `get` / `find` / `wait --fn` / plugin command を優先する。eval は extension popup で default OFF。Trusted automation / AutoMode OFF では CLI の `--approve` と正確な script を表示する per-call approval が必要。AutoMode ON では共有済み tab に限って approval popup を省略できる。audit には script source、approval mode、result type/bytes summary が残る
 - eval の既定 timeout は 75 秒またはそれより長い profile 既定値で、`--timeout` は 1〜300 秒に clamp される。script は 64 KiB 以下を推奨し、256 KiB が hard limit。超過は送信前に `script_too_large`、実行時間超過は `command_timeout` で失敗する。大きな処理は分割するか named primitive / plugin にする
 - **Annotation mode**:
-  - 拡張の `Alt+Shift+A`（macOSは `Option+Shift+A`）で現在のタブの注釈を開始・終了できる。未共有なら既存の共有条件を確認して先に共有する。`Alt+Shift+M` は Area/Text 切替。全削除とバー表示切替にも `chrome://extensions/shortcuts` でキーを設定でき、画面には実際の割り当てが出る。全削除は3秒以内に2回押して確定する
+  - 拡張の `Alt+Shift+A`（macOSは `Option+Shift+A`）で現在のタブの注釈を開始・終了できる。未共有なら既存の共有条件を確認して先に共有する。`Alt+Shift+M` は Area/Text/Arrow を順に切替。全削除とバー表示切替にも `chrome://extensions/shortcuts` でキーを設定でき、画面には実際の割り当てが出る。全削除は3秒以内に2回押して確定する
   - ツールバーはグリップのドラッグ、またはフォーカス後の矢印キーで移動でき、位置と折り畳み状態が保存される。通知の×またはEscは通知を閉じ、Escの押下・キー解放の後続処理への伝播を止め、注釈モードを維持する。ページが先に登録したwindowのcapture処理は先に実行される場合がある
   - ユーザーが「ここにコメントした」「注釈を確認して」と言ったら、まず `abg tabs --compact` で ref を確認し、`abg annotate <ref>` で注釈一覧を取得する
-  - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る
+  - 注釈には `comment`、`kind` (`dom` / `screenshot` / `text` / `arrow`)、`viewportRect`、`rect` が入る。DOM 注釈なら `selector` / `element.text` / style 情報、Text 注釈なら top-level の `text` と追従用 `textAnchor` メタデータが入る
+  - Arrow 注釈 (`kind: "arrow"`) は「これをここへ移す」のような2か所の関係を表す。`arrow.from` を矢印の根元、`arrow.to` を矢印の先として読む。両端には `viewportPoint` が入り、何かを指す場合は、その要素の `selector` / `element.text`、または重ねた先の注釈の `annotationDisplayNumber` / `annotationReference` が入る。何をするかは `comment` から判断し、向きだけで意図を推測しない
   - Area 由来の注釈は、安定した DOM を指せる場合は `kind: "dom"`、任意範囲・canvas・動画・曖昧な wrapper は `kind: "screenshot"` になる。Text 由来の注釈は必ず `kind: "text"` として扱い、選択文字列を純粋なテキストデータとして読む
-  - `abg annotate <ref> --start` で overlay を出す。ユーザーは Area でドラッグ範囲作成、Text で複数 DOM をまたぐページ本文の選択範囲作成、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。Text 注釈は四角枠ではなくテキスト選択ハイライトとして表示する。DOM / Text 注釈は selector 追従を壊さないため移動/resize できない
+  - `abg annotate <ref> --start` で overlay を出す。ユーザーは Area でドラッグ範囲作成、Text で複数 DOM をまたぐページ本文の選択範囲作成、Arrow で2か所を結ぶ矢印作成と、選択中の矢印の端をドラッグした指す先の変更、コメント入力、スクショ注釈の DnD 移動、スクショ注釈の端/角 resize、選択中注釈の Delete/Backspace 削除、Done/Escape で停止ができる。Text 注釈は四角枠ではなくテキスト選択ハイライトとして表示する。DOM / Text 注釈は selector 追従を壊さないため移動/resize できない
   - popup の `Annotate this tab` は overlay 開始後に閉じる。Done 後も注釈は残るので、確認は `abg annotate <ref>` で行う
   - ページを再読み込みすると overlay は消えるが、注釈は tab ごとに保存される。`abg annotate <ref>` の結果が `count: 0` で `saved` を含むときは、`nextCommand` の `abg annotate <ref> --restore` を実行してから注釈を読む。自動復元はしない
   - `--restore` は対象を一意に特定できた注釈だけを描画する。`restore.unrestored` に入った注釈は DOM が変わって位置を特定できなかったもので、ページ上には描画されていない。`comment` と `reason` をユーザーに伝え、推測した位置の注釈として扱わない。`restoredBy: "coordinates"` は座標だけで戻した領域注釈

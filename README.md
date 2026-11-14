@@ -172,7 +172,7 @@ Keyboard shortcuts act only on the current tab:
 | `Alt+Shift+S` (`Option+Shift+S` on macOS) | Share the current tab if it is not shared, or revoke it if it is. This uses the same per-tab consent and revoke path as the popup button and never touches other tabs. |
 | `Alt+Shift+C` (`Option+Shift+C` on macOS) | Copy the current tab's numeric tab ID to the clipboard. This never grants or changes access; if the tab is not shared, ABG says so, and agents cannot use it until you share it. |
 | `Alt+Shift+A` (`Option+Shift+A` on macOS) | Start or stop annotation mode. If needed, share the current tab first using the same consent checks as Share. Stopping annotation mode keeps the tab shared. |
-| `Alt+Shift+M` (`Option+Shift+M` on macOS) | Switch between Area and Text while annotating. |
+| `Alt+Shift+M` (`Option+Shift+M` on macOS) | Cycle Area, Text, and Arrow while annotating. |
 | Unassigned | Clear all annotations while annotating. Press twice within three seconds to confirm. |
 | Unassigned | Show or hide the annotation toolbar while annotating. |
 
@@ -341,7 +341,7 @@ abg screenshot --latest                          # latest screenshot path
 abg record start <tab|ref> [--mic] [--out x.webm] # record tab to webm (tab audio; --mic adds room audio)
 abg record stop                                  # stop and write the webm, returns its path
 abg record status                                # show the active recording (if any)
-abg annotate <tab|ref> [--start|--stop|--clear]  # area/text annotations auto-classified as DOM or screenshot
+abg annotate <tab|ref> [--start|--stop|--clear]  # area/text/arrow annotations; areas auto-classified as DOM or screenshot
 abg annotate <tab|ref> [--format json|text]      # list current annotations
 abg annotate <tab|ref> --restore                 # restore annotations saved before a page reload
 abg annotate <tab|ref> --saved                   # print saved annotations without restoring them

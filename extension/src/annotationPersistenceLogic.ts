@@ -17,9 +17,21 @@ const MAX_FRAGMENTS = 64;
 
 export type SavedRect = { x: number; y: number; width: number; height: number };
 
+export type SavedArrowEnd = {
+  /** Coordinates in the space of `anchor`, as for a screenshot annotation's rect origin. */
+  point: { x: number; y: number };
+  anchor?: SavedAnnotation["anchor"];
+  /** Position inside the target box as fractions of its width and height. */
+  ratio?: { x: number; y: number };
+  selector?: string;
+  /** Another annotation the end was dropped on. */
+  annotationUid?: string;
+  element?: SavedAnnotation["element"];
+};
+
 export type SavedAnnotation = {
   uid: string;
-  kind: "screenshot" | "dom" | "text";
+  kind: "screenshot" | "dom" | "text" | "arrow";
   source: "drag" | "selection" | "cli";
   comment: string;
   displayNumber?: number;
@@ -39,6 +51,8 @@ export type SavedAnnotation = {
     | { type: "window" }
     | { type: "frame"; selector: string }
     | { type: "element"; selector: string };
+  /** Tail (`from`) and head (`to`) of an arrow annotation. */
+  arrow?: { from: SavedArrowEnd; to: SavedArrowEnd };
   createdAt: string;
   element?: {
     tag: string;
@@ -174,6 +188,33 @@ function sanitizeElement(value: unknown): SavedAnnotation["element"] {
   };
 }
 
+function sanitizeArrowEnd(value: unknown): SavedArrowEnd | null {
+  if (!isRecord(value) || !isRecord(value.point)) return null;
+  const x = finiteNumber(value.point.x);
+  const y = finiteNumber(value.point.y);
+  if (x === undefined || y === undefined) return null;
+  const end: SavedArrowEnd = { point: { x, y } };
+  const anchor = sanitizeAnchor(value.anchor);
+  if (anchor) end.anchor = anchor;
+  if (isRecord(value.ratio)) {
+    const ratioX = finiteNumber(value.ratio.x);
+    const ratioY = finiteNumber(value.ratio.y);
+    if (ratioX !== undefined && ratioY !== undefined) {
+      end.ratio = {
+        x: Math.min(1, Math.max(0, ratioX)),
+        y: Math.min(1, Math.max(0, ratioY)),
+      };
+    }
+  }
+  const selector = boundedString(value.selector, MAX_SELECTOR_LENGTH);
+  if (selector) end.selector = selector;
+  const annotationUid = boundedString(value.annotationUid, 128);
+  if (annotationUid) end.annotationUid = annotationUid;
+  const element = sanitizeElement(value.element);
+  if (element) end.element = element;
+  return end;
+}
+
 /**
  * Validates one annotation coming from the page. Unknown fields are dropped and strings are
  * bounded, so a hostile or buggy page session cannot bloat extension storage.
@@ -183,7 +224,14 @@ export function sanitizeSavedAnnotation(value: unknown): SavedAnnotation | null 
   const uid = boundedString(value.uid, 128);
   if (!uid) return null;
   const kind = value.kind;
-  if (kind !== "screenshot" && kind !== "dom" && kind !== "text") return null;
+  if (kind !== "screenshot" && kind !== "dom" && kind !== "text" && kind !== "arrow") return null;
+  let arrow: SavedAnnotation["arrow"];
+  if (kind === "arrow") {
+    const from = isRecord(value.arrow) ? sanitizeArrowEnd(value.arrow.from) : null;
+    const to = isRecord(value.arrow) ? sanitizeArrowEnd(value.arrow.to) : null;
+    if (!from || !to) return null;
+    arrow = { from, to };
+  }
   const rect = sanitizeRect(value.rect);
   if (!rect) return null;
   const source =
@@ -210,6 +258,7 @@ export function sanitizeSavedAnnotation(value: unknown): SavedAnnotation | null 
   if (anchor) annotation.anchor = anchor;
   const element = sanitizeElement(value.element);
   if (element) annotation.element = element;
+  if (arrow) annotation.arrow = arrow;
   return annotation;
 }
 

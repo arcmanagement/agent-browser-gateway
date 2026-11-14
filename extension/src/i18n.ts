@@ -156,6 +156,7 @@ export type AnnotationOverlayStrings = {
   modeGroup: string;
   modeArea: string;
   modeText: string;
+  modeArrow: string;
   clear: string;
   clearConfirm: string;
   clearConfirmTitle: string;
@@ -169,6 +170,7 @@ export type AnnotationOverlayStrings = {
   countOther: string;
   hintArea: string;
   hintText: string;
+  hintArrow: string;
   hintSelected: string;
   hintFinish: string;
   annotationLabel: string;
@@ -195,6 +197,7 @@ export function annotationOverlayStrings(lang: Language): AnnotationOverlayStrin
     modeGroup: template(lang, "overlay.modeGroup"),
     modeArea: template(lang, "overlay.modeArea"),
     modeText: template(lang, "overlay.modeText"),
+    modeArrow: template(lang, "overlay.modeArrow"),
     clear: template(lang, "overlay.clear"),
     clearConfirm: template(lang, "overlay.clearConfirm"),
     clearConfirmTitle: template(lang, "overlay.clearConfirmTitle"),
@@ -208,6 +211,7 @@ export function annotationOverlayStrings(lang: Language): AnnotationOverlayStrin
     countOther: template(lang, "overlay.count", 2),
     hintArea: template(lang, "overlay.hintArea"),
     hintText: template(lang, "overlay.hintText"),
+    hintArrow: template(lang, "overlay.hintArrow"),
     hintSelected: template(lang, "overlay.hintSelected"),
     hintFinish: template(lang, "overlay.hintFinish"),
     annotationLabel: template(lang, "overlay.annotationLabel"),

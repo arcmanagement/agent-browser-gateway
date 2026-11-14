@@ -13,7 +13,7 @@ Use the configured ABG connection and enumerate its current shared tabs. Never r
 - **Annotation ID:** strip `abg-annotation:` and validate a nonempty UID of at most 128 ASCII letters, digits, hyphens or underscores. On the permitted tabs, call `annotation_mode` action `get` with `uid`. Resolve exactly one matching annotation and its full browser/tab/generation target. Do not treat display numbers as IDs. A missing or ambiguous match must not be deleted.
 - **CLI:** `abg annotate <tab>` reads a whole tab; `abg annotate abg-annotation:<uid>` resolves and reads one annotation from currently shared tabs.
 
-Read the comment, selector, selected text and geometry. Capture the matched tab to confirm its target. A saved annotation may belong to an earlier URL: check the returned URL and avoid applying its coordinates to a different page. If the target cannot be confirmed, leave it in place and explain the uncertainty.
+Read the comment, selector, selected text and geometry. For an arrow annotation, read `arrow.from` as the tail and `arrow.to` as the head, and use each end's selector, element text, or linked annotation number to identify both places. Capture the matched tab to confirm its target. A saved annotation may belong to an earlier URL: check the returned URL and avoid applying its coordinates to a different page. If the target cannot be confirmed, leave it in place and explain the uncertainty.
 
 Once the content and target are confirmed, keep the request and target in the conversation and clear that same scope before investigating, replying, or implementing follow-up work:
 
