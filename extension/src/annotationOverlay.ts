@@ -120,13 +120,23 @@ export function runAnnotationCommand(
     | { type: "window" }
     | { type: "frame"; selector: string }
     | { type: "element"; selector: string };
+  type Point = { x: number; y: number };
+  type ArrowEnd = {
+    point: Point;
+    anchor?: ScrollAnchor;
+    ratio?: Point;
+    selector?: string;
+    annotationUid?: string;
+    element?: Annotation["element"];
+  };
   type Annotation = {
     id: number;
     uid: string;
     displayNumber?: number;
     restoredBy?: AnnotationRestoredBy;
     restoredAt?: string;
-    kind: "screenshot" | "dom" | "text";
+    kind: "screenshot" | "dom" | "text" | "arrow";
+    arrow?: { from: ArrowEnd; to: ArrowEnd };
     source: "drag" | "selection" | "cli";
     comment: string;
     selector?: string;
@@ -160,7 +170,7 @@ export function runAnnotationCommand(
   };
   type AnnotationState = {
     enabled: boolean;
-    mode: "area" | "text";
+    mode: "area" | "text" | "arrow";
     nextId: number;
     selectedId: number | null;
     annotations: Annotation[];
@@ -196,6 +206,12 @@ export function runAnnotationCommand(
     toolbarDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null;
     escapeToastHeld?: boolean;
     history?: { past: Annotation[][]; present: Annotation[]; future: Annotation[][] };
+    arrowGesture?: {
+      annotationId: number;
+      end: "from" | "to";
+      point: Point;
+      didMove: boolean;
+    } | null;
   };
   type WindowWithABGAnnotation = Window & { __abgAnnotationMode?: AnnotationState };
 
@@ -212,6 +228,7 @@ export function runAnnotationCommand(
     modeGroup: strings.modeGroup,
     modeArea: strings.modeArea,
     modeText: strings.modeText,
+    modeArrow: strings.modeArrow,
     clear: strings.clear,
     clearConfirm: (count: number) => fill(strings.clearConfirm, "count", count),
     clearConfirmTitle: strings.clearConfirmTitle,
@@ -225,6 +242,7 @@ export function runAnnotationCommand(
       fill(count === 1 ? strings.countOne : strings.countOther, "count", count),
     hintArea: strings.hintArea,
     hintText: strings.hintText,
+    hintArrow: strings.hintArrow,
     annotationLabel: (displayNumber: number) =>
       fill(strings.annotationLabel, "number", displayNumber),
     editorTitle: (displayNumber: number) => fill(strings.annotationLabel, "number", displayNumber),
@@ -643,13 +661,15 @@ export function runAnnotationCommand(
   const viewportToAnchoredRect = (
     state: AnnotationState,
     viewportRect: Rect,
+    // Arrow endpoints are points; the 16px minimum would move them off the spot the user picked.
+    clamp = true,
   ): {
     rect: Rect;
     viewportRect: Rect;
     scroll: { x: number; y: number };
     anchor: ScrollAnchor;
   } => {
-    const clamped = clampRect(viewportRect);
+    const clamped = clamp ? clampRect(viewportRect) : viewportRect;
     const anchor = anchorForViewportRect(state, clamped);
     if (anchor.type === "frame") {
       const frame = document.querySelector(anchor.selector);
@@ -695,34 +715,36 @@ export function runAnnotationCommand(
       rect: viewportToPageRect(clamped),
     };
   };
-  const storedAnnotationRectToViewport = (annotation: Annotation): Rect => {
-    if (annotation.anchor?.type === "frame") {
-      const frame = document.querySelector(annotation.anchor.selector);
+  const storedRectToViewport = (rect: Rect, anchor?: ScrollAnchor): Rect => {
+    if (anchor?.type === "frame") {
+      const frame = document.querySelector(anchor.selector);
       const win = frame ? frameWindowFor(frame) : null;
       if (frame && win) {
         const frameRect = frame.getBoundingClientRect();
         return {
-          x: Math.round(annotation.rect.x + frameRect.left - win.scrollX),
-          y: Math.round(annotation.rect.y + frameRect.top - win.scrollY),
-          width: Math.round(annotation.rect.width),
-          height: Math.round(annotation.rect.height),
+          x: Math.round(rect.x + frameRect.left - win.scrollX),
+          y: Math.round(rect.y + frameRect.top - win.scrollY),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
         };
       }
     }
-    if (annotation.anchor?.type === "element") {
-      const element = document.querySelector(annotation.anchor.selector);
+    if (anchor?.type === "element") {
+      const element = document.querySelector(anchor.selector);
       if (element instanceof HTMLElement) {
         const elementRect = element.getBoundingClientRect();
         return {
-          x: Math.round(annotation.rect.x + elementRect.left - element.scrollLeft),
-          y: Math.round(annotation.rect.y + elementRect.top - element.scrollTop),
-          width: Math.round(annotation.rect.width),
-          height: Math.round(annotation.rect.height),
+          x: Math.round(rect.x + elementRect.left - element.scrollLeft),
+          y: Math.round(rect.y + elementRect.top - element.scrollTop),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
         };
       }
     }
-    return pageToViewportRect(annotation.rect);
+    return pageToViewportRect(rect);
   };
+  const storedAnnotationRectToViewport = (annotation: Annotation): Rect =>
+    storedRectToViewport(annotation.rect, annotation.anchor);
   const textSelectionMatchForAnnotation = (
     annotation: Annotation,
     fallbackRect: Rect,
@@ -763,7 +785,66 @@ export function runAnnotationCommand(
       height: fragment.height,
     }));
   };
-  const anchoredToViewportRect = (annotation: Annotation): Rect => {
+  const pointInRect = (rect: Rect, ratio: Point = { x: 0.5, y: 0.5 }): Point => ({
+    x: Math.round(rect.x + rect.width * ratio.x),
+    y: Math.round(rect.y + rect.height * ratio.y),
+  });
+  const ratioInRect = (rect: Rect, point: Point): Point => ({
+    x: rect.width > 0 ? Math.min(1, Math.max(0, (point.x - rect.x) / rect.width)) : 0.5,
+    y: rect.height > 0 ? Math.min(1, Math.max(0, (point.y - rect.y) / rect.height)) : 0.5,
+  });
+  const rectContainsPoint = (rect: Rect, point: Point): boolean =>
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height;
+  const rectForPoints = (a: Point, b: Point): Rect => ({
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.max(1, Math.abs(a.x - b.x)),
+    height: Math.max(1, Math.abs(a.y - b.y)),
+  });
+  const queryElement = (selector: string): Element | null => {
+    try {
+      return document.querySelector(selector);
+    } catch {
+      return null;
+    }
+  };
+  // An end follows the annotation it was dropped on, then its element, then its stored
+  // coordinates, so the arrow keeps pointing at the same thing when the page scrolls or moves.
+  const arrowEndToViewport = (state: AnnotationState, end: ArrowEnd): Point => {
+    const target = end.annotationUid
+      ? state.annotations.find((item) => item.uid === end.annotationUid && item.kind !== "arrow")
+      : undefined;
+    if (target) return pointInRect(anchoredToViewportRect(state, target), end.ratio);
+    const element = end.selector ? queryElement(end.selector) : null;
+    if (element) {
+      try {
+        return pointInRect(rectForElement(element), end.ratio);
+      } catch {
+        // A hidden target falls back to the stored coordinates.
+      }
+    }
+    const rect = storedRectToViewport({ ...end.point, width: 0, height: 0 }, end.anchor);
+    return { x: rect.x, y: rect.y };
+  };
+  const arrowViewportPoints = (
+    state: AnnotationState,
+    annotation: Annotation,
+  ): { from: Point; to: Point } | null => {
+    const arrow = annotation.arrow;
+    if (!arrow) return null;
+    const gesture = state.arrowGesture;
+    const override = gesture?.annotationId === annotation.id ? gesture : null;
+    return {
+      from: override?.end === "from" ? override.point : arrowEndToViewport(state, arrow.from),
+      to: override?.end === "to" ? override.point : arrowEndToViewport(state, arrow.to),
+    };
+  };
+  const anchoredToViewportRect = (state: AnnotationState, annotation: Annotation): Rect => {
+    const points = annotation.kind === "arrow" ? arrowViewportPoints(state, annotation) : null;
+    if (points) return rectForPoints(points.from, points.to);
     const fallbackRect = storedAnnotationRectToViewport(annotation);
     const textRect = rectForTextAnnotation(annotation, fallbackRect);
     if (textRect) return textRect;
@@ -1003,16 +1084,46 @@ export function runAnnotationCommand(
       element: elementMetadata,
     };
   };
+  // Agents read where each end points now and which numbered annotation it targets, so they
+  // never have to infer the endpoints from a screenshot.
+  const describeArrowEnd = (state: AnnotationState, end: ArrowEnd, viewportPoint: Point) => {
+    const targetIndex = end.annotationUid
+      ? state.annotations.findIndex(
+          (item) => item.uid === end.annotationUid && item.kind !== "arrow",
+        )
+      : -1;
+    return {
+      ...end,
+      viewportPoint,
+      ...(targetIndex >= 0
+        ? {
+            annotationDisplayNumber: targetIndex + 1,
+            annotationReference: `abg-annotation:${end.annotationUid}`,
+          }
+        : {}),
+    };
+  };
   const snapshotAnnotations = (state: AnnotationState): Annotation[] =>
-    state.annotations.map((annotation, index) => ({
-      ...annotation,
-      displayNumber: index + 1,
-      reference: `abg-annotation:${annotation.uid}`,
-      viewportRect: anchoredToViewportRect(annotation),
-      scroll: scrollForAnchor(annotation.anchor),
-      url: location.href,
-      title: document.title,
-    }));
+    state.annotations.map((annotation, index) => {
+      const points = arrowViewportPoints(state, annotation);
+      return {
+        ...annotation,
+        displayNumber: index + 1,
+        reference: `abg-annotation:${annotation.uid}`,
+        viewportRect: anchoredToViewportRect(state, annotation),
+        scroll: scrollForAnchor(annotation.anchor),
+        url: location.href,
+        title: document.title,
+        ...(annotation.arrow && points
+          ? {
+              arrow: {
+                from: describeArrowEnd(state, annotation.arrow.from, points.from),
+                to: describeArrowEnd(state, annotation.arrow.to, points.to),
+              },
+            }
+          : {}),
+      };
+    });
   const makeUid = (): string => {
     const cryptoApi = (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto;
     try {
@@ -1080,7 +1191,7 @@ export function runAnnotationCommand(
       annotations,
       userMessage:
         action === "start"
-          ? "Annotation mode is active. Use Area to drag regions or Text to mark selected page text; click Done or press Escape to stop capturing."
+          ? "Annotation mode is active. Use Area to drag regions, Text to mark selected page text, or Arrow to drag from one place to another; click Done or press Escape to stop capturing."
           : undefined,
       nextCommand: "abg annotate <tab>",
     };
@@ -1129,9 +1240,11 @@ export function runAnnotationCommand(
     state.nextId = Math.max(0, ...state.annotations.map((annotation) => annotation.id)) + 1;
     state.selectedId = null;
     state.editGesture = null;
+    state.arrowGesture = null;
     state.dragStart = null;
     state.activeDraft = null;
     state.draft.hidden = true;
+    arrowDraftFor(state).hidden = true;
     state.clearArmedUntil = 0;
     state.lastSelectionSignature = null;
     closeEditor(state);
@@ -1287,7 +1400,7 @@ export function runAnnotationCommand(
   };
   const editAnnotation = (state: AnnotationState, annotation: Annotation) => {
     closeEditor(state);
-    const viewportRect = anchoredToViewportRect(annotation);
+    const viewportRect = anchoredToViewportRect(state, annotation);
     const displayNumber = state.annotations.indexOf(annotation) + 1;
     const form = document.createElement("form");
     const header = document.createElement("div");
@@ -1394,6 +1507,86 @@ export function runAnnotationCommand(
         parent.insertBefore(child, parent.children[index] ?? null);
     }
   };
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const svgNode = <K extends keyof SVGElementTagNameMap>(tag: K, className: string) => {
+    const node = document.createElementNS(svgNamespace, tag);
+    node.setAttribute("class", className);
+    return node;
+  };
+  // The SVG holds a white casing under the blue line for contrast on any page, and a wide
+  // transparent stroke so a thin line is still easy to click.
+  const createArrowSvg = (): SVGSVGElement => {
+    const svg = svgNode("svg", "abg-arrow-svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.append(
+      svgNode("line", "abg-arrow-casing"),
+      svgNode("polygon", "abg-arrow-head-casing"),
+      svgNode("line", "abg-arrow-line"),
+      svgNode("polygon", "abg-arrow-head"),
+      svgNode("line", "abg-arrow-hit"),
+    );
+    return svg;
+  };
+  const createArrowGroup = (): HTMLDivElement => {
+    const group = document.createElement("div");
+    const badge = document.createElement("span");
+    const comment = document.createElement("span");
+    badge.className = "abg-annotation-badge abg-arrow-badge";
+    badge.role = "button";
+    badge.tabIndex = 0;
+    badge.onkeydown = (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      badge.click();
+    };
+    comment.className = "abg-arrow-comment";
+    const handles = (["from", "to"] as const).map((end) => {
+      const handle = document.createElement("span");
+      handle.className = "abg-arrow-handle";
+      handle.dataset.end = end;
+      handle.hidden = true;
+      return handle;
+    });
+    group.append(createArrowSvg(), comment, badge, ...handles);
+    return group;
+  };
+  const drawArrow = (container: Element, from: Point, to: Point) => {
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    const unit = length > 0 ? { x: (to.x - from.x) / length, y: (to.y - from.y) / length } : null;
+    const headLength = Math.min(16, length * 0.5);
+    const base = unit
+      ? { x: to.x - unit.x * headLength, y: to.y - unit.y * headLength }
+      : { x: to.x, y: to.y };
+    const half = headLength * 0.55;
+    const head = unit
+      ? [
+          `${to.x},${to.y}`,
+          `${base.x - unit.y * half},${base.y + unit.x * half}`,
+          `${base.x + unit.y * half},${base.y - unit.x * half}`,
+        ].join(" ")
+      : "";
+    for (const line of container.querySelectorAll("line")) {
+      const isHit = line.classList.contains("abg-arrow-hit");
+      const end = isHit ? to : base;
+      line.setAttribute("x1", String(from.x));
+      line.setAttribute("y1", String(from.y));
+      line.setAttribute("x2", String(end.x));
+      line.setAttribute("y2", String(end.y));
+    }
+    for (const polygon of container.querySelectorAll("polygon")) {
+      polygon.setAttribute("points", head);
+    }
+  };
+  const arrowDraftFor = (state: AnnotationState): HTMLDivElement => {
+    const existing = state.shadow.querySelector<HTMLDivElement>(".abg-arrow-draft");
+    if (existing) return existing;
+    const draft = document.createElement("div");
+    draft.className = "abg-arrow-draft";
+    draft.hidden = true;
+    draft.append(createArrowSvg());
+    state.shadow.append(draft);
+    return draft;
+  };
   const renderAnnotations = (state: AnnotationState) => {
     const previous = new Map(
       Array.from(state.layer.children, (element) => {
@@ -1403,7 +1596,7 @@ export function runAnnotationCommand(
     );
     const markers: HTMLElement[] = [];
     for (const [index, annotation] of state.annotations.entries()) {
-      const rect = anchoredToViewportRect(annotation);
+      const rect = anchoredToViewportRect(state, annotation);
       const isSelected = state.enabled && state.selectedId === annotation.id;
       const canEditRect = annotation.kind === "screenshot";
       const openAnnotationEditor = (event: MouseEvent) => {
@@ -1429,10 +1622,82 @@ export function runAnnotationCommand(
         if (!isSelected)
           state.layer
             .querySelector<HTMLElement>(
-              `button[data-id="${annotation.id}"], .abg-text-selection-piece[data-id="${annotation.id}"]`,
+              `button[data-id="${annotation.id}"], .abg-text-selection-piece[data-id="${annotation.id}"], .abg-arrow-badge[data-id="${annotation.id}"]`,
             )
             ?.focus();
       };
+      if (annotation.kind === "arrow") {
+        const points = arrowViewportPoints(state, annotation);
+        if (!points) continue;
+        const existing = previous.get(annotation.uid);
+        const group = existing?.classList.contains("abg-arrow-group")
+          ? existing
+          : createArrowGroup();
+        group.className = ["abg-arrow-group", isSelected ? "abg-arrow-selected" : ""]
+          .filter(Boolean)
+          .join(" ");
+        group.dataset.id = String(annotation.id);
+        group.dataset.uid = annotation.uid;
+        drawArrow(group, points.from, points.to);
+        const title = state.enabled ? strings.annotationInteraction : strings.copyReference;
+        const badge = group.querySelector<HTMLElement>(".abg-arrow-badge");
+        if (badge) {
+          badge.dataset.id = String(annotation.id);
+          badge.textContent = String(index + 1);
+          badge.title = title;
+          badge.setAttribute("aria-label", ui.annotationLabel(index + 1));
+          // The badge sits just behind the tail so the tail handle and the line stay visible.
+          const length = Math.hypot(points.to.x - points.from.x, points.to.y - points.from.y);
+          const back = length > 0 ? 20 / length : 0;
+          const center = {
+            x: points.from.x - (points.to.x - points.from.x) * back,
+            y: points.from.y - (points.to.y - points.from.y) * back,
+          };
+          badge.style.left = `${Math.round(Math.min(Math.max(2, center.x - 11), innerWidth - 24))}px`;
+          badge.style.top = `${Math.round(Math.min(Math.max(2, center.y - 11), innerHeight - 24))}px`;
+        }
+        const comment = group.querySelector<HTMLElement>(".abg-arrow-comment");
+        if (comment) {
+          const mid = {
+            x: (points.from.x + points.to.x) / 2,
+            y: (points.from.y + points.to.y) / 2,
+          };
+          comment.textContent = annotation.comment;
+          comment.hidden = annotation.comment.length === 0;
+          comment.style.left = `${Math.round(Math.min(Math.max(8, mid.x + 8), innerWidth - 128))}px`;
+          comment.style.top = `${Math.round(Math.min(Math.max(8, mid.y + 8), innerHeight - 34))}px`;
+          comment.style.maxWidth = `${Math.round(Math.min(360, Math.max(120, innerWidth - mid.x - 24)))}px`;
+        }
+        for (const part of group.querySelectorAll<SVGElement | HTMLElement>(
+          ".abg-arrow-hit, .abg-arrow-badge, .abg-arrow-comment",
+        )) {
+          (part as HTMLElement).onclick = openAnnotationEditor;
+        }
+        const hit = group.querySelector<SVGLineElement>(".abg-arrow-hit");
+        if (hit) hit.setAttribute("aria-hidden", "true");
+        for (const handle of group.querySelectorAll<HTMLElement>(".abg-arrow-handle")) {
+          const end = handle.dataset.end === "from" ? "from" : "to";
+          const point = points[end];
+          handle.hidden = !isSelected;
+          handle.style.left = `${Math.round(point.x - 7)}px`;
+          handle.style.top = `${Math.round(point.y - 7)}px`;
+          handle.onmousedown = (event) => {
+            if (!state.enabled || event.button !== 0) return;
+            commitEditor(state);
+            state.selectedId = annotation.id;
+            state.arrowGesture = {
+              annotationId: annotation.id,
+              end,
+              point: { x: event.clientX, y: event.clientY },
+              didMove: false,
+            };
+            event.preventDefault();
+            event.stopPropagation();
+          };
+        }
+        markers.push(group);
+        continue;
+      }
       if (annotation.kind === "text") {
         const existing = previous.get(annotation.uid);
         const group = existing?.tagName === "DIV" ? existing : document.createElement("div");
@@ -1612,6 +1877,79 @@ export function runAnnotationCommand(
       openEditor: options.openEditor,
     });
   };
+  // Records what an arrow end points at. Dropping on an existing annotation links to it; the
+  // element under the pointer is kept as well so the end still resolves if that annotation is
+  // deleted. Large layout containers are skipped because they do not tell an agent anything.
+  const resolveArrowEnd = (state: AnnotationState, point: Point): ArrowEnd => {
+    const anchored = viewportToAnchoredRect(state, { ...point, width: 0, height: 0 }, false);
+    const end: ArrowEnd = {
+      point: { x: anchored.rect.x, y: anchored.rect.y },
+      anchor: anchored.anchor,
+    };
+    const hit = state.annotations
+      .filter((item) => item.kind !== "arrow")
+      .map((item) => ({ item, rect: anchoredToViewportRect(state, item) }))
+      .filter(({ rect }) => rectContainsPoint(rect, point))
+      .sort((lhs, rhs) => rectArea(lhs.rect) - rectArea(rhs.rect))[0];
+    const raw = elementAtViewportPoint(state, point.x, point.y);
+    const element = raw ? nearestMeaningfulElement(state, raw) : null;
+    if (element && !isAlwaysScreenshotElement(element)) {
+      try {
+        const rect = rectForElement(element);
+        const metadata = metadataForElement(element);
+        if (
+          rectArea(rect) / Math.max(1, innerWidth * innerHeight) <= 0.35 &&
+          isUniqueSelector(metadata.selector)
+        ) {
+          end.selector = metadata.selector;
+          end.element = metadata;
+          end.ratio = ratioInRect(rect, point);
+        }
+      } catch {
+        // An element without a visible box cannot anchor the end.
+      }
+    }
+    if (hit) {
+      end.annotationUid = hit.item.uid;
+      end.ratio = ratioInRect(hit.rect, point);
+      if (!end.selector && hit.item.kind === "dom" && hit.item.selector) {
+        end.selector = hit.item.selector;
+        end.element = hit.item.element;
+      }
+    }
+    return end;
+  };
+  const updateArrowBounds = (state: AnnotationState, annotation: Annotation) => {
+    const points = arrowViewportPoints(state, annotation);
+    if (!points) return;
+    const anchored = viewportToAnchoredRect(state, rectForPoints(points.from, points.to), false);
+    annotation.rect = anchored.rect;
+    annotation.viewportRect = anchored.viewportRect;
+    annotation.scroll = anchored.scroll;
+    annotation.anchor = anchored.anchor;
+  };
+  const addArrowAnnotation = (state: AnnotationState, from: Point, to: Point) => {
+    const annotation: Annotation = {
+      id: state.nextId++,
+      uid: makeUid(),
+      kind: "arrow",
+      source: "drag",
+      comment: "",
+      arrow: { from: resolveArrowEnd(state, from), to: resolveArrowEnd(state, to) },
+      rect: rectForPoints(from, to),
+      viewportRect: rectForPoints(from, to),
+      scroll: { x: Math.round(scrollX), y: Math.round(scrollY) },
+      createdAt: new Date().toISOString(),
+      url: location.href,
+      title: document.title,
+    };
+    updateArrowBounds(state, annotation);
+    state.annotations.push(annotation);
+    renderAnnotations(state);
+    reportAnnotationsChanged(state);
+    editAnnotation(state, annotation);
+    return annotation;
+  };
   const addTextSelectionAnnotation = (state: AnnotationState) => {
     if (!state.enabled || state.mode !== "text") return;
     const target = selectionAnnotationTarget(state);
@@ -1628,11 +1966,14 @@ export function runAnnotationCommand(
     getSelection()?.removeAllRanges();
   };
   const applyInteractionMode = (state: AnnotationState) => {
-    const areaEnabled = state.enabled && state.mode === "area";
-    state.capture.hidden = !areaEnabled;
-    state.capture.style.pointerEvents = areaEnabled ? "auto" : "none";
+    const captureEnabled = state.enabled && (state.mode === "area" || state.mode === "arrow");
+    state.capture.hidden = !captureEnabled;
+    state.capture.style.pointerEvents = captureEnabled ? "auto" : "none";
     state.host.style.pointerEvents = state.enabled ? "auto" : "none";
     state.layer.style.pointerEvents = "none";
+    // While drawing an arrow, markers let the drag reach the capture layer so an end can be
+    // dropped on an existing annotation instead of selecting or moving it.
+    state.layer.classList.toggle("abg-drawing-arrow", state.enabled && state.mode === "arrow");
     updateToolbar(state);
   };
   const setMode = (state: AnnotationState, mode: AnnotationState["mode"]) => {
@@ -1640,10 +1981,13 @@ export function runAnnotationCommand(
     state.dragStart = null;
     state.activeDraft = null;
     state.draft.hidden = true;
+    arrowDraftFor(state).hidden = true;
     state.lastSelectionSignature = null;
-    if (mode === "area") getSelection()?.removeAllRanges();
+    if (mode !== "text") getSelection()?.removeAllRanges();
     applyInteractionMode(state);
   };
+  const nextMode = (mode: AnnotationState["mode"]): AnnotationState["mode"] =>
+    mode === "area" ? "text" : mode === "text" ? "arrow" : "area";
   const setEnabled = (state: AnnotationState, enabled: boolean) => {
     const wasEnabled = state.enabled;
     if (!enabled && wasEnabled) commitEditor(state);
@@ -1656,9 +2000,11 @@ export function runAnnotationCommand(
       state.activeDraft = null;
       state.selectedId = null;
       state.editGesture = null;
+      state.arrowGesture = null;
       state.suppressClickId = null;
       state.lastSelectionSignature = null;
       state.draft.hidden = true;
+      arrowDraftFor(state).hidden = true;
       closeEditor(state);
       renderAnnotations(state);
       applyInteractionMode(state);
@@ -1713,6 +2059,7 @@ export function runAnnotationCommand(
           .abg-layer,
           .abg-toolbar,
           .abg-draft,
+          .abg-arrow-draft,
           .abg-editor,
           .abg-toast {
             --abg-font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
@@ -2064,6 +2411,98 @@ export function runAnnotationCommand(
             pointer-events: auto;
             cursor: pointer;
           }
+          .abg-arrow-group,
+          .abg-arrow-draft {
+            position: fixed;
+            inset: 0;
+            z-index: 2147483646;
+            pointer-events: none;
+          }
+          .abg-arrow-svg {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: visible;
+            pointer-events: none;
+          }
+          .abg-arrow-casing {
+            stroke: #ffffff;
+            stroke-width: 6;
+            stroke-linecap: round;
+          }
+          .abg-arrow-head-casing {
+            fill: #ffffff;
+            stroke: #ffffff;
+            stroke-width: 4;
+            stroke-linejoin: round;
+          }
+          .abg-arrow-line {
+            stroke: var(--abg-mark);
+            stroke-width: 3;
+            stroke-linecap: round;
+          }
+          .abg-arrow-head {
+            fill: var(--abg-mark);
+            stroke: var(--abg-mark);
+            stroke-width: 1;
+            stroke-linejoin: round;
+          }
+          .abg-arrow-draft .abg-arrow-line {
+            stroke-dasharray: 6 5;
+          }
+          .abg-arrow-hit {
+            stroke: transparent;
+            stroke-width: 18;
+            stroke-linecap: round;
+            pointer-events: stroke;
+            cursor: pointer;
+          }
+          .abg-arrow-draft .abg-arrow-hit {
+            pointer-events: none;
+          }
+          .abg-arrow-selected .abg-arrow-casing {
+            stroke: var(--abg-mark-ring);
+            stroke-width: 10;
+          }
+          .abg-arrow-badge {
+            position: fixed;
+            z-index: 2147483647;
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-arrow-comment {
+            position: fixed;
+            z-index: 2147483647;
+            box-sizing: border-box;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            border-radius: 7px;
+            padding: 5px 9px;
+            background: var(--abg-chip-bg);
+            color: #ffffff;
+            font: 500 12px/1.3 var(--abg-font);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+            pointer-events: auto;
+            cursor: pointer;
+          }
+          .abg-arrow-handle {
+            position: fixed;
+            z-index: 2147483647;
+            box-sizing: border-box;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--abg-mark);
+            border-radius: 999px;
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            pointer-events: auto;
+            cursor: grab;
+          }
+          .abg-layer.abg-drawing-arrow * {
+            pointer-events: none !important;
+          }
           .abg-resize-handle {
             position: absolute;
             display: block;
@@ -2344,7 +2783,11 @@ export function runAnnotationCommand(
     textButton.dataset.title = `${ui.modeText} · ${ui.hintText}`;
     textButton.dataset.mode = "text";
     textButton.setAttribute("aria-pressed", "false");
-    modeGroup.append(areaButton, textButton);
+    const arrowButton = toolbarButton("mode-arrow", ui.modeArrow);
+    arrowButton.dataset.title = `${ui.modeArrow} · ${ui.hintArrow}`;
+    arrowButton.dataset.mode = "arrow";
+    arrowButton.setAttribute("aria-pressed", "false");
+    modeGroup.append(areaButton, textButton, arrowButton);
     const countEl = toolbarNode("span", "abg-count", ui.count(0));
     countEl.dataset.count = "";
     countEl.setAttribute("aria-live", "polite");
@@ -2354,6 +2797,7 @@ export function runAnnotationCommand(
     const clearButton = shortcutButton(toolbarButton("clear", ui.clear), "clear");
     shortcutButton(areaButton, "mode");
     textButton.dataset.shortcut = "mode";
+    arrowButton.dataset.shortcut = "mode";
     const collapse = toolbarButton("collapse", "−", "abg-icon-button");
     collapse.dataset.title = ui.hideToolbar;
     collapse.setAttribute("aria-label", ui.hideToolbar);
@@ -2501,13 +2945,26 @@ export function runAnnotationCommand(
       commitEditor(state);
       state.dragStart = { x: event.clientX, y: event.clientY };
       state.activeDraft = { x: event.clientX, y: event.clientY, width: 0, height: 0 };
-      setRectStyle(draft, state.activeDraft);
-      draft.hidden = false;
+      if (state.mode === "arrow") {
+        state.selectedId = null;
+        const arrowDraft = arrowDraftFor(state);
+        drawArrow(arrowDraft, state.dragStart, state.dragStart);
+        arrowDraft.hidden = false;
+      } else {
+        setRectStyle(draft, state.activeDraft);
+        draft.hidden = false;
+      }
       event.preventDefault();
       event.stopPropagation();
     });
     capture.addEventListener("mousemove", (event) => {
       if (!state.dragStart) return;
+      if (state.mode === "arrow") {
+        drawArrow(arrowDraftFor(state), state.dragStart, { x: event.clientX, y: event.clientY });
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       state.activeDraft = normalizeRect(state.dragStart, {
         x: event.clientX,
         y: event.clientY,
@@ -2518,6 +2975,18 @@ export function runAnnotationCommand(
     });
     capture.addEventListener("mouseup", (event) => {
       if (!state.dragStart || !state.activeDraft) return;
+      if (state.mode === "arrow") {
+        const from = state.dragStart;
+        const to = { x: event.clientX, y: event.clientY };
+        state.dragStart = null;
+        state.activeDraft = null;
+        arrowDraftFor(state).hidden = true;
+        // A click or a tiny drag has no direction to read, so it does not create an arrow.
+        if (Math.hypot(to.x - from.x, to.y - from.y) >= 12) addArrowAnnotation(state, from, to);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       const rect = normalizeRect(state.dragStart, { x: event.clientX, y: event.clientY });
       state.dragStart = null;
       state.activeDraft = null;
@@ -2554,6 +3023,7 @@ export function runAnnotationCommand(
       if (action === "done") setEnabled(state, false);
       if (action === "mode-area") setMode(state, "area");
       if (action === "mode-text") setMode(state, "text");
+      if (action === "mode-arrow") setMode(state, "arrow");
       if (action === "clear") confirmClear(state);
       if (action === "undo") applyHistory(state);
       if (action === "redo") applyHistory(state, true);
@@ -2566,6 +3036,15 @@ export function runAnnotationCommand(
     addEventListener(
       "mousemove",
       (event) => {
+        const arrowGesture = state.arrowGesture;
+        if (arrowGesture) {
+          arrowGesture.point = { x: event.clientX, y: event.clientY };
+          arrowGesture.didMove = true;
+          renderAnnotations(state);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         const gesture = state.editGesture;
         if (!gesture) return;
         const annotation = state.annotations.find((item) => item.id === gesture.annotationId);
@@ -2609,6 +3088,23 @@ export function runAnnotationCommand(
             .some((node) => node instanceof Element && node.id === "__abg_shortcut_toast__")
         )
           return;
+        const arrowGesture = state.arrowGesture;
+        if (arrowGesture) {
+          state.arrowGesture = null;
+          const annotation = state.annotations.find(
+            (item) => item.id === arrowGesture.annotationId,
+          );
+          if (annotation?.arrow && arrowGesture.didMove) {
+            annotation.arrow[arrowGesture.end] = resolveArrowEnd(state, arrowGesture.point);
+            updateArrowBounds(state, annotation);
+            state.suppressClickId = annotation.id;
+            reportAnnotationsChanged(state);
+          }
+          renderAnnotations(state);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         if (state.enabled && state.mode === "text" && !state.editGesture) {
           window.setTimeout(() => addTextSelectionAnnotation(state), 0);
           return;
@@ -2735,6 +3231,7 @@ export function runAnnotationCommand(
     textAnchor?: unknown;
     rect?: unknown;
     anchor?: unknown;
+    arrow?: unknown;
     createdAt?: unknown;
     element?: unknown;
   };
@@ -2793,32 +3290,12 @@ export function runAnnotationCommand(
     if (candidates.length === 0) return { ok: false, reason: "selector_missing" };
     let lastFailure: { reason: string; selector?: string } = { reason: "selector_not_found" };
     for (const selector of candidates) {
-      const lookup = queryUnique(selector);
-      if ("reason" in lookup) {
-        lastFailure = { reason: lookup.reason, selector };
+      const match = matchSavedElement(selector, savedElement);
+      if ("reason" in match) {
+        lastFailure = { reason: match.reason, selector };
         continue;
       }
-      const metadata = metadataForElement(lookup.element);
-      if (typeof savedElement?.tag === "string" && savedElement.tag !== metadata.tag) {
-        lastFailure = { reason: "element_changed", selector };
-        continue;
-      }
-      if (
-        typeof savedElement?.text === "string" &&
-        savedElement.text.length > 0 &&
-        trimText(savedElement.text) !== metadata.text
-      ) {
-        lastFailure = { reason: "element_text_changed", selector };
-        continue;
-      }
-      let viewportRect: Rect;
-      try {
-        viewportRect = rectForElement(lookup.element);
-      } catch {
-        lastFailure = { reason: "target_not_visible", selector };
-        continue;
-      }
-      const anchored = viewportToAnchoredRect(state, viewportRect);
+      const anchored = viewportToAnchoredRect(state, match.viewportRect);
       return {
         ok: true,
         annotation: {
@@ -2829,12 +3306,151 @@ export function runAnnotationCommand(
           viewportRect: anchored.viewportRect,
           scroll: anchored.scroll,
           anchor: anchored.anchor,
-          element: metadata,
+          element: match.metadata,
           restoredBy: "selector",
         },
       };
     }
     return { ok: false, ...lastFailure };
+  };
+  // A selector restores its target only when it still matches one visible element with the
+  // saved tag and text; otherwise the caller reports why instead of guessing a position.
+  const matchSavedElement = (
+    selector: string,
+    savedElement: Record<string, unknown> | null,
+  ): { metadata: NonNullable<Annotation["element"]>; viewportRect: Rect } | { reason: string } => {
+    const lookup = queryUnique(selector);
+    if ("reason" in lookup) return lookup;
+    const metadata = metadataForElement(lookup.element);
+    if (typeof savedElement?.tag === "string" && savedElement.tag !== metadata.tag) {
+      return { reason: "element_changed" };
+    }
+    if (
+      typeof savedElement?.text === "string" &&
+      savedElement.text.length > 0 &&
+      trimText(savedElement.text) !== metadata.text
+    ) {
+      return { reason: "element_text_changed" };
+    }
+    try {
+      return { metadata, viewportRect: rectForElement(lookup.element) };
+    } catch {
+      return { reason: "target_not_visible" };
+    }
+  };
+  const restoreAnchor = (
+    value: unknown,
+  ): { anchor: ScrollAnchor } | { reason: string; selector?: string } => {
+    const savedAnchor = isPlainObject(value) ? value : null;
+    if (
+      (savedAnchor?.type !== "frame" && savedAnchor?.type !== "element") ||
+      typeof savedAnchor.selector !== "string"
+    ) {
+      return { anchor: { type: "window" } };
+    }
+    const lookup = queryUnique(savedAnchor.selector);
+    if ("reason" in lookup) {
+      return {
+        reason: lookup.reason.replace("selector_", "anchor_"),
+        selector: savedAnchor.selector,
+      };
+    }
+    const usable =
+      savedAnchor.type === "frame"
+        ? frameWindowFor(lookup.element) !== null
+        : lookup.element instanceof HTMLElement;
+    if (!usable) return { reason: "anchor_not_accessible", selector: savedAnchor.selector };
+    return { anchor: { type: savedAnchor.type, selector: savedAnchor.selector } };
+  };
+  const isOutsidePage = (rect: Rect): boolean => {
+    const root = document.documentElement;
+    const pageWidth = Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0);
+    const pageHeight = Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0);
+    return rect.x >= pageWidth || rect.y >= pageHeight;
+  };
+  // An end that pointed at an annotation or element must find it again. Only an end that was
+  // stored as plain coordinates comes back at those coordinates.
+  const restoreArrowEnd = (
+    state: AnnotationState,
+    value: unknown,
+  ):
+    | { ok: true; end: ArrowEnd; by: AnnotationRestoredBy }
+    | { ok: false; reason: string; selector?: string } => {
+    if (!isPlainObject(value)) return { ok: false, reason: "end_missing" };
+    const point = isPlainObject(value.point) ? value.point : null;
+    if (
+      typeof point?.x !== "number" ||
+      typeof point.y !== "number" ||
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y)
+    ) {
+      return { ok: false, reason: "point_invalid" };
+    }
+    const savedRatio = isPlainObject(value.ratio) ? value.ratio : null;
+    const ratio =
+      typeof savedRatio?.x === "number" && typeof savedRatio.y === "number"
+        ? { x: savedRatio.x, y: savedRatio.y }
+        : undefined;
+    const savedElement = isPlainObject(value.element) ? value.element : null;
+    const end: ArrowEnd = { point: { x: point.x, y: point.y }, ratio };
+    const annotationUid = typeof value.annotationUid === "string" ? value.annotationUid : undefined;
+    if (
+      annotationUid &&
+      state.annotations.some((item) => item.uid === annotationUid && item.kind !== "arrow")
+    ) {
+      end.annotationUid = annotationUid;
+    }
+    const selector = typeof value.selector === "string" ? value.selector : undefined;
+    if (selector) {
+      const match = matchSavedElement(selector, savedElement);
+      if (!("reason" in match)) {
+        end.selector = selector;
+        end.element = match.metadata;
+      } else if (!end.annotationUid) {
+        return { ok: false, reason: match.reason, selector };
+      }
+    }
+    if (end.annotationUid || end.selector) return { ok: true, end, by: "selector" };
+    if (annotationUid) return { ok: false, reason: "annotation_not_restored" };
+    const anchor = restoreAnchor(value.anchor);
+    if ("reason" in anchor) return { ok: false, ...anchor };
+    end.anchor = anchor.anchor;
+    if (anchor.anchor.type === "window" && isOutsidePage({ ...end.point, width: 0, height: 0 })) {
+      return { ok: false, reason: "outside_page" };
+    }
+    return {
+      ok: true,
+      end,
+      by: anchor.anchor.type === "window" ? "coordinates" : "anchor",
+    };
+  };
+  const restoreArrowAnnotation = (
+    state: AnnotationState,
+    saved: SavedInput,
+    uid: string,
+  ): RestoreOutcome => {
+    const savedArrow = isPlainObject(saved.arrow) ? saved.arrow : null;
+    if (!savedArrow) return { ok: false, reason: "arrow_missing" };
+    const from = restoreArrowEnd(state, savedArrow.from);
+    if (!from.ok) return { ok: false, reason: `from_${from.reason}`, selector: from.selector };
+    const to = restoreArrowEnd(state, savedArrow.to);
+    if (!to.ok) return { ok: false, reason: `to_${to.reason}`, selector: to.selector };
+    const annotation: Annotation = {
+      ...restoredBase(state, saved, uid),
+      kind: "arrow",
+      arrow: { from: from.end, to: to.end },
+      rect: { x: 0, y: 0, width: 1, height: 1 },
+      viewportRect: { x: 0, y: 0, width: 1, height: 1 },
+      scroll: { x: Math.round(scrollX), y: Math.round(scrollY) },
+      // The weaker of the two ends describes how reliably the arrow was placed.
+      restoredBy: [from.by, to.by].includes("coordinates")
+        ? "coordinates"
+        : [from.by, to.by].includes("anchor")
+          ? "anchor"
+          : "selector",
+    };
+    updateArrowBounds(state, annotation);
+    return { ok: true, annotation };
   };
   const restoreTextAnnotation = (
     state: AnnotationState,
@@ -2928,40 +3544,15 @@ export function runAnnotationCommand(
   ): RestoreOutcome => {
     const rect = savedRect(saved.rect);
     if (!rect || rect.width < 1 || rect.height < 1) return { ok: false, reason: "rect_invalid" };
-    const savedAnchor = isPlainObject(saved.anchor) ? saved.anchor : null;
-    let anchor: ScrollAnchor = { type: "window" };
-    let restoredBy: AnnotationRestoredBy = "coordinates";
-    if (
-      (savedAnchor?.type === "frame" || savedAnchor?.type === "element") &&
-      typeof savedAnchor.selector === "string"
-    ) {
-      const lookup = queryUnique(savedAnchor.selector);
-      if ("reason" in lookup) {
-        return {
-          ok: false,
-          reason: lookup.reason.replace("selector_", "anchor_"),
-          selector: savedAnchor.selector,
-        };
-      }
-      const usable =
-        savedAnchor.type === "frame"
-          ? frameWindowFor(lookup.element) !== null
-          : lookup.element instanceof HTMLElement;
-      if (!usable) {
-        return { ok: false, reason: "anchor_not_accessible", selector: savedAnchor.selector };
-      }
-      anchor = { type: savedAnchor.type, selector: savedAnchor.selector };
-      restoredBy = "anchor";
-    } else {
-      // Window-anchored regions have no DOM target to verify. They come back at the same
-      // document coordinates, marked restoredBy: "coordinates", unless the page is now
-      // too small to contain them.
-      const root = document.documentElement;
-      const pageWidth = Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0);
-      const pageHeight = Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0);
-      if (rect.x >= pageWidth || rect.y >= pageHeight) {
-        return { ok: false, reason: "outside_page" };
-      }
+    const restoredAnchor = restoreAnchor(saved.anchor);
+    if ("reason" in restoredAnchor) return { ok: false, ...restoredAnchor };
+    const anchor = restoredAnchor.anchor;
+    const restoredBy: AnnotationRestoredBy = anchor.type === "window" ? "coordinates" : "anchor";
+    // Window-anchored regions have no DOM target to verify. They come back at the same
+    // document coordinates, marked restoredBy: "coordinates", unless the page is now
+    // too small to contain them.
+    if (anchor.type === "window" && isOutsidePage(rect)) {
+      return { ok: false, reason: "outside_page" };
     }
     const savedElement = isPlainObject(saved.element)
       ? (saved.element as Annotation["element"])
@@ -3011,7 +3602,9 @@ export function runAnnotationCommand(
               ? restoreTextAnnotation(state, saved, uid)
               : kind === "screenshot"
                 ? restoreScreenshotAnnotation(state, saved, uid)
-                : { ok: false, reason: "unsupported_kind" };
+                : kind === "arrow"
+                  ? restoreArrowAnnotation(state, saved, uid)
+                  : { ok: false, reason: "unsupported_kind" };
       } catch (error) {
         outcome = {
           ok: false,
@@ -3094,7 +3687,7 @@ export function runAnnotationCommand(
   if (requestedAction === "stop") setEnabled(state, false);
   if (requestedAction === "switch_mode" && state.enabled) {
     commitEditor(state);
-    setMode(state, state.mode === "area" ? "text" : "area");
+    setMode(state, nextMode(state.mode));
   }
   if (requestedAction === "toggle_toolbar" && state.enabled) toggleToolbar(state);
   let cleared = false;

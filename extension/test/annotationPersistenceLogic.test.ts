@@ -115,6 +115,48 @@ describe("snapshot validation", () => {
     expect(sanitizeSavedAnnotation("nope")).toBeNull();
   });
 
+  it("keeps both arrow ends and their targets", () => {
+    const saved = sanitizeSavedAnnotation({
+      uid: "arrow-1",
+      kind: "arrow",
+      comment: "Move this panel next to the tab",
+      rect: { x: 10, y: 20, width: 300, height: 120 },
+      arrow: {
+        from: {
+          point: { x: 10, y: 140 },
+          anchor: { type: "window" },
+          ratio: { x: 1.4, y: -0.2 },
+          selector: "#panel",
+          element: { tag: "h2", selector: "#panel", selectorQuality: "stable", text: "Panel" },
+          viewportPoint: { x: 10, y: 140 },
+        },
+        to: { point: { x: 310, y: 20 }, annotationUid: "note-1" },
+      },
+    });
+
+    expect(saved?.arrow).toEqual({
+      from: {
+        point: { x: 10, y: 140 },
+        anchor: { type: "window" },
+        ratio: { x: 1, y: 0 },
+        selector: "#panel",
+        element: { tag: "h2", selector: "#panel", selectorQuality: "stable", text: "Panel" },
+      },
+      to: { point: { x: 310, y: 20 }, annotationUid: "note-1" },
+    });
+  });
+
+  it("rejects an arrow without two usable ends", () => {
+    const base = { uid: "arrow-1", kind: "arrow", rect: { x: 0, y: 0, width: 1, height: 1 } };
+    expect(sanitizeSavedAnnotation(base)).toBeNull();
+    expect(
+      sanitizeSavedAnnotation({
+        ...base,
+        arrow: { from: { point: { x: 1, y: 2 } }, to: { point: { x: "3", y: 4 } } },
+      }),
+    ).toBeNull();
+  });
+
   it("deduplicates by uid and caps the list size", () => {
     expect(
       sanitizeSavedAnnotations([annotation("a"), annotation("a"), { bad: true }]),

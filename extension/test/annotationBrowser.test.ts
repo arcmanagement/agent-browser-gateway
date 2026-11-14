@@ -218,6 +218,99 @@ describe("annotation browser interactions", () => {
     }
   });
 
+  it("draws arrows that link page elements and existing annotations, then restores them", async () => {
+    type ArrowEnd = {
+      selector?: string;
+      annotationUid?: string;
+      annotationDisplayNumber?: number;
+      element?: { tag: string };
+      viewportPoint: { x: number; y: number };
+    };
+    type ArrowNote = {
+      uid: string;
+      kind: string;
+      comment: string;
+      restoredBy?: string;
+      arrow?: { from: ArrowEnd; to: ArrowEnd };
+    };
+    const arrows = async (page: Page) =>
+      ((await notes(page)) as unknown as ArrowNote[]).filter((note) => note.kind === "arrow");
+    const center = async (page: Page, selector: string) => {
+      const box = await page.locator(selector).boundingBox();
+      if (!box) throw new Error(`Missing ${selector}`);
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
+    const drag = async (page: Page, from: { x: number; y: number }, to: typeof from) => {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 6 });
+      await page.mouse.up();
+    };
+    const { context, page } = await fixture();
+    try {
+      await command(page, { action: "start" });
+      await command(page, { action: "add_selector", selector: "#subject", comment: "Target" });
+      const [target] = await notes(page);
+      await command(page, { action: "switch_mode" });
+      await command(page, { action: "switch_mode" });
+      const arrowMode = page.locator('button[data-mode="arrow"]');
+      expect(await arrowMode.getAttribute("aria-pressed")).toBe("true");
+
+      // The head is dropped on the existing #subject marker, which must not swallow the drag.
+      const heading = await center(page, "h1");
+      await drag(page, heading, await center(page, "#subject"));
+      await page.keyboard.type("Move the heading here");
+      await page.keyboard.press("Enter");
+      const [created] = await arrows(page);
+      expect(created?.comment).toBe("Move the heading here");
+      expect(created?.arrow?.from.element?.tag).toBe("h1");
+      // Element boxes are rounded to whole pixels, so the end may move by one pixel.
+      expect(created?.arrow?.from.viewportPoint.x).toBeCloseTo(heading.x, -0.5);
+      expect(created?.arrow?.from.viewportPoint.y).toBeCloseTo(heading.y, -0.5);
+      expect(created?.arrow?.to).toMatchObject({
+        annotationUid: target?.uid,
+        annotationDisplayNumber: 1,
+        selector: "#subject",
+      });
+      expect(await page.locator(".abg-arrow-group").count()).toBe(1);
+
+      // A tiny drag has no direction and creates nothing.
+      await drag(page, { x: 820, y: 520 }, { x: 824, y: 522 });
+      await drag(page, { x: 820, y: 520 }, { x: 900, y: 650 });
+      await page.keyboard.press("Enter");
+      const loose = (await arrows(page))[1];
+      expect(loose?.arrow?.to.selector).toBeUndefined();
+      expect(loose?.arrow?.to.annotationUid).toBeUndefined();
+
+      // Dragging a selected arrow's tail re-targets it.
+      await page.locator('button[data-mode="area"]').click();
+      await page.locator(".abg-arrow-badge").first().click();
+      const tail = page.locator('.abg-arrow-handle[data-end="from"]').first();
+      const tailBox = await tail.boundingBox();
+      if (!tailBox) throw new Error("Missing arrow handle");
+      await drag(
+        page,
+        { x: tailBox.x + tailBox.width / 2, y: tailBox.y + tailBox.height / 2 },
+        await center(page, "#editable"),
+      );
+      expect((await arrows(page))[0]?.arrow?.from.selector).toBe("#editable");
+
+      const saved = await notes(page);
+      await page.reload();
+      await page.addScriptTag({ content: script });
+      const restored = (await command(page, { action: "restore", saved })) as {
+        restore?: { status: string };
+      };
+      expect(restored.restore?.status).toBe("restored");
+      const [linked, coordinates] = await arrows(page);
+      expect(linked).toMatchObject({ uid: created?.uid, restoredBy: "selector" });
+      expect(linked?.arrow?.to.annotationDisplayNumber).toBe(1);
+      expect(coordinates).toMatchObject({ uid: loose?.uid, restoredBy: "coordinates" });
+    } finally {
+      await context.close();
+    }
+  }, 30000);
+
   it("undoes complete annotation operations and keeps page/editor undo native", async () => {
     const { context, page } = await fixture();
     try {
