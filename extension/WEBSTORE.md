@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.9.zip
+dist/agent-browser-gateway-extension-1.3.10.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.10 review notes
+
+- Add an Arrow mode to the existing annotation overlay. The user drags from one place on a shared tab to another to leave a numbered arrow with a comment.
+- Arrows are stored with the existing annotations in `chrome.storage.session` and restored only by the existing explicit restore command.
+- No new permissions or host access.
 
 ## 1.3.9 review notes
 

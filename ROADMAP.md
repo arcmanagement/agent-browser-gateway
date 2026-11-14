@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-11-09.
+Living document. Reflects current intent, not commitment. Last updated 2026-11-14.
 
-Chrome extension version: **v1.3.9**, distributed separately as `extension-v1.3.9`.
+Chrome extension version: **v1.3.10**, distributed separately as `extension-v1.3.10`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.10 — Arrow annotations (2026-11-14)
+
+- Add Arrow as a third annotation mode. Drag from one place to another to create a numbered arrow with a comment, and cycle Area, Text, and Arrow with `Alt+Shift+M`.
+- Each arrow end follows the annotation it was dropped on or the element under it. Annotation results return both ends with their element or linked annotation, and restore after reload reports an arrow as unrestored instead of drawing it at stale coordinates.
+- No new Chrome permissions.
 
 ### Chrome extension v1.3.9 — Manual sharing with Matching domains (2026-11-09)
 
