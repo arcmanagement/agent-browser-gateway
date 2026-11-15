@@ -302,7 +302,8 @@ async function captureShots() {
       `import(${JSON.stringify(urlFor(join(shotsDir, "overlay.js")))}).then(() => true)`,
     );
     await page.evaluate(`(async () => {
-      await abgAnnotate({ action: "start" });
+      // Top-right, where an owner might drag it, so the toolbar clears the restore card in 04.
+      await abgAnnotate({ action: "start", toolbarPreferences: { x: 1, y: 0, collapsed: false } });
       await abgAnnotate({ action: "add_selector", selector: "#total", comment: "Add a tax line" });
       const host = document.getElementById("__abg_annotation_mode");
       host.shadowRoot.querySelector('[data-action="mode-text"]').click();
