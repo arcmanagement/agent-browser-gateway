@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/arcmanagement/agent-browser-gateway/actions/workflows/ci.yml)
 
+![Hand your agent one tab. Nothing else.](extension/store-assets/marquee-promo-1400x560.png)
+
 Patent allowed; registration fee paid: JP 2026-080620
 
 - 🔓 **Per-tab consent** — You decide which tabs your agent sees, and for how long
@@ -165,6 +167,8 @@ The core security model:
    - You close the tab
    - You explicitly revoke (via the popup, the share shortcut, or `abg revoke`)
 
+![The popup shares one tab; abg tabs lists only that tab](extension/store-assets/screenshot-01-1280x800.png)
+
 Keyboard shortcuts act only on the current tab:
 
 | Default key | Action |
@@ -226,6 +230,8 @@ profiles, and ABG returns `ambiguous_tab_id` rather than routing to the wrong pr
 ref after the Gateway restarts, the tab closes, or sharing is revoked by a cross-origin navigation.
 
 Operation approval mode adds a second local checkpoint for write operations. By default, `click`, `fill`, `paste`, `paste-rich`, `clear`, `replace`, `upload`, `type`, `key`, `exec-command`, `navigate`, `scroll`, `drag`, and dialog handling actions open a Chrome approval window before they run. In Cloud mode, reads that may include sensitive values also follow this toggle. With it off, these reads skip approval on shared tabs; Cloud account-forced approval still applies. `raise` and `revoke` never prompt. `raise` is an explicit presentation command that can only activate an already-shared tab and its existing window; it cannot discover or operate unshared tabs. The toggle lives in the extension popup and is stored locally per extension install.
+
+![A click waits in the local approval window](extension/store-assets/screenshot-02-1280x800.png)
 
 Trusted automation / AutoMode is a separate explicit popup setting for eval-heavy trusted sessions. Eval remains disabled unless **Allow approved JavaScript eval** is on. With AutoMode off, `abg eval` requires `--approve` and a local approval popup for each call. With AutoMode on, eval on already-shared tabs can skip that popup, while script source and result summaries are still audited.
 
@@ -697,6 +703,8 @@ abg paste t1 --selector 'div[aria-label="Gemini へのプロンプトを入力"]
 ## Annotation mode
 
 Annotation mode lets the human mark the current tab the way they would point at a screenshot in chat, while still preserving structured context for the agent.
+
+![Area and text annotations on the page, listed by abg annotate and restorable after a reload](extension/store-assets/screenshot-04-1280x800.png)
 
 - Start from the extension popup with **Annotate this tab**, or from the CLI with `abg annotate t1 --start`.
 - Use **Area** to drag a rectangle, or **Text** to select page text, including text that spans multiple DOM elements, and turn the selected text into a numbered annotation. Add a comment, then click **Done** or press Escape when finished.
