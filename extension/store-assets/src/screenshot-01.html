@@ -7,7 +7,12 @@
     <style>
       .browser { left: 556px; top: 92px; width: 690px; height: 760px; }
       .page { height: 100%; }
-      .popup { right: 48px; top: 186px; width: 360px; height: 538px; }
+      /* Ends after the first row of shortcut keys and fades out instead of cutting a row. */
+      .popup {
+        right: 48px; top: 186px; width: 360px; height: 508px;
+        -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 10px), transparent);
+        border-bottom-color: transparent;
+      }
       .agent { left: 72px; top: 476px; width: 648px; }
       .agent pre { font-size: 13px; padding: 16px 20px 18px; }
       .popup img { width: 360px; }

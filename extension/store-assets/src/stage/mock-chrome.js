@@ -19,6 +19,9 @@
     operationsRequireApproval: true,
     profileLabel: "",
     gatewayWebSocketUrl: "ws://127.0.0.1:8765/ws",
+    connectionDestination: "local",
+    cloudWebSocketUrl: "",
+    sandboxSharing: { scope: "all", rules: [], httpsOnly: false, ports: [] },
     trustedAutomationEnabled: false,
     bookmarksAccessEnabled: false,
     readingListAccessEnabled: false,
@@ -29,7 +32,16 @@
     type: "state",
     permitted: !is("not-shared"),
     wsConnected: true,
-    activeTab: { incognito: false, incognitoAccessAllowed: true },
+    cloudCodeConfigured: false,
+    cloudConnectionFailed: false,
+    savedCloudConnections: [],
+    activeCloudConnectionId: undefined,
+    cloudLoginPending: false,
+    activeTab: {
+      incognito: false,
+      incognitoAccessAllowed: true,
+      accessMode: is("not-shared") ? undefined : "manual",
+    },
     sharedTabs,
     allTabsAccess: {
       permissionGranted: false,
@@ -43,6 +55,7 @@
     },
     settings,
     annotationState: {
+      available: true,
       enabled: false,
       count: 0,
       restorableCount: is("restore") ? 3 : 0,
@@ -81,6 +94,16 @@
       onMessage: event,
       sendMessage: async (msg) => {
         if (msg.type === "get_state") return state;
+        if (msg.type === "get_connection_status")
+          return {
+            type: "connection_status",
+            phase: "ready",
+            destination: "local",
+            sharedTabCount: sharedTabs.length,
+            wsConnected: true,
+            cloudCodeConfigured: false,
+            cloudConnectionFailed: false,
+          };
         if (msg.type === "get_approval_request")
           return { type: "approval_request", request: approvalRequest };
         return { type: "ok" };
@@ -105,8 +128,13 @@
     },
     tabCapture: { getMediaStreamId: noop },
     commands: {
+      // Mirrors the manifest's suggested keys; commands without one stay unset.
       getAll: async () => [
         { name: "toggle-share-current-tab", shortcut: "⌥⇧S" },
+        { name: "toggle-annotate-current-tab", shortcut: "⌥⇧A" },
+        { name: "switch-annotation-mode", shortcut: "⌥⇧M" },
+        { name: "clear-annotations-current-tab", shortcut: "" },
+        { name: "toggle-annotation-toolbar", shortcut: "" },
         { name: "copy-current-tab-id", shortcut: "⌥⇧C" },
       ],
     },
