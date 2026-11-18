@@ -90,7 +90,7 @@ abg click <tab|ref> --ref @e1                    # 最新 snapshot の ref
 abg is-visible <tab|ref> --selector "<css>"      # false も正常JSONで返す
 abg is-enabled <tab|ref> --selector "<css>"
 abg is-checked <tab|ref> --selector "<css>"
-abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N]  # 全体 or 領域
+abg screenshot <tab|ref> [--out <path>] [--x N --y N --width N --height N] [--scale 0.1-2]  # 全体 or 領域
 abg screenshot <tab|ref> --full-page --out page.png  # iPhone Safariではscrollして1枚に結合
 abg pdf <tab|ref> --out page.pdf         # 現在ページを PDF 保存
 abg wait-response <tab|ref> --url "*api/save*" --method POST --status-min 200 --status-max 299

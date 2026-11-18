@@ -735,6 +735,7 @@ struct Screenshot: AsyncParsableCommand {
     @Option(name: .long, help: "部分キャプチャ幅 (px)") var width: Double?
     @Option(name: .long, help: "部分キャプチャ高さ (px)") var height: Double?
     @Flag(name: .long, help: "スクロールしてページ全体を1枚に結合") var fullPage: Bool = false
+    @Option(name: .long, help: "出力倍率。CSSピクセルあたりの画素数を0.1〜2で指定 (省略時 1)") var scale: Double?
 
     func run() async throws {
         if latest {
@@ -749,6 +750,10 @@ struct Screenshot: AsyncParsableCommand {
             }
             printJSON(["path": path])
             return
+        }
+        if let scale, !(scale.isFinite && (0.1...2).contains(scale)) {
+            FileHandle.standardError.write(Data("--scale must be from 0.1 to 2\n".utf8))
+            throw ExitCode.failure
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
@@ -767,6 +772,7 @@ struct Screenshot: AsyncParsableCommand {
             params["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
         if fullPage { params["fullPage"] = true }
+        if let scale { params["scale"] = scale }
         let result = try client.call(method: "screenshot_tab", params: params)
         let outPath: String = {
             if let o = out { return (o as NSString).expandingTildeInPath }
@@ -779,6 +785,7 @@ struct Screenshot: AsyncParsableCommand {
             step["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
         if fullPage { step["fullPage"] = true }
+        if let scale { step["scale"] = scale }
         appendRecordedStep(step)
         printJSON(resultJson)
     }
@@ -2266,6 +2273,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         return try client.call(method: "read_tab", params: params)
     case "screenshot":
         if let clip = step["clip"] as? [String: Any] { params["clip"] = clip }
+        if let scale = step["scale"] { params["scale"] = scale }
         let result = try client.call(method: "screenshot_tab", params: params)
         let outPath = stringValue(step, "out").map { ($0 as NSString).expandingTildeInPath }
             ?? (try? defaultScreenshotPath(tabLabel: "replay-\(tabId)"))
