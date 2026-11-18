@@ -940,6 +940,7 @@ struct Annotate: AsyncParsableCommand {
                 let width = rect["width"] ?? "?"
                 let height = rect["height"] ?? "?"
                 print("[\(number)] \(kind) x=\(x) y=\(y) w=\(width) h=\(height)\(selector)\(restoredBy)\(comment)")
+                for line in AnnotationTextFormat.arrowEndLines(annotation) { print(line) }
             }
         }
         for line in Self.restoreAndSavedLines(dict) {
@@ -1005,6 +1006,14 @@ struct Annotate: AsyncParsableCommand {
                 lines.append("  saved for: \(restore["savedUrl"] as? String ?? "?")")
                 lines.append("  current:   \(restore["currentUrl"] as? String ?? "?")")
             }
+            // Arrow ends name their targets by uid; show the row label the reader sees.
+            var labels: [String: String] = [:]
+            for row in restored {
+                if let uid = row["uid"] as? String, let number = row["displayNumber"] { labels[uid] = "[\(number)]" }
+            }
+            for row in unrestored {
+                if let uid = row["uid"] as? String, let number = row["savedDisplayNumber"] { labels[uid] = "saved [\(number)]" }
+            }
             for row in restored {
                 let number = row["displayNumber"] ?? "?"
                 let kind = row["kind"] ?? "?"
@@ -1017,6 +1026,7 @@ struct Annotate: AsyncParsableCommand {
                 let reason = row["reason"] ?? "?"
                 let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
                 lines.append("  NOT restored \(number)\(kind) (\(reason))\(selector)\(commentSuffix(row))")
+                lines += AnnotationTextFormat.arrowEndLines(row, label: { labels[$0] })
             }
         }
         if let saved = dict["saved"] as? [String: Any] {
@@ -1026,11 +1036,17 @@ struct Annotate: AsyncParsableCommand {
             let urlMatches = saved["urlMatches"] as? Bool ?? false
             let savedAt = saved["savedAt"] as? String ?? "?"
             lines.append("saved: \(count) not shown of \(total), saved at \(savedAt), url \(urlMatches ? "matches" : "differs"): \(url)")
-            for (index, row) in (saved["annotations"] as? [[String: Any]] ?? []).enumerated() {
+            let savedRows = saved["annotations"] as? [[String: Any]] ?? []
+            var savedLabels: [String: String] = [:]
+            for (index, row) in savedRows.enumerated() {
+                if let uid = row["uid"] as? String { savedLabels[uid] = "saved [\(index + 1)]" }
+            }
+            for (index, row) in savedRows.enumerated() {
                 let kind = row["kind"] ?? "?"
                 let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
                 let text = (row["text"] as? String).map { " text=\"\($0)\"" } ?? ""
                 lines.append("  saved [\(index + 1)] \(kind)\(selector)\(text)\(commentSuffix(row))")
+                lines += AnnotationTextFormat.arrowEndLines(row, label: { savedLabels[$0] })
             }
         } else if dict.keys.contains("saved") {
             lines.append("saved: none")

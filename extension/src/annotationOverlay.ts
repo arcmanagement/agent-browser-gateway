@@ -91,6 +91,8 @@ export type AnnotationRestoreReport = {
     comment: string;
     selector?: string;
     text?: string;
+    /** Saved tail and head of an arrow, so callers can say what it pointed at. */
+    arrow?: unknown;
     reason: string;
   }[];
   alreadyPresent: number;
@@ -3634,6 +3636,7 @@ export function runAnnotationCommand(
           comment,
           selector,
           text: typeof saved.text === "string" ? saved.text.slice(0, 180) : undefined,
+          ...(kind === "arrow" && isPlainObject(saved.arrow) ? { arrow: saved.arrow } : {}),
           reason: outcome.reason,
         });
       }
