@@ -17,6 +17,7 @@ Before applying metadata, read `../_shared/abg-issue-pr-metadata.md`.
 2. Identify the linked Issue, if any, and read its acceptance criteria.
 3. Preserve the user-requested base branch; otherwise use the repository default branch.
 4. Keep commits intentionally scoped. If the user asks for topic-based commits, split them before pushing.
+   Sign off every commit with `git commit -s`. `CONTRIBUTING.md` requires the DCO `Signed-off-by` trailer, and a PR without it cannot be merged.
 5. Default to Draft PR unless the user asks for Open or Ready for review.
 6. Use `Closes #...` only when the PR fully satisfies the Issue; otherwise use `Related to #...` or a plain reference.
 7. Write the PR title/body in English unless the user explicitly asks otherwise.
@@ -34,6 +35,7 @@ Use these commands as needed:
 ```bash
 git diff --check
 git status --short --branch
+git log --format='%h %(trailers:key=Signed-off-by,valueonly)' origin/main..HEAD
 gh pr view <pr> --json labels,milestone,assignees,closingIssuesReferences,isDraft,baseRefName,headRefName
 gh issue view <issue> --json closedByPullRequestsReferences,projectItems
 ```
