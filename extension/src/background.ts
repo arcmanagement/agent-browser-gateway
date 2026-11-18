@@ -107,6 +107,13 @@ import {
   protectCloudStorage,
   savedCloudConnections,
 } from "./savedCloudConnections.js";
+import {
+  matchesSize,
+  pngSize,
+  resizePngDataUrl,
+  scaledSize,
+  screenshotScale,
+} from "./screenshotScale.js";
 import { showShortcutToastInPage } from "./shortcutToast.js";
 import type {
   AnnotationAction,
@@ -2653,7 +2660,7 @@ async function handleGatewayCommand(cmd: GatewayCommand, epoch = connectionEpoch
       await reply(cmd.id, await snapshotTab(tabId, cmd.params ?? {}));
     } else if (cmd.method === "screenshot") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
-      const result = await screenshot(tabId, cmd.params?.clip);
+      const result = await screenshot(tabId, cmd.params?.clip, cmd.params?.scale);
       await reply(cmd.id, result);
     } else if (cmd.method === "pdf") {
       if (!tabId || !permittedTabs.has(tabId)) throw new Error("tab not permitted");
@@ -5565,18 +5572,22 @@ type ScreenshotResult = {
 async function screenshot(
   tabId: number,
   clip?: { x: number; y: number; width: number; height: number },
+  requestedScale?: unknown,
 ): Promise<ScreenshotResult> {
+  const scale = screenshotScale(requestedScale);
   const isPermitted = sharedTabAccessGuard(tabId);
   if (!browser.supportsDebugger) {
-    return screenshotWithVisibleTabCapture(tabId, clip, isPermitted);
+    const capture = await screenshotWithVisibleTabCapture(tabId, clip, isPermitted);
+    if (requestedScale === undefined) return capture;
+    return fitVisibleCapture(capture, await visibleViewport(tabId, isPermitted), scale);
   }
   try {
     await attachDebugger(tabId);
     // Full captures previously omitted the clip, so Chrome picked the scale from
     // the device pixel ratio and consecutive captures of the same viewport could
-    // come back at different sizes. Deriving an explicit CSS-pixel clip with
-    // scale 1 makes image pixels equal CSS pixels on every capture, so
-    // screenshot-derived coordinates feed straight into click --x/--y.
+    // come back at different sizes. An explicit CSS-pixel clip gives every capture
+    // of the same viewport the same size, so screenshot-derived coordinates divided
+    // by the reported scale feed straight into click --x/--y.
     const layout = (await browser.debugger.sendCommand({ tabId }, "Page.getLayoutMetrics")) as {
       cssVisualViewport?: {
         clientWidth: number;
@@ -5584,6 +5595,7 @@ async function screenshot(
         pageX: number;
         pageY: number;
       };
+      visualViewport?: { clientWidth: number };
     };
     const viewport = layout.cssVisualViewport;
     const effectiveClip =
@@ -5596,40 +5608,100 @@ async function screenshot(
             height: viewport.clientHeight,
           }
         : undefined);
-    const params: Record<string, unknown> = { format: "png" };
-    if (effectiveClip) {
-      params.clip = { ...effectiveClip, scale: 1 };
-    }
-    const result = (await browser.debugger.sendCommand(
-      { tabId },
-      "Page.captureScreenshot",
-      params,
-    )) as {
-      data: string;
-    };
-    const output: ScreenshotResult = { dataUrl: `data:image/png;base64,${result.data}` };
+    const capture = async (clipScale?: number) =>
+      (
+        (await browser.debugger.sendCommand(
+          { tabId },
+          "Page.captureScreenshot",
+          effectiveClip && clipScale !== undefined
+            ? { format: "png", clip: { ...effectiveClip, scale: clipScale } }
+            : { format: "png" },
+        )) as { data: string }
+      ).data;
+    const output: ScreenshotResult = { dataUrl: "" };
     if (viewport) {
       output.cssViewport = { width: viewport.clientWidth, height: viewport.clientHeight };
     }
-    if (effectiveClip) {
-      output.imageSize = {
-        width: Math.round(effectiveClip.width),
-        height: Math.round(effectiveClip.height),
-      };
-      output.scale = 1;
+    if (!effectiveClip) {
+      const data = await capture();
+      output.dataUrl = `data:image/png;base64,${data}`;
+      const size = pngSize(data);
+      if (size) output.imageSize = size;
+      return output;
     }
+    // Chrome renders the clip in device pixels, so divide by the device pixel ratio
+    // (deprecated visualViewport is in device pixels). The first capture's real
+    // size corrects any remaining factor, such as page zoom, with one more capture.
+    const ratio =
+      viewport && layout.visualViewport && viewport.clientWidth > 0
+        ? layout.visualViewport.clientWidth / viewport.clientWidth
+        : 1;
+    const expected = scaledSize(effectiveClip, scale);
+    let clipScale = scale / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
+    let data = await capture(clipScale);
+    let size = pngSize(data);
+    if (size && size.width > 0 && !matchesSize(size, expected)) {
+      clipScale *= expected.width / size.width;
+      data = await capture(clipScale);
+      size = pngSize(data);
+    }
+    output.dataUrl = `data:image/png;base64,${data}`;
+    output.imageSize = size ?? expected;
+    output.scale =
+      !size || matchesSize(size, expected)
+        ? scale
+        : Math.round((size.width / effectiveClip.width) * 1000) / 1000;
     return output;
   } catch (error) {
     if (!isExtensionFrameAccessError(error) || clip) throw error;
     if (!isPermitted()) throw new Error("tab not permitted");
-    const [viewport] = await browser.scripting.executeScript({
-      target: { tabId, frameIds: [0] },
-      func: () => ({ width: window.innerWidth, height: window.innerHeight }),
-    });
+    const cssViewport = await visibleViewport(tabId, isPermitted);
     if (!isPermitted()) throw new Error("tab not permitted");
     const capture = await screenshotWithVisibleTabCapture(tabId, undefined, isPermitted);
-    return { ...capture, cssViewport: viewport?.result };
+    return fitVisibleCapture(capture, cssViewport, scale);
   }
+}
+
+async function visibleViewport(
+  tabId: number,
+  isPermitted: () => boolean,
+): Promise<{ width: number; height: number } | undefined> {
+  if (!isPermitted()) throw new Error("tab not permitted");
+  const [viewport] = await browser.scripting.executeScript({
+    target: { tabId, frameIds: [0] },
+    func: () => ({ width: window.innerWidth, height: window.innerHeight }),
+  });
+  return viewport?.result as { width: number; height: number } | undefined;
+}
+
+// captureVisibleTab cannot set a scale, so the image is resized after capture.
+async function fitVisibleCapture(
+  capture: { dataUrl: string },
+  cssViewport: { width: number; height: number } | undefined,
+  scale: number,
+): Promise<ScreenshotResult> {
+  const output: ScreenshotResult = { ...capture, ...(cssViewport ? { cssViewport } : {}) };
+  const data = capture.dataUrl.slice(capture.dataUrl.indexOf(",") + 1);
+  let size = pngSize(data);
+  if (!cssViewport || !(cssViewport.width > 0)) {
+    if (size) output.imageSize = size;
+    return output;
+  }
+  const expected = scaledSize(cssViewport, scale);
+  if (size && !matchesSize(size, expected)) {
+    const resized = await resizePngDataUrl(capture.dataUrl, expected).catch(() => undefined);
+    if (resized) {
+      output.dataUrl = resized;
+      size = expected;
+    }
+  }
+  if (size) {
+    output.imageSize = size;
+    output.scale = matchesSize(size, expected)
+      ? scale
+      : Math.round((size.width / cssViewport.width) * 1000) / 1000;
+  }
+  return output;
 }
 
 async function screenshotWithVisibleTabCapture(

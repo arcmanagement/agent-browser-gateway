@@ -203,6 +203,8 @@ export type GatewayCommand = {
     maxBytes?: number;
     // screenshot
     clip?: { x: number; y: number; width: number; height: number };
+    /** Screenshot output pixels per CSS pixel, from 0.1 to 2. */
+    scale?: number;
     // read_dom
     asMarkdown?: boolean;
     // annotation_mode
