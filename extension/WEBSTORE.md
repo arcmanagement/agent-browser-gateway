@@ -14,7 +14,7 @@ pnpm run webstore:zip
 The ZIP is written to:
 
 ```text
-dist/agent-browser-gateway-extension-1.3.10.zip
+dist/agent-browser-gateway-extension-1.3.11.zip
 ```
 
 The ZIP contents must have `manifest.json` at the archive root. Do not zip the
@@ -30,6 +30,12 @@ Chrome Web Store item ID:
 ```text
 ojgedfcgebjchckaagjkmlpgonpjggpi
 ```
+
+## 1.3.11 review notes
+
+- Screenshots requested through an existing shared-tab connection accept an output scale and return an image whose size matches the reported size on high-density displays. Images are resized in the extension's service worker.
+- Unrestored arrow annotations include their saved end points in the restore result.
+- No new permissions or host access.
 
 ## 1.3.10 review notes
 

@@ -1,8 +1,8 @@
 # Roadmap
 
-Living document. Reflects current intent, not commitment. Last updated 2026-11-14.
+Living document. Reflects current intent, not commitment. Last updated 2026-11-18.
 
-Chrome extension version: **v1.3.10**, distributed separately as `extension-v1.3.10`.
+Chrome extension version: **v1.3.11**, distributed separately as `extension-v1.3.11`.
 macOS desktop version: **v0.5.2**.
 Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 
@@ -15,6 +15,12 @@ Windows desktop version: **v0.5.3**, distributed separately as `windows-v0.5.3`.
 - Windows-only releases use `windows-v*` tags so they do not submit a new Chrome extension or rebuild macOS artifacts.
 
 ## Shipped
+
+### Chrome extension v1.3.11 — Screenshot scale (2026-11-18)
+
+- `screenshot` accepts `scale` from 0.1 to 2, in output pixels per CSS pixel, and defaults to 1. On a display with a device pixel ratio of 2, a full-viewport capture now has the `imageSize` it reports instead of twice that size. The visible-tab fallback resizes after capture.
+- An arrow annotation that cannot be restored now reports its saved ends, so callers can say what it pointed at.
+- No new Chrome permissions.
 
 ### Chrome extension v1.3.10 — Arrow annotations (2026-11-14)
 
