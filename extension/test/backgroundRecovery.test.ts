@@ -293,3 +293,157 @@ describe("background recovery boundaries", () => {
     expect(chrome.tabs.captureVisibleTab).toHaveBeenCalledExactlyOnceWith(1, { format: "png" });
   });
 });
+
+function pngBytes(width: number, height: number): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  return bytes;
+}
+
+function pngData(width: number, height: number): string {
+  return btoa(String.fromCharCode(...pngBytes(width, height)));
+}
+
+// Mimics Chrome: a clip renders at clip size x clip.scale x device factor.
+function captureAt(deviceFactor: number, layout: Record<string, unknown>) {
+  return async (...args: unknown[]) => {
+    const [, method, params] = args as [unknown, string, Record<string, unknown> | undefined];
+    if (method === "Page.getLayoutMetrics") return layout;
+    if (method === "Page.captureScreenshot") {
+      const clip = params?.clip as { width: number; height: number; scale: number };
+      return {
+        data: pngData(
+          Math.round(clip.width * clip.scale * deviceFactor),
+          Math.round(clip.height * clip.scale * deviceFactor),
+        ),
+      };
+    }
+    return {};
+  };
+}
+
+describe("screenshot scale", () => {
+  const viewport = { clientWidth: 800, clientHeight: 600, pageX: 0, pageY: 0 };
+  const captures = (chrome: ReturnType<typeof installChromeMock>) =>
+    chrome.debugger.sendCommand.mock.calls.filter(
+      ([, method]) => method === "Page.captureScreenshot",
+    );
+
+  it("returns CSS-pixel images on a device pixel ratio of 2 by default", async () => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(
+      captureAt(2, { cssVisualViewport: viewport, visualViewport: { clientWidth: 1600 } }),
+    );
+    expect(await command("screenshot")).toMatchObject({
+      result: {
+        imageSize: { width: 800, height: 600 },
+        scale: 1,
+        cssViewport: { width: 800, height: 600 },
+      },
+    });
+    expect(captures(chrome)).toHaveLength(1);
+    expect(captures(chrome)[0]?.[2]).toMatchObject({ clip: { scale: 0.5 } });
+  });
+
+  it.each([
+    [0.5, 1, 400, 300],
+    [0.5, 2, 400, 300],
+    [2, 1, 1600, 1200],
+    [2, 2, 1600, 1200],
+  ])("applies scale %d on a device pixel ratio of %d", async (scale, ratio, width, height) => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(
+      captureAt(ratio, {
+        cssVisualViewport: viewport,
+        visualViewport: { clientWidth: 800 * ratio },
+      }),
+    );
+    const reply = await command("screenshot", { scale });
+    expect(reply).toMatchObject({ result: { imageSize: { width, height }, scale } });
+    const data = String((reply?.result as { dataUrl: string }).dataUrl).split(",")[1];
+    const bytes = Uint8Array.from(atob(data ?? ""), (c) => c.charCodeAt(0));
+    expect(new DataView(bytes.buffer).getUint32(16)).toBe(width);
+    expect(captures(chrome)).toHaveLength(1);
+  });
+
+  it("corrects an unknown device factor, such as page zoom, with one more capture", async () => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(captureAt(2.5, { cssVisualViewport: viewport }));
+    expect(await command("screenshot", { scale: 0.5 })).toMatchObject({
+      result: { imageSize: { width: 400, height: 300 }, scale: 0.5 },
+    });
+    expect(captures(chrome)).toHaveLength(2);
+  });
+
+  it("scales a clipped region", async () => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(
+      captureAt(2, { cssVisualViewport: viewport, visualViewport: { clientWidth: 1600 } }),
+    );
+    expect(
+      await command("screenshot", { clip: { x: 10, y: 20, width: 200, height: 100 }, scale: 0.5 }),
+    ).toMatchObject({ result: { imageSize: { width: 100, height: 50 }, scale: 0.5 } });
+  });
+
+  it.each([0, 3, "1", -1])("rejects scale %s before capturing", async (scale) => {
+    const { chrome, command } = await startBackground();
+    expect(await command("screenshot", { scale })).toMatchObject({ error: expect.anything() });
+    expect(captures(chrome)).toHaveLength(0);
+  });
+
+  it("resizes the visible-tab fallback to the requested scale", async () => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.getLayoutMetrics") throw blocked();
+      return {};
+    });
+    chrome.scripting.executeScript.mockResolvedValue([
+      { frameId: 0, result: { width: 800, height: 600 } },
+    ]);
+    chrome.tabs.captureVisibleTab.mockResolvedValue(`data:image/png;base64,${pngData(1600, 1200)}`);
+    const drawn: number[][] = [];
+    vi.stubGlobal("createImageBitmap", async () => ({ width: 1600, height: 1200, close() {} }));
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class {
+        constructor(
+          readonly width: number,
+          readonly height: number,
+        ) {}
+        getContext() {
+          return { drawImage: (_image: unknown, ...box: number[]) => drawn.push(box) };
+        }
+        async convertToBlob() {
+          return new Blob([pngBytes(this.width, this.height)]);
+        }
+      },
+    );
+    const reply = await command("screenshot", { scale: 0.5 });
+    expect(reply).toMatchObject({
+      result: {
+        imageSize: { width: 400, height: 300 },
+        scale: 0.5,
+        cssViewport: { width: 800, height: 600 },
+      },
+    });
+    expect(drawn).toEqual([[0, 0, 400, 300]]);
+  });
+
+  it("reports the real size when the fallback cannot resize", async () => {
+    const { chrome, command } = await startBackground();
+    chrome.debugger.sendCommand.mockImplementation(async (_target, method) => {
+      if (method === "Page.getLayoutMetrics") throw blocked();
+      return {};
+    });
+    chrome.scripting.executeScript.mockResolvedValue([
+      { frameId: 0, result: { width: 800, height: 600 } },
+    ]);
+    chrome.tabs.captureVisibleTab.mockResolvedValue(`data:image/png;base64,${pngData(1600, 1200)}`);
+    expect(await command("screenshot")).toMatchObject({
+      result: { imageSize: { width: 1600, height: 1200 }, scale: 2 },
+    });
+  });
+});

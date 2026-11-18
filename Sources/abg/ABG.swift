@@ -735,6 +735,7 @@ struct Screenshot: AsyncParsableCommand {
     @Option(name: .long, help: "部分キャプチャ幅 (px)") var width: Double?
     @Option(name: .long, help: "部分キャプチャ高さ (px)") var height: Double?
     @Flag(name: .long, help: "スクロールしてページ全体を1枚に結合") var fullPage: Bool = false
+    @Option(name: .long, help: "出力倍率。CSSピクセルあたりの画素数を0.1〜2で指定 (省略時 1)") var scale: Double?
 
     func run() async throws {
         if latest {
@@ -749,6 +750,10 @@ struct Screenshot: AsyncParsableCommand {
             }
             printJSON(["path": path])
             return
+        }
+        if let scale, !(scale.isFinite && (0.1...2).contains(scale)) {
+            FileHandle.standardError.write(Data("--scale must be from 0.1 to 2\n".utf8))
+            throw ExitCode.failure
         }
         let client = UDSClient()
         let tabId = try resolveTabId(client: client, target: target)
@@ -767,6 +772,7 @@ struct Screenshot: AsyncParsableCommand {
             params["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
         if fullPage { params["fullPage"] = true }
+        if let scale { params["scale"] = scale }
         let result = try client.call(method: "screenshot_tab", params: params)
         let outPath: String = {
             if let o = out { return (o as NSString).expandingTildeInPath }
@@ -779,6 +785,7 @@ struct Screenshot: AsyncParsableCommand {
             step["clip"] = ["x": x!, "y": y!, "width": width!, "height": height!]
         }
         if fullPage { step["fullPage"] = true }
+        if let scale { step["scale"] = scale }
         appendRecordedStep(step)
         printJSON(resultJson)
     }
@@ -933,6 +940,7 @@ struct Annotate: AsyncParsableCommand {
                 let width = rect["width"] ?? "?"
                 let height = rect["height"] ?? "?"
                 print("[\(number)] \(kind) x=\(x) y=\(y) w=\(width) h=\(height)\(selector)\(restoredBy)\(comment)")
+                for line in AnnotationTextFormat.arrowEndLines(annotation) { print(line) }
             }
         }
         for line in Self.restoreAndSavedLines(dict) {
@@ -998,6 +1006,14 @@ struct Annotate: AsyncParsableCommand {
                 lines.append("  saved for: \(restore["savedUrl"] as? String ?? "?")")
                 lines.append("  current:   \(restore["currentUrl"] as? String ?? "?")")
             }
+            // Arrow ends name their targets by uid; show the row label the reader sees.
+            var labels: [String: String] = [:]
+            for row in restored {
+                if let uid = row["uid"] as? String, let number = row["displayNumber"] { labels[uid] = "[\(number)]" }
+            }
+            for row in unrestored {
+                if let uid = row["uid"] as? String, let number = row["savedDisplayNumber"] { labels[uid] = "saved [\(number)]" }
+            }
             for row in restored {
                 let number = row["displayNumber"] ?? "?"
                 let kind = row["kind"] ?? "?"
@@ -1010,6 +1026,7 @@ struct Annotate: AsyncParsableCommand {
                 let reason = row["reason"] ?? "?"
                 let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
                 lines.append("  NOT restored \(number)\(kind) (\(reason))\(selector)\(commentSuffix(row))")
+                lines += AnnotationTextFormat.arrowEndLines(row, label: { labels[$0] })
             }
         }
         if let saved = dict["saved"] as? [String: Any] {
@@ -1019,11 +1036,17 @@ struct Annotate: AsyncParsableCommand {
             let urlMatches = saved["urlMatches"] as? Bool ?? false
             let savedAt = saved["savedAt"] as? String ?? "?"
             lines.append("saved: \(count) not shown of \(total), saved at \(savedAt), url \(urlMatches ? "matches" : "differs"): \(url)")
-            for (index, row) in (saved["annotations"] as? [[String: Any]] ?? []).enumerated() {
+            let savedRows = saved["annotations"] as? [[String: Any]] ?? []
+            var savedLabels: [String: String] = [:]
+            for (index, row) in savedRows.enumerated() {
+                if let uid = row["uid"] as? String { savedLabels[uid] = "saved [\(index + 1)]" }
+            }
+            for (index, row) in savedRows.enumerated() {
                 let kind = row["kind"] ?? "?"
                 let selector = (row["selector"] as? String).map { " selector=\($0)" } ?? ""
                 let text = (row["text"] as? String).map { " text=\"\($0)\"" } ?? ""
                 lines.append("  saved [\(index + 1)] \(kind)\(selector)\(text)\(commentSuffix(row))")
+                lines += AnnotationTextFormat.arrowEndLines(row, label: { savedLabels[$0] })
             }
         } else if dict.keys.contains("saved") {
             lines.append("saved: none")
@@ -2266,6 +2289,7 @@ func executeReplayStep(client: UDSClient, tabId: Int, step: [String: Any]) throw
         return try client.call(method: "read_tab", params: params)
     case "screenshot":
         if let clip = step["clip"] as? [String: Any] { params["clip"] = clip }
+        if let scale = step["scale"] { params["scale"] = scale }
         let result = try client.call(method: "screenshot_tab", params: params)
         let outPath = stringValue(step, "out").map { ($0 as NSString).expandingTildeInPath }
             ?? (try? defaultScreenshotPath(tabLabel: "replay-\(tabId)"))

@@ -306,6 +306,33 @@ describe("annotation browser interactions", () => {
       expect(linked).toMatchObject({ uid: created?.uid, restoredBy: "selector" });
       expect(linked?.arrow?.to.annotationDisplayNumber).toBe(1);
       expect(coordinates).toMatchObject({ uid: loose?.uid, restoredBy: "coordinates" });
+
+      // An arrow that cannot be placed still reports both ends, so callers can say what it linked.
+      const original = saved.find((note) => note.uid === created?.uid) as unknown as ArrowNote;
+      const missing = {
+        ...original,
+        uid: "missing-arrow",
+        arrow: {
+          ...original.arrow,
+          from: {
+            ...original.arrow?.from,
+            selector: "#does-not-exist",
+            anchor: { type: "element", selector: "#does-not-exist" },
+          },
+        },
+      };
+      const failed = (await command(page, { action: "restore", saved: [missing] })) as {
+        restore?: { unrestored: { uid: string; arrow?: { from: ArrowEnd; to: ArrowEnd } }[] };
+      };
+      expect(failed.restore?.unrestored).toEqual([
+        expect.objectContaining({
+          uid: "missing-arrow",
+          arrow: expect.objectContaining({
+            from: expect.objectContaining({ selector: "#does-not-exist" }),
+            to: expect.objectContaining({ annotationUid: original.arrow?.to.annotationUid }),
+          }),
+        }),
+      ]);
     } finally {
       await context.close();
     }
