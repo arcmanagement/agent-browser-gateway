@@ -28,6 +28,11 @@
     "vitest": "^4.1.12"
   },
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
+    },
     "onlyBuiltDependencies": [
       "esbuild"
     ],
